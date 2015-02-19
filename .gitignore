@@ -1,0 +1,8 @@
+.project
+.pydevproject
+*~
+*.pyc
+*.pyo
+__pycache__/
+build/
+pghoard.egg-info/

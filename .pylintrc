@@ -1,0 +1,20 @@
+[MESSAGES CONTROL]
+disable=I,
+    bare-except,
+    duplicate-code,
+    fixme,
+    invalid-name,
+    line-too-long,
+    missing-docstring,
+    no-self-use,
+    too-few-public-methods,
+    too-many-arguments,
+    too-many-branches,
+    too-many-function-args,
+    too-many-instance-attributes,
+    too-many-locals,
+    too-many-public-methods
+
+[REPORTS]
+output-format=text
+reports=no

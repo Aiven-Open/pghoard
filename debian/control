@@ -1,0 +1,11 @@
+Source: pghoard
+Maintainer: Hannu Valtonen <hannu.valtonen@ohmu.fi>
+Section: python
+Priority: optional
+Build-Depends: python-setuptools (>= 0.6b3), python-all (>= 2.6.6-3), debhelper (>= 7.4.3)
+Standards-Version: 3.9.1
+
+Package: pghoard
+Architecture: all
+Depends: ${misc:Depends}, ${python:Depends}, python-psycopg2 (>= 2.4.0-1), python-requests (>= 1.2.0-1)
+Description: pghoard is a PostgreSQL streaming backup service allowing the compression and encryption of backup files. Also transfer of backup files to an object storage is supported.

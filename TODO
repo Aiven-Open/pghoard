@@ -1,0 +1,34 @@
+TODO
+====
+
+- delete policy
+- tests
+- startup walk through dirs
+- add transfer agent state into JSON state file
+- configurable recovery target recovery.conf (to be created by restore)
+- recovery_command support
+- SSL support for Webserver
+- Authentication/authorization for Webserver
+- timeline file handling/testing
+- PG version support (WAL segment number holes in pre 9.4)
+
+- check diskspace needed from pg with something like:
+
+SELECT SUM(pg_database_size(datname)) FROM pg_database;
+
+and on local side with os.stavfs(basebackup_directory)
+
+fileformat notes:
+
+00000002.history
+----------------
+1       1/47000210      no recovery target specified
+
+backup_label.old
+----------------
+START WAL LOCATION: 0/4000028 (file 000000010000000000000004)
+CHECKPOINT LOCATION: 0/4000060
+BACKUP METHOD: streamed
+BACKUP FROM: master
+START TIME: 2015-02-12 14:07:19 GMT
+LABEL: pg_basebackup base backup

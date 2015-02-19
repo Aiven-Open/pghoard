@@ -1,0 +1,14 @@
+[Unit]
+Description=PostgreSQL streaming backup service
+
+[Service]
+User=pghoard
+Group=postgres
+Type=notify
+Restart=always
+ExecStart=/usr/bin/pghoard /var/lib/pghoard/pghoard.json
+ExecReload=/bin/kill -HUP $MAINPID
+WorkingDirectory=/var/lib/pghoard
+
+[Install]
+WantedBy=multi-user.target

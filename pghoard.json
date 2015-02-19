@@ -1,0 +1,32 @@
+{
+    "log_level": "DEBUG",
+    "http_address": "",
+    "http_port": 16000,
+    "backup_clusters": {
+	"default": {
+	    "127.0.0.1": {
+		"dbname": "postgres",
+		"port": 5433,
+		"username": "replication",
+		"password": "example"
+	    },
+	    "active_backup_mode": "pg_receivexlog",
+	    "basebackup_count": 2,
+	    "basebackup_interval_hours": 24,
+	    "object_storage": {
+		"s3": {
+		    "aws_access_key_id": "xxx",
+		    "aws_secret_access_key": "ASDF",
+		    "region": "eu-central-1",
+		    "bucket_name": "pgbackups"
+		}
+	    }
+	}
+    },
+    "backup_location": "/home/pghoard/t",
+    "pg_basebackup_path": "/usr/pgsql-9.4/bin/pg_basebackup",
+    "pg_receivexlog_path": "/usr/pgsql-9.4/bin/pg_receivexlog",
+    "syslog": true,
+    "syslog_address": "/dev/log",
+    "syslog_facility": "local2"
+}
