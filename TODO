@@ -4,7 +4,6 @@ TODO
 - delete policy
 - tests
 - startup walk through dirs
-- add transfer agent state into JSON state file
 - configurable recovery target recovery.conf (to be created by restore)
 - recovery_command support
 - SSL support for Webserver

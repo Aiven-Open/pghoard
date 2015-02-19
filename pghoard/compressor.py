@@ -128,7 +128,7 @@ class Compressor(Thread):
             metadata['start_wal_segment'] = event['start_wal_segment']
 
         site = event.get("site", self.find_site_for_wal_file(event['full_path']))
-        self.set_defaults_for_site(site)
+        self.set_state_defaults_for_site(site)
         self.state[site][filetype]["original_data"] += original_file_size
         self.state[site][filetype]["compressed_data"] += compressed_file_size
         self.state[site][filetype]["count"] += 1
@@ -144,7 +144,7 @@ class Compressor(Thread):
             self.transfer_queue.put(transfer_object)
         return True
 
-    def set_defaults_for_site(self, site):
+    def set_state_defaults_for_site(self, site):
         if site not in self.state:
             self.state[site] = {"basebackup": {"original_data": 0, "compressed_data": 0, "count": 0},
                                 "xlog": {"original_data": 0, "compressed_data": 0, "count": 0},

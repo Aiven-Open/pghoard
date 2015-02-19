@@ -26,8 +26,15 @@ class TransferAgent(Thread):
         self.config = config
         self.transfer_queue = transfer_queue
         self.running = True
-        self.log.debug("TransferAgent initialized")
+        self.state = {}
         self.site_transfers = {}
+        self.log.debug("TransferAgent initialized")
+
+    def set_state_defaults_for_site(self, site):
+        if site not in self.state:
+            self.state[site] = {"basebackup": {"data": 0, "count": 0, "time_taken": 0.0},
+                                "xlog": {"data": 0, "count": 0, "time_taken": 0.0},
+                                "timeline": {"data": 0, "count": 0, "time_taken": 0.0}}
 
     def get_object_storage(self, site_name):
         storage = self.site_transfers.get(site_name)
@@ -48,7 +55,11 @@ class TransferAgent(Thread):
             self.log.debug("Starting to transfer: %r, size: %r", file_to_transfer["local_path"], file_to_transfer["file_size"])
             start_time = time.time()
             try:
-                storage = self.get_object_storage(file_to_transfer["site"])
+                site, filetype = file_to_transfer["site"], file_to_transfer["filetype"]
+                self.set_state_defaults_for_site(site)
+
+                storage = self.get_object_storage(site)
+
                 if file_to_transfer["filetype"] == "basebackup":
                     name = os.path.basename(os.path.dirname(file_to_transfer["local_path"]))
                 else:
@@ -64,8 +75,13 @@ class TransferAgent(Thread):
                     storage.store_file_from_disk(key, file_to_transfer["local_path"],
                                                  metadata=file_to_transfer["metadata"])
 
+                time_taken = time.time() - start_time
+                self.state[site][filetype]["data"] += file_to_transfer["file_size"]
+                self.state[site][filetype]["count"] += 1
+                self.state[site][filetype]["time_taken"] += time_taken
+
                 self.log.debug("Transfer of key: %r, size: %r, took %.3fs", key, file_to_transfer["file_size"],
-                               time.time() - start_time)
+                               time_taken)
                 if "callback_queue" in file_to_transfer and file_to_transfer["callback_queue"]:
                     file_to_transfer["callback_queue"].put({"success": True})
             except:

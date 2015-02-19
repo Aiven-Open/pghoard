@@ -250,6 +250,7 @@ class PGHoard(object):
             self.state['pg_basebackups'] = dict((key, {"latest_activity": value.latest_activity.isoformat(),
                                                        "running": value.running}) for key, value in self.basebackups.items())
             self.state['compressors'] = [compressor.state for compressor in self.compressors]
+            self.state['transfer_agents'] = [ta.state for ta in self.transfer_agents]
             self.state['queues'] = {"compression_queue": self.compression_queue.qsize(),
                                     'transfer_queue': self.transfer_queue.qsize()}
             json_to_dump = json.dumps(self.state, indent=4)
