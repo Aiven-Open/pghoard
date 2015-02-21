@@ -89,7 +89,7 @@ class PGHoard(object):
         self.log.info("pghoard initialized, own_hostname: %r, cwd: %r", socket.gethostname(), os.getcwd())
 
     def create_basebackup(self, cluster, recovery_host, recovery_port, username,
-                          password, backup_path):
+                          password, basebackup_path):
         create_pgpass_file(self.log, recovery_host, recovery_port, username, password)
         pg_version_server = self.check_pg_server_version(recovery_host, recovery_port, username, password)
         pg_version_client = self.check_pg_receivexlog_version()
@@ -98,6 +98,7 @@ class PGHoard(object):
                            pg_version_server, pg_version_client)
             self.create_alert_file("version_mismatch_error")
             return
+        final_basebackup_path = get_basebackup_path(basebackup_path)
         pg_basebackup = None
         if pg_version_server >= 90300:
             pg_basebackup = [self.config.get("pg_basebackup_path", "/usr/bin/pg_basebackup"),
@@ -105,7 +106,7 @@ class PGHoard(object):
                              "--port=%s" % recovery_port,
                              "--format=tar",
                              "--xlog",
-                             "--pgdata=%s" % backup_path,
+                             "--pgdata=%s" % final_basebackup_path,
                              "--progress",
                              "--username=%s" % username,
                              "--label=initial_base_backup",
@@ -113,7 +114,7 @@ class PGHoard(object):
         else:
             self.log.error("pghoard does not support versions earlier than 9.3, found: %r", pg_version_server)
         if pg_basebackup:
-            thread = PGBaseBackup(pg_basebackup, backup_path, self.compression_queue)
+            thread = PGBaseBackup(pg_basebackup, final_basebackup_path, self.compression_queue)
             thread.start()
             self.basebackups[cluster] = thread
 
@@ -230,12 +231,11 @@ class PGHoard(object):
 
                 if time_since_last_backup > self.config['backup_clusters'][site]['basebackup_interval_hours'] * 3600 \
                    and site not in self.basebackups:
-                    final_basebackup_path = get_basebackup_path(basebackup_path)
                     self.log.debug("Starting to create a new basebackup for: %r since time from previous: %r",
                                    site, time_since_last_backup)
                     self.create_basebackup(site, chosen_backup_node, node_config['port'],
                                            username=node_config.get("username", "replication"),
-                                           password=node_config['password'], backup_path=final_basebackup_path)
+                                           password=node_config['password'], basebackup_path=basebackup_path)
             try:
                 self.write_backup_state_to_json_file()
                 time.sleep(5.0)
