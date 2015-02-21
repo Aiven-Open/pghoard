@@ -127,8 +127,10 @@ class PGHoard(object):
         except psycopg2.OperationalError as ex:
             self.log.warning("%s (%s) connecting to DB at: %r",
                              ex.__class__.__name__, ex, recovery_host)
-            if hasattr(ex, "message") and 'password authentication' in ex.message:
+            if 'password authentication' in str(ex):
                 self.create_alert_file("authentication_error")
+            elif 'pg_hba.conf' in str(ex):
+                self.create_alert_file("pg_hba_conf_error")
         except:
             self.log.exception("Problem in getting PG server version")
         return pg_version

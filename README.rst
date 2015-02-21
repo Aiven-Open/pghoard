@@ -137,8 +137,13 @@ of these files to your alerting system.
 ``authentication_error``
 
 There has been a problem in the authentication of at least one of the
-PostgreSQL connections.  This usually denotes either a wrong username or
-password or incorrect ``pg_hba.conf`` settings.
+PostgreSQL connections.  This usually denotes a wrong username and/or
+password.
+
+``pg_hba_conf_error``
+
+There has been a problem in the authentication of at least one of the
+PostgreSQL connections.  This usually denotes a missing pg_hba conf entry.
 
 ``version_mismatch_error``
 
