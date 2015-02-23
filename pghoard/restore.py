@@ -90,6 +90,7 @@ class Restore(object):
             self.storage.get_timeline_file(timeline)
 
         while self.storage.get_wal_segment(wal_segment):
+            # Note this does not take care of timelines/older PGs
             wal_segment = hex(int(wal_segment, 16) + 1)[2:].upper().zfill(24)
 
         print("Basebackup complete, you can start PostgreSQL by running pg_ctl -D %s start" % pgdata)

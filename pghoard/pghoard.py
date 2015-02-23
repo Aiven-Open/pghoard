@@ -14,6 +14,7 @@ import os
 import psycopg2
 import random
 import signal
+import shutil
 import socket
 import sys
 import time
@@ -188,8 +189,40 @@ class PGHoard(object):
             os.makedirs(basebackup_path)
         return xlog_path, basebackup_path
 
-    def delete_wal_before(self, wal_segment):
-        self.log.debug("Starting WAL deletion from: %r", wal_segment)
+    def delete_local_wal_before(self, wal_segment, xlog_path):
+        self.log.debug("Starting WAL deletion from: %r before: %r", xlog_path, wal_segment)
+        while True:
+            # Note this does not take care of timelines/older PGs
+            wal_segment = hex(int(wal_segment, 16) - 1)[2:].upper().zfill(24)
+            try:
+                wal_path = os.path.join(xlog_path, wal_segment)
+                self.log.debug("Deleting wal_file: %r", wal_path)
+                os.unlink(wal_path)
+            except:
+                self.log.debug("Could not delete wal_file: %r, returning", wal_path)
+                break
+
+    def delete_remote_wal_before(self, wal_segment, site):
+        self.log.debug("Starting WAL deletion from: %r before: %r", site, wal_segment)
+        storage = self.site_transfers.get(site)
+        while True:
+            # Note this does not take care of timelines/older PGs
+            wal_segment = hex(int(wal_segment, 16) - 1)[2:].upper().zfill(24)
+            try:
+                wal_path = "%s/xlog/%s" % (site, wal_segment)
+                self.log.debug("Deleting wal_file: %r", wal_path)
+                if not storage.delete_key(wal_path):
+                    break
+            except:
+                self.log.debug("Could not delete wal_file: %r, returning", wal_path)
+                break
+
+    def delete_remote_basebackup(self, site, basebackup):
+        storage = self.site_transfers.get(site)
+        try:
+            storage.delete_key(basebackup)
+        except:
+            self.log.exception("Problem deleting: %r", basebackup)
 
     def get_local_basebackups_info(self, basebackup_path):
         m_time, metadata = 0, {}
@@ -206,7 +239,7 @@ class PGHoard(object):
         if not storage:
             ob = list(self.config['backup_clusters'][site]['object_storage'].items())[0]
             storage = get_object_storage_transfer(ob[0], ob[1])
-            self.site_transfers['site'] = storage
+            self.site_transfers[site] = storage
         results = storage.list_path(site + "/basebackup/")
         if results:
             basebackups_dict = dict((basebackup['name'], basebackup) for basebackup in results)
@@ -216,11 +249,12 @@ class PGHoard(object):
             metadata = basebackup['metadata']
         return basebackups, m_time, metadata
 
-    def check_backup_count_and_state(self, site, basebackup_path):
+    def check_backup_count_and_state(self, site, basebackup_path, xlog_path):
         allowed_basebackup_count = self.config['backup_clusters'][site]['basebackup_count']
-
+        remote = False
         if 'object_storage' in self.config['backup_clusters'][site]:
             basebackups, m_time, metadata = self.get_remote_basebackups_info(site)
+            remote = True
         else:
             basebackups, m_time, metadata = self.get_local_basebackups_info(basebackup_path)
         self.log.debug("Found %r basebackups, m_time: %r, metadata: %r", basebackups, m_time, metadata)
@@ -229,7 +263,13 @@ class PGHoard(object):
             self.log.warning("Too many basebackups: %d>%d, %r, starting to get rid of %r",
                              len(basebackups), allowed_basebackup_count, basebackups, basebackups[0])
             last_wal_segment_still_needed = metadata['start_wal_segment']
-            self.delete_wal_before(last_wal_segment_still_needed)
+            if not remote:
+                self.delete_local_wal_before(last_wal_segment_still_needed, xlog_path)
+                basebackup_to_be_deleted = os.path.join(basebackup_path, basebackups[0])
+                shutil.rmtree(basebackup_to_be_deleted)
+            else:
+                self.delete_remote_wal_before(last_wal_segment_still_needed, site)
+                self.delete_remote_basebackup(site, basebackups[0])
         self.state["backup_clusters"][site]['basebackups'] = basebackups
         time_since_last_backup = time.time() - m_time
         return time_since_last_backup
@@ -244,7 +284,7 @@ class PGHoard(object):
                 self.set_state_defaults(site)
                 xlog_path, basebackup_path = self.create_backup_site_paths(site)
                 if time.time() - self.time_since_last_backup_check > 3600:
-                    time_since_last_backup = self.check_backup_count_and_state(site, basebackup_path)
+                    time_since_last_backup = self.check_backup_count_and_state(site, basebackup_path, xlog_path)
                     self.time_since_last_backup_check = time.time()
 
                 chosen_backup_node = random.choice([k for k in nodes.keys() if k not in RESERVED_CONFIG_KEYS])
