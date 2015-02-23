@@ -142,6 +142,8 @@ class Compressor(Thread):
             else:
                 transfer_object['local_path'] = compressed_filepath
             self.transfer_queue.put(transfer_object)
+        elif 'callback_queue' in event and event['callback_queue']:
+            event['callback_queue'].put({"success": True})
         return True
 
     def set_state_defaults_for_site(self, site):
