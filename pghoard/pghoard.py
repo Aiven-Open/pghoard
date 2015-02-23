@@ -21,7 +21,7 @@ from . common import create_pgpass_file, convert_pg_version_number_to_numeric, s
 from . basebackup import PGBaseBackup
 from . compressor import Compressor
 from . inotify import InotifyWatcher
-from . object_storage import TransferAgent
+from . object_storage import TransferAgent, get_object_storage_transfer
 from . receivexlog import PGReceiveXLog
 from . webserver import WebServer
 
@@ -54,6 +54,7 @@ class PGHoard(object):
         self.transfer_queue = Queue()
         self.syslog_handler = None
         self.config = {}
+        self.site_transfers = {}
         self.state = {"backup_clusters": {}, "startup_time": datetime.datetime.utcnow().isoformat(),
                       "data_transfer": {}}
         self.load_config()
@@ -65,7 +66,7 @@ class PGHoard(object):
         signal.signal(signal.SIGINT, self.quit)
         signal.signal(signal.SIGTERM, self.quit)
 
-        self.time_since_last_basebackup = {}
+        self.time_since_last_backup_check = 0
         self.basebackups = {}
         self.receivexlogs = {}
         self.wal_queue = Queue()
@@ -188,21 +189,47 @@ class PGHoard(object):
         return xlog_path, basebackup_path
 
     def delete_wal_before(self, wal_segment):
-        pass
+        self.log.debug("Starting WAL deletion from: %r", wal_segment)
 
-    def check_backup_count_and_state(self, site, basebackup_path):
+    def get_local_basebackups_info(self, basebackup_path):
+        m_time, metadata = 0, {}
         basebackups = sorted(os.listdir(basebackup_path))
         basebackup_count = len(basebackups)
-        allowed_basebackup_count = self.config['backup_clusters'][site]['basebackup_count']
-        m_time = 0
         if basebackup_count > 0:
             m_time = os.stat(os.path.join(basebackup_path, basebackups[-1])).st_mtime
-            if basebackup_count >= allowed_basebackup_count:
-                self.log.warning("Too many basebackups: %d>%d, %r, starting to get rid of %r",
-                                 basebackup_count, allowed_basebackup_count, basebackups, basebackups[0])
-                metadata = json.loads(open(os.path.join(basebackup_path, basebackups[1], "pghoard_metadata"), "r").read())
-                last_wal_segment_still_needed = metadata['start_wal_segment']
-                self.delete_wal_before(last_wal_segment_still_needed)
+            metadata = json.loads(open(os.path.join(basebackup_path, basebackups[1], "pghoard_metadata"), "r").read())
+        return basebackups, m_time, metadata
+
+    def get_remote_basebackups_info(self, site):
+        basebackups, m_time, metadata = [], 0, {}
+        storage = self.site_transfers.get(site)
+        if not storage:
+            ob = list(self.config['backup_clusters'][site]['object_storage'].items())[0]
+            storage = get_object_storage_transfer(ob[0], ob[1])
+            self.site_transfers['site'] = storage
+        results = storage.list_path(site + "/basebackup/")
+        if results:
+            basebackups_dict = dict((basebackup['name'], basebackup) for basebackup in results)
+            basebackups = sorted(basebackups_dict.keys())
+            basebackup = basebackups_dict[basebackups[-1]]
+            m_time = basebackup['last_modified'].timestamp()
+            metadata = basebackup['metadata']
+        return basebackups, m_time, metadata
+
+    def check_backup_count_and_state(self, site, basebackup_path):
+        allowed_basebackup_count = self.config['backup_clusters'][site]['basebackup_count']
+
+        if 'object_storage' in self.config['backup_clusters'][site]:
+            basebackups, m_time, metadata = self.get_remote_basebackups_info(site)
+        else:
+            basebackups, m_time, metadata = self.get_local_basebackups_info(basebackup_path)
+        self.log.debug("Found %r basebackups, m_time: %r, metadata: %r", basebackups, m_time, metadata)
+
+        if len(basebackups) >= allowed_basebackup_count:
+            self.log.warning("Too many basebackups: %d>%d, %r, starting to get rid of %r",
+                             len(basebackups), allowed_basebackup_count, basebackups, basebackups[0])
+            last_wal_segment_still_needed = metadata['start_wal_segment']
+            self.delete_wal_before(last_wal_segment_still_needed)
         self.state["backup_clusters"][site]['basebackups'] = basebackups
         time_since_last_backup = time.time() - m_time
         return time_since_last_backup
@@ -216,7 +243,9 @@ class PGHoard(object):
             for site, nodes in self.config['backup_clusters'].items():
                 self.set_state_defaults(site)
                 xlog_path, basebackup_path = self.create_backup_site_paths(site)
-                time_since_last_backup = self.check_backup_count_and_state(site, basebackup_path)
+                if time.time() - self.time_since_last_backup_check > 3600:
+                    time_since_last_backup = self.check_backup_count_and_state(site, basebackup_path)
+                    self.time_since_last_backup_check = time.time()
 
                 chosen_backup_node = random.choice([k for k in nodes.keys() if k not in RESERVED_CONFIG_KEYS])
                 node_config = self.config['backup_clusters'][site][chosen_backup_node]
