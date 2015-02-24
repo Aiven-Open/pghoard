@@ -72,7 +72,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         return open(wal_path, "rb"), {}
 
     def get_timeline_history_file(self, site, which_one):
-        timeline_path = os.path.join(self.server.config['backup_location'], site, "timeline", which_one)
+        timeline_path = os.path.join(self.server.config['backup_location'], site, "timeline", which_one + ".xz")
         fp = open(timeline_path, "rb")
         # We have a different content type from the rest so we need to provide size
         headers = {"Content-type": "application/binary", 'Content-length': str(os.fstat(fp.fileno()).st_size)}

@@ -165,9 +165,12 @@ class HTTPRestore(object):
         self.pgdata = pgdata
         self.session = Session()
 
-    def list_basebackups(self):
+    def _list_basebackups(self):
         uri = "http://" + self.host + ":" + str(self.port) + "/" + self.site + "/basebackups"
-        result = self.session.get(uri)
+        return self.session.get(uri)
+
+    def list_basebackups(self):
+        result = self._list_basebackups()
         line = "Available %r basebackups:" % self.site
         print(line)
         print("=" * len(line))

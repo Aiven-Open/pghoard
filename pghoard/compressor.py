@@ -10,15 +10,9 @@ import os
 import sys
 import time
 
-from . common import Empty
+from . common import Empty, lzma_open
 
 from threading import Thread
-
-try:
-    from lzma import open as lzma_open  # pylint: disable=no-name-in-module
-except:
-    def lzma_open(filepath, mode, preset):
-        return lzma.LZMAFile(filepath, mode=mode, options={"level": preset})  # pylint: disable=unexpected-keyword-arg
 
 
 class Compressor(Thread):
