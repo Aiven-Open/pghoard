@@ -26,7 +26,12 @@ class Compressor(Thread):
         self.running = True
         self.log.debug("Compressor initialized")
 
-    def find_site_for_wal_file(self, filepath):
+    def get_compressed_file_path(self, site, filetype, original_path):
+        if filetype == "basebackup":
+            return original_path
+        return os.path.join(self.config["backup_location"], site, "compressed_" + filetype)
+
+    def find_site_for_file(self, filepath):
         # Formats like:
         # /home/foo/t/default/xlog/000000010000000000000014
         # /home/foo/t/default/basebackup/2015-02-06_3/base.tar
@@ -34,13 +39,13 @@ class Compressor(Thread):
             return filepath.split("/")[-4]
         return filepath.split("/")[-3]
 
-    def compress_filepath(self, filepath):
-        compressed_filepath, algorithm = self.compress_lzma_filepath(filepath)
+    def compress_filepath(self, filepath, compression_dir):
+        compressed_filepath, algorithm = self.compress_lzma_filepath(filepath, compression_dir)
         compressed_file_size = os.stat(compressed_filepath).st_size
         return compressed_filepath, algorithm, compressed_file_size
 
-    def compress_lzma_filepath(self, filepath):
-        lzma_filepath = filepath + ".xz"
+    def compress_lzma_filepath(self, filepath, compression_dir):
+        lzma_filepath = os.path.join(compression_dir, os.path.basename(filepath)) + ".xz"
         # NOTE: pyliblzma, which may be in use, is buggy and requires an explicit closing wrapper
         with contextlib.closing(lzma_open(lzma_filepath, mode="wb", preset=0)) as lzma_file:
             # TODO: fsync, LZMAFile has no .fileno() on 2.7 etc
@@ -104,14 +109,17 @@ class Compressor(Thread):
 
     def handle_event(self, event, filetype):
         start_time, compressed_blob = time.time(), None
+        site = event.get("site", self.find_site_for_file(event['full_path']))
 
         original_file_size = os.stat(event['full_path']).st_size
         self.log.debug("Starting to compress: %r, filetype: %r, original_size: %r",
                        event['full_path'], filetype, original_file_size)
         if event.get("compress_to_memory", False):
             compressed_blob, compression_algorithm, compressed_file_size = self.compress_filepath_to_memory(event['full_path'])
+
         else:
-            compressed_filepath, compression_algorithm, compressed_file_size = self.compress_filepath(event['full_path'])
+            compressed_filepath, compression_algorithm, compressed_file_size = self.compress_filepath(event['full_path'],
+                                                                                                      self.get_compressed_file_path(site, filetype, os.path.dirname(event['full_path'])))
         self.log.debug("Compressed %d byte file: %r to %d bytes, took: %.3fs",
                        original_file_size, event['full_path'], compressed_file_size,
                        time.time() - start_time)
@@ -124,7 +132,6 @@ class Compressor(Thread):
         if 'start_wal_segment' in event:
             metadata['start_wal_segment'] = event['start_wal_segment']
 
-        site = event.get("site", self.find_site_for_wal_file(event['full_path']))
         self.set_state_defaults_for_site(site)
         self.state[site][filetype]["original_data"] += original_file_size
         self.state[site][filetype]["compressed_data"] += compressed_file_size

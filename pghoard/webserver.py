@@ -68,18 +68,15 @@ class RequestHandler(BaseHTTPRequestHandler):
     server_version = "pghoard/" + __version__
 
     def get_wal_file(self, site, which_one):
-        wal_path = os.path.join(self.server.config['backup_location'], site, "xlog", which_one + ".xz")
+        wal_path = os.path.join(self.server.config['backup_location'], site, "compressed_xlog", which_one + ".xz")
         return open(wal_path, "rb"), {}
 
     def get_timeline_history_file(self, site, which_one):
-        timeline_path = os.path.join(self.server.config['backup_location'], site, "timeline", which_one + ".xz")
-        fp = open(timeline_path, "rb")
-        # We have a different content type from the rest so we need to provide size
-        headers = {"Content-type": "application/binary", 'Content-length': str(os.fstat(fp.fileno()).st_size)}
-        return fp, headers
+        timeline_path = os.path.join(self.server.config['backup_location'], site, "compressed_timeline", which_one + ".xz")
+        return open(timeline_path, "rb"), {}
 
     def list_timeline_history_files(self, site):
-        timeline_dir = os.path.join(self.server.config['backup_location'], site, "timeline")
+        timeline_dir = os.path.join(self.server.config['backup_location'], site, "compressed_timeline")
         return {"timelines": os.listdir(timeline_dir)}, {}
 
     def list_basebackups(self, site):
@@ -172,7 +169,6 @@ class RequestHandler(BaseHTTPRequestHandler):
                     size = len(response)
                 elif hasattr(response, "read"):
                     mimetype = "application/x-xz"
-                    self.server.log.error(type(response))
                     size = os.fstat(response.fileno()).st_size  # pylint: disable=maybe-no-member
                 self.send_header('Content-type', mimetype)
                 self.send_header('Content-length', str(size))

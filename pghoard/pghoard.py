@@ -178,15 +178,15 @@ class PGHoard(object):
         site_path = os.path.join(self.config["backup_location"], site)
         xlog_path = os.path.join(site_path, "xlog")
         basebackup_path = os.path.join(site_path, "basebackup")
-        timeline_path = os.path.join(site_path, "timeline")
-        if not os.path.exists(site_path):
-            os.makedirs(site_path)
-        if not os.path.exists(xlog_path):
-            os.makedirs(xlog_path)
-        if not os.path.exists(timeline_path):
-            os.makedirs(timeline_path)
-        if not os.path.exists(basebackup_path):
-            os.makedirs(basebackup_path)
+
+        paths_to_create = [site_path, xlog_path, basebackup_path,
+                           os.path.join(site_path, "compressed_xlog"),
+                           os.path.join(site_path, "compressed_timeline")]
+
+        for path in paths_to_create:
+            if not os.path.exists(path):
+                os.makedirs(path)
+
         return xlog_path, basebackup_path
 
     def delete_local_wal_before(self, wal_segment, xlog_path):
@@ -227,10 +227,12 @@ class PGHoard(object):
     def get_local_basebackups_info(self, basebackup_path):
         m_time, metadata = 0, {}
         basebackups = sorted(os.listdir(basebackup_path))
-        basebackup_count = len(basebackups)
-        if basebackup_count > 0:
+        self.log.error(basebackup_path)
+        self.log.error(basebackups)
+        if len(basebackups) > 0:
             m_time = os.stat(os.path.join(basebackup_path, basebackups[-1])).st_mtime
-            metadata = json.loads(open(os.path.join(basebackup_path, basebackups[1], "pghoard_metadata"), "r").read())
+            with open(os.path.join(basebackup_path, basebackups[-1], "pghoard_metadata"), "r") as fp:
+                metadata = json.load(fp)
         return basebackups, m_time, metadata
 
     def get_remote_basebackups_info(self, site):
@@ -252,7 +254,7 @@ class PGHoard(object):
     def check_backup_count_and_state(self, site, basebackup_path, xlog_path):
         allowed_basebackup_count = self.config['backup_clusters'][site]['basebackup_count']
         remote = False
-        if 'object_storage' in self.config['backup_clusters'][site]:
+        if 'object_storage' in self.config['backup_clusters'][site] and self.config['backup_clusters'][site]['object_storage']:
             basebackups, m_time, metadata = self.get_remote_basebackups_info(site)
             remote = True
         else:

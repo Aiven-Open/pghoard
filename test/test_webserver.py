@@ -29,19 +29,19 @@ class TestWebServer(TestCase):
                        "backup_location": self.temp_dir}
         self.compression_queue = Queue()
 
-        self.xlog_path = os.path.join(self.temp_dir, "default", "xlog")
+        self.compressed_xlog_path = os.path.join(self.temp_dir, "default", "compressed_xlog")
         self.basebackup_path = os.path.join(self.temp_dir, "default", "basebackup")
-        self.timeline_path = os.path.join(self.temp_dir, "default", "timeline")
+        self.compressed_timeline_path = os.path.join(self.temp_dir, "default", "compressed_timeline")
         self.pgdata_path = os.path.join(self.temp_dir, "pgdata")
 
-        os.makedirs(self.xlog_path)
+        os.makedirs(self.compressed_xlog_path)
         os.makedirs(self.basebackup_path)
-        os.makedirs(self.timeline_path)
+        os.makedirs(self.compressed_timeline_path)
         os.makedirs(self.pgdata_path)
         os.makedirs(os.path.join(self.pgdata_path, "pg_xlog"))
 
-        self.foo_path = os.path.join(self.xlog_path, "00000001000000000000000C")
-        self.foo_path_partial = os.path.join(self.xlog_path, "00000001000000000000000C.partial")
+        self.foo_path = os.path.join(self.compressed_xlog_path, "00000001000000000000000C")
+        self.foo_path_partial = os.path.join(self.compressed_xlog_path, "00000001000000000000000C.partial")
         with open(self.foo_path, "wb") as out_file:
             out_file.write(b"foo")
         lzma_open(self.foo_path + ".xz", mode="wb", preset=0).write(open(self.foo_path, "rb").read())
@@ -56,7 +56,7 @@ class TestWebServer(TestCase):
         self.assertEqual(self.http_restore.list_timelines(), [])
 
     def test_list_timelines(self):
-        timeline_file_path = os.path.join(self.timeline_path, "00000002.history")
+        timeline_file_path = os.path.join(self.compressed_timeline_path, "00000002.history")
         open(timeline_file_path, "wb").write(b"1       1/47000210      no recovery target specified")
         self.assertEqual(self.http_restore.list_timelines(), ["00000002.history"])
         lzma_open(timeline_file_path + ".xz", mode="wb", preset=0).write(open(timeline_file_path, "rb").read())
