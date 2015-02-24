@@ -14,10 +14,10 @@ except:
 
 def archive(port, site, xlog_path):
     conn = HTTPConnection(host="localhost", port=port)
-    conn.request("PUT", "/" + site + "/archive" + xlog_path)
+    conn.request("PUT", "/" + site + "/archive/" + xlog_path)
     if conn.getresponse().status == 206:
-        sys.exit(0)
-    sys.exit(1)
+        return True
+    return False
 
 
 def main():
@@ -29,7 +29,9 @@ def main():
     parser.add_argument("-x", "--xlog_path", type=str, required=True,
                         help="complete path to xlog file")
     args = parser.parse_args()
-    archive(args.port, args.site, args.xlog_path)
+    if archive(args.port, args.site, args.xlog_path):
+        sys.exit(0)
+    sys.exit(1)
 
 
 if __name__ == "__main__":
