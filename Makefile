@@ -5,6 +5,7 @@ all: py-egg
 
 PYTHON ?= python
 PYTHON_SOURCE_DIRS = pghoard/ test/
+PYTEST_ARG ?= -v
 
 clean:
 	$(RM) -r *.egg-info/ build/ dist/
@@ -28,7 +29,7 @@ build-dep-fed:
 test: pep8 pylint unittest
 
 unittest:
-	PYTHONPATH=test/ $(PYTHON) -m nose --nologcapture --nocapture test/
+	$(PYTHON) -m pytest $(PYTEST_ARG) test/
 
 pylint:
 	$(PYTHON) -m pylint.lint --rcfile .pylintrc $(PYTHON_SOURCE_DIRS)

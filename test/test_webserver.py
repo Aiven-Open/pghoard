@@ -42,7 +42,8 @@ class TestWebServer(TestCase):
 
         self.foo_path = os.path.join(self.xlog_path, "00000001000000000000000C")
         self.foo_path_partial = os.path.join(self.xlog_path, "00000001000000000000000C.partial")
-        open(self.foo_path, "wb").write("foo")
+        with open(self.foo_path, "wb") as out_file:
+            out_file.write(b"foo")
         lzma_open(self.foo_path + ".xz", mode="wb", preset=0).write(open(self.foo_path, "rb").read())
 
         self.webserver = WebServer(config=self.config,

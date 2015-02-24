@@ -6,8 +6,28 @@ See LICENSE for details
 """
 import fcntl
 import logging
-import lzma
 import os
+
+try:
+    from backports import lzma  # pylint: disable=import-error, unused-import
+except ImportError:
+    import lzma  # pylint: disable=import-error, unused-import
+
+if hasattr(lzma, "open"):
+    lzma_open = lzma.open  # pylint: disable=maybe-no-member
+    lzma_compressor = lzma.LZMACompressor
+elif not hasattr(lzma, "options"):
+    def lzma_open(filepath, mode, preset):
+        return lzma.LZMAFile(filepath, mode=mode, preset=preset)
+
+    def lzma_compressor(preset):
+        return lzma.LZMACompressor(preset=preset)
+else:
+    def lzma_open(filepath, mode, preset):
+        return lzma.LZMAFile(filepath, mode=mode, options={"level": preset})  # pylint: disable=unexpected-keyword-arg
+
+    def lzma_compressor(preset):
+        return lzma.LZMACompressor(options={"level": preset})
 
 try:
     from Queue import Queue, Empty  # pylint: disable=import-error, unused-import
@@ -15,12 +35,6 @@ except:
     from queue import Queue, Empty  # pylint: disable=import-error, unused-import
 
 syslog_format_str = '%(name)s %(levelname)s: %(message)s'
-
-try:
-    from lzma import open as lzma_open  # pylint: disable=no-name-in-module, unused-import
-except:
-    def lzma_open(filepath, mode, preset):
-        return lzma.LZMAFile(filepath, mode=mode, options={"level": preset})  # pylint: disable=unexpected-keyword-arg
 
 
 def create_pgpass_file(log, recovery_host, recovery_port, username, password, dbname="replication"):

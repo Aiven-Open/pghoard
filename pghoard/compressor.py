@@ -4,15 +4,15 @@ pghoard
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
+from .common import Empty, lzma_compressor, lzma_open
+from threading import Thread
+import contextlib
 import logging
-import lzma
 import os
-import sys
+import shutil
 import time
 
-from . common import Empty, lzma_open
-
-from threading import Thread
+IO_BLOCK_SIZE = 1 << 20  # 1 MiB
 
 
 class Compressor(Thread):
@@ -41,10 +41,11 @@ class Compressor(Thread):
 
     def compress_lzma_filepath(self, filepath):
         lzma_filepath = filepath + ".xz"
-        lzma_file = lzma_open(lzma_filepath, mode="wb", preset=0)
-        # TODO: fsync, LZMAFile has no .fileno() on 2.7 etc
-        lzma_file.write(open(filepath, "rb").read())
-        lzma_file.close()
+        # NOTE: pyliblzma, which may be in use, is buggy and requires an explicit closing wrapper
+        with contextlib.closing(lzma_open(lzma_filepath, mode="wb", preset=0)) as lzma_file:
+            # TODO: fsync, LZMAFile has no .fileno() on 2.7 etc
+            with open(filepath, "rb") as input_file:
+                shutil.copyfileobj(input_file, lzma_file, length=IO_BLOCK_SIZE)
         return lzma_filepath, "lzma"
 
     def compress_filepath_to_memory(self, filepath):
@@ -53,14 +54,13 @@ class Compressor(Thread):
         return compressed_data, algorithm, compressed_file_size
 
     def compress_lzma_filepath_to_memory(self, filepath):
-        # This is meant for WAL files compressed due to archivecomman
-        data = open(filepath, "rb").read()
-        if sys.version_info.major == 2:
-            compressor = lzma.LZMACompressor(options={"level": 0})
-        else:
-            compressor = lzma.LZMACompressor(preset=0)
-        compressor.compress(data)
-        compressed_data = compressor.flush()
+        # This is meant for WAL files compressed due to archive_command
+        with open(filepath, "rb") as input_file:
+            data = input_file.read()
+
+        compressor = lzma_compressor(preset=0)
+        compressed_data = compressor.compress(data)
+        compressed_data += compressor.flush()
         return compressed_data, "lzma", len(compressed_data)
 
     def delete_file_and_ignore_error(self, filepath):
@@ -80,8 +80,10 @@ class Compressor(Thread):
                 if not filetype:
                     continue
                 self.handle_event(event, filetype)
-            except:
-                self.log.exception("Problem handling: %r", event)
+            except Exception as ex:
+                self.log.exception("Problem handling: %r: %s: %s", event,
+                                   ex.__class__.__name__, ex)
+                raise
         self.log.info("Quitting Compressor")
 
     def get_event_filetype(self, event):
@@ -115,6 +117,7 @@ class Compressor(Thread):
                        time.time() - start_time)
 
         if event.get('delete_file_after_compression', True):
+            # TODO: should not ignore all errors
             self.delete_file_and_ignore_error(event['full_path'])
 
         metadata = {'compression_algorithm': compression_algorithm, 'original_file_size': original_file_size}

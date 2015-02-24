@@ -5,17 +5,15 @@ Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
 from __future__ import print_function
-
+from .common import lzma
+from requests import Session
 import argh
 import logging
-import lzma
 import os
 import sys
 import tarfile
 import time
 import warnings
-
-from requests import Session
 
 warnings.filterwarnings("ignore", ".*", UserWarning, "argh.completion")
 
