@@ -24,15 +24,21 @@ rpm:
 	$(RM) pghoard-rpm-src.tar.gz
 
 build-dep-fed:
-	sudo yum -y install python-argh python3-argh python-devel python-nose python-psycopg2 python3-psycopg2 python-mock python-boto python3-boto
+	sudo yum -y install python-argh python3-argh python-devel python-nose python-psycopg2 python3-psycopg2 python-mock python-boto python3-boto python3-pytest python3-pytest-cov python3-pep8 python-autopep8 python3-pylint python-pytest python-pep8 python-pytest-cov
 
 test: pep8 pylint unittest
 
 unittest:
 	$(PYTHON) -m pytest $(PYTEST_ARG) test/
 
+coverage:
+	$(PYTHON) -m pytest $(PYTEST_ARG) --cov-report term-missing --cov pghoard test/
+
 pylint:
 	$(PYTHON) -m pylint.lint --rcfile .pylintrc $(PYTHON_SOURCE_DIRS)
 
 pep8:
 	$(PYTHON) -m pep8 --ignore=E501,E123 $(PYTHON_SOURCE_DIRS)
+
+autopep8:
+	$(PYTHON) -m autopep8 --recursive --jobs=0 --in-place --max-line-length=100 --ignore E24,E265 $(PYTHON_SOURCE_DIRS)
