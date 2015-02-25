@@ -96,6 +96,8 @@ class Compressor(Thread):
         # todo tighten these up by using a regexp
         if event['type'] == "CREATE" and os.path.basename(event['full_path']) == "base.tar":
             filetype = "basebackup"
+        elif event['type'] == "CREATE" and os.path.basename(event['full_path']).endswith(".history"):
+            filetype = "timeline"
         elif event['type'] == "CREATE" and os.path.basename(event['full_path']) and \
              len(os.path.basename(event['full_path'])) == 24:  # noqa
             filetype = "xlog"

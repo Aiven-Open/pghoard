@@ -227,8 +227,6 @@ class PGHoard(object):
     def get_local_basebackups_info(self, basebackup_path):
         m_time, metadata = 0, {}
         basebackups = sorted(os.listdir(basebackup_path))
-        self.log.error(basebackup_path)
-        self.log.error(basebackups)
         if len(basebackups) > 0:
             m_time = os.stat(os.path.join(basebackup_path, basebackups[-1])).st_mtime
             with open(os.path.join(basebackup_path, basebackups[-1], "pghoard_metadata"), "r") as fp:
@@ -280,7 +278,20 @@ class PGHoard(object):
         if site not in self.state:
             self.state['backup_clusters'][site] = {"basebackups": []}
 
+    def startup_walk_for_missed_files(self):
+        for site, _ in self.config['backup_clusters'].items():
+            xlog_path, basebackup_path = self.create_backup_site_paths(site)  # pylint: disable=unused-variable
+            for filename in os.listdir(xlog_path):
+                if not filename.endswith(".partial"):
+                    compression_event = {"type": "CREATE",
+                                         "full_path": os.path.join(xlog_path, filename),
+                                         "site": site,
+                                         "delete_file_after_compression": True}
+                    self.log.debug("Found: %r when starting up, adding to compression queue", compression_event)
+                    self.compression_queue.put(compression_event)
+
     def run(self):
+        self.startup_walk_for_missed_files()
         while self.running:
             for site, nodes in self.config['backup_clusters'].items():
                 self.set_state_defaults(site)
