@@ -1,7 +1,6 @@
 TODO
 ====
 
-* add more tests
 * configurable recovery target recovery.conf (to be created by restore)
 * recovery_command support
 * SSL support for Webserver
