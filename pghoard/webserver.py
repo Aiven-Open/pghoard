@@ -6,6 +6,8 @@ See LICENSE for details
 """
 
 from . import __version__
+from . common import Queue, Empty
+from threading import Thread
 import json
 import logging
 import os
@@ -13,28 +15,26 @@ import shutil
 import sys
 import time
 
-from . common import Queue, Empty
 
-from threading import Thread
-
-try:
+if sys.version_info.major >= 3:
     from concurrent.futures import ThreadPoolExecutor  # pylint: disable=import-error
     from http.server import HTTPServer, BaseHTTPRequestHandler  # pylint: disable=import-error
     from socketserver import ThreadingMixIn  # pylint: disable=import-error
-except:
-    from BaseHTTPServer import HTTPServer, BaseHTTPRequestHandler  # pylint: disable=import-error
-    from SocketServer import ThreadingMixIn  # pylint: disable=import-error
 
-if sys.version_info.major == 2:
-    class OwnHTTPServer(ThreadingMixIn, HTTPServer):
-        pass
-else:
     class PoolMixIn(ThreadingMixIn):  # pylint: disable=no-init
         def process_request(self, request, client_address):
             self.pool.submit(self.process_request_thread, request, client_address)
 
-    class OwnHTTPServer(PoolMixIn, HTTPServer):
+    class OwnHTTPServer(PoolMixIn, HTTPServer):  # pylint: disable=no-init
+        """httpserver with 10 thread pool"""
         pool = ThreadPoolExecutor(max_workers=10)
+
+else:
+    from BaseHTTPServer import HTTPServer, BaseHTTPRequestHandler  # pylint: disable=import-error
+    from SocketServer import ThreadingMixIn  # pylint: disable=import-error
+
+    class OwnHTTPServer(ThreadingMixIn, HTTPServer):  # pylint: disable=no-init
+        """httpserver with threadingmixin"""
 
 
 class WebServer(Thread):
@@ -154,7 +154,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                 else:
                     self.send_response(404)
                     return
-            except:
+            except:  # pylint: disable=bare-except
                 self.server.log.exception("Exception occured when processing: %r", path)
                 self.send_response(404)
                 return

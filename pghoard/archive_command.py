@@ -6,9 +6,10 @@ See LICENSE for details
 """
 import argparse
 import sys
-try:
+
+if sys.version_info[0] >= 3:
     from http.client import HTTPConnection  # pylint: disable=import-error
-except:
+else:
     from httplib import HTTPConnection  # pylint: disable=import-error
 
 

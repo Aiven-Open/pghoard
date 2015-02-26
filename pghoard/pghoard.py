@@ -18,17 +18,18 @@ import shutil
 import socket
 import sys
 import time
-from . common import create_pgpass_file, convert_pg_version_number_to_numeric, set_syslog_handler, Queue
 from . basebackup import PGBaseBackup
+from . common import create_pgpass_file, convert_pg_version_number_to_numeric, set_syslog_handler, Queue
 from . compressor import Compressor
+from . errors import InvalidConfigurationError
 from . inotify import InotifyWatcher
 from . object_storage import TransferAgent, get_object_storage_transfer
 from . receivexlog import PGReceiveXLog
 from . webserver import WebServer
 
 try:
-    from systemd import daemon
-except:
+    from systemd import daemon  # pylint: disable=no-name-in-module
+except ImportError:
     daemon = None
 
 format_str = "%(asctime)s\t%(name)s\t%(threadName)s\t%(levelname)s\t%(message)s"
@@ -134,7 +135,7 @@ class PGHoard(object):
                 self.create_alert_file("authentication_error")
             elif 'pg_hba.conf' in str(ex):
                 self.create_alert_file("pg_hba_conf_error")
-        except:
+        except Exception:  # log all errors and return None; pylint: disable=broad-except
             self.log.exception("Problem in getting PG server version")
         return pg_version
 
@@ -191,37 +192,40 @@ class PGHoard(object):
 
     def delete_local_wal_before(self, wal_segment, xlog_path):
         self.log.debug("Starting WAL deletion from: %r before: %r", xlog_path, wal_segment)
-        while True:
+        wal_segment_no = int(wal_segment, 16)
+        while wal_segment_no > 0:
             # Note this does not take care of timelines/older PGs
-            wal_segment = hex(int(wal_segment, 16) - 1)[2:].upper().zfill(24)
-            try:
-                wal_path = os.path.join(xlog_path, wal_segment)
-                self.log.debug("Deleting wal_file: %r", wal_path)
-                os.unlink(wal_path)
-            except:
-                self.log.debug("Could not delete wal_file: %r, returning", wal_path)
+            wal_segment_no -= 1
+            wal_segment = hex(wal_segment_no)[2:].upper().zfill(24)
+            wal_path = os.path.join(xlog_path, wal_segment)
+            if not os.path.exists(wal_path):
+                self.log.debug("wal_path %r not found, returning", wal_path)
                 break
+            self.log.debug("Deleting wal_file: %r", wal_path)
+            os.unlink(wal_path)
 
     def delete_remote_wal_before(self, wal_segment, site):
         self.log.debug("Starting WAL deletion from: %r before: %r", site, wal_segment)
+        wal_segment_no = int(wal_segment, 16)
         storage = self.site_transfers.get(site)
         while True:
             # Note this does not take care of timelines/older PGs
-            wal_segment = hex(int(wal_segment, 16) - 1)[2:].upper().zfill(24)
+            wal_segment_no -= 1
+            wal_segment = hex(wal_segment_no)[2:].upper().zfill(24)
+            wal_path = "%s/xlog/%s" % (site, wal_segment)
+            self.log.debug("Deleting wal_file: %r", wal_path)
             try:
-                wal_path = "%s/xlog/%s" % (site, wal_segment)
-                self.log.debug("Deleting wal_file: %r", wal_path)
                 if not storage.delete_key(wal_path):
+                    self.log.debug("Could not delete wal_file: %r, returning", wal_path)
                     break
-            except:
-                self.log.debug("Could not delete wal_file: %r, returning", wal_path)
-                break
+            except:  # FIXME: don't catch all exceptions; pylint: disable=bare-except
+                self.log.exception("Problem deleting: %r", wal_path)
 
     def delete_remote_basebackup(self, site, basebackup):
         storage = self.site_transfers.get(site)
         try:
             storage.delete_key(basebackup)
-        except:
+        except:  # FIXME: don't catch all exceptions; pylint: disable=bare-except
             self.log.exception("Problem deleting: %r", basebackup)
 
     def get_local_basebackups_info(self, basebackup_path):
@@ -318,61 +322,56 @@ class PGHoard(object):
                     self.create_basebackup(site, chosen_backup_node, node_config['port'],
                                            username=node_config.get("username", "replication"),
                                            password=node_config['password'], basebackup_path=basebackup_path)
-            try:
-                self.write_backup_state_to_json_file()
-                time.sleep(5.0)
-            except:
-                self.log.exception("Problem in main_loop")
+            self.write_backup_state_to_json_file()
+            time.sleep(5.0)
 
     def write_backup_state_to_json_file(self):
         """Periodically write a JSON state file to disk"""
         start_time = time.time()
         state_file_path = self.config.get("json_state_file_path", "/tmp/pghoard_state.json")
-        try:
-            self.state['pg_receivexlogs'] = dict((key, {"latest_activity": value.latest_activity.isoformat(),
-                                                        "running": value.running}) for key, value in self.receivexlogs.items())
-            self.state['pg_basebackups'] = dict((key, {"latest_activity": value.latest_activity.isoformat(),
-                                                       "running": value.running}) for key, value in self.basebackups.items())
-            self.state['compressors'] = [compressor.state for compressor in self.compressors]
-            self.state['transfer_agents'] = [ta.state for ta in self.transfer_agents]
-            self.state['queues'] = {"compression_queue": self.compression_queue.qsize(),
-                                    'transfer_queue': self.transfer_queue.qsize()}
-            json_to_dump = json.dumps(self.state, indent=4)
-            self.log.debug("Writing JSON state file to: %r, file_size: %r", state_file_path, len(json_to_dump))
-            with open(state_file_path + ".tmp", "w") as fp:
-                fp.write(json_to_dump)
-            os.rename(state_file_path + ".tmp", state_file_path)
-            self.log.debug("Wrote JSON state file to disk, took %.4fs", time.time() - start_time)
-        except:
-            self.log.exception("Problem in writing JSON: %r file to disk, took %.4fs",
-                               self.state, time.time() - start_time)
+        self.state["pg_receivexlogs"] = dict((key, {"latest_activity": value.latest_activity.isoformat(), "running": value.running})
+                                             for key, value in self.receivexlogs.items())
+        self.state["pg_basebackups"] = dict((key, {"latest_activity": value.latest_activity.isoformat(), "running": value.running})
+                                            for key, value in self.basebackups.items())
+        self.state["compressors"] = [compressor.state for compressor in self.compressors]
+        self.state["transfer_agents"] = [ta.state for ta in self.transfer_agents]
+        self.state["queues"] = {
+            "compression_queue": self.compression_queue.qsize(),
+            "transfer_queue": self.transfer_queue.qsize(),
+            }
+        json_to_dump = json.dumps(self.state, indent=4)
+        self.log.debug("Writing JSON state file to: %r, file_size: %r", state_file_path, len(json_to_dump))
+        with open(state_file_path + ".tmp", "w") as fp:
+            fp.write(json_to_dump)
+        os.rename(state_file_path + ".tmp", state_file_path)
+        self.log.debug("Wrote JSON state file to disk, took %.4fs", time.time() - start_time)
 
     def create_alert_file(self, filename):
-        try:
-            filepath = os.path.join(self.config.get("alert_file_dir", os.getcwd()), filename)
-            self.log.debug("Creating alert file: %r", filepath)
-            with open(filepath, "w") as fp:
-                fp.write("alert")
-        except:
-            self.log.exception("Problem writing alert file: %r", filepath)
+        filepath = os.path.join(self.config.get("alert_file_dir", os.getcwd()), filename)
+        self.log.debug("Creating alert file: %r", filepath)
+        with open(filepath, "w") as fp:
+            fp.write("alert")
 
     def delete_alert_file(self, filename):
-        try:
-            filepath = os.path.join(self.config.get("alert_file_dir", os.getcwd()), filename)
-            if os.path.exists(filepath):
-                self.log.debug("Deleting alert file: %r", filepath)
-                os.unlink(filepath)
-        except:
-            self.log.exception("Problem unlinking: %r", filepath)
+        filepath = os.path.join(self.config.get("alert_file_dir", os.getcwd()), filename)
+        if os.path.exists(filepath):
+            self.log.debug("Deleting alert file: %r", filepath)
+            os.unlink(filepath)
 
     def load_config(self, _signal=None, _frame=None):
         self.log.debug("Loading JSON config from: %r, signal: %r, frame: %r",
                        self.config_path, _signal, _frame)
         try:
-            self.config = json.load(open(self.config_path, "r"))
-        except:
-            self.log.exception("Invalid JSON config, exiting")
-            sys.exit(0)
+            with open(self.config_path, "r") as fp:
+                self.config = json.load(fp)
+        except (IOError, ValueError) as ex:
+            self.log.exception("Invalid JSON config %r: %s", self.config_path, ex)
+            # if we were called by a signal handler we'll ignore (and log)
+            # the error and hope the user fixes the configuration before
+            # restarting pghoard.
+            if _signal is not None:
+                return
+            raise InvalidConfigurationError(self.config_path)
 
         if self.config.get("syslog") and not self.syslog_handler:
             self.syslog_handler = set_syslog_handler(self.config.get("syslog_address", "/dev/log"),
@@ -386,7 +385,6 @@ class PGHoard(object):
         try:
             self.log.setLevel(self.log_level)
         except ValueError:
-            print("Problem setting log level %r" % self.log_level)
             self.log.exception("Problem with log_level: %r", self.log_level)
         # we need the failover_command to be converted into subprocess [] format
         self.log.debug("Loaded config: %r from: %r", self.config, self.config_path)
@@ -404,14 +402,20 @@ class PGHoard(object):
         self.webserver.close()
 
 
-def main():
-    if len(sys.argv) == 2 and os.path.exists(sys.argv[1]):
+def main(argv):
+    if len(argv) != 2:
+        print("Usage: {} <config filename>".format(argv[0]))
+        return 1
+    if not os.path.exists(argv[1]):
+        print("{}: {!r} doesn't exist".format(argv[0], argv[1]))
+        return 1
+    try:
         pghoard = PGHoard(sys.argv[1])
-        pghoard.run()
-    else:
-        print("Usage, pghoard <config filename>")
-        sys.exit(0)
+    except InvalidConfigurationError as ex:
+        print("{}: failed to load config {}".format(argv[0], ex))
+        return 1
+    return pghoard.run()
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main(sys.argv))

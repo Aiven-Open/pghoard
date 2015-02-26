@@ -68,12 +68,6 @@ class Compressor(Thread):
         compressed_data += compressor.flush()
         return compressed_data, "lzma", len(compressed_data)
 
-    def delete_file_and_ignore_error(self, filepath):
-        try:
-            os.unlink(filepath)
-        except:
-            pass
-
     def run(self):
         while self.running:
             try:
@@ -127,8 +121,7 @@ class Compressor(Thread):
                        time.time() - start_time)
 
         if event.get('delete_file_after_compression', True):
-            # TODO: should not ignore all errors
-            self.delete_file_and_ignore_error(event['full_path'])
+            os.unlink(event['full_path'])
 
         metadata = {'compression_algorithm': compression_algorithm, 'original_file_size': original_file_size}
         if 'start_wal_segment' in event:

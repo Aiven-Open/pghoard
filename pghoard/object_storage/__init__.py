@@ -4,11 +4,12 @@ pghoard
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
+from pghoard.common import Empty
+from pghoard.errors import InvalidConfigurationError
+from threading import Thread
 import logging
 import os
 import time
-from threading import Thread
-from pghoard.common import Empty
 
 
 def get_object_storage_transfer(key, value):
@@ -16,6 +17,8 @@ def get_object_storage_transfer(key, value):
         from . s3 import S3Transfer
         storage = S3Transfer(value["aws_access_key_id"], value["aws_secret_access_key"],
                              value["region"], value["bucket_name"])
+    else:
+        raise InvalidConfigurationError("unknown storage type {0!r}".format(key))
     return storage
 
 
@@ -84,7 +87,7 @@ class TransferAgent(Thread):
                                time_taken)
                 if "callback_queue" in file_to_transfer and file_to_transfer["callback_queue"]:
                     file_to_transfer["callback_queue"].put({"success": True})
-            except:
+            except Exception:  # pylint: disable=broad-except
                 self.log.exception("Problem in moving file: %r, need to retry", file_to_transfer["local_path"])
                 # TODO come up with something so we don't busy loop
                 time.sleep(0.5)

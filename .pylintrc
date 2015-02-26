@@ -1,6 +1,5 @@
 [MESSAGES CONTROL]
 disable=I,
-    bare-except,
     duplicate-code,
     fixme,
     invalid-name,

@@ -6,6 +6,7 @@ See LICENSE for details
 """
 from __future__ import print_function
 from .common import lzma
+from .errors import Error
 from requests import Session
 import argh
 import logging
@@ -87,9 +88,11 @@ class Restore(object):
         for timeline in self.storage.list_timelines():
             self.storage.get_timeline_file(timeline)
 
+        wal_segment_no = int(wal_segment, 16)
         while self.storage.get_wal_segment(wal_segment):
             # Note this does not take care of timelines/older PGs
-            wal_segment = hex(int(wal_segment, 16) + 1)[2:].upper().zfill(24)
+            wal_segment_no += 1
+            wal_segment = hex(wal_segment_no)[2:].upper().zfill(24)
 
         print("Basebackup complete, you can start PostgreSQL by running pg_ctl -D %s start" % pgdata)
 
@@ -126,17 +129,17 @@ class ObjectStore(object):
         return basebackup_path, metadata["start_wal_segment"]
 
     def get_wal_segment(self, wal_segment):
+        key = self.site + "/xlog/" + wal_segment
         try:
-            key = self.site + "/xlog/" + wal_segment
             wal_data, _ = self.storage.get_contents_to_string(key)
-            decompressor = lzma.LZMADecompressor()
-            decompressed_data = decompressor.decompress(wal_data)
-            with open(os.path.join(self.pgdata, "pg_xlog", wal_segment), "wb") as fp:
-                fp.write(decompressed_data)
-            return True
-        except:
+        except Exception:  # XXX: ignore "not found" errors, not others; pylint: disable=W0703
             self.log.exception("Problem fetching: %r", wal_segment)
-        return False
+            return False
+        decompressor = lzma.LZMADecompressor()
+        decompressed_data = decompressor.decompress(wal_data)
+        with open(os.path.join(self.pgdata, "pg_xlog", wal_segment), "wb") as fp:
+            fp.write(decompressed_data)
+        return True
 
 
 class S3Restore(ObjectStore):
@@ -187,8 +190,7 @@ class HTTPRestore(object):
         uri = "http://" + self.host + ":" + str(self.port) + "/" + self.site + "/basebackups/" + basebackup
         response = self.session.get(uri, stream=True)
         if response.status_code != 200:
-            print("Incorrect basebackup: %r or site: %r defined" % (basebackup, self.site))
-            sys.exit(1)
+            raise Error("Incorrect basebackup: %{!r} or site: {!r} defined".format(basebackup, self.site))
         basebackup_path = os.path.join(self.pgdata, "base.tar.xz")
         store_response_to_file(basebackup_path, response)
         return basebackup_path, response.headers["x-pghoard-start_wal_segment"]
@@ -214,8 +216,8 @@ class HTTPRestore(object):
 
 def main():
     restore = Restore()
-    restore.run()
+    return restore.run()
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

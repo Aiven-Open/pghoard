@@ -31,7 +31,7 @@ else:
 
 try:
     from Queue import Queue, Empty  # pylint: disable=import-error, unused-import
-except:
+except ImportError:
     from queue import Queue, Empty  # pylint: disable=import-error, unused-import
 
 syslog_format_str = '%(name)s %(levelname)s: %(message)s'

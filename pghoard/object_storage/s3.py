@@ -9,6 +9,7 @@ import boto.s3
 import dateutil.parser
 from boto.s3.connection import Location
 from boto.s3.key import Key
+from pghoard.errors import InvalidConfigurationError
 from .base import BaseTransfer
 
 
@@ -84,8 +85,8 @@ class S3Transfer(BaseTransfer):
                 raise
             # Bucket exists on another region, find out which
             location = self.conn.get_bucket(bucket_name, validate=False).get_location()
-            raise Exception("bucket {!r} is in region {!r}, tried to use {!r}"
-                            .format(bucket_name, location, self.region))
+            raise InvalidConfigurationError("bucket {!r} is in region {!r}, tried to use {!r}"
+                                            .format(bucket_name, location, self.region))
         if not bucket:
             self.log.debug("Creating bucket: %r", bucket_name)
             bucket = self.conn.create_bucket(bucket_name, location=Location.EU)

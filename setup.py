@@ -16,7 +16,7 @@ setup(
     dependency_links = [],
     package_data = {},
     entry_points = {
-        'console_scripts': ["pghoard = pghoard.pghoard:main",
+        'console_scripts': ["pghoard = pghoard.__main__",
                             "pghoard_restore = pghoard.restore:main",
                             "pghoard_archive_command = pghoard.archive_command:main"],
     }
