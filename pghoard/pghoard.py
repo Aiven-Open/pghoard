@@ -1,11 +1,11 @@
 """
-pghoard
+pghoard - main pghoard daemon
 
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
-from __future__ import print_function
 
+from __future__ import print_function
 import datetime
 import json
 import logging
@@ -19,7 +19,7 @@ import socket
 import sys
 import time
 from . basebackup import PGBaseBackup
-from . common import create_pgpass_file, convert_pg_version_number_to_numeric, set_syslog_handler, Queue
+from . common import create_pgpass_file, convert_pg_version_number_to_numeric, default_log_format_str, set_syslog_handler, Queue
 from . compressor import Compressor
 from . errors import InvalidConfigurationError
 from . inotify import InotifyWatcher
@@ -32,8 +32,6 @@ try:
 except ImportError:
     daemon = None
 
-format_str = "%(asctime)s\t%(name)s\t%(threadName)s\t%(levelname)s\t%(message)s"
-logging.basicConfig(level=logging.DEBUG, format=format_str)
 
 RESERVED_CONFIG_KEYS = ["basebackup_interval_hours", "basebackup_count", "object_storage", "active_backup_mode", "pg_xlog_directory"]
 
@@ -403,6 +401,7 @@ class PGHoard(object):
 
 
 def main(argv):
+    logging.basicConfig(level=logging.INFO, format=default_log_format_str)
     if len(argv) != 2:
         print("Usage: {} <config filename>".format(argv[0]))
         return 1

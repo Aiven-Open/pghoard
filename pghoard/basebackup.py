@@ -1,9 +1,10 @@
 """
-pghoard
+pghoard - pg_basebackup handler
 
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
+
 import datetime
 import json
 import logging

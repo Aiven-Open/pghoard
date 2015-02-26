@@ -1,9 +1,10 @@
 """
-pghoard
+pghoard - compressor threads
 
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
+
 from .common import Empty, lzma_compressor, lzma_open
 from threading import Thread
 import contextlib

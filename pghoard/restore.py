@@ -5,7 +5,7 @@ Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
 from __future__ import print_function
-from .common import lzma
+from .common import lzma, default_log_format_str
 from .errors import Error
 from requests import Session
 import argh
@@ -17,9 +17,6 @@ import time
 import warnings
 
 warnings.filterwarnings("ignore", ".*", UserWarning, "argh.completion")
-
-format_str = "%(asctime)s\t%(name)s\t%(threadName)s\t%(levelname)s\t%(message)s"
-logging.basicConfig(level=logging.DEBUG, format=format_str)
 
 
 def create_pgdata_dir(pgdata):
@@ -215,6 +212,7 @@ class HTTPRestore(object):
 
 
 def main():
+    logging.basicConfig(level=logging.INFO, format=default_log_format_str)
     restore = Restore()
     return restore.run()
 

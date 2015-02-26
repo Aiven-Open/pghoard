@@ -1,9 +1,10 @@
 """
-pghoard
+pghoard - common utility functions
 
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
+
 import fcntl
 import logging
 import os
@@ -34,6 +35,8 @@ try:
 except ImportError:
     from queue import Queue, Empty  # pylint: disable=import-error, unused-import
 
+
+default_log_format_str = "%(asctime)s\t%(name)s\t%(threadName)s\t%(levelname)s\t%(message)s"
 syslog_format_str = '%(name)s %(levelname)s: %(message)s'
 
 

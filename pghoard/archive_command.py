@@ -1,9 +1,10 @@
 """
-pghoard
+pghoard - archive_command for postgresql
 
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
+
 import argparse
 import sys
 

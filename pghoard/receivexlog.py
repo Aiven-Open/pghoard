@@ -1,9 +1,10 @@
 """
-pghoard
+pghoard - pg_receivexlog handler
 
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
+
 import datetime
 import logging
 import select
@@ -11,7 +12,6 @@ import subprocess
 import time
 
 from . common import set_subprocess_stdout_and_stderr_nonblocking
-
 from threading import Thread
 
 
