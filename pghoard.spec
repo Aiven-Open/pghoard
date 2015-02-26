@@ -1,19 +1,13 @@
-%{!?python_sitelib: %global python_sitelib %(%{__python} -c "from distutils.sysconfig import get_python_lib; print get_python_lib()")}
-
 Name:           pghoard
 Version:        %{major_version}
 Release:        %{minor_version}%{?dist}
 Url:            http://github.com/ohmu/pghoard
-Summary:        PostgreSQL replication monitoring and failover daemon
-License:        Apache V2
+Summary:        PostgreSQL streaming backup service
+License:        ASL 2.0
 Source0:        pghoard-rpm-src.tar.gz
-Source1:        pghoard.unit
-BuildRoot:      %{_tmppath}/%{name}-%{version}-build
-BuildRequires:  python-devel
-BuildRequires:  python-distribute
-BuildRequires:  python-nose
-Requires:       python-psycopg2, python-requests, python-setuptools
+Requires:       python-argh, python-dateutil, python-psycopg2, python-requests
 Requires(pre):  shadow-utils
+BuildRequires:  pylint, pytest, python-pytest-cov, systemd, %{requires}
 BuildArch:      noarch
 
 %description
@@ -38,20 +32,16 @@ python setup.py build
 
 %install
 python setup.py install -O1 --skip-build --prefix=%{_prefix} --root=%{buildroot}
-%{__mkdir_p} ${RPM_BUILD_ROOT}/usr/lib/systemd/system
-%{__install} -m0644 %{SOURCE1} ${RPM_BUILD_ROOT}/usr/lib/systemd/system/pghoard.service
+%{__install} -Dm0644 pghoard.unit %{buildroot}%{_unitdir}/pghoard.service
 
 %check
-python setup.py test
+make test
 
 %files
-/usr/lib/systemd/system/*
-
 %defattr(-,root,root,-)
-
 %doc LICENSE README.rst pghoard.json
+%{_unitdir}/pghoard.service
 %{_bindir}/pghoard*
-
 %{python_sitelib}/*
 
 %changelog

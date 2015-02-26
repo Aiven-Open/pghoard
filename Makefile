@@ -24,7 +24,13 @@ rpm:
 	$(RM) pghoard-rpm-src.tar.gz
 
 build-dep-fed:
-	sudo yum -y install python-argh python3-argh python-devel python-nose python-psycopg2 python3-psycopg2 python-mock python-boto python3-boto python3-pytest python3-pytest-cov python3-pep8 python-autopep8 python3-pylint python-pytest python-pep8 python-pytest-cov
+	sudo yum -y install postgresql-server python-autopep8 \
+		python3-argh python3-boto python3-dateutil python3-pep8 \
+		python3-psycopg2 python3-pylint python3-pytest \
+		python3-pytest-cov python3-requests \
+		python-argh python-backports-lzma python-boto python-dateutil python-pep8 \
+		python-psycopg2 pylint pytest \
+		python-pytest-cov python-requests rpm-build
 
 test: pep8 pylint unittest
 

@@ -7,5 +7,9 @@ Standards-Version: 3.9.1
 
 Package: pghoard
 Architecture: all
-Depends: ${misc:Depends}, ${python:Depends}, python-psycopg2 (>= 2.4.0-1), python-requests (>= 1.2.0-1)
-Description: pghoard is a PostgreSQL streaming backup service allowing the compression and encryption of backup files. Also transfer of backup files to an object storage is supported.
+Depends: ${misc:Depends}, ${python:Depends},
+ python-argh, python-dateutil, python-psycopg2, python-requests
+Description: PostgreSQL streaming backup service
+ PGhoard is a PostgreSQL streaming backup service allowing the compression
+ and encryption of backup files.  Also transfer of backup files to an object
+ storage is supported.
