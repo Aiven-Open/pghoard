@@ -74,15 +74,11 @@ class PGHoard(object):
         self.transfer_agents = []
 
         self.inotify = InotifyWatcher(self.compression_queue)
-        self.inotify.start()
         self.webserver = WebServer(self.config, self.compression_queue)
-        self.webserver.start()
         for _ in range(2):
             compressor = Compressor(self.config, self.compression_queue, self.transfer_queue)
-            compressor.start()
             self.compressors.append(compressor)
             ta = TransferAgent(self.config, self.transfer_queue)
-            ta.start()
             self.transfer_agents.append(ta)
         if daemon:  # If we can import systemd we always notify it
             daemon.notify("READY=1")
@@ -292,7 +288,17 @@ class PGHoard(object):
                     self.log.debug("Found: %r when starting up, adding to compression queue", compression_event)
                     self.compression_queue.put(compression_event)
 
+    def start_threads_on_startup(self):
+        # Startup threads
+        self.inotify.start()
+        self.webserver.start()
+        for compressor in self.compressors:
+            compressor.start()
+        for ta in self.transfer_agents:
+            ta.start()
+
     def run(self):
+        self.start_threads_on_startup()
         self.startup_walk_for_missed_files()
         while self.running:
             for site, nodes in self.config['backup_clusters'].items():
