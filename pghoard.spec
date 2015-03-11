@@ -1,3 +1,9 @@
+%if %{?python3_sitelib:1}0
+%global use_python3 1
+%else
+%global use_python3 0
+%endif
+
 Name:           pghoard
 Version:        %{major_version}
 Release:        %{minor_version}%{?dist}
@@ -5,10 +11,16 @@ Url:            http://github.com/ohmu/pghoard
 Summary:        PostgreSQL streaming backup service
 License:        ASL 2.0
 Source0:        pghoard-rpm-src.tar.gz
-Requires:       python-argh, python-dateutil, python-psycopg2, python-requests
-Requires:       postgresql-server, systemd
 Requires(pre):  shadow-utils
-BuildRequires:  pylint, pytest, %{requires}
+Requires:       postgresql-server, systemd
+BuildRequires:  %{requires}
+%if %{use_python3}
+Requires:       python3-argh, python3-dateutil, python3-psycopg2, python3-requests, python3-boto
+BuildRequires:  python3-pytest, python3-pylint, python3-pep8, %{requires}
+%else
+Requires:       python-argh, python-dateutil, python-psycopg2, python-requests, python-boto
+BuildRequires:  pylint, pytest, python-pep8, %{requires}
+%endif
 BuildArch:      noarch
 
 %description
@@ -22,16 +34,22 @@ storage is supported.
 
 
 %install
-%{__mkdir_p} %{buildroot}%{_localstatedir}/lib/pghoard %{buildroot}%{_datadir}/pghoard
+%if %{use_python3}
+python3 setup.py install --prefix=%{_prefix} --root=%{buildroot}
+%else
 python2 setup.py install --prefix=%{_prefix} --root=%{buildroot}
-sed -e 's@/usr/bin/@%{_bindir}/@g' \
-    -e 's@/var/@%{_localstatedir}/@g' \
-    -i pghoard.unit
+%endif
+sed -e "s@#!/bin/python@#!%{_bindir}/python@" -i %{buildroot}%{_bindir}/*
 %{__install} -Dm0644 pghoard.unit %{buildroot}%{_unitdir}/pghoard.service
+%{__mkdir_p} %{buildroot}%{_localstatedir}/lib/pghoard
 
 
 %check
-make test
+%if %{use_python3}
+make test PYTHON=python3
+%else
+make test PYTHON=python2
+%endif
 
 
 %pre
@@ -43,13 +61,20 @@ getent passwd pghoard >/dev/null || \
 %files
 %defattr(-,root,root,-)
 %doc LICENSE README.rst pghoard.json
-%{_unitdir}/pghoard.service
 %{_bindir}/pghoard*
+%{_unitdir}/pghoard.service
+%if %{use_python3}
+%{python3_sitelib}/*
+%else
 %{python_sitelib}/*
+%endif
 %attr(0755, pghoard, postgres) %{_localstatedir}/lib/pghoard
 
 
 %changelog
+* Wed Mar 25 2015 Oskari Saarenmaa <os@ohmu.fi> - 0.9.0
+- Build a single package using Python 3 if possible, Python 2 otherwise
+
 * Thu Feb 26 2015 Oskari Saarenmaa <os@ohmu.fi> - 0.9.0
 - Refactored
 
