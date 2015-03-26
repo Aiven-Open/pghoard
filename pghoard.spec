@@ -51,13 +51,6 @@ make test PYTHON=python3
 make test PYTHON=python2
 %endif
 
-
-%pre
-getent passwd pghoard >/dev/null || \
-    useradd -r -g postgres -d %{_localstatedir}/lib/pghoard -s /usr/bin/sh \
-	    -c "pghoard account" pghoard
-
-
 %files
 %defattr(-,root,root,-)
 %doc LICENSE README.rst pghoard.json
@@ -68,7 +61,7 @@ getent passwd pghoard >/dev/null || \
 %else
 %{python_sitelib}/*
 %endif
-%attr(0755, pghoard, postgres) %{_localstatedir}/lib/pghoard
+%attr(0755, postgres, postgres) %{_localstatedir}/lib/pghoard
 
 
 %changelog

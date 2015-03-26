@@ -2,7 +2,7 @@
 Description=PostgreSQL streaming backup service
 
 [Service]
-User=pghoard
+User=postgres
 Group=postgres
 Type=notify
 Restart=always
