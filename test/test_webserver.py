@@ -80,7 +80,7 @@ class TestWebServer(TestCase):
                                 transfer_queue=self.transfer_queue)
         compressor.start()
 
-        self.assertTrue(archive(port=self.config['http_port'], site="default", xlog_path="00000001000000000000000C"))
+        self.assertTrue(archive(port=self.config['http_port'], site="default", xlog_file="00000001000000000000000C"))
         compressor.running = False
 
 #    def test_get_basebackup_file(self):

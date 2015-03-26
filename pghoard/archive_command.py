@@ -14,9 +14,9 @@ else:
     from httplib import HTTPConnection  # pylint: disable=import-error
 
 
-def archive(port, site, xlog_path):
+def archive(port, site, xlog_file):
     conn = HTTPConnection(host="localhost", port=port)
-    conn.request("PUT", "/" + site + "/archive/" + xlog_path)
+    conn.request("PUT", "/" + site + "/archive/" + xlog_file)
     if conn.getresponse().status == 206:
         return True
     return False
@@ -28,10 +28,10 @@ def main():
                         help="pghoard repository port")
     parser.add_argument("-s", "--site", type=str, default="default",
                         help="pghoard site")
-    parser.add_argument("-x", "--xlog_path", type=str, required=True,
-                        help="complete path to xlog file")
+    parser.add_argument("-x", "--xlog_file", type=str, required=True,
+                        help="xlog file name")
     args = parser.parse_args()
-    if archive(args.port, args.site, args.xlog_path):
+    if archive(args.port, args.site, args.xlog_file):
         sys.exit(0)
     sys.exit(1)
 
