@@ -105,8 +105,8 @@ class RequestHandler(BaseHTTPRequestHandler):
 
     def handle_archival_request(self, site, filename):
         start_time = time.time()
-        self.server.log.debug("Got request to archive: %r %r", site, filename)
-        xlog_path = os.path.join(self.server.config["backup_clusters"][site]["pg_xlog_directory"], filename)
+        xlog_path = os.path.join(self.server.config["backup_clusters"][site].get("pg_xlog_directory", "/var/lib/pgsql/data/pg_xlog/"), filename)
+        self.server.log.debug("Got request to archive: %r %r, %r", site, filename, xlog_path)
         if os.path.exists(xlog_path):
             callback_queue = Queue()
             compression_event = {"type": "CREATE", "full_path": xlog_path, "site": site,
@@ -125,7 +125,9 @@ class RequestHandler(BaseHTTPRequestHandler):
             except Empty:
                 self.server.log.exception("Problem in getting a response in time, returning 404, took: %.2fs",
                                           time.time() - start_time)
-        self.send_response(404)
+        else:
+            self.server.log.debug("xlog_path: %r did not exist, cannot archive, returning 404", xlog_path)
+            self.send_response(404)
 
     def do_PUT(self):
         site, path = self.log_and_parse_request()
