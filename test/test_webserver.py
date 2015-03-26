@@ -23,6 +23,7 @@ logging.basicConfig(level=logging.DEBUG, format=format_str)
 
 class TestWebServer(TestCase):
     def setUp(self):
+        self.log = logging.getLogger("TestWebServer")
         self.temp_dir = tempfile.mkdtemp()
         self.compressed_xlog_path = os.path.join(self.temp_dir, "default", "compressed_xlog")
         self.basebackup_path = os.path.join(self.temp_dir, "default", "basebackup")
@@ -79,9 +80,24 @@ class TestWebServer(TestCase):
                                 compression_queue=self.compression_queue,
                                 transfer_queue=self.transfer_queue)
         compressor.start()
+        xlog_file = "00000001000000000000000C"
+        self.assertTrue(archive(port=self.config['http_port'], site="default", xlog_file=xlog_file))
+        self.assertTrue(os.path.exists(os.path.join(self.compressed_xlog_path, xlog_file)))
+        self.log.error(os.path.join(self.compressed_xlog_path, xlog_file))
+        compressor.running = False
 
-        self.assertTrue(archive(port=self.config['http_port'], site="default", xlog_file="00000001000000000000000C"))
-        self.assertTrue(os.path.exists(os.path.join(self.compressed_xlog_path, "00000001000000000000000C")))
+    def test_archiving_backup_label_from_archive_command(self):
+        compressor = Compressor(config=self.config,
+                                compression_queue=self.compression_queue,
+                                transfer_queue=self.transfer_queue)
+        compressor.start()
+
+        xlog_file = "000000010000000000000002.00000028.backup"
+        xlog_path = os.path.join(self.pg_xlog_dir, xlog_file)
+        with open(xlog_path, "w") as fp:
+            fp.write("jee")
+        self.assertTrue(archive(port=self.config['http_port'], site="default", xlog_file=xlog_file))
+        self.assertFalse(os.path.exists(os.path.join(self.compressed_xlog_path, xlog_file)))
         compressor.running = False
 
 #    def test_get_basebackup_file(self):

@@ -78,6 +78,9 @@ class Compressor(Thread):
             try:
                 filetype = self.get_event_filetype(event)
                 if not filetype:
+                    if 'callback_queue' in event and event['callback_queue']:
+                        self.log.debug("Returning success for event: %r, even though we did nothing for it", event)
+                        event['callback_queue'].put({"success": True})
                     continue
                 self.handle_event(event, filetype)
             except Exception as ex:
