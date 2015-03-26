@@ -23,7 +23,7 @@
 	    }
 	}
     },
-    "backup_location": "/home/pghoard/t",
+    "backup_location": "/var/lib/pghoard",
     "pg_basebackup_path": "/usr/pgsql-9.4/bin/pg_basebackup",
     "pg_receivexlog_path": "/usr/pgsql-9.4/bin/pg_receivexlog",
     "syslog": true,
