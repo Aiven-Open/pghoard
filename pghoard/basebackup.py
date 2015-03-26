@@ -65,7 +65,7 @@ class PGBaseBackup(Thread):
                        proc.returncode)
         basebackup_path = os.path.join(self.basebackup_location, "base.tar")
         start_wal_segment = self.parse_backup_label(basebackup_path)
-        self.set_basebackup_metadata(self.basebackup_location, {"start_wal_segment": start_wal_segment})
+        self.set_basebackup_metadata(self.basebackup_location, {"start-wal-segment": start_wal_segment})
         self.compression_queue.put({"type": "CREATE", "full_path": basebackup_path,
-                                    "start_wal_segment": start_wal_segment})
+                                    "start-wal-segment": start_wal_segment})
         self.running = False

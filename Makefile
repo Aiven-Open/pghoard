@@ -29,7 +29,7 @@ build-dep-fed:
 		python3-psycopg2 python3-pylint python3-pytest \
 		python3-pytest-cov python3-requests \
 		python-argh python-backports-lzma python-boto python-dateutil python-pep8 \
-		python-psycopg2 pylint pytest \
+		python-psycopg2 pylint pytest python-mock \
 		python-pytest-cov python-requests rpm-build
 
 test: pep8 pylint unittest

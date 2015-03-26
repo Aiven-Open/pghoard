@@ -6,7 +6,7 @@ See LICENSE for details
 """
 
 from . import __version__
-from . common import Queue, Empty
+from . common import Queue, Empty, lzma_open
 from threading import Thread
 import json
 import logging
@@ -38,11 +38,12 @@ else:
 
 
 class WebServer(Thread):
-    def __init__(self, config, compression_queue):
+    def __init__(self, config, compression_queue, transfer_queue):
         Thread.__init__(self)
         self.log = logging.getLogger("WebServer")
         self.config = config
         self.compression_queue = compression_queue
+        self.transfer_queue = transfer_queue
         self.address = self.config.get("http_address", '')
         self.port = self.config.get("http_port", 16000)
         self.server = None
@@ -54,6 +55,7 @@ class WebServer(Thread):
         self.server.config = self.config  # pylint: disable=attribute-defined-outside-init
         self.server.log = self.log  # pylint: disable=attribute-defined-outside-init
         self.server.compression_queue = self.compression_queue  # pylint: disable=attribute-defined-outside-init
+        self.server.transfer_queue = self.transfer_queue  # pylint: disable=attribute-defined-outside-init
         self.server.serve_forever()
 
     def close(self):
@@ -67,17 +69,34 @@ class RequestHandler(BaseHTTPRequestHandler):
     disable_nagle_algorithm = True
     server_version = "pghoard/" + __version__
 
-    def get_wal_file(self, site, which_one):
-        wal_path = os.path.join(self.server.config['backup_location'], site, "compressed_xlog", which_one + ".xz")
-        return open(wal_path, "rb"), {}
+    def get_wal_or_timeline_file(self, site, filename, filetype):
+        start_time = time.time()
 
-    def get_timeline_history_file(self, site, which_one):
-        timeline_path = os.path.join(self.server.config['backup_location'], site, "compressed_timeline", which_one + ".xz")
-        return open(timeline_path, "rb"), {}
+        target_path = self.headers.get("x-pghoard-target-path")
+        #  return_file = self.headers.get("x-pghoard-return-file", False) TODO: add support for fetching files from object storage and returning them through HTTP
+        self.server.log.debug("Requesting site: %r, filename: %r, filetype: %r, target_path: %r", site, filename, filetype, target_path)
 
-    def list_timeline_history_files(self, site):
-        timeline_dir = os.path.join(self.server.config['backup_location'], site, "compressed_timeline")
-        return {"timelines": os.listdir(timeline_dir)}, {}
+        if self.server.config["backup_clusters"][site]['object_storage']:
+            callback_queue = Queue()
+            self.server.transfer_queue.put({"local_path": filename, "target_path": target_path, "filetype": filetype,
+                                            "site": "default", "callback_queue": callback_queue, "operation": "download"})
+            response = callback_queue.get(timeout=30.0)
+            self.server.log.debug("Handled a restore request for: %r %r, took: %.3fs",
+                                  site, target_path, time.time() - start_time)
+            if response['success']:
+                return "", {"Content-length": "0"}, 206
+            else:
+                return "", {"Content-length": "0"}, 404
+        else:
+            archived_file_path = os.path.join(self.server.config['backup_location'], site, "compressed_%s" % filetype, filename + ".xz")
+            if os.path.exists(archived_file_path):
+                compressed_fp = lzma_open(archived_file_path, "rb", preset=0)
+                target_fp = open(target_path, "wb")
+                shutil.copyfileobj(compressed_fp, target_fp)
+                return "", {"Content-length": "0"}, 206
+            else:
+                self.server.log.debug("Could not find: %r, returning 404", archived_file_path)
+                return "", {"Content-length": "0"}, 404
 
     def list_basebackups(self, site):
         basebackup_dir = os.path.join(self.server.config['backup_location'], site, "basebackup")
@@ -85,7 +104,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         for backup in os.listdir(basebackup_dir):
             path = os.path.join(self.server.config['backup_location'], site, "basebackup", backup, "base.tar.xz")
             basebackup_dict[backup] = {"size": os.stat(path).st_size}
-        return {"basebackups": basebackup_dict}, {}
+        return {"basebackups": basebackup_dict}, {}, 200
 
     def get_basebackup(self, site, which_one):
         backup_path = os.path.join(self.server.config['backup_location'], site, "basebackup", which_one, "base.tar.xz")
@@ -95,7 +114,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         headers = {}
         for key, value in metadata.items():
             headers['x-pghoard-' + key] = value
-        return open(backup_path, "rb"), headers
+        return open(backup_path, "rb"), headers, 200
 
     def log_and_parse_request(self):
         self.server.log.debug("Got request: %r", self.path)
@@ -145,16 +164,13 @@ class RequestHandler(BaseHTTPRequestHandler):
             try:
                 if path[1] == "basebackups":  # TODO use something nicer to map URIs
                     if len(path) == 2:
-                        response, headers = self.list_basebackups(site)
+                        response, headers, status = self.list_basebackups(site)
                     elif len(path) == 3:
-                        response, headers = self.get_basebackup(site, path[2])
-                elif path[1] == "xlog" and len(path) == 3:
-                    response, headers = self.get_wal_file(site, path[2])
-                elif path[1] == "timelines":
-                    if len(path) == 2:
-                        response, headers = self.list_timeline_history_files(site)
-                    elif len(path) == 3:
-                        response, headers = self.get_timeline_history_file(site, path[2])
+                        response, headers, status = self.get_basebackup(site, path[2])
+                elif len(path[1]) == 24 and len(path) == 2:
+                    response, headers, status = self.get_wal_or_timeline_file(site, path[1], "xlog")
+                elif path[1].endswith(".history"):
+                    response, headers, status = self.get_wal_or_timeline_file(site, path[1], "timeline")
                 else:
                     self.send_response(404)
                     return
@@ -163,19 +179,21 @@ class RequestHandler(BaseHTTPRequestHandler):
                 self.send_response(404)
                 return
 
-            self.send_response(200)
+            self.send_response(status)
+
             for header_key, header_value in headers.items():
                 self.send_header(header_key, header_value)
-            if 'Content-type' not in headers:
-                if isinstance(response, dict):
-                    mimetype = "application/json"
-                    response = json.dumps(response, indent=4).encode("utf8")
-                    size = len(response)
-                elif hasattr(response, "read"):
-                    mimetype = "application/x-xz"
-                    size = os.fstat(response.fileno()).st_size  # pylint: disable=maybe-no-member
-                self.send_header('Content-type', mimetype)
-                self.send_header('Content-length', str(size))
+            if status not in (206, 404):
+                if 'Content-type' not in headers:
+                    if isinstance(response, dict):
+                        mimetype = "application/json"
+                        response = json.dumps(response, indent=4).encode("utf8")
+                        size = len(response)
+                    elif hasattr(response, "read"):
+                        mimetype = "application/x-xz"
+                        size = os.fstat(response.fileno()).st_size  # pylint: disable=maybe-no-member
+                    self.send_header('Content-type', mimetype)
+                    self.send_header('Content-length', str(size))
             self.end_headers()
 
             if isinstance(response, bytes):

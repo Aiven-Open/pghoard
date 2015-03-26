@@ -59,7 +59,7 @@ class TestCompression(TestCase):
         transfer_event = self.transfer_queue.get(timeout=1.0)
         expected = {'local_path': (self.foo_path + ".xz").replace("/xlog/", "/compressed_xlog/"),
                     'filetype': 'xlog', 'site': 'default',
-                    'metadata': {'compression_algorithm': 'lzma', 'original_file_size': 3}}
+                    'metadata': {'compression-algorithm': 'lzma', 'original-file-size': 3}}
         for key, value in expected.items():
             assert transfer_event[key] == value
 
@@ -69,7 +69,7 @@ class TestCompression(TestCase):
                  "compress_to_memory": True}
         self.compressor.handle_event(event, filetype="xlog")
         expected = {'filetype': 'xlog', 'site': 'default', "local_path": self.foo_path, "callback_queue": None,
-                    'metadata': {'compression_algorithm': 'lzma', 'original_file_size': 3}}
+                    'metadata': {'compression-algorithm': 'lzma', 'original-file-size': 3}}
         transfer_event = self.transfer_queue.get()
         for key, value in expected.items():
             assert transfer_event[key] == value
@@ -83,10 +83,23 @@ class TestCompression(TestCase):
         transfer_event = self.compression_queue.put(event)
         transfer_event = self.transfer_queue.get(timeout=1.0)
         expected = {'filetype': 'xlog', 'site': 'default', 'local_path': self.foo_path,
-                    'metadata': {'compression_algorithm': 'lzma', 'original_file_size': 3}, "callback_queue": callback_queue}
+                    'metadata': {'compression-algorithm': 'lzma', 'original-file-size': 3}, "callback_queue": callback_queue}
         for key, value in expected.items():
             assert transfer_event[key] == value
         assert lzma.decompress(transfer_event["blob"]) == b"foo"
+
+    def test_decompression_event(self):
+        callback_queue = Queue()
+        local_filepath = os.path.join(self.temp_dir, "00000001000000000000000D")
+        self.compression_queue.put({"local_path": local_filepath,
+                                    "filetype": "xlog",
+                                    "blob": lzma.compress(b"foo"),
+                                    "callback_queue": callback_queue,
+                                    "type": "decompression"})
+        callback_queue.get(timeout=1.0)
+        self.assertTrue(os.path.exists(local_filepath))
+        with open(local_filepath, "rb") as fp:
+            assert fp.read() == b"foo"
 
     def tearDown(self):
         self.compressor.running = False

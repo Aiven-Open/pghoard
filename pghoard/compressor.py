@@ -7,6 +7,7 @@ See LICENSE for details
 
 from .common import Empty, lzma_compressor, lzma_open
 from threading import Thread
+from lzma import LZMADecompressor
 import contextlib
 import logging
 import os
@@ -76,13 +77,17 @@ class Compressor(Thread):
             except Empty:
                 continue
             try:
-                filetype = self.get_event_filetype(event)
-                if not filetype:
-                    if 'callback_queue' in event and event['callback_queue']:
-                        self.log.debug("Returning success for event: %r, even though we did nothing for it", event)
-                        event['callback_queue'].put({"success": True})
-                    continue
-                self.handle_event(event, filetype)
+                if 'type' in event and event['type'] == "decompression":
+                    self.handle_decompression_event(event)
+                else:
+                    filetype = self.get_event_filetype(event)
+                    if not filetype:
+                        if 'callback_queue' in event and event['callback_queue']:
+                            self.log.debug("Returning success for event: %r, even though we did nothing for it", event)
+                            event['callback_queue'].put({"success": True})
+                        continue
+                    else:
+                        self.handle_event(event, filetype)
             except Exception as ex:
                 self.log.exception("Problem handling: %r: %s: %s", event,
                                    ex.__class__.__name__, ex)
@@ -107,6 +112,20 @@ class Compressor(Thread):
             filetype = "timeline"
         return filetype
 
+    def handle_decompression_event(self, event):
+        start_time = time.time()
+        decompressor = LZMADecompressor()
+        with open(event['local_path'], "wb") as fp:
+            data = decompressor.decompress(event['blob'])
+            fp.write(data)
+
+        self.log.debug("Decompressed %d byte file: %r to %d bytes, took: %.3fs",
+                       len(event['blob']), event['local_path'], os.path.getsize(event['local_path']),
+                       time.time() - start_time)
+
+        if 'callback_queue' in event:
+            event['callback_queue'].put({"success": True})
+
     def handle_event(self, event, filetype):
         start_time, compressed_blob = time.time(), None
         site = event.get("site", self.find_site_for_file(event['full_path']))
@@ -127,9 +146,9 @@ class Compressor(Thread):
         if event.get('delete_file_after_compression', True):
             os.unlink(event['full_path'])
 
-        metadata = {'compression_algorithm': compression_algorithm, 'original_file_size': original_file_size}
-        if 'start_wal_segment' in event:
-            metadata['start_wal_segment'] = event['start_wal_segment']
+        metadata = {'compression-algorithm': compression_algorithm, 'original-file-size': original_file_size}
+        if 'start-wal-segment' in event:
+            metadata['start-wal-segment'] = event['start-wal-segment']
 
         self.set_state_defaults_for_site(site)
         self.state[site][filetype]["original_data"] += original_file_size
@@ -137,7 +156,8 @@ class Compressor(Thread):
         self.state[site][filetype]["count"] += 1
         if self.config['backup_clusters'][site].get("object_storage"):
             transfer_object = {"metadata": metadata, "site": site,
-                               "file_size": compressed_file_size, "filetype": filetype}
+                               "file_size": compressed_file_size, "filetype": filetype,
+                               "operation": "upload"}
             if event.get("compress_to_memory", False):
                 transfer_object['blob'] = compressed_blob
                 transfer_object['local_path'] = event['full_path']

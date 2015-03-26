@@ -19,10 +19,29 @@ import warnings
 warnings.filterwarnings("ignore", ".*", UserWarning, "argh.completion")
 
 
+def store_response_to_file(filepath, response):
+    decompressor = lzma.LZMADecompressor()
+    with open(filepath, "wb") as f:
+        for chunk in response.iter_content(chunk_size=8192):
+            if chunk:  # filter out keep-alive new chunks
+                f.write(decompressor.decompress(chunk))
+
+
 def create_pgdata_dir(pgdata):
     if not os.path.exists(pgdata):
         os.makedirs(pgdata)
     os.chmod(pgdata, 0o700)
+
+
+def create_recovery_conf(dirpath):
+    content = """# pghoard created recovery.conf
+restore_command = 'pghoard_restore get %f %p'
+recovery_target = 'immediate'
+recovery_target_timeline = 'latest'
+"""
+    filepath = os.path.join(dirpath, "recovery.conf")
+    with open(filepath, "w") as fp:
+        fp.write(content)
 
 
 class Restore(object):
@@ -34,10 +53,22 @@ class Restore(object):
     def create_parser(self):
         parser = argh.ArghParser()
         argh.add_commands(parser, [
+            self.get,
             self.get_basebackup_http, self.list_basebackups_http,
             self.get_basebackup_s3, self.list_basebackups_s3,
         ])
         return parser
+
+    @argh.arg("--host", help="pghoard repository host")
+    @argh.arg("--port", help="pghoard repository port")
+    @argh.arg("--site", help="pghoard site")
+    @argh.arg("--path-prefix", help="path_prefix (useful for testing)")
+    def get(self, filename, target_path, host="localhost", port=16000, site="default", path_prefix=None):
+        self.storage = HTTPRestore(host, port, site)
+
+        if self.storage.get_archive_file(filename, target_path, path_prefix):
+            sys.exit(0)
+        sys.exit(1)
 
     @argh.arg("--host", help="pghoard repository host")
     @argh.arg("--port", help="pghoard repository port")
@@ -78,20 +109,15 @@ class Restore(object):
     def get_basebackup(self, pgdata, basebackup):
         create_pgdata_dir(pgdata)
 
-        basebackup_path, wal_segment = self.storage.get_basebackup_file(basebackup)
-        tar = tarfile.TarFile(fileobj=lzma.LZMAFile(basebackup_path, "rb"))
+        _, tar = self.storage.get_basebackup_file(basebackup)
         tar.extractall(pgdata)
 
-        for timeline in self.storage.list_timelines():
-            self.storage.get_timeline_file(timeline)
+        create_recovery_conf(pgdata)
 
-        wal_segment_no = int(wal_segment, 16)
-        while self.storage.get_wal_segment(wal_segment):
-            # Note this does not take care of timelines/older PGs
-            wal_segment_no += 1
-            wal_segment = hex(wal_segment_no)[2:].upper().zfill(24)
-
-        print("Basebackup complete, you can start PostgreSQL by running pg_ctl -D %s start" % pgdata)
+        print("Basebackup complete.")
+        print("You can start PostgreSQL by running pg_ctl -D %s start" % pgdata)
+        print("On systemd based systems you can run systemctl start postgresql")
+        print("On SYSV Init based systems you can run /etc/init.d/postgresql start")
 
     def run(self):
         argh.dispatch(self.parser)
@@ -113,30 +139,12 @@ class ObjectStore(object):
         for r in result:
             print("%s\t%s\t%s\t%s" % (r["name"], r["size"], r["last_modified"], r["metadata"]))
 
-    def list_timelines(self):
-        result = self.storage.list_path(self.site + "/timeline/")
-        if not result:
-            return []
-        return [r.key for r in result]
-
     def get_basebackup_file(self, basebackup):
         metadata = self.storage.get_metadata_for_key(basebackup)
         basebackup_path = os.path.join(self.pgdata, "base.tar.xz")
         self.storage.get_contents_to_file(basebackup, basebackup_path)
-        return basebackup_path, metadata["start_wal_segment"]
-
-    def get_wal_segment(self, wal_segment):
-        key = self.site + "/xlog/" + wal_segment
-        try:
-            wal_data, _ = self.storage.get_contents_to_string(key)
-        except Exception:  # XXX: ignore "not found" errors, not others; pylint: disable=W0703
-            self.log.exception("Problem fetching: %r", wal_segment)
-            return False
-        decompressor = lzma.LZMADecompressor()
-        decompressed_data = decompressor.decompress(wal_data)
-        with open(os.path.join(self.pgdata, "pg_xlog", wal_segment), "wb") as fp:
-            fp.write(decompressed_data)
-        return True
+        tar = tarfile.TarFile(fileobj=lzma.LZMAFile(basebackup_path, "rb"))
+        return metadata["start-wal-segment"], tar
 
 
 class S3Restore(ObjectStore):
@@ -144,14 +152,6 @@ class S3Restore(ObjectStore):
         from .object_storage.s3 import S3Transfer
         storage = S3Transfer(aws_access_key_id, aws_secret_access_key, region, bucket)
         ObjectStore.__init__(self, storage, site, pgdata)
-
-
-def store_response_to_file(filepath, response):
-    decompressor = lzma.LZMADecompressor()
-    with open(filepath, "wb") as f:
-        for chunk in response.iter_content(chunk_size=8192):
-            if chunk:  # filter out keep-alive new chunks
-                f.write(decompressor.decompress(chunk))
 
 
 class HTTPRestore(object):
@@ -176,13 +176,6 @@ class HTTPRestore(object):
         for basebackup, values in result.json()["basebackups"].items():
             print("%s\t%s" % (basebackup, values["size"]))
 
-    def list_timelines(self):
-        uri = "http://" + self.host + ":" + str(self.port) + "/" + self.site + "/timelines"
-        result = self.session.get(uri)
-        if result.status_code == 200:
-            return result.json()["timelines"]
-        return []
-
     def get_basebackup_file(self, basebackup):
         uri = "http://" + self.host + ":" + str(self.port) + "/" + self.site + "/basebackups/" + basebackup
         response = self.session.get(uri, stream=True)
@@ -190,25 +183,23 @@ class HTTPRestore(object):
             raise Error("Incorrect basebackup: %{!r} or site: {!r} defined".format(basebackup, self.site))
         basebackup_path = os.path.join(self.pgdata, "base.tar.xz")
         store_response_to_file(basebackup_path, response)
-        return basebackup_path, response.headers["x-pghoard-start_wal_segment"]
+        tar = tarfile.TarFile(fileobj=open(basebackup_path, "rb"))
+        return response.headers["x-pghoard-start-wal-segment"], tar
 
-    def get_timeline_file(self, timeline):
+    def get_archive_file(self, filename, target_path, path_prefix=None):
         start_time = time.time()
-        uri = "http://" + self.host + ":" + str(self.port) + "/" + self.site + "/timelines/" + timeline
-        response = self.session.get(uri, stream=True)
-        store_response_to_file(os.path.join(self.pgdata, "pg_xlog", timeline), response)
-        self.log.debug("Got timeline: %r, status_code: %r took: %.2fs", timeline, response.status_code,
-                       time.time() - start_time)
-        return response.status_code == 200
-
-    def get_wal_segment(self, wal_segment):
-        start_time = time.time()
-        uri = "http://" + self.host + ":" + str(self.port) + "/" + self.site + "/xlog/" + wal_segment
-        response = self.session.get(uri, stream=True)
-        store_response_to_file(os.path.join(self.pgdata, "pg_xlog", wal_segment), response)
-        self.log.debug("Got WAL: %r, status_code: %r took: %.2fs", wal_segment, response.status_code,
-                       time.time() - start_time)
-        return response.status_code == 200
+        self.log.debug("Getting archived file: %r, target_path: %r, path_prefix: %r",
+                       filename, target_path, path_prefix)
+        uri = "http://" + self.host + ":" + str(self.port) + "/" + self.site + "/" + filename
+        if not path_prefix:
+            final_target_path = os.path.join(os.getcwd(), target_path)
+        else:
+            final_target_path = os.path.join(path_prefix, target_path)
+        headers = {"x-pghoard-target-path": final_target_path}
+        response = self.session.get(uri, headers=headers, stream=True)
+        self.log.debug("Got archived file: %r, %r status_code: %r took: %.2fs", filename, target_path,
+                       response.status_code, time.time() - start_time)
+        return response.status_code in (200, 206)
 
 
 def main():

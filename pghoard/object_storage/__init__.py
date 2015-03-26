@@ -9,6 +9,7 @@ from pghoard.errors import InvalidConfigurationError
 from threading import Thread
 import logging
 import os
+import shutil
 import time
 
 
@@ -23,10 +24,11 @@ def get_object_storage_transfer(key, value):
 
 
 class TransferAgent(Thread):
-    def __init__(self, config, transfer_queue):
+    def __init__(self, config, compression_queue, transfer_queue):
         Thread.__init__(self)
         self.log = logging.getLogger("TransferAgent")
         self.config = config
+        self.compression_queue = compression_queue
         self.transfer_queue = transfer_queue
         self.running = True
         self.state = {}
@@ -35,9 +37,12 @@ class TransferAgent(Thread):
 
     def set_state_defaults_for_site(self, site):
         if site not in self.state:
-            self.state[site] = {"basebackup": {"data": 0, "count": 0, "time_taken": 0.0},
-                                "xlog": {"data": 0, "count": 0, "time_taken": 0.0},
-                                "timeline": {"data": 0, "count": 0, "time_taken": 0.0}}
+            self.state[site] = {"upload": {"basebackup": {"data": 0, "count": 0, "time_taken": 0.0},
+                                           "xlog": {"data": 0, "count": 0, "time_taken": 0.0},
+                                           "timeline": {"data": 0, "count": 0, "time_taken": 0.0}},
+                                "download": {"basebackup": {"data": 0, "count": 0, "time_taken": 0.0},
+                                             "xlog": {"data": 0, "count": 0, "time_taken": 0.0},
+                                             "timeline": {"data": 0, "count": 0, "time_taken": 0.0}}}
 
     def get_object_storage(self, site_name):
         storage = self.site_transfers.get(site_name)
@@ -48,48 +53,80 @@ class TransferAgent(Thread):
                 self.site_transfers[site_name] = storage
         return storage
 
+    def form_key_path(self, file_to_transfer):
+        if file_to_transfer["filetype"] == "basebackup":
+            name = os.path.basename(os.path.dirname(file_to_transfer["local_path"]))
+        else:
+            name = os.path.splitext(os.path.basename(file_to_transfer["local_path"]))[0]
+        key = "/".join([file_to_transfer["site"], file_to_transfer["filetype"], name])
+        return key
+
     def run(self):
         while self.running:
             try:
                 file_to_transfer = self.transfer_queue.get(timeout=1.0)
             except Empty:
                 continue
-
-            self.log.debug("Starting to transfer: %r, size: %r", file_to_transfer["local_path"], file_to_transfer["file_size"])
+            self.log.debug("Starting to %r %r, size: %r", file_to_transfer["operation"],
+                           file_to_transfer["local_path"], file_to_transfer.get("file_size", "unknown"))
             start_time = time.time()
-            try:
-                site, filetype = file_to_transfer["site"], file_to_transfer["filetype"]
-                self.set_state_defaults_for_site(site)
+            key = self.form_key_path(file_to_transfer)
+            if file_to_transfer["operation"] == "upload":
+                self.handle_upload(start_time, key, file_to_transfer)
+            else:
+                self.handle_download(start_time, key, file_to_transfer)
+            self.log.debug("%r transfer of key: %r, size: %r, took %.3fs", file_to_transfer["operation"],
+                           key, file_to_transfer.get("file_size", "UNKNOWN"), time.time() - start_time)
 
-                storage = self.get_object_storage(site)
+        self.log.info("Quitting TransferAgent")
 
-                if file_to_transfer["filetype"] == "basebackup":
-                    name = os.path.basename(os.path.dirname(file_to_transfer["local_path"]))
-                else:
-                    name = os.path.splitext(os.path.basename(file_to_transfer["local_path"]))[0]
+    def handle_download(self, start_time, key, file_to_transfer):
+        site, filetype = file_to_transfer["site"], file_to_transfer["filetype"]
+        self.set_state_defaults_for_site(site)
+        try:
+            storage = self.get_object_storage(site)
 
-                key = "/".join([self.config.get("installation_uuid", ""),
-                                file_to_transfer["site"],
-                                file_to_transfer["filetype"], name])
-                if "blob" in file_to_transfer:
-                    storage.store_file_from_memory(key, file_to_transfer["blob"],
-                                                   metadata=file_to_transfer["metadata"])
-                else:
-                    storage.store_file_from_disk(key, file_to_transfer["local_path"],
-                                                 metadata=file_to_transfer["metadata"])
+            content, metadata = storage.get_contents_to_string(key)
+            file_to_transfer["file_size"] = len(content)
+            # Note that here we flip the local_path to mean the target_path
+            self.compression_queue.put({"type": "decompression", "blob": content, "metadata": metadata,
+                                        "callback_queue": file_to_transfer["callback_queue"],
+                                        "local_path": file_to_transfer["target_path"]})
+            self.state[site]["download"][filetype]["data"] += file_to_transfer["file_size"]
+            self.state[site]["download"][filetype]["count"] += 1
+            self.state[site]["download"][filetype]["time_taken"] += time.time() - start_time
+        except Exception:  # pylint: disable=broad-except
+            self.log.exception("Problem happened when downloading: %r, %r", key, file_to_transfer)
+            if "callback_queue" in file_to_transfer:
+                file_to_transfer["callback_queue"].put({"success": False})
 
-                time_taken = time.time() - start_time
-                self.state[site][filetype]["data"] += file_to_transfer["file_size"]
-                self.state[site][filetype]["count"] += 1
-                self.state[site][filetype]["time_taken"] += time_taken
-
-                self.log.debug("Transfer of key: %r, size: %r, took %.3fs", key, file_to_transfer["file_size"],
-                               time_taken)
-                if "callback_queue" in file_to_transfer and file_to_transfer["callback_queue"]:
-                    file_to_transfer["callback_queue"].put({"success": True})
-            except Exception:  # pylint: disable=broad-except
-                self.log.exception("Problem in moving file: %r, need to retry", file_to_transfer["local_path"])
-                # TODO come up with something so we don't busy loop
-                time.sleep(0.5)
-                self.transfer_queue.put(file_to_transfer)
-        self.log.debug("Quitting TransferAgent")
+    def handle_upload(self, start_time, key, file_to_transfer):
+        site, filetype = file_to_transfer["site"], file_to_transfer["filetype"]
+        self.set_state_defaults_for_site(site)
+        try:
+            storage = self.get_object_storage(site)
+            if "blob" in file_to_transfer:
+                storage.store_file_from_memory(key, file_to_transfer["blob"],
+                                               metadata=file_to_transfer["metadata"])
+            else:
+                storage.store_file_from_disk(key, file_to_transfer["local_path"],
+                                             metadata=file_to_transfer["metadata"])
+                try:
+                    if file_to_transfer["filetype"] == "basebackup":
+                        self.log.debug("Deleting directory path: %r", os.path.dirname(file_to_transfer["local_path"]))
+                        shutil.rmtree(os.path.dirname(file_to_transfer["local_path"]))
+                    else:
+                        self.log.debug("Deleting file: %r since it has been uploaded", file_to_transfer["local_path"])
+                        os.unlink(file_to_transfer["local_path"])
+                except:  # pylint: disable=bare-except
+                    self.log.exception("Problem in deleting file: %r", file_to_transfer["local_path"])
+            self.state[site]["upload"][filetype]["data"] += file_to_transfer["file_size"]
+            self.state[site]["upload"][filetype]["count"] += 1
+            self.state[site]["upload"][filetype]["time_taken"] += time.time() - start_time
+            if "callback_queue" in file_to_transfer and file_to_transfer["callback_queue"]:
+                file_to_transfer["callback_queue"].put({"success": True})
+        except Exception:  # pylint: disable=broad-except
+            self.log.exception("Problem in moving file: %r, need to retry", file_to_transfer["local_path"])
+            # TODO come up with something so we don't busy loop
+            time.sleep(0.5)
+            self.transfer_queue.put(file_to_transfer)

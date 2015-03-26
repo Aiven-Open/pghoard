@@ -74,11 +74,11 @@ class PGHoard(object):
         self.transfer_agents = []
 
         self.inotify = InotifyWatcher(self.compression_queue)
-        self.webserver = WebServer(self.config, self.compression_queue)
+        self.webserver = WebServer(self.config, self.compression_queue, self.transfer_queue)
         for _ in range(2):
             compressor = Compressor(self.config, self.compression_queue, self.transfer_queue)
             self.compressors.append(compressor)
-            ta = TransferAgent(self.config, self.transfer_queue)
+            ta = TransferAgent(self.config, self.compression_queue, self.transfer_queue)
             self.transfer_agents.append(ta)
         if daemon:  # If we can import systemd we always notify it
             daemon.notify("READY=1")
@@ -260,7 +260,7 @@ class PGHoard(object):
         if len(basebackups) >= allowed_basebackup_count:
             self.log.warning("Too many basebackups: %d>%d, %r, starting to get rid of %r",
                              len(basebackups), allowed_basebackup_count, basebackups, basebackups[0])
-            last_wal_segment_still_needed = metadata['start_wal_segment']
+            last_wal_segment_still_needed = metadata['start-wal-segment']
             if not remote:
                 self.delete_local_wal_before(last_wal_segment_still_needed, xlog_path)
                 basebackup_to_be_deleted = os.path.join(basebackup_path, basebackups[0])

@@ -54,23 +54,15 @@ class TestWebServer(TestCase):
         self.foo_path = os.path.join(self.compressed_xlog_path, "00000001000000000000000C")
         with open(self.foo_path, "wb") as out_file:
             out_file.write(b"foo")
-        lzma_open(self.foo_path + ".xz", mode="wb", preset=0).write(open(self.foo_path, "rb").read())
+        with open(self.foo_path, "rb") as fp:
+            lzma_open(self.foo_path + ".xz", mode="wb", preset=0).write(fp.read())
 
         self.webserver = WebServer(config=self.config,
-                                   compression_queue=self.compression_queue)
+                                   compression_queue=self.compression_queue,
+                                   transfer_queue=self.transfer_queue)
         self.webserver.start()
         self.http_restore = HTTPRestore("localhost", self.config['http_port'], site="default", pgdata=self.pgdata_path)
         time.sleep(0.05)  # Hack to give the server time to start up
-
-    def test_list_empty_timelines(self):
-        self.assertEqual(self.http_restore.list_timelines(), [])
-
-    def test_list_timelines(self):
-        timeline_file_path = os.path.join(self.compressed_timeline_path, "00000002.history")
-        open(timeline_file_path, "wb").write(b"1       1/47000210      no recovery target specified")
-        self.assertEqual(self.http_restore.list_timelines(), ["00000002.history"])
-        lzma_open(timeline_file_path + ".xz", mode="wb", preset=0).write(open(timeline_file_path, "rb").read())
-        self.http_restore.get_timeline_file("00000002.history")
 
     def test_list_empty_basebackups(self):
         self.assertEqual(self.http_restore._list_basebackups().json()['basebackups'], {})  # pylint: disable=protected-access
@@ -103,8 +95,12 @@ class TestWebServer(TestCase):
 #    def test_get_basebackup_file(self):
 #        self.http_restore.get_basebackup_file()
 
-    def test_get_wal_segment(self):
-        self.http_restore.get_wal_segment("00000001000000000000000C")
+    def test_get_archived_file(self):
+        xlog_file = "00000001000000000000000F"
+        filepath = os.path.join(self.compressed_xlog_path, xlog_file)
+        lzma_open(filepath + ".xz", mode="wb", preset=0).write(b"jee")
+        self.http_restore.get_archive_file(xlog_file, "pg_xlog/" + xlog_file, path_prefix=self.pgdata_path)
+        self.assertTrue(os.path.exists(os.path.join(self.pg_xlog_dir, xlog_file)))
 
     def tearDown(self):
         self.webserver.close()
