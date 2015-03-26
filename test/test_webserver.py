@@ -81,6 +81,7 @@ class TestWebServer(TestCase):
         compressor.start()
 
         self.assertTrue(archive(port=self.config['http_port'], site="default", xlog_file="00000001000000000000000C"))
+        self.assertTrue(os.path.exists(os.path.join(self.compressed_xlog_path, "00000001000000000000000C")))
         compressor.running = False
 
 #    def test_get_basebackup_file(self):

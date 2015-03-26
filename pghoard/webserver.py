@@ -104,13 +104,15 @@ class RequestHandler(BaseHTTPRequestHandler):
         return site, path
 
     def handle_archival_request(self, site, filename):
-        start_time = time.time()
+        start_time, compress_to_memory = time.time(), True
         xlog_path = os.path.join(self.server.config["backup_clusters"][site].get("pg_xlog_directory", "/var/lib/pgsql/data/pg_xlog/"), filename)
         self.server.log.debug("Got request to archive: %r %r, %r", site, filename, xlog_path)
         if os.path.exists(xlog_path):
             callback_queue = Queue()
+            if not self.server.config['backup_clusters'][site].get("object_storage"):
+                compress_to_memory = False
             compression_event = {"type": "CREATE", "full_path": xlog_path, "site": site,
-                                 "delete_file_after_compression": False, "compress_to_memory": True,
+                                 "delete_file_after_compression": False, "compress_to_memory": compress_to_memory,
                                  "callback_queue": callback_queue}
             self.server.compression_queue.put(compression_event)
             try:
