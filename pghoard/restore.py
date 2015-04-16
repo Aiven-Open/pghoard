@@ -5,7 +5,7 @@ Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
 from __future__ import print_function
-from .common import lzma, default_log_format_str
+from .common import lzma_decompressor, lzma_open_read, default_log_format_str
 from .errors import Error
 from requests import Session
 import argh
@@ -20,7 +20,7 @@ warnings.filterwarnings("ignore", ".*", UserWarning, "argh.completion")
 
 
 def store_response_to_file(filepath, response):
-    decompressor = lzma.LZMADecompressor()
+    decompressor = lzma_decompressor()
     with open(filepath, "wb") as f:
         for chunk in response.iter_content(chunk_size=8192):
             if chunk:  # filter out keep-alive new chunks
@@ -143,7 +143,7 @@ class ObjectStore(object):
         metadata = self.storage.get_metadata_for_key(basebackup)
         basebackup_path = os.path.join(self.pgdata, "base.tar.xz")
         self.storage.get_contents_to_file(basebackup, basebackup_path)
-        tar = tarfile.TarFile(fileobj=lzma.LZMAFile(basebackup_path, "rb"))
+        tar = tarfile.TarFile(fileobj=lzma_open_read(basebackup_path, "rb"))
         return metadata["start-wal-segment"], tar
 
 

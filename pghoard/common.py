@@ -15,20 +15,34 @@ except ImportError:
     import lzma  # pylint: disable=import-error, unused-import
 
 if hasattr(lzma, "open"):
-    lzma_open = lzma.open  # pylint: disable=maybe-no-member
-    lzma_compressor = lzma.LZMACompressor
+    lzma_open = lzma.open  # pylint: disable=no-member, maybe-no-member
+    lzma_open_read = lzma.open  # pylint: disable=no-member, maybe-no-member
+    lzma_compressor = lzma.LZMACompressor  # pylint: disable=no-member
+    lzma_decompressor = lzma.LZMADecompressor  # pylint: disable=no-member
 elif not hasattr(lzma, "options"):
     def lzma_open(filepath, mode, preset):
         return lzma.LZMAFile(filepath, mode=mode, preset=preset)
 
+    def lzma_open_read(filepath, mode):
+        return lzma.LZMAFile(filepath, mode=mode)
+
     def lzma_compressor(preset):
-        return lzma.LZMACompressor(preset=preset)
+        return lzma.LZMACompressor(preset=preset)  # pylint: disable=no-member
+
+    def lzma_decompressor():
+        return lzma.LZMADecompressor()  # pylint: disable=no-member
 else:
     def lzma_open(filepath, mode, preset):
         return lzma.LZMAFile(filepath, mode=mode, options={"level": preset})  # pylint: disable=unexpected-keyword-arg
 
+    def lzma_open_read(filepath, mode):
+        return lzma.LZMAFile(filepath, mode=mode)
+
     def lzma_compressor(preset):
-        return lzma.LZMACompressor(options={"level": preset})
+        return lzma.LZMACompressor(options={"level": preset})  # pylint: disable=no-member
+
+    def lzma_decompressor():
+        return lzma.LZMADecompressor()  # pylint: disable=no-member
 
 try:
     from Queue import Queue, Empty  # pylint: disable=import-error, unused-import

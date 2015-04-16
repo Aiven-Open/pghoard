@@ -5,9 +5,8 @@ Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
 
-from .common import Empty, lzma_compressor, lzma_open
+from .common import Empty, lzma_compressor, lzma_decompressor, lzma_open
 from threading import Thread
-from lzma import LZMADecompressor
 import contextlib
 import logging
 import os
@@ -114,7 +113,7 @@ class Compressor(Thread):
 
     def handle_decompression_event(self, event):
         start_time = time.time()
-        decompressor = LZMADecompressor()
+        decompressor = lzma_decompressor()
         with open(event['local_path'], "wb") as fp:
             data = decompressor.decompress(event['blob'])
             fp.write(data)

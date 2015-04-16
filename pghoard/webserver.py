@@ -6,7 +6,7 @@ See LICENSE for details
 """
 
 from . import __version__
-from . common import Queue, Empty, lzma_open
+from . common import Queue, Empty, lzma_open_read
 from threading import Thread
 import json
 import logging
@@ -90,7 +90,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         else:
             archived_file_path = os.path.join(self.server.config['backup_location'], site, "compressed_%s" % filetype, filename + ".xz")
             if os.path.exists(archived_file_path):
-                compressed_fp = lzma_open(archived_file_path, "rb", preset=0)
+                compressed_fp = lzma_open_read(archived_file_path, "rb")
                 target_fp = open(target_path, "wb")
                 shutil.copyfileobj(compressed_fp, target_fp)
                 return "", {"Content-length": "0"}, 206
