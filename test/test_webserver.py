@@ -65,7 +65,7 @@ class TestWebServer(TestCase):
         time.sleep(0.05)  # Hack to give the server time to start up
 
     def test_list_empty_basebackups(self):
-        self.assertEqual(self.http_restore._list_basebackups().json()['basebackups'], {})  # pylint: disable=protected-access
+        self.assertEqual(self.http_restore.list_basebackups(), [])  # pylint: disable=protected-access
 
     def test_archiving(self):
         compressor = Compressor(config=self.config,

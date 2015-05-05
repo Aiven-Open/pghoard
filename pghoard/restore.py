@@ -73,9 +73,9 @@ class Restore(object):
     @argh.arg("--host", help="pghoard repository host")
     @argh.arg("--port", help="pghoard repository port")
     @argh.arg("--site", help="pghoard site")
-    @argh.arg("--basebackup", help="pghoard basebackup", required=True)
+    @argh.arg("--basebackup", help="pghoard basebackup")
     @argh.arg("--target-dir", help="pghoard restore target 'pgdata' dir", required=True)
-    def get_basebackup_http(self, basebackup, target_dir, host="localhost", port=16000, site="default"):
+    def get_basebackup_http(self, target_dir, basebackup="latest", host="localhost", port=16000, site="default"):
         self.storage = HTTPRestore(host, port, site, target_dir)
         self.get_basebackup(target_dir, basebackup)
 
@@ -84,16 +84,16 @@ class Restore(object):
     @argh.arg("--site", help="pghoard site")
     def list_basebackups_http(self, host="localhost", port=16000, site="default"):
         self.storage = HTTPRestore(host, port, site)
-        self.storage.list_basebackups()
+        self.storage.show_basebackup_list()
 
     @argh.arg("--aws-access-key-id", help="AWS Access Key ID [AWS_ACCESS_KEY_ID]", default=os.environ.get("AWS_ACCESS_KEY_ID"))
     @argh.arg("--aws-secret-access-key", help="AWS Secret Access Key [AWS_SECRET_ACCESS_KEY]", default=os.environ.get("AWS_SECRET_ACCESS_KEY"))
     @argh.arg("--region", help="AWS S3 region")
     @argh.arg("--bucket", help="AWS S3 bucket name", required=True)
     @argh.arg("--site", help="pghoard site")
-    @argh.arg("--basebackup", help="pghoard basebackup", required=True)
+    @argh.arg("--basebackup", help="pghoard basebackup")
     @argh.arg("--target-dir", help="pghoard restore target 'pgdata' dir", required=True)
-    def get_basebackup_s3(self, aws_access_key_id, aws_secret_access_key, bucket, basebackup, target_dir, region="eu-west-1", site="default"):
+    def get_basebackup_s3(self, aws_access_key_id, aws_secret_access_key, bucket, target_dir, basebackup="latest", region="eu-west-1", site="default"):
         self.storage = S3Restore(aws_access_key_id, aws_secret_access_key, region, bucket, site, target_dir)
         self.get_basebackup(target_dir, basebackup)
 
@@ -104,11 +104,19 @@ class Restore(object):
     @argh.arg("--site", help="pghoard site")
     def list_basebackups_s3(self, aws_access_key_id, aws_secret_access_key, bucket, region="eu-west-1", site="default"):
         self.storage = S3Restore(aws_access_key_id, aws_secret_access_key, region, bucket, site)
-        self.storage.list_basebackups()
+        self.storage.show_basebackup_list()
 
     def get_basebackup(self, pgdata, basebackup):
-        create_pgdata_dir(pgdata)
+        #  If basebackup that we want it set as latest, figure out which one it is
+        if basebackup == "latest":
+            basebackups = self.storage.list_basebackups()  # pylint: disable=protected-access
+            if not basebackups:
+                print("No basebackups found, exiting")
+                sys.exit(-1)
+            basebackup = max(entry["name"] for entry in basebackups)
+            print("Found: {} basebackups, selecting: {} for restore".format(basebackups, basebackup))
 
+        create_pgdata_dir(pgdata)
         _, tar = self.storage.get_basebackup_file(basebackup)
         tar.extractall(pgdata)
 
@@ -131,7 +139,10 @@ class ObjectStore(object):
         self.pgdata = pgdata
 
     def list_basebackups(self):
-        result = self.storage.list_path(self.site + "/basebackup/")
+        return self.storage.list_path(self.site + "/basebackup/")
+
+    def show_basebackup_list(self):
+        result = self.list_basebackups()
         line = "Available %r basebackups:" % self.site
         print(line)
         print("=" * len(line))
@@ -163,18 +174,22 @@ class HTTPRestore(object):
         self.pgdata = pgdata
         self.session = Session()
 
-    def _list_basebackups(self):
-        uri = "http://" + self.host + ":" + str(self.port) + "/" + self.site + "/basebackups"
-        return self.session.get(uri)
-
     def list_basebackups(self):
-        result = self._list_basebackups()
+        uri = "http://" + self.host + ":" + str(self.port) + "/" + self.site + "/basebackups"
+        response = self.session.get(uri)
+        basebackups = []
+        for basebackup, values in response.json()["basebackups"].items():
+            basebackups.append({"name": basebackup, "size": values["size"]})
+        return basebackups
+
+    def show_basebackup_list(self):
+        basebackups = self.list_basebackups()
         line = "Available %r basebackups:" % self.site
         print(line)
         print("=" * len(line))
         print("basebackup\t\tsize")
-        for basebackup, values in result.json()["basebackups"].items():
-            print("%s\t%s" % (basebackup, values["size"]))
+        for r in basebackups:
+            print("{}\t{}".format(r["name"], r["size"]))
 
     def get_basebackup_file(self, basebackup):
         uri = "http://" + self.host + ":" + str(self.port) + "/" + self.site + "/basebackups/" + basebackup
