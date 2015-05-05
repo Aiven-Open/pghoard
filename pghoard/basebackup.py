@@ -57,8 +57,10 @@ class PGBaseBackup(Thread):
         while self.running:
             rlist, _, _ = select.select([proc.stdout, proc.stderr], [], [], 1.0)
             for fd in rlist:
-                self.log.debug(fd.read())
-                self.latest_activity = datetime.datetime.utcnow()
+                content = fd.read()
+                if content:
+                    self.log.debug(content)
+                    self.latest_activity = datetime.datetime.utcnow()
             if proc.poll() is not None:
                 break
         self.log.debug("Ran: %r, took: %.3fs to run, returncode: %r", self.command, time.time() - start_time,
