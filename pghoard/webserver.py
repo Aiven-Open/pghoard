@@ -204,4 +204,5 @@ class RequestHandler(BaseHTTPRequestHandler):
                 else:
                     shutil.copyfileobj(response, self.wfile)
         else:
+            self.server.log.warning("Site: %r not found, path was: %r", site, path)
             self.send_response(404)
