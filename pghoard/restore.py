@@ -37,9 +37,10 @@ def create_recovery_conf(dirpath, site, primary_conninfo):
     content = """# pghoard created recovery.conf
 standby_mode = 'on'
 primary_conninfo = {}
+trigger_file = '{}'
 restore_command = 'pghoard_restore get %f %p --site {}'
 recovery_target_timeline = 'latest'
-""".format(primary_conninfo, site)
+""".format(primary_conninfo, os.path.join(dirpath, "trigger_file"), site)
     filepath = os.path.join(dirpath, "recovery.conf")
     with open(filepath, "w") as fp:
         fp.write(content)
