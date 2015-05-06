@@ -79,7 +79,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         if self.server.config["backup_clusters"][site]['object_storage']:
             callback_queue = Queue()
             self.server.transfer_queue.put({"local_path": filename, "target_path": target_path, "filetype": filetype,
-                                            "site": "default", "callback_queue": callback_queue, "operation": "download"})
+                                            "site": site, "callback_queue": callback_queue, "operation": "download"})
             response = callback_queue.get(timeout=30.0)
             self.server.log.debug("Handled a restore request for: %r %r, took: %.3fs",
                                   site, target_path, time.time() - start_time)

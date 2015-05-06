@@ -33,12 +33,12 @@ def create_pgdata_dir(pgdata):
     os.chmod(pgdata, 0o700)
 
 
-def create_recovery_conf(dirpath):
+def create_recovery_conf(dirpath, site):
     content = """# pghoard created recovery.conf
-restore_command = 'pghoard_restore get %f %p'
+restore_command = 'pghoard_restore get %f %p --site {}'
 recovery_target = 'immediate'
 recovery_target_timeline = 'latest'
-"""
+""".format(site)
     filepath = os.path.join(dirpath, "recovery.conf")
     with open(filepath, "w") as fp:
         fp.write(content)
@@ -77,7 +77,7 @@ class Restore(object):
     @argh.arg("--target-dir", help="pghoard restore target 'pgdata' dir", required=True)
     def get_basebackup_http(self, target_dir, basebackup="latest", host="localhost", port=16000, site="default"):
         self.storage = HTTPRestore(host, port, site, target_dir)
-        self.get_basebackup(target_dir, basebackup)
+        self.get_basebackup(target_dir, basebackup, site)
 
     @argh.arg("--host", help="pghoard repository host")
     @argh.arg("--port", help="pghoard repository port")
@@ -95,7 +95,7 @@ class Restore(object):
     @argh.arg("--target-dir", help="pghoard restore target 'pgdata' dir", required=True)
     def get_basebackup_s3(self, aws_access_key_id, aws_secret_access_key, bucket, target_dir, basebackup="latest", region="eu-west-1", site="default"):
         self.storage = S3Restore(aws_access_key_id, aws_secret_access_key, region, bucket, site, target_dir)
-        self.get_basebackup(target_dir, basebackup)
+        self.get_basebackup(target_dir, basebackup, site)
 
     @argh.arg("--aws-access-key-id", help="AWS Access Key ID [AWS_ACCESS_KEY_ID]", default=os.environ.get("AWS_ACCESS_KEY_ID"))
     @argh.arg("--aws-secret-access-key", help="AWS Secret Access Key [AWS_SECRET_ACCESS_KEY]", default=os.environ.get("AWS_SECRET_ACCESS_KEY"))
@@ -106,7 +106,7 @@ class Restore(object):
         self.storage = S3Restore(aws_access_key_id, aws_secret_access_key, region, bucket, site)
         self.storage.show_basebackup_list()
 
-    def get_basebackup(self, pgdata, basebackup):
+    def get_basebackup(self, pgdata, basebackup, site):
         #  If basebackup that we want it set as latest, figure out which one it is
         if basebackup == "latest":
             basebackups = self.storage.list_basebackups()  # pylint: disable=protected-access
@@ -120,7 +120,7 @@ class Restore(object):
         _, tar = self.storage.get_basebackup_file(basebackup)
         tar.extractall(pgdata)
 
-        create_recovery_conf(pgdata)
+        create_recovery_conf(pgdata, site)
 
         print("Basebackup complete.")
         print("You can start PostgreSQL by running pg_ctl -D %s start" % pgdata)
