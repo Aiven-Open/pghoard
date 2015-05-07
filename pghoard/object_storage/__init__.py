@@ -14,7 +14,10 @@ import time
 
 
 def get_object_storage_transfer(key, value):
-    if key == "s3":
+    if key == "azure":
+        from . azure import AzureTransfer
+        storage = AzureTransfer(value["account_name"], value["account_key"], value.get("container_name", "pghoard"))
+    elif key == "s3":
         from . s3 import S3Transfer
         storage = S3Transfer(value["aws_access_key_id"], value["aws_secret_access_key"],
                              value["region"], value["bucket_name"])

@@ -56,6 +56,7 @@ class Restore(object):
         parser = argh.ArghParser()
         argh.add_commands(parser, [
             self.get,
+            self.get_basebackup_azure, self.list_basebackups_azure,
             self.get_basebackup_http, self.list_basebackups_http,
             self.get_basebackup_s3, self.list_basebackups_s3,
         ])
@@ -71,6 +72,25 @@ class Restore(object):
         if self.storage.get_archive_file(filename, target_path, path_prefix):
             sys.exit(0)
         sys.exit(1)
+
+    @argh.arg("--account", help="Azure storage account name [AZURE_STORAGE_ACCOUNT]", default=os.environ.get("AZURE_STORAGE_ACCOUNT"))
+    @argh.arg("--access-key", help="Azure storage access key [AZURE_STORAGE_ACCESS_KEY]", default=os.environ.get("AZURE_STORAGE_ACCESS_KEY"))
+    @argh.arg("--container", help="Azure container name", default="pghoard")
+    @argh.arg("--site", help="pghoard site", default="default")
+    @argh.arg("--basebackup", help="pghoard basebackup", default="latest")
+    @argh.arg("--primary-conninfo", help="replication.conf primary_conninfo", default="")
+    @argh.arg("--target-dir", help="pghoard restore target 'pgdata' dir", required=True)
+    def get_basebackup_azure(self, account, access_key, container, basebackup, primary_conninfo, target_dir, site="default"):
+        self.storage = AzureRestore(account, access_key, container, pgdata=target_dir, site=site)
+        self.get_basebackup(target_dir, basebackup, site, primary_conninfo)
+
+    @argh.arg("--account", help="Azure storage account name [AZURE_STORAGE_ACCOUNT]", default=os.environ.get("AZURE_STORAGE_ACCOUNT"))
+    @argh.arg("--access-key", help="Azure storage access key [AZURE_STORAGE_ACCESS_KEY]", default=os.environ.get("AZURE_STORAGE_ACCESS_KEY"))
+    @argh.arg("--container", help="Azure container name", default="pghoard")
+    @argh.arg("--site", help="pghoard site", default="default")
+    def list_basebackups_azure(self, account, access_key, container, site="default"):
+        self.storage = AzureRestore(account, access_key, container, site)
+        self.storage.show_basebackup_list()
 
     @argh.arg("--host", help="pghoard repository host")
     @argh.arg("--port", help="pghoard repository port")
@@ -159,6 +179,13 @@ class ObjectStore(object):
         self.storage.get_contents_to_file(basebackup, basebackup_path)
         tar = tarfile.TarFile(fileobj=lzma_open_read(basebackup_path, "rb"))
         return metadata["start-wal-segment"], tar
+
+
+class AzureRestore(ObjectStore):
+    def __init__(self, account_name, account_key, container, site, pgdata=None):
+        from . object_storage.azure import AzureTransfer
+        storage = AzureTransfer(account_name, account_key, container)
+        ObjectStore.__init__(self, storage, site, pgdata)
 
 
 class S3Restore(ObjectStore):
