@@ -17,6 +17,11 @@ def get_object_storage_transfer(key, value):
     if key == "azure":
         from . azure import AzureTransfer
         storage = AzureTransfer(value["account_name"], value["account_key"], value.get("container_name", "pghoard"))
+    elif key == "google":
+        from . google import GoogleTransfer
+        storage = GoogleTransfer(project_id=value["project_id"],
+                                 bucket_name=value.get("bucket_name", "pghoard"),
+                                 credential_file=value.get("credential_file"))
     elif key == "s3":
         from . s3 import S3Transfer
         storage = S3Transfer(value["aws_access_key_id"], value["aws_secret_access_key"],

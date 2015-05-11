@@ -57,6 +57,7 @@ class Restore(object):
         argh.add_commands(parser, [
             self.get,
             self.get_basebackup_azure, self.list_basebackups_azure,
+            self.get_basebackup_google, self.list_basebackups_google,
             self.get_basebackup_http, self.list_basebackups_http,
             self.get_basebackup_s3, self.list_basebackups_s3,
         ])
@@ -90,6 +91,27 @@ class Restore(object):
     @argh.arg("--site", help="pghoard site", default="default")
     def list_basebackups_azure(self, account, access_key, container, site="default"):
         self.storage = AzureRestore(account, access_key, container, site)
+        self.storage.show_basebackup_list()
+
+    @argh.arg("--project", help="Google Cloud project name", required=True)
+    @argh.arg("--credentials-file", metavar="FILE", help="Google credential file path [GOOGLE_APPLICATION_CREDENTIALS]",
+              default=os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"))
+    @argh.arg("--bucket", help="Google Cloud container name", default="pghoard")
+    @argh.arg("--site", help="pghoard site", default="default")
+    @argh.arg("--basebackup", help="pghoard basebackup", default="latest")
+    @argh.arg("--primary-conninfo", help="replication.conf primary_conninfo", default="")
+    @argh.arg("--target-dir", help="pghoard restore target 'pgdata' dir", required=True)
+    def get_basebackup_google(self, project, credentials_file, bucket, basebackup, primary_conninfo, target_dir, site="default"):
+        self.storage = GoogleRestore(project, credentials_file, bucket, pgdata=target_dir, site=site)
+        self.get_basebackup(target_dir, basebackup, site, primary_conninfo)
+
+    @argh.arg("--project", help="Google Cloud project name", required=True)
+    @argh.arg("--credentials-file", metavar="FILE", help="Google credential file path [GOOGLE_APPLICATION_CREDENTIALS]",
+              default=os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"))
+    @argh.arg("--bucket", help="Google container name", default="pghoard")
+    @argh.arg("--site", help="pghoard site", default="default")
+    def list_basebackups_google(self, project, credentials, bucket, site="default"):
+        self.storage = GoogleRestore(project, credentials, bucket, site=site)
         self.storage.show_basebackup_list()
 
     @argh.arg("--host", help="pghoard repository host")
@@ -185,6 +207,13 @@ class AzureRestore(ObjectStore):
     def __init__(self, account_name, account_key, container, site, pgdata=None):
         from . object_storage.azure import AzureTransfer
         storage = AzureTransfer(account_name, account_key, container)
+        ObjectStore.__init__(self, storage, site, pgdata)
+
+
+class GoogleRestore(ObjectStore):
+    def __init__(self, project_id, credential_file, bucket, site, pgdata=None):
+        from . object_storage.google import GoogleTransfer
+        storage = GoogleTransfer(project_id=project_id, bucket_name=bucket, credential_file=credential_file)
         ObjectStore.__init__(self, storage, site, pgdata)
 
 
