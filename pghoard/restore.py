@@ -7,6 +7,7 @@ See LICENSE for details
 from __future__ import print_function
 from .common import lzma_decompressor, lzma_open_read, default_log_format_str
 from .errors import Error
+from psycopg2.extensions import adapt
 from requests import Session
 import argh
 import logging
@@ -36,11 +37,13 @@ def create_pgdata_dir(pgdata):
 def create_recovery_conf(dirpath, site, primary_conninfo):
     content = """# pghoard created recovery.conf
 standby_mode = 'on'
-primary_conninfo = {}
-trigger_file = '{}'
-restore_command = 'pghoard_restore get %f %p --site {}'
+primary_conninfo = {primary_conninfo}
+trigger_file = {trigger_file}
+restore_command = 'pghoard_restore get %f %p --site {site}'
 recovery_target_timeline = 'latest'
-""".format(primary_conninfo, os.path.join(dirpath, "trigger_file"), site)
+""".format(primary_conninfo=adapt(primary_conninfo),
+           trigger_file=adapt(os.path.join(dirpath, "trigger_file")),
+           site=site)
     filepath = os.path.join(dirpath, "recovery.conf")
     with open(filepath, "w") as fp:
         fp.write(content)
