@@ -142,8 +142,13 @@ class Restore(object):
     @argh.arg("--basebackup", help="pghoard basebackup")
     @argh.arg("--primary-conninfo", help="replication.conf primary_conninfo")
     @argh.arg("--target-dir", help="pghoard restore target 'pgdata' dir", required=True)
-    def get_basebackup_s3(self, aws_access_key_id, aws_secret_access_key, bucket, target_dir, primary_conninfo="", basebackup="latest", region="eu-west-1", site="default"):
-        self.storage = S3Restore(aws_access_key_id, aws_secret_access_key, region, bucket, site, target_dir)
+    @argh.arg("--host", help="S3 host address (non-AWS S3 implementations)")
+    @argh.arg("--port", help="S3 port (non-AWS S3 implementations)", default=9090, type=int)
+    @argh.arg("--insecure", help="Use plaintext HTTP (non-AWS S3 implementations)", action="store_true", default=False)
+    def get_basebackup_s3(self, aws_access_key_id, aws_secret_access_key, bucket, target_dir, primary_conninfo="", basebackup="latest",
+                          region="eu-west-1", host=None, port=None, insecure=False, site="default"):
+        self.storage = S3Restore(aws_access_key_id, aws_secret_access_key, region, bucket, site,
+                                 host=host, port=port, is_secure=(not insecure), pgdata=target_dir)
         self.get_basebackup(target_dir, basebackup, site, primary_conninfo)
 
     @argh.arg("--aws-access-key-id", help="AWS Access Key ID [AWS_ACCESS_KEY_ID]", default=os.environ.get("AWS_ACCESS_KEY_ID"))
@@ -151,8 +156,14 @@ class Restore(object):
     @argh.arg("--region", help="AWS S3 region")
     @argh.arg("--bucket", help="AWS S3 bucket name", required=True)
     @argh.arg("--site", help="pghoard site")
-    def list_basebackups_s3(self, aws_access_key_id, aws_secret_access_key, bucket, region="eu-west-1", site="default"):
-        self.storage = S3Restore(aws_access_key_id, aws_secret_access_key, region, bucket, site)
+    @argh.arg("--host", help="S3 host address (non-AWS S3 implementations)")
+    @argh.arg("--port", help="S3 port (non-AWS S3 implementations)", default=9090, type=int)
+    @argh.arg("--insecure", help="Use plaintext HTTP (non-AWS S3 implementations)", action="store_true", default=False)
+    def list_basebackups_s3(self, aws_access_key_id, aws_secret_access_key, bucket,
+                            region="eu-west-1", host=None, port=None, insecure=False, site="default"):
+        self.storage = S3Restore(aws_access_key_id, aws_secret_access_key, region, bucket, site,
+                                 host=host, port=port, is_secure=(not insecure), pgdata=None)
+        self.storage.show_basebackup_list()
 
     def get_basebackup(self, pgdata, basebackup, site, primary_conninfo):
         #  If basebackup that we want it set as latest, figure out which one it is
@@ -221,9 +232,10 @@ class GoogleRestore(ObjectStore):
 
 
 class S3Restore(ObjectStore):
-    def __init__(self, aws_access_key_id, aws_secret_access_key, region, bucket, site, pgdata=None):
+    def __init__(self, aws_access_key_id, aws_secret_access_key, region, bucket_name, site, host=None, port=None, is_secure=None, pgdata=None):
         from .object_storage.s3 import S3Transfer
-        storage = S3Transfer(aws_access_key_id, aws_secret_access_key, region, bucket)
+        storage = S3Transfer(aws_access_key_id, aws_secret_access_key, region, bucket_name,
+                             host=host, port=port, is_secure=is_secure)
         ObjectStore.__init__(self, storage, site, pgdata)
 
 

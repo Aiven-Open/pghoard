@@ -20,7 +20,7 @@ pghoard compresses the received WAL logs and basebackups with LZMA (level 0)
 in order to ensure good compression speed and relatively small backup size.
 
 pghoard also supports backing up and restoring from either a local machine
-or from various object stores (AWS S3, Azure, Google Cloud.)
+or from various object stores (AWS S3, Azure, Ceph, Google Cloud.)
 
 In case you just have a single database machine, it is heavily recommended
 to let pghoard backup the files into an object storage service, so in case

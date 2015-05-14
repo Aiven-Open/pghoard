@@ -25,7 +25,8 @@ def get_object_storage_transfer(key, value):
     elif key == "s3":
         from . s3 import S3Transfer
         storage = S3Transfer(value["aws_access_key_id"], value["aws_secret_access_key"],
-                             value["region"], value["bucket_name"])
+                             value.get("region", ""), value['bucket_name'],
+                             host=value.get("host"), port=value.get("port"), is_secure=value.get("is_secure", False))
     else:
         raise InvalidConfigurationError("unknown storage type {0!r}".format(key))
     return storage
