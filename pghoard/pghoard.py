@@ -85,40 +85,48 @@ class PGHoard(object):
             self.log.info("Sent startup notification to systemd that pghoard is READY")
         self.log.info("pghoard initialized, own_hostname: %r, cwd: %r", socket.gethostname(), os.getcwd())
 
+    def check_pg_versions_ok(self, pg_version_server, command):
+        if not pg_version_server or pg_version_server <= 90300:
+            self.log.error("pghoard does not support versions earlier than 9.3, found: %r", pg_version_server)
+            self.create_alert_file("version_unsupported_error")
+            return False
+        output = os.popen(self.config.get(command + "_path", "/usr/bin/" + command) + " --version").read().strip()
+        pg_version_client = convert_pg_version_number_to_numeric(output[len(command + " (PostgreSQL) "):])
+        if pg_version_server != pg_version_client:
+            # FIXME: should we just check for the same major version?
+            self.log.error("Server version: %r does not match %s client version: %r",
+                           pg_version_server, command, pg_version_client)
+            self.create_alert_file("version_mismatch_error")
+            return False
+        return True
+
     def create_basebackup(self, cluster, recovery_host, recovery_port, username,
                           password, basebackup_path):
         create_pgpass_file(self.log, recovery_host, recovery_port, username, password)
         pg_version_server = self.check_pg_server_version(recovery_host, recovery_port, username, password)
-        pg_version_client = self.check_pg_receivexlog_version()
-        if pg_version_server != pg_version_client:
-            self.log.error("Server version: %r does not match pg_basebackup client version: %r",
-                           pg_version_server, pg_version_client)
-            self.create_alert_file("version_mismatch_error")
+        if not self.check_pg_versions_ok(pg_version_server, "pg_basebackup"):
             return
         final_basebackup_path = get_basebackup_path(basebackup_path)
-        pg_basebackup = None
-        if pg_version_server >= 90300:
-            pg_basebackup = [self.config.get("pg_basebackup_path", "/usr/bin/pg_basebackup"),
-                             "--host=%s" % recovery_host,
-                             "--port=%s" % recovery_port,
-                             "--format=tar",
-                             "--xlog",
-                             "--pgdata=%s" % final_basebackup_path,
-                             "--progress",
-                             "--username=%s" % username,
-                             "--label=initial_base_backup",
-                             "--verbose"]
-        else:
-            self.log.error("pghoard does not support versions earlier than 9.3, found: %r", pg_version_server)
-        if pg_basebackup:
-            thread = PGBaseBackup(pg_basebackup, final_basebackup_path, self.compression_queue)
-            thread.start()
-            self.basebackups[cluster] = thread
+        command = [
+            self.config.get("pg_basebackup_path", "/usr/bin/pg_basebackup"),
+            "--host", recovery_host,
+            "--port", str(recovery_port),
+            "--format", "tar",
+            "--xlog",
+            "--pgdata", final_basebackup_path,
+            "--progress",
+            "--username", username,
+            "--label", "initial_base_backup",
+            "--verbose",
+            ]
+        thread = PGBaseBackup(command, final_basebackup_path, self.compression_queue)
+        thread.start()
+        self.basebackups[cluster] = thread
 
     def check_pg_server_version(self, recovery_host, recovery_port, username, password):
         pg_version = None
         try:
-            c = psycopg2.connect(database="replication", user=username, password=password,
+            c = psycopg2.connect(user=username, password=password,
                                  host=recovery_host, port=recovery_port, replication=True)
             pg_version = c.server_version
             c.close()  # lets be explicit about closing
@@ -133,41 +141,27 @@ class PGHoard(object):
             self.log.exception("Problem in getting PG server version")
         return pg_version
 
-    def check_pg_basebackup_version(self):
-        output = os.popen(self.config.get("pg_basebackup_path", "/usr/bin/pg_basebackup") + " --version").read().strip()
-        return convert_pg_version_number_to_numeric(output[len("pg_basebackup (PostgreSQL) "):])
-
-    def check_pg_receivexlog_version(self):
-        output = os.popen(self.config.get("pg_receivexlog_path", "/usr/bin/pg_receivexlog") + " --version").read().strip()
-        return convert_pg_version_number_to_numeric(output[len("pg_receivexlog (PostgreSQL) "):])
-
     def receivexlog_listener(self, cluster, xlog_location, recovery_host, recovery_port, username=None, password=None, slot=None):
         create_pgpass_file(self.log, recovery_host, recovery_port, username, password)
         pg_version_server = self.check_pg_server_version(recovery_host, recovery_port, username, password)
-        pg_version_client = self.check_pg_receivexlog_version()
-        if pg_version_server != pg_version_client:
-            self.log.error("Server version: %r does not match pg_receivexlog client version: %r",
-                           pg_version_server, pg_version_client)
-            self.create_alert_file("version_mismatch_error")
+        if not self.check_pg_versions_ok(pg_version_server, "pg_receivexlog"):
             return
-        pg_receivexlog = [self.config.get("pg_receivexlog_path", "/usr/bin/pg_receivexlog"),
-                          "--host=%s" % recovery_host,
-                          "--port=%d" % recovery_port,
-                          "--status-interval=1",
-                          "--verbose",
-                          "--directory=%s" % xlog_location,
-                          "--username=%s" % username]
+        command = [
+            self.config.get("pg_receivexlog_path", "/usr/bin/pg_receivexlog"),
+            "--host", recovery_host,
+            "--port", str(recovery_port),
+            "--status-interval", "1",
+            "--verbose",
+            "--directory", xlog_location,
+            "--username", username,
+            ]
         if pg_version_server >= 90400 and slot:
-            pg_receivexlog.append("--slot=%s" % slot)
-        elif pg_version_server <= 90300:
-            pg_receivexlog = None
-            self.log.error("pghoard does not support versions earlier than 9.3, found: %r", pg_version_server)
+            command.extend(["--slot", slot])
 
-        if pg_receivexlog:
-            self.inotify.add_watch(xlog_location)
-            thread = PGReceiveXLog(pg_receivexlog)
-            thread.start()
-            self.receivexlogs[cluster] = thread
+        self.inotify.add_watch(xlog_location)
+        thread = PGReceiveXLog(command)
+        thread.start()
+        self.receivexlogs[cluster] = thread
 
     def create_backup_site_paths(self, site):
         site_path = os.path.join(self.config["backup_location"], site)

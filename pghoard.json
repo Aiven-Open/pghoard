@@ -5,7 +5,6 @@
     "backup_clusters": {
 	"default": {
 	    "127.0.0.1": {
-		"dbname": "postgres",
 		"port": 5433,
 		"username": "replication",
 		"password": "example"

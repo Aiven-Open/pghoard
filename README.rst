@@ -151,6 +151,10 @@ Your local PostgreSQL client versions of pg_basebackup or pg_receivexlog do
 not match with the servers PostgreSQL version.  You need to update them to
 be on the same version level.
 
+``version_unsupported_error``
+
+Server PostgreSQL versions is not supported.
+
 
 General notes
 =============
