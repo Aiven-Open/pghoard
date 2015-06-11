@@ -6,6 +6,7 @@ See LICENSE for details
 """
 
 from __future__ import print_function
+from contextlib import closing
 import datetime
 import json
 import logging
@@ -19,7 +20,10 @@ import socket
 import sys
 import time
 from . basebackup import PGBaseBackup
-from . common import create_pgpass_file, convert_pg_version_number_to_numeric, default_log_format_str, set_syslog_handler, Queue
+from . common import (
+    create_pgpass_file, get_connection_info,
+    convert_pg_version_number_to_numeric,
+    default_log_format_str, set_syslog_handler, Queue)
 from . compressor import Compressor
 from . errors import InvalidConfigurationError
 from . inotify import InotifyWatcher
@@ -100,22 +104,18 @@ class PGHoard(object):
             return False
         return True
 
-    def create_basebackup(self, cluster, recovery_host, recovery_port, username,
-                          password, basebackup_path):
-        create_pgpass_file(self.log, recovery_host, recovery_port, username, password)
-        pg_version_server = self.check_pg_server_version(recovery_host, recovery_port, username, password)
+    def create_basebackup(self, cluster, connection_string, basebackup_path):
+        pg_version_server = self.check_pg_server_version(connection_string)
         if not self.check_pg_versions_ok(pg_version_server, "pg_basebackup"):
             return
         final_basebackup_path = get_basebackup_path(basebackup_path)
         command = [
             self.config.get("pg_basebackup_path", "/usr/bin/pg_basebackup"),
-            "--host", recovery_host,
-            "--port", str(recovery_port),
+            "--dbname", connection_string,
             "--format", "tar",
             "--xlog",
             "--pgdata", final_basebackup_path,
             "--progress",
-            "--username", username,
             "--label", "initial_base_backup",
             "--verbose",
             ]
@@ -123,16 +123,14 @@ class PGHoard(object):
         thread.start()
         self.basebackups[cluster] = thread
 
-    def check_pg_server_version(self, recovery_host, recovery_port, username, password):
+    def check_pg_server_version(self, connection_string):
         pg_version = None
         try:
-            c = psycopg2.connect(user=username, password=password,
-                                 host=recovery_host, port=recovery_port, replication=True)
-            pg_version = c.server_version
-            c.close()  # lets be explicit about closing
+            with closing(psycopg2.connect(connection_string)) as c:
+                pg_version = c.server_version
         except psycopg2.OperationalError as ex:
             self.log.warning("%s (%s) connecting to DB at: %r",
-                             ex.__class__.__name__, ex, recovery_host)
+                             ex.__class__.__name__, ex, connection_string)
             if 'password authentication' in str(ex):
                 self.create_alert_file("authentication_error")
             elif 'pg_hba.conf' in str(ex):
@@ -141,19 +139,16 @@ class PGHoard(object):
             self.log.exception("Problem in getting PG server version")
         return pg_version
 
-    def receivexlog_listener(self, cluster, xlog_location, recovery_host, recovery_port, username=None, password=None, slot=None):
-        create_pgpass_file(self.log, recovery_host, recovery_port, username, password)
-        pg_version_server = self.check_pg_server_version(recovery_host, recovery_port, username, password)
+    def receivexlog_listener(self, cluster, xlog_location, connection_string, slot):
+        pg_version_server = self.check_pg_server_version(connection_string)
         if not self.check_pg_versions_ok(pg_version_server, "pg_receivexlog"):
             return
         command = [
             self.config.get("pg_receivexlog_path", "/usr/bin/pg_receivexlog"),
-            "--host", recovery_host,
-            "--port", str(recovery_port),
+            "--dbname", connection_string,
             "--status-interval", "1",
             "--verbose",
             "--directory", xlog_location,
-            "--username", username,
             ]
         if pg_version_server >= 90400 and slot:
             command.extend(["--slot", slot])
@@ -291,6 +286,29 @@ class PGHoard(object):
         for ta in self.transfer_agents:
             ta.start()
 
+    def get_connection_string(self, chosen_backup_node, node_config):
+        """Process the input node_config entry which may be a libpq
+        connection string or uri, or a dict containing key:value pairs of
+        connection info entries or just the connection string with a
+        replication slot name.  Create a pgpass entry for this in case it
+        contains a password and return a libpq-format connection string
+        without the password in it and a possible replication slot."""
+        slot = None
+        if isinstance(node_config, dict):
+            node_config = node_config.copy()
+            slot = node_config.pop("slot", None)
+            if list(node_config) == ["connection_string"]:
+                # if the dict only contains the `connection_string` key use it as-is
+                node_config = node_config["connection_string"]
+        # make sure it's a replication connection to the host
+        # pointed by the key using the "replication" pseudo-db
+        connection_info = get_connection_info(node_config)
+        connection_info["host"] = chosen_backup_node
+        connection_info["dbname"] = "replication"
+        connection_info["replication"] = "true"
+        connection_string = create_pgpass_file(self.log, connection_info)
+        return connection_string, slot
+
     def run(self):
         self.start_threads_on_startup()
         self.startup_walk_for_missed_files()
@@ -307,19 +325,15 @@ class PGHoard(object):
 
                 if site not in self.receivexlogs and nodes.get("active_backup_mode") == "pg_receivexlog":
                     # Create a pg_receivexlog listener for all sites
-                    self.receivexlog_listener(site, xlog_path, chosen_backup_node,
-                                              recovery_port=node_config['port'],
-                                              username=node_config['username'],
-                                              password=node_config['password'],
-                                              slot=node_config.get("slot"))
+                    connection_string, slot = self.get_connection_string(chosen_backup_node, node_config)
+                    self.receivexlog_listener(site, xlog_path, connection_string, slot)
 
                 if time_since_last_backup > self.config['backup_clusters'][site]['basebackup_interval_hours'] * 3600 \
                    and site not in self.basebackups:
                     self.log.debug("Starting to create a new basebackup for: %r since time from previous: %r",
                                    site, time_since_last_backup)
-                    self.create_basebackup(site, chosen_backup_node, node_config['port'],
-                                           username=node_config.get("username", "replication"),
-                                           password=node_config['password'], basebackup_path=basebackup_path)
+                    connection_string, slot = self.get_connection_string(chosen_backup_node, node_config)
+                    self.create_basebackup(site, connection_string, basebackup_path)
             self.write_backup_state_to_json_file()
             time.sleep(5.0)
 
