@@ -37,9 +37,6 @@ except ImportError:
     daemon = None
 
 
-RESERVED_CONFIG_KEYS = ["basebackup_interval_hours", "basebackup_count", "object_storage", "active_backup_mode", "pg_xlog_directory"]
-
-
 def get_basebackup_path(basebackup_path):
     for i in range(1000):
         final_basebackup_path = os.path.join(basebackup_path, datetime.datetime.utcnow().strftime("%Y-%m-%d") + "_" + str(i))
@@ -59,8 +56,11 @@ class PGHoard(object):
         self.syslog_handler = None
         self.config = {}
         self.site_transfers = {}
-        self.state = {"backup_clusters": {}, "startup_time": datetime.datetime.utcnow().isoformat(),
-                      "data_transfer": {}}
+        self.state = {
+            "backup_sites": {},
+            "data_transfer": {},
+            "startup_time": datetime.datetime.utcnow().isoformat(),
+            }
         self.load_config()
 
         if not os.path.exists(self.config["backup_location"]):
@@ -224,8 +224,8 @@ class PGHoard(object):
         basebackups, m_time, metadata = [], 0, {}
         storage = self.site_transfers.get(site)
         if not storage:
-            ob = list(self.config['backup_clusters'][site]['object_storage'].items())[0]
-            storage = get_object_storage_transfer(ob[0], ob[1])
+            obs_key, obs_value = self.config['backup_sites'][site]['object_storage'].copy().popitem()
+            storage = get_object_storage_transfer(obs_key, obs_value)
             self.site_transfers[site] = storage
         results = storage.list_path(site + "/basebackup/")
         if results:
@@ -237,9 +237,9 @@ class PGHoard(object):
         return basebackups, m_time, metadata
 
     def check_backup_count_and_state(self, site, basebackup_path, xlog_path):
-        allowed_basebackup_count = self.config['backup_clusters'][site]['basebackup_count']
+        allowed_basebackup_count = self.config['backup_sites'][site]['basebackup_count']
         remote = False
-        if 'object_storage' in self.config['backup_clusters'][site] and self.config['backup_clusters'][site]['object_storage']:
+        if 'object_storage' in self.config['backup_sites'][site] and self.config['backup_sites'][site]['object_storage']:
             basebackups, m_time, metadata = self.get_remote_basebackups_info(site)
             remote = True
         else:
@@ -257,16 +257,16 @@ class PGHoard(object):
             else:
                 self.delete_remote_wal_before(last_wal_segment_still_needed, site)
                 self.delete_remote_basebackup(site, basebackups[0])
-        self.state["backup_clusters"][site]['basebackups'] = basebackups
+        self.state["backup_sites"][site]['basebackups'] = basebackups
         time_since_last_backup = time.time() - m_time
         return time_since_last_backup
 
     def set_state_defaults(self, site):
         if site not in self.state:
-            self.state['backup_clusters'][site] = {"basebackups": []}
+            self.state['backup_sites'][site] = {"basebackups": []}
 
     def startup_walk_for_missed_files(self):
-        for site, _ in self.config['backup_clusters'].items():
+        for site in self.config["backup_sites"]:
             xlog_path, basebackup_path = self.create_backup_site_paths(site)  # pylint: disable=unused-variable
             for filename in os.listdir(xlog_path):
                 if not filename.endswith(".partial"):
@@ -286,24 +286,23 @@ class PGHoard(object):
         for ta in self.transfer_agents:
             ta.start()
 
-    def get_connection_string(self, chosen_backup_node, node_config):
-        """Process the input node_config entry which may be a libpq
+    def get_passwordless_connection_string(self, chosen_backup_node):
+        """Process the input chosen_backup_node entry which may be a libpq
         connection string or uri, or a dict containing key:value pairs of
         connection info entries or just the connection string with a
         replication slot name.  Create a pgpass entry for this in case it
         contains a password and return a libpq-format connection string
         without the password in it and a possible replication slot."""
         slot = None
-        if isinstance(node_config, dict):
-            node_config = node_config.copy()
-            slot = node_config.pop("slot", None)
-            if list(node_config) == ["connection_string"]:
+        if isinstance(chosen_backup_node, dict):
+            chosen_backup_node = chosen_backup_node.copy()
+            slot = chosen_backup_node.pop("slot", None)
+            if list(chosen_backup_node) == ["connection_string"]:
                 # if the dict only contains the `connection_string` key use it as-is
-                node_config = node_config["connection_string"]
+                chosen_backup_node = chosen_backup_node["connection_string"]
         # make sure it's a replication connection to the host
         # pointed by the key using the "replication" pseudo-db
-        connection_info = get_connection_info(node_config)
-        connection_info["host"] = chosen_backup_node
+        connection_info = get_connection_info(chosen_backup_node)
         connection_info["dbname"] = "replication"
         connection_info["replication"] = "true"
         connection_string = create_pgpass_file(self.log, connection_info)
@@ -313,26 +312,25 @@ class PGHoard(object):
         self.start_threads_on_startup()
         self.startup_walk_for_missed_files()
         while self.running:
-            for site, nodes in self.config['backup_clusters'].items():
+            for site, site_config in self.config['backup_sites'].items():
                 self.set_state_defaults(site)
                 xlog_path, basebackup_path = self.create_backup_site_paths(site)
                 if time.time() - self.time_since_last_backup_check > 3600:
                     time_since_last_backup = self.check_backup_count_and_state(site, basebackup_path, xlog_path)
                     self.time_since_last_backup_check = time.time()
 
-                chosen_backup_node = random.choice([k for k in nodes.keys() if k not in RESERVED_CONFIG_KEYS])
-                node_config = self.config['backup_clusters'][site][chosen_backup_node]
+                chosen_backup_node = random.choice(site_config["nodes"])
 
-                if site not in self.receivexlogs and nodes.get("active_backup_mode") == "pg_receivexlog":
+                if site not in self.receivexlogs and site_config.get("active_backup_mode") == "pg_receivexlog":
                     # Create a pg_receivexlog listener for all sites
-                    connection_string, slot = self.get_connection_string(chosen_backup_node, node_config)
+                    connection_string, slot = self.get_passwordless_connection_string(chosen_backup_node)
                     self.receivexlog_listener(site, xlog_path, connection_string, slot)
 
-                if time_since_last_backup > self.config['backup_clusters'][site]['basebackup_interval_hours'] * 3600 \
+                if time_since_last_backup > self.config['backup_sites'][site]['basebackup_interval_hours'] * 3600 \
                    and site not in self.basebackups:
                     self.log.debug("Starting to create a new basebackup for: %r since time from previous: %r",
                                    site, time_since_last_backup)
-                    connection_string, slot = self.get_connection_string(chosen_backup_node, node_config)
+                    connection_string, slot = self.get_passwordless_connection_string(chosen_backup_node)
                     self.create_basebackup(site, connection_string, basebackup_path)
             self.write_backup_state_to_json_file()
             time.sleep(5.0)

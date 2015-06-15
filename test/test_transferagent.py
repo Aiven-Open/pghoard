@@ -33,7 +33,7 @@ class TestTransferAgent(TestCase):
     def setUp(self):
         self.temp_dir = tempfile.mkdtemp()
         self.config = {
-            "backup_clusters": {
+            "backup_sites": {
                 "default": {
                     "object_storage": {"s3": {}},
                 },

@@ -56,7 +56,7 @@ class TransferAgent(Thread):
     def get_object_storage(self, site_name):
         storage = self.site_transfers.get(site_name)
         if not storage:
-            cfg = self.config["backup_clusters"][site_name].get("object_storage", {})
+            cfg = self.config["backup_sites"][site_name].get("object_storage", {})
             for key, value in cfg.items():
                 storage = get_object_storage_transfer(key, value)
                 self.site_transfers[site_name] = storage

@@ -31,14 +31,17 @@ class TestWebServer(TestCase):
         self.pgdata_path = os.path.join(self.temp_dir, "pgdata")
         self.pg_xlog_dir = os.path.join(self.pgdata_path, "pg_xlog")
 
-        self.config = {"backup_clusters":
-                       {"default": {
-                           "pg_xlog_directory": self.pg_xlog_dir,
-                           "object_storage": {}
-                       }},
-                       "http_address": "127.0.0.1",
-                       "http_port": random.randint(1024, 32000),
-                       "backup_location": self.temp_dir}
+        self.config = {
+            "backup_sites": {
+                "default": {
+                    "pg_xlog_directory": self.pg_xlog_dir,
+                    "object_storage": {},
+                },
+            },
+            "http_address": "127.0.0.1",
+            "http_port": random.randint(1024, 32000),
+            "backup_location": self.temp_dir,
+        }
         self.compression_queue = Queue()
         self.transfer_queue = Queue()
 

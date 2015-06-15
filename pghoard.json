@@ -2,16 +2,19 @@
     "log_level": "DEBUG",
     "http_address": "",
     "http_port": 16000,
-    "backup_clusters": {
+    "backup_sites": {
 	"default": {
-	    "127.0.0.1": {
-		"port": 5433,
-		"username": "replication",
-		"password": "example"
-	    },
 	    "active_backup_mode": "pg_receivexlog",
 	    "basebackup_count": 2,
 	    "basebackup_interval_hours": 24,
+	    "nodes": [
+	        {
+	            "host": "127.0.0.1",
+	            "port": 5433,
+	            "username": "replication",
+	            "password": "example"
+                }
+            ],
 	    "object_storage": {
 		"s3": {
 		    "aws_access_key_id": "xxx",

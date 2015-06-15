@@ -153,10 +153,14 @@ class Compressor(Thread):
         self.state[site][filetype]["original_data"] += original_file_size
         self.state[site][filetype]["compressed_data"] += compressed_file_size
         self.state[site][filetype]["count"] += 1
-        if self.config['backup_clusters'][site].get("object_storage"):
-            transfer_object = {"metadata": metadata, "site": site,
-                               "file_size": compressed_file_size, "filetype": filetype,
-                               "operation": "upload"}
+        if self.config['backup_sites'][site].get("object_storage"):
+            transfer_object = {
+                "file_size": compressed_file_size,
+                "filetype": filetype,
+                "metadata": metadata,
+                "operation": "upload",
+                "site": site,
+                }
             if event.get("compress_to_memory", False):
                 transfer_object['blob'] = compressed_blob
                 transfer_object['local_path'] = event['full_path']

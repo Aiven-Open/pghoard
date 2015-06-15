@@ -15,7 +15,7 @@ import tempfile
 
 def create_json_conf(filepath, temp_dir):
     conf = {
-        "backup_clusters": {
+        "backup_sites": {
             "default": {
                 "object_storage": {},
             },
@@ -51,7 +51,7 @@ class TestPGHoard(TestCase):
             state = json.load(fp)
         empty_state = {
             "startup_time": self.pghoard.state["startup_time"],
-            "backup_clusters": {},
+            "backup_sites": {},
             "compressors": [{}, {}],
             "queues": {
                 "compression_queue": 0,

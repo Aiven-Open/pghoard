@@ -107,7 +107,7 @@ installation.
    or by sending directly a ``SIGHUP`` to the PostgreSQL postmaster process.
 
 3. Fill in the created user account and master/slave addresses into the
-   configuration file ``pghoard.json`` to the section ``backup_clusters``.
+   configuration file ``pghoard.json`` to the section ``backup_sites``.
 
 4. Fill in the possible object storage user credentials into the
    configuration file ``pghoard.json`` under section "object_storage"
@@ -195,10 +195,14 @@ user setting the correct pg_archive_command
 Place where pghoard will create its internal data structures for local state
 data and the actual backups.  (if no object storage is used)
 
-``backup_clusters`` (default ``{}``)
+``backup_sites`` (default ``{}``)
 
-This object contains key objects describing the different PostgreSQL
-clusters from which to take backups.
+This object contains names and configurations for the different PostgreSQL
+clusters (here called ``sites``) from which to take backups.  Each site's
+configuration must list one or more nodes (under the configuration key
+``nodes``) from which the backups are taken.  A node can be described as an
+object of libpq key: value connection info pairs or libpq connection string
+or a postgres:// connection uri.
 
 ``pg_xlog_directory`` (default ``""``)
 

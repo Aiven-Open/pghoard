@@ -76,7 +76,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         #  return_file = self.headers.get("x-pghoard-return-file", False) TODO: add support for fetching files from object storage and returning them through HTTP
         self.server.log.debug("Requesting site: %r, filename: %r, filetype: %r, target_path: %r", site, filename, filetype, target_path)
 
-        if self.server.config["backup_clusters"][site]['object_storage']:
+        if self.server.config["backup_sites"][site]['object_storage']:
             callback_queue = Queue()
             self.server.transfer_queue.put({"local_path": filename, "target_path": target_path, "filetype": filetype,
                                             "site": site, "callback_queue": callback_queue, "operation": "download"})
@@ -124,11 +124,11 @@ class RequestHandler(BaseHTTPRequestHandler):
 
     def handle_archival_request(self, site, filename):
         start_time, compress_to_memory = time.time(), True
-        xlog_path = os.path.join(self.server.config["backup_clusters"][site].get("pg_xlog_directory", "/var/lib/pgsql/data/pg_xlog/"), filename)
+        xlog_path = os.path.join(self.server.config["backup_sites"][site].get("pg_xlog_directory", "/var/lib/pgsql/data/pg_xlog/"), filename)
         self.server.log.debug("Got request to archive: %r %r, %r", site, filename, xlog_path)
         if os.path.exists(xlog_path):
             callback_queue = Queue()
-            if not self.server.config['backup_clusters'][site].get("object_storage"):
+            if not self.server.config['backup_sites'][site].get("object_storage"):
                 compress_to_memory = False
             compression_event = {"type": "CREATE", "full_path": xlog_path, "site": site,
                                  "delete_file_after_compression": False, "compress_to_memory": compress_to_memory,
@@ -152,7 +152,7 @@ class RequestHandler(BaseHTTPRequestHandler):
 
     def do_PUT(self):
         site, path = self.log_and_parse_request()
-        if site in self.server.config['backup_clusters'].keys():
+        if site in self.server.config['backup_sites']:
             if path[1] == "archive":
                 self.handle_archival_request(site, path[2])
                 return
@@ -160,7 +160,7 @@ class RequestHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         site, path = self.log_and_parse_request()
-        if site in self.server.config['backup_clusters'].keys():
+        if site in self.server.config['backup_sites']:
             try:
                 if path[1] == "basebackups":  # TODO use something nicer to map URIs
                     if len(path) == 2:
