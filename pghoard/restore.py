@@ -12,6 +12,7 @@ from requests import Session
 import argparse
 import logging
 import os
+import shutil
 import socket
 import sys
 import tarfile
@@ -98,6 +99,8 @@ class Restore(object):
             cmd.add_argument("--basebackup", help="pghoard basebackup", default="latest")
             cmd.add_argument("--primary-conninfo", help="replication.conf primary_conninfo", default="")
             cmd.add_argument("--target-dir", help="pghoard restore target 'pgdata' dir", required=True)
+            cmd.add_argument("--overwrite", help="overwrite existing target directory",
+                             default=False, action="store_true")
 
         def azure_args():
             cmd.add_argument("--account", help="Azure storage account name [AZURE_STORAGE_ACCOUNT]",
@@ -164,7 +167,7 @@ class Restore(object):
         """Download a basebackup from Microsoft Azure"""
         try:
             self.storage = AzureRestore(arg.account, arg.access_key, arg.container, pgdata=arg.target_dir, site=arg.site)
-            self.get_basebackup(arg.target_dir, arg.basebackup, arg.site, arg.primary_conninfo)
+            self.get_basebackup(arg.target_dir, arg.basebackup, arg.site, arg.primary_conninfo, overwrite=arg.overwrite)
         except socket.gaierror as ex:
             raise RestoreError("{}: {} (wrong account name?)".format(ex.__class__.__name__, ex))
         except (Error, azure_storage.WindowsAzureError) as ex:
@@ -184,7 +187,7 @@ class Restore(object):
         """Download a basebackup from Google Cloud"""
         try:
             self.storage = GoogleRestore(arg.project_id, arg.credentials_file, arg.bucket, pgdata=arg.target_dir, site=arg.site)
-            self.get_basebackup(arg.target_dir, arg.basebackup, arg.site, arg.primary_conninfo)
+            self.get_basebackup(arg.target_dir, arg.basebackup, arg.site, arg.primary_conninfo, overwrite=arg.overwrite)
         except google_storage.OAuth2Error as ex:
             raise RestoreError("{}: {} (invalid GOOGLE_APPLICATION_CREDENTIALS file?)".format(ex.__class__.__name__, ex))
         except (Error, google_storage.HttpError) as ex:
@@ -203,7 +206,7 @@ class Restore(object):
     def get_basebackup_http(self, arg):
         """Download a basebackup from Google Cloud"""
         self.storage = HTTPRestore(arg.host, arg.port, arg.site, arg.target_dir)
-        self.get_basebackup(arg.target_dir, arg.basebackup, arg.site, arg.primary_conninfo)
+        self.get_basebackup(arg.target_dir, arg.basebackup, arg.site, arg.primary_conninfo, overwrite=arg.overwrite)
 
     def list_basebackups_http(self, arg):
         """List available basebackups from a HTTP source"""
@@ -215,7 +218,7 @@ class Restore(object):
         try:
             self.storage = S3Restore(arg.aws_access_key_id, arg.aws_secret_access_key, arg.region, arg.bucket, arg.site,
                                      host=arg.host, port=arg.port, is_secure=(not arg.insecure), pgdata=arg.target_dir)
-            self.get_basebackup(arg.target_dir, arg.basebackup, arg.site, arg.primary_conninfo)
+            self.get_basebackup(arg.target_dir, arg.basebackup, arg.site, arg.primary_conninfo, overwrite=arg.overwrite)
         except (Error, s3_storage.boto.exception.BotoServerError) as ex:
             raise RestoreError("{}: {}".format(ex.__class__.__name__, ex))
 
@@ -228,7 +231,7 @@ class Restore(object):
         except (Error, s3_storage.boto.exception.BotoServerError) as ex:
             raise RestoreError("{}: {}".format(ex.__class__.__name__, ex))
 
-    def get_basebackup(self, pgdata, basebackup, site, primary_conninfo):
+    def get_basebackup(self, pgdata, basebackup, site, primary_conninfo, overwrite=False):
         #  If basebackup that we want it set as latest, figure out which one it is
         if basebackup == "latest":
             basebackups = self.storage.list_basebackups()  # pylint: disable=protected-access
@@ -237,6 +240,12 @@ class Restore(object):
                 sys.exit(-1)
             basebackup = max(entry["name"] for entry in basebackups)
             print("Found: {} basebackups, selecting: {} for restore".format(basebackups, basebackup))
+
+        if os.path.exists(pgdata):
+            if overwrite:
+                shutil.rmtree(pgdata)
+            else:
+                raise Error("Target directory '{}' exists and --overwrite not specified, aborting.".format(pgdata))
 
         create_pgdata_dir(pgdata)
         _, tar = self.storage.get_basebackup_file(basebackup)
