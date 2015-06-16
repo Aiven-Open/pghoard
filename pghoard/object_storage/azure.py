@@ -6,6 +6,7 @@ See LICENSE for details
 """
 import dateutil.parser
 import time
+from azure import WindowsAzureError  # pylint: disable=unused-import, import-self, import-error
 from azure.storage import BlobService  # pylint: disable=no-name-in-module, import-error
 from .base import BaseTransfer
 

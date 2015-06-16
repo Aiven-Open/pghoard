@@ -14,7 +14,7 @@ import time
 from googleapiclient.discovery import build  # pylint: disable=import-error
 from googleapiclient.errors import HttpError  # pylint: disable=import-error
 from googleapiclient.http import MediaFileUpload, MediaIoBaseUpload, MediaIoBaseDownload  # pylint: disable=import-error
-from oauth2client.client import GoogleCredentials  # pylint: disable=import-error
+from oauth2client.client import GoogleCredentials, Error as OAuth2Error  # pylint: disable=import-error, unused-import
 from pghoard.errors import InvalidConfigurationError
 from .base import BaseTransfer
 

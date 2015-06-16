@@ -8,7 +8,6 @@ setup(
     zip_safe = False,
     packages = find_packages(exclude=["test"]),
     install_requires = [
-        'argh >= 0.23.0',
         'psycopg2 >= 2.0.0',
         'requests >= 1.2.0',
         ],

@@ -15,10 +15,10 @@ Requires(pre):  shadow-utils
 Requires:       postgresql-server, systemd
 BuildRequires:  %{requires}
 %if %{use_python3}
-Requires:       python3-argh, python3-dateutil, python3-psycopg2, python3-requests, python3-boto
+Requires:       python3-dateutil, python3-psycopg2, python3-requests, python3-boto
 BuildRequires:  python3-pytest, python3-pylint, python3-pep8, %{requires}
 %else
-Requires:       python-argh, python-dateutil, python-psycopg2, python-requests, python-boto
+Requires:       python-dateutil, python-psycopg2, python-requests, python-boto
 BuildRequires:  pylint, pytest, python-pep8, %{requires}
 %endif
 BuildArch:      noarch
