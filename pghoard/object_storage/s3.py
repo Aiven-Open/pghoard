@@ -9,7 +9,7 @@ import boto.s3
 import dateutil.parser
 from boto.s3.connection import Location
 from boto.s3.key import Key
-from pghoard.errors import InvalidConfigurationError
+from pghoard.errors import InvalidConfigurationError, StorageError
 from .base import BaseTransfer
 
 
@@ -31,7 +31,11 @@ class S3Transfer(BaseTransfer):
         self.log.debug("S3Transfer initialized")
 
     def get_metadata_for_key(self, key):
-        return self.bucket.get_key(key).metadata
+        item = self.bucket.get_key(key)
+        if not item:
+            raise StorageError("S3 key '{}' not found".format(key))
+
+        return item.metadata
 
     def delete_key(self, key_name):
         self.log.debug("Deleting key: %r", key_name)

@@ -12,3 +12,7 @@ class Error(Exception):
 
 class InvalidConfigurationError(Error):
     """invalid configuration"""
+
+
+class StorageError(Error):
+    """storage exception"""
