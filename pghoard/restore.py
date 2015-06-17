@@ -10,8 +10,10 @@ from .errors import Error
 from psycopg2.extensions import adapt
 from requests import Session
 import argparse
+import datetime
 import logging
 import os
+import random
 import shutil
 import socket
 import sys
@@ -248,8 +250,10 @@ class Restore(object):
                 raise Error("Target directory '{}' exists and --overwrite not specified, aborting.".format(pgdata))
 
         create_pgdata_dir(pgdata)
-        _, tar = self.storage.get_basebackup_file(basebackup)
+        _, tar_path, tar = self.storage.get_basebackup_file(basebackup)
         tar.extractall(pgdata)
+        tar.close()
+        os.unlink(tar_path)
 
         create_recovery_conf(pgdata, site, primary_conninfo)
 
@@ -293,10 +297,13 @@ class ObjectStore(object):
 
     def get_basebackup_file(self, basebackup):
         metadata = self.storage.get_metadata_for_key(basebackup)
-        basebackup_path = os.path.join(self.pgdata, "base.tar.xz")
+        basebackup_path = os.path.join(self.pgdata, "base-{}-{:08x}.tar.xz".format(
+            datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S"),
+            random.getrandbits(32),
+        ))
         self.storage.get_contents_to_file(basebackup, basebackup_path)
         tar = tarfile.TarFile(fileobj=lzma_open_read(basebackup_path, "rb"))
-        return metadata["start-wal-segment"], tar
+        return metadata["start-wal-segment"], basebackup_path, tar
 
 
 class AzureRestore(ObjectStore):
@@ -351,7 +358,7 @@ class HTTPRestore(object):
         basebackup_path = os.path.join(self.pgdata, "base.tar.xz")
         store_response_to_file(basebackup_path, response)
         tar = tarfile.TarFile(fileobj=open(basebackup_path, "rb"))
-        return response.headers["x-pghoard-start-wal-segment"], tar
+        return response.headers["x-pghoard-start-wal-segment"], basebackup_path, tar
 
     def get_archive_file(self, filename, target_path, path_prefix=None):
         start_time = time.time()
