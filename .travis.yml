@@ -1,0 +1,14 @@
+language: python
+
+python:
+  - "2.7"
+  - "3.4"
+
+install:
+  - "pip install boto mock pep8 psycopg2 pylint pytest python-dateutil python-systemd requests"
+  - "(python -V 2>&1 | grep -qF 'Python 3') || pip install backports.lzma"
+
+script:
+  - "make pylint"
+  - "make pep8"
+  - "make unittest"

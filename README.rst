@@ -1,5 +1,8 @@
-pghoard
-=======
+pghoard |BuildStatus|_
+======================
+
+.. |BuildStatus| image:: https://travis-ci.org/ohmu/pghoard.png?branch=master
+.. _BuildStatus: https://travis-ci.org/ohmu/pghoard
 
 pghoard is a PostgreSQL backup/restore service, it consists of a daemon
 process and a restore client.
