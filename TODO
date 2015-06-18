@@ -2,9 +2,7 @@ TODO
 ====
 
 * configurable recovery target recovery.conf (to be created by restore)
-* recovery_command support
 * SSL support for Webserver
 * Authentication/authorization for Webserver for use in non private networks
 * check that we have the diskspace needed for a basebackup from PG
-* timeline file handling/testing
 * Older PG version support (WAL segment number holes, something else?)
