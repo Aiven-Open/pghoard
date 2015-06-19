@@ -96,32 +96,25 @@ installation.
 
 1. Create a suitable PostgreSQL user account for pghoard::
 
-     CREATE USER pghoard PASSWORD 'putyourpasswordhere';
+     CREATE USER pghoard PASSWORD 'putyourpasswordhere' REPLICATION;
 
 2. Edit the local ``pg_hba.conf`` to allow access for the newly created
-   account to the ``postgres`` (or other suitable database of your choice)
-   from the master, slave and possible observer nodes.  While pghoard will
-   only need to run a few builtin functions within the database, it is still
-   recommended to setup a separate empty database for this use.  Remember to
-   reload the configuration with either::
+   account to the ``replication`` database from the master and standby
+   nodes. After editing, please reload the configuration with either::
 
      SELECT pg_reload_conf();
 
    or by sending directly a ``SIGHUP`` to the PostgreSQL postmaster process.
 
-3. Fill in the created user account and master/slave addresses into the
+3. Fill in the created user account and master/standby addresses into the
    configuration file ``pghoard.json`` to the section ``backup_sites``.
 
 4. Fill in the possible object storage user credentials into the
    configuration file ``pghoard.json`` under section "object_storage"
    in case you wish pghoard to back up into the cloud.
 
-5. Now copy the same ``pghoard.json`` configuration to the slave and
-   possible observer nodes but you need to edit the configuration on the
-   other nodes so that the ``own_db`` configuration variable matches the
-   node's address given in the ``remote_conns`` as the key.  For observer
-   nodes, you can leave it as an empty '' value, since they don't have a DB
-   of their own.
+5. Now copy the same ``pghoard.json`` configuration to the standby
+   node if there are any.
 
 Other possible configuration settings are covered in more detail under the
 `Configuration keys`_ section of this README.
@@ -193,6 +186,11 @@ Can be either ``pg_receivexlog`` or ``archive_command``. If set to
 run against the database server.  If archive_command is set, we rely on the
 user setting the correct pg_archive_command
 
+``alert_file_dir`` (default ``os.getcwd()``)
+
+Directory in which alert files for replication warning and failover are
+created.
+
 ``backup_location`` (no default)
 
 Place where pghoard will create its internal data structures for local state
@@ -207,12 +205,16 @@ configuration must list one or more nodes (under the configuration key
 object of libpq key: value connection info pairs or libpq connection string
 or a postgres:// connection uri.
 
-``pg_xlog_directory`` (default ``""``)
+``basebackup_count`` (default ``1``)
 
-This is used when using a PostgreSQL  archive_command against pghoard. It
-means the absolute path to the PostgreSQL pg_xlog directory.  Note that
-pghoard will need to be able to read files from the directory in order to
-back them up.
+How many basebackups should be kept around for restoration purposes.  The
+more there are the more diskspace will be used.
+
+``basebackup_interval_hours`` (no default)
+
+How often to take a new basebackup of a cluster. The shorter the interval,
+the faster your recovery will be, but the more CPU/IO usage is
+required from the servers it takes the basebackup from.
 
 ``http_address`` (default ``""``)
 
@@ -223,26 +225,6 @@ HTTP webserver address, by default pghoard binds to all available addresses.
 HTTP webserver port. Used for the archive command and for fetching of
 basebackups/WAL's when restoring if not using an object store.
 
-``basebackup_count`` (default ``1``)
-
-How many basebackups should be kept around for restoration purposes.  The
-more there are the more diskspace will be used.
-
-``basebackup_interval_hours`` (no default)
-
-How often to take a new basebackup of a cluster. The shorter the interval,
-the faster your recovery will be, but the more CPU/IO usage from the servers
-it takes to take a basebackup.
-
-``maintenance_mode_file`` (default ``"/tmp/pghoard_maintenance_mode_file"``)
-
-If a file exists in this location, no new backup actions will be started.
-
-``alert_file_dir`` (default ``os.getcwd()``)
-
-Directory in which alert files for replication warning and failover are
-created.
-
 ``json_state_file_path`` (default ``"/tmp/pghoard_state.json"``)
 
 Location of a JSON state file which describes the state of the pghoard
@@ -252,6 +234,35 @@ process.
 
 Determines log level of pghoard.
 
+``maintenance_mode_file`` (default ``"/tmp/pghoard_maintenance_mode_file"``)
+
+If a file exists in this location, no new backup actions will be started.
+
+``object_storage`` (default ``n/a``)
+
+This key is found within backup_sites under a specific site.
+The key which if set must be one of ``google``, ``aws`` or ``azure``.
+The object may contain object store specific keys as described below:
+
+If specified as ``google``, the keys that are needed are:
+``project_id`` containing the Google Storage project_id,
+``bucket_name`` bucket where you want to store the files (defaults to ``pghoard``),
+``credential_file`` for the path to the Google JSON credential file.
+
+If specified as ``aws`` the keys that are needed are:
+``aws_access_key_id`` for the AWS access key id,
+``aws_secret_access_key`` for the AWS secret access key,
+``region`` for the S3 region where you want to store the objects,
+``bucket_name`` for the name of the bucket within S3 (needs to be unique)
+``host`` for overriding the used host for non AWS-S3 implementations,
+``port`` for overriding the used port for non AWS-S3 implementations,
+``issecure`` for overriding the requirement for https for non AWS-S3 implementations,
+
+If specified as ``azure`` the keys that are needed are:
+``account_name`` for the name of the Azure Storage account,
+``account_key`` for the secret key of the Azure Storage account,
+``container_name`` for the name of Azure Storage container used to store objects.
+
 ``pg_basebackup_path`` (default ``/usr/bin/pg_basebackup``)
 
 Determines the path where to find the correct pg_basebackup binary.
@@ -259,6 +270,13 @@ Determines the path where to find the correct pg_basebackup binary.
 ``pg_receivexlog_path`` (default ``/usr/bin/pg_receivexlog``)
 
 Determines the path where to find the correct pg_receivexlog binary.
+
+``pg_xlog_directory`` (default ``""``)
+
+This is used when using a PostgreSQL  archive_command against pghoard. It
+means the absolute path to the PostgreSQL pg_xlog directory.  Note that
+pghoard will need to be able to read files from the directory in order to
+back them up.
 
 ``syslog`` (default ``false``)
 
