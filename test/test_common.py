@@ -10,9 +10,10 @@ import shutil
 import tempfile
 from pghoard.common import (
     create_pgpass_file,
-    convert_pg_version_number_to_numeric,
+    convert_pg_command_version_to_number,
     get_connection_info,
     )
+from pghoard.errors import Error
 from unittest import TestCase
 
 
@@ -60,7 +61,13 @@ class TestCommon(TestCase):
         assert get_connection_info(ci) == get_connection_info(url)
 
     def test_pg_versions(self):
-        self.assertEqual(convert_pg_version_number_to_numeric("9.4.1"), 90401)
+        assert convert_pg_command_version_to_number("foobar (PostgreSQL) 9.4.1") == 90401
+        assert convert_pg_command_version_to_number("asdf (PostgreSQL) 9.5alpha1") == 90500
+        assert convert_pg_command_version_to_number("pg_dummyutil (PostgreSQL) 9.6devel") == 90600
+        with self.assertRaises(Error):
+            convert_pg_command_version_to_number("PostgreSQL) 9.6devel")
+        with self.assertRaises(Error):
+            convert_pg_command_version_to_number("test (PostgreSQL) 9devel")
 
     def tearDown(self):
         shutil.rmtree(self.temp_dir)

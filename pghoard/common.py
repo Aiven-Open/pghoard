@@ -8,6 +8,8 @@ See LICENSE for details
 import fcntl
 import logging
 import os
+import re
+from . errors import Error
 
 try:
     from backports import lzma  # pylint: disable=import-error, unused-import
@@ -173,6 +175,13 @@ def set_subprocess_stdout_and_stderr_nonblocking(proc):
         fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
 
 
-def convert_pg_version_number_to_numeric(version_string):
-    parts = version_string.split(".")
+def convert_pg_command_version_to_number(command_version_string):
+    """convert a string like `psql (PostgreSQL) 9.4.4` to 90404.  also
+    handle pre-release versioning where the version string is something like
+    9.5alpha1 or 9.6devel"""
+    match = re.search(r" \(PostgreSQL\) ([0-9]+(?:\.[0-9]+)+)", command_version_string)
+    if not match:
+        raise Error("Unrecognized PostgreSQL version string {!r}".format(command_version_string))
+    vernum = match.group(1) + ".0"  # padding for development versions
+    parts = vernum.split(".")
     return int(parts[0]) * 10000 + int(parts[1]) * 100 + int(parts[2])
