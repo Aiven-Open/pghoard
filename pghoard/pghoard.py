@@ -22,7 +22,7 @@ import time
 from . basebackup import PGBaseBackup
 from . common import (
     create_pgpass_file, get_connection_info,
-    convert_pg_version_number_to_numeric,
+    convert_pg_command_version_to_number,
     default_log_format_str, set_syslog_handler, Queue)
 from . compressor import Compressor
 from . errors import InvalidConfigurationError
@@ -95,7 +95,7 @@ class PGHoard(object):
             self.create_alert_file("version_unsupported_error")
             return False
         output = os.popen(self.config.get(command + "_path", "/usr/bin/" + command) + " --version").read().strip()
-        pg_version_client = convert_pg_version_number_to_numeric(output[len(command + " (PostgreSQL) "):])
+        pg_version_client = convert_pg_command_version_to_number(output)
         if pg_version_server != pg_version_client:
             # FIXME: should we just check for the same major version?
             self.log.error("Server version: %r does not match %s client version: %r",
