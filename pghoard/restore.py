@@ -94,6 +94,8 @@ class Restore(object):
             cmd.add_argument("--site", help="pghoard site", default="default")
 
         cmd = self.add_cmd(sub, self.get)
+        cmd.add_argument("filename", help="filename to retrieve")
+        cmd.add_argument("target_path", help="local target filename")
         host_port_site_args()
         cmd.add_argument("--path-prefix", help="path_prefix (useful for testing)")
 
