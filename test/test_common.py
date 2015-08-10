@@ -42,6 +42,12 @@ class TestCommon(TestCase):
         # NOTE: create_pgpass_file() always returns the string in libpq format
         assert pwl == "dbname='replication' host='localhost' user='foo'"
         assert get_pgpass_contents() == b'localhost:5432:replication:foo:bar\n'
+        # See that it add a new row for a different user
+        create_pgpass_file(self.log, "postgres://another:bar@localhost/replication")
+        assert get_pgpass_contents() == b'localhost:5432:replication:foo:bar\nlocalhost:5432:replication:another:bar\n'
+        # See that it replaces the previous row when we change password
+        pwl = create_pgpass_file(self.log, "postgres://foo:xyz@localhost/replication")
+        assert get_pgpass_contents() == b'localhost:5432:replication:another:bar\nlocalhost:5432:replication:foo:xyz\n'
         os.environ['HOME'] = original_home
 
     def test_connection_info(self):

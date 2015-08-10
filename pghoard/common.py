@@ -141,23 +141,28 @@ def create_pgpass_file(log, connection_string_or_info):
     info = get_connection_info(connection_string_or_info)
     if "password" not in info:
         return create_connection_string(info)
-    content = "{host}:{port}:{dbname}:{user}:{password}\n".format(
-        host=info.get("host", ""), port=info.get("port", 5432),
-        user=info.get("user", ""), password=info.pop("password"),
+    linekey = "{host}:{port}:{dbname}:{user}:".format(
+        host=info.get("host", ""),
+        port=info.get("port", 5432),
+        user=info.get("user", ""),
         dbname=info.get("dbname", "*"))
+    pwline = "{linekey}{password}".format(linekey=linekey, password=info.pop("password"))
     pgpass_path = os.path.join(os.environ.get("HOME"), ".pgpass")
     if os.path.exists(pgpass_path):
         with open(pgpass_path, "r") as fp:
-            pgpass_data = fp.read()
+            pgpass_lines = fp.read().splitlines()
     else:
-        pgpass_data = ""
-    if content in pgpass_data:
+        pgpass_lines = []
+    if pwline in pgpass_lines:
         log.debug("Not adding authentication data to: %s since it's already there", pgpass_path)
     else:
-        with open(pgpass_path, "a") as fp:
+        # filter out any existing lines with our linekey and add the new line
+        pgpass_lines = [line for line in pgpass_lines if not line.startswith(linekey)] + [pwline]
+        content = "\n".join(pgpass_lines) + "\n"
+        with open(pgpass_path, "w") as fp:
             os.fchmod(fp.fileno(), 0o600)
             fp.write(content)
-        log.debug("Wrote %r to %r", content, pgpass_path)
+        log.debug("Wrote %r to %r", pwline, pgpass_path)
     return create_connection_string(info)
 
 
