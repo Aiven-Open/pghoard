@@ -5,12 +5,10 @@ Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
 
-from .common import Empty, lzma_compressor, lzma_decompressor, lzma_open
+from .common import Empty, lzma_compressor, lzma_decompressor
 from threading import Thread
-import contextlib
 import logging
 import os
-import shutil
 import time
 
 IO_BLOCK_SIZE = 1 << 20  # 1 MiB
@@ -47,11 +45,19 @@ class Compressor(Thread):
 
     def compress_lzma_filepath(self, filepath, compression_dir):
         lzma_filepath = os.path.join(compression_dir, os.path.basename(filepath)) + ".xz"
-        # NOTE: pyliblzma, which may be in use, is buggy and requires an explicit closing wrapper
-        with contextlib.closing(lzma_open(lzma_filepath, mode="wb", preset=0)) as lzma_file:
-            # TODO: fsync, LZMAFile has no .fileno() on 2.7 etc
-            with open(filepath, "rb") as input_file:
-                shutil.copyfileobj(input_file, lzma_file, length=IO_BLOCK_SIZE)
+        compressor = lzma_compressor(preset=0)
+        with open(filepath, "rb") as input_file:
+            with open(lzma_filepath, "wb") as output_file:
+                while True:
+                    input_data = input_file.read(IO_BLOCK_SIZE)
+                    if not input_data:
+                        break
+                    compressed_data = compressor.compress(input_data)
+                    if compressed_data:
+                        output_file.write(compressed_data)
+                compressed_data = compressor.flush()
+                if compressed_data:
+                    output_file.write(compressed_data)
         return lzma_filepath, "lzma"
 
     def compress_filepath_to_memory(self, filepath):
