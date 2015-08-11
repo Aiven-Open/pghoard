@@ -409,7 +409,7 @@ class PGHoard(object):
         else:
             self.log_level = logging._levelNames[self.config.get("log_level", "DEBUG")]  # pylint: disable=no-member,protected-access
         try:
-            self.log.setLevel(self.log_level)
+            logging.basicConfig(level=self.log_level, format=default_log_format_str)
         except ValueError:
             self.log.exception("Problem with log_level: %r", self.log_level)
         # we need the failover_command to be converted into subprocess [] format
@@ -429,7 +429,6 @@ class PGHoard(object):
 
 
 def main(argv):
-    logging.basicConfig(level=logging.INFO, format=default_log_format_str)
     if len(argv) != 2:
         print("Usage: {} <config filename>".format(argv[0]))
         return 1
