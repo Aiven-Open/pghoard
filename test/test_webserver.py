@@ -4,10 +4,11 @@ pghoard
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
-from .base import PGHoardTestCase
+from .base import PGHoardTestCase, CONSTANT_TEST_RSA_PUBLIC_KEY, CONSTANT_TEST_RSA_PRIVATE_KEY
 from pghoard.archive_command import archive
-from pghoard.common import Queue, lzma_open
+from pghoard.common import Queue, lzma_compressor, lzma_open
 from pghoard.compressor import Compressor
+from pghoard.encryptor import Encryptor
 from pghoard.restore import HTTPRestore
 from pghoard.webserver import WebServer
 import json
@@ -101,11 +102,29 @@ class TestWebServer(PGHoardTestCase):
         content = b"testing123"
         xlog_file = "00000001000000000000000F"
         filepath = os.path.join(self.compressed_xlog_path, xlog_file)
-        lzma_open(filepath + ".xz", mode="wb", preset=0).write(b"jee")
         with lzma_open(filepath + ".xz", mode="wb", preset=0) as fp:
             fp.write(content)
         with open(filepath + ".xz.metadata", "w") as fp:
             json.dump({"compression-algorithm": "lzma", "original-file-size": len(content)}, fp)
+        self.http_restore.get_archive_file(xlog_file, "pg_xlog/" + xlog_file, path_prefix=self.pgdata_path)
+        self.assertTrue(os.path.exists(os.path.join(self.pg_xlog_dir, xlog_file)))
+        with open(os.path.join(self.pg_xlog_dir, xlog_file), "rb") as fp:
+            restored_data = fp.read()
+        self.assertEqual(content, restored_data)
+
+    def test_get_encrypted_archived_file(self):
+        content = b"testing123"
+        compressor = lzma_compressor()
+        compressed_content = compressor.compress(content) + compressor.flush()
+        encryptor = Encryptor(CONSTANT_TEST_RSA_PUBLIC_KEY)
+        encrypted_content = encryptor.update(compressed_content) + encryptor.finalize()
+        xlog_file = "000000010000000000000010"
+        filepath = os.path.join(self.compressed_xlog_path, xlog_file)
+        with open(filepath + ".xz", mode="wb") as fp:
+            fp.write(encrypted_content)
+        with open(filepath + ".xz.metadata", "w") as fp:
+            json.dump({"compression-algorithm": "lzma", "original-file-size": len(content), "encryption-key-id": "testkey"}, fp)
+        self.webserver.config["backup_sites"]["default"]["encryption_keys"] = {"testkey": {"public": CONSTANT_TEST_RSA_PUBLIC_KEY, "private": CONSTANT_TEST_RSA_PRIVATE_KEY}}
         self.http_restore.get_archive_file(xlog_file, "pg_xlog/" + xlog_file, path_prefix=self.pgdata_path)
         self.assertTrue(os.path.exists(os.path.join(self.pg_xlog_dir, xlog_file)))
         with open(os.path.join(self.pg_xlog_dir, xlog_file), "rb") as fp:

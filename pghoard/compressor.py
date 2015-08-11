@@ -6,6 +6,7 @@ See LICENSE for details
 """
 
 from .common import Empty, lzma_compressor, lzma_decompressor, IO_BLOCK_SIZE
+from .encryptor import Encryptor, Decryptor
 from threading import Thread
 import json
 import logging
@@ -46,8 +47,11 @@ class Compressor(Thread):
             return filepath.split("/")[-4]
         return filepath.split("/")[-3]
 
-    def compress_lzma_filepath(self, filepath, targetfilepath):
+    def compress_lzma_filepath(self, filepath, targetfilepath, rsa_public_key=None):
         compressor = lzma_compressor(preset=0)
+        encryptor = None
+        if rsa_public_key:
+            encryptor = Encryptor(rsa_public_key)
         with open(filepath, "rb") as input_file:
             with open(targetfilepath, "wb") as output_file:
                 while True:
@@ -55,14 +59,20 @@ class Compressor(Thread):
                     if not input_data:
                         break
                     compressed_data = compressor.compress(input_data)
+                    if encryptor and compressed_data:
+                        compressed_data = encryptor.update(compressed_data)
                     if compressed_data:
                         output_file.write(compressed_data)
 
                 compressed_data = compressor.flush()
+                if encryptor:
+                    if compressed_data:
+                        compressed_data = encryptor.update(compressed_data)
+                    compressed_data += encryptor.finalize()
                 if compressed_data:
                     output_file.write(compressed_data)
 
-    def compress_lzma_filepath_to_memory(self, filepath):
+    def compress_lzma_filepath_to_memory(self, filepath, rsa_public_key=None):
         # This is meant for WAL files compressed due to archive_command
         with open(filepath, "rb") as input_file:
             data = input_file.read()
@@ -70,6 +80,9 @@ class Compressor(Thread):
         compressor = lzma_compressor(preset=0)
         compressed_data = compressor.compress(data)
         compressed_data += compressor.flush()
+        if rsa_public_key:
+            encryptor = Encryptor(rsa_public_key)
+            compressed_data = encryptor.update(compressed_data) + encryptor.finalize()
         return compressed_data
 
     def run(self):
@@ -118,12 +131,16 @@ class Compressor(Thread):
 
     def handle_decompression_event(self, event):
         start_time = time.time()
+        data = event["blob"]
+        if "metadata" in event and "encryption-key-id" in event["metadata"]:
+            rsa_private_key = self.config["backup_sites"][event["site"]]["encryption_keys"][event["metadata"]["encryption-key-id"]]["private"]
+            decryptor = Decryptor(rsa_private_key)
+            data = decryptor.update(data) + decryptor.finalize()
+        if "metadata" in event and event["metadata"].get("compression-algorithm", None) == "lzma":
+            decompressor = lzma_decompressor()
+            data = decompressor.decompress(data)
         with open(event["local_path"], "wb") as fp:
-            if "metadata" in event and event["metadata"].get("compression-algorithm", None) == "lzma":
-                decompressor = lzma_decompressor()
-                fp.write(decompressor.decompress(event["blob"]))
-            else:
-                fp.write(event["blob"])
+            fp.write(data)
 
         self.log.debug("Decompressed %d byte file: %r to %d bytes, took: %.3fs",
                        len(event['blob']), event['local_path'], os.path.getsize(event['local_path']),
@@ -134,17 +151,21 @@ class Compressor(Thread):
 
     def handle_event(self, event, filetype):
         start_time, compressed_blob = time.time(), None
-        site = event.get("site", self.find_site_for_file(event['full_path']))
+        site = event.get("site", self.find_site_for_file(event["full_path"]))
+        rsa_public_key = None
+        encryption_key_id = self.config["backup_sites"][site].get("encryption_key_id", None)
+        if encryption_key_id:
+            rsa_public_key = self.config["backup_sites"][site]["encryption_keys"][encryption_key_id]["public"]
 
         original_file_size = os.stat(event['full_path']).st_size
         self.log.debug("Starting to compress: %r, filetype: %r, original_size: %r",
                        event['full_path'], filetype, original_file_size)
         if event.get("compress_to_memory", False):
-            compressed_blob = self.compress_lzma_filepath_to_memory(event["full_path"])
+            compressed_blob = self.compress_lzma_filepath_to_memory(event["full_path"], rsa_public_key)
             compressed_file_size = len(compressed_blob)
         else:
             compressed_filepath = self.get_compressed_file_path(site, filetype, event["full_path"])
-            self.compress_lzma_filepath(event["full_path"], compressed_filepath)
+            self.compress_lzma_filepath(event["full_path"], compressed_filepath, rsa_public_key)
             compressed_file_size = os.stat(compressed_filepath).st_size
         self.log.info("Compressed %d byte file: %r to %d bytes, took: %.3fs",
                       original_file_size, event['full_path'], compressed_file_size,
@@ -155,6 +176,8 @@ class Compressor(Thread):
 
         metadata = event.get("metadata", {})
         metadata.update({"compression-algorithm": "lzma", "original-file-size": original_file_size})
+        if encryption_key_id:
+            metadata.update({"encryption-key-id": encryption_key_id})
         metadata_path = self.get_metadata_path(site, filetype, event["full_path"])
         if metadata_path:
             with open(metadata_path, "w") as fp:

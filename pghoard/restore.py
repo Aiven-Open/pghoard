@@ -6,6 +6,7 @@ See LICENSE for details
 """
 from __future__ import print_function
 from .common import default_log_format_str, IO_BLOCK_SIZE, lzma_open_read
+from .encryptor import DecryptorFile
 from .errors import Error
 from .object_storage import get_object_storage_transfer
 from psycopg2.extensions import adapt
@@ -206,6 +207,9 @@ class Restore(object):
         tmp = tempfile.TemporaryFile()
         metadata = self.storage.get_basebackup_file_to_fileobj(basebackup, tmp)
         tmp.seek(0)
+        if "encryption-key-id" in metadata:
+            # Wrap stream into DecryptorFile object
+            tmp = DecryptorFile(tmp, self.config["backup_sites"][site]["encryption_keys"][metadata["encryption-key-id"]]["private"])
         if metadata.get("compression-algorithm", None) == "lzma":
             # Wrap stream into LZMAFile object
             tmp = lzma_open_read(tmp, "r")
