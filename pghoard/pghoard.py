@@ -69,8 +69,8 @@ class PGHoard(object):
         signal.signal(signal.SIGHUP, self.load_config)
         signal.signal(signal.SIGINT, self.quit)
         signal.signal(signal.SIGTERM, self.quit)
-
-        self.time_since_last_backup_check = 0
+        self.time_since_last_backup = {}
+        self.time_since_last_backup_check = {}
         self.basebackups = {}
         self.receivexlogs = {}
         self.wal_queue = Queue()
@@ -241,18 +241,23 @@ class PGHoard(object):
             basebackups_dict = dict((basebackup['name'], basebackup) for basebackup in results)
             basebackups = sorted(basebackups_dict.keys())
             for basebackup_name in basebackups:
-                basebackup_list.append(basebackup_dict[basebackup_name])
+                b_dict = basebackups_dict[basebackup_name]
+                b_dict["last_modified"] = b_dict["last_modified"].timestamp()
+                basebackup_list.append(b_dict)
         return basebackup_list
 
     def check_backup_count_and_state(self, site, basebackup_path, xlog_path):
         allowed_basebackup_count = self.config['backup_sites'][site]['basebackup_count']
-        remote = False
+        m_time, remote = 0, False
         if 'object_storage' in self.config['backup_sites'][site] and self.config['backup_sites'][site]['object_storage']:
             basebackups = self.get_remote_basebackups_info(site)
             remote = True
         else:
             basebackups = self.get_local_basebackups_info(basebackup_path)
         self.log.debug("Found %r basebackups", basebackups)
+
+        if basebackups:  # Needs to be the m_time of the newest basebackup
+            m_time = basebackups[-1]["last_modified"]
 
         if len(basebackups) >= allowed_basebackup_count:
             self.log.warning("Too many basebackups: %d>%d, %r, starting to get rid of %r",
@@ -266,8 +271,7 @@ class PGHoard(object):
                 self.delete_remote_wal_before(last_wal_segment_still_needed, site)
                 self.delete_remote_basebackup(site, basebackups[0])
         self.state["backup_sites"][site]['basebackups'] = basebackups
-        time_since_last_backup = time.time() - m_time
-        return time_since_last_backup
+        return time.time() - m_time
 
     def set_state_defaults(self, site):
         if site not in self.state:
@@ -316,30 +320,34 @@ class PGHoard(object):
         connection_string = create_pgpass_file(self.log, connection_info)
         return connection_string, slot
 
+    def handle_site(self, site, site_config):
+        self.set_state_defaults(site)
+        xlog_path, basebackup_path = self.create_backup_site_paths(site)
+        if time.time() - self.time_since_last_backup_check.get(site, 0) > 3600:
+            time_since_last_backup = self.check_backup_count_and_state(site, basebackup_path, xlog_path)
+            self.time_since_last_backup[site] = time_since_last_backup
+            self.time_since_last_backup_check[site] = time.time()
+
+        chosen_backup_node = random.choice(site_config["nodes"])
+
+        if site not in self.receivexlogs and site_config.get("active_backup_mode") == "pg_receivexlog":
+            # Create a pg_receivexlog listener for all sites
+            connection_string, slot = self.get_passwordless_connection_string(chosen_backup_node)
+            self.receivexlog_listener(site, xlog_path, connection_string, slot)
+
+        if self.time_since_last_backup.get(site, 0) > self.config['backup_sites'][site]['basebackup_interval_hours'] * 3600 \
+           and site not in self.basebackups:
+            self.log.debug("Starting to create a new basebackup for: %r since time from previous: %r",
+                           site, self.time_since_last_backup.get(site, 0))
+            connection_string, slot = self.get_passwordless_connection_string(chosen_backup_node)
+            self.create_basebackup(site, connection_string, basebackup_path)
+
     def run(self):
         self.start_threads_on_startup()
         self.startup_walk_for_missed_files()
         while self.running:
             for site, site_config in self.config['backup_sites'].items():
-                self.set_state_defaults(site)
-                xlog_path, basebackup_path = self.create_backup_site_paths(site)
-                if time.time() - self.time_since_last_backup_check > 3600:
-                    time_since_last_backup = self.check_backup_count_and_state(site, basebackup_path, xlog_path)
-                    self.time_since_last_backup_check = time.time()
-
-                chosen_backup_node = random.choice(site_config["nodes"])
-
-                if site not in self.receivexlogs and site_config.get("active_backup_mode") == "pg_receivexlog":
-                    # Create a pg_receivexlog listener for all sites
-                    connection_string, slot = self.get_passwordless_connection_string(chosen_backup_node)
-                    self.receivexlog_listener(site, xlog_path, connection_string, slot)
-
-                if time_since_last_backup > self.config['backup_sites'][site]['basebackup_interval_hours'] * 3600 \
-                   and site not in self.basebackups:
-                    self.log.debug("Starting to create a new basebackup for: %r since time from previous: %r",
-                                   site, time_since_last_backup)
-                    connection_string, slot = self.get_passwordless_connection_string(chosen_backup_node)
-                    self.create_basebackup(site, connection_string, basebackup_path)
+                self.handle_site(site, site_config)
             self.write_backup_state_to_json_file()
             time.sleep(5.0)
 

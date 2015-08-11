@@ -5,6 +5,7 @@ Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
 
+from mock import Mock
 from pghoard.pghoard import PGHoard
 from unittest import TestCase
 import json
@@ -17,6 +18,11 @@ def create_json_conf(filepath, temp_dir):
     conf = {
         "backup_sites": {
             "default": {
+                "nodes": [{
+                    "host": "1.2.3.4",
+                }],
+                "basebackup_interval_hours": 1,
+                "basebackup_count": 1,
                 "object_storage": {},
             },
         },
@@ -26,18 +32,28 @@ def create_json_conf(filepath, temp_dir):
     }
     with open(filepath, "w") as fp:
         json.dump(conf, fp)
+    return conf
 
 
 class TestPGHoard(TestCase):
     def setUp(self):
         self.temp_dir = tempfile.mkdtemp()
         config_path = os.path.join(self.temp_dir, "pghoard.json")
-        create_json_conf(config_path, self.temp_dir)
+        self.config = create_json_conf(config_path, self.temp_dir)
         self.xlog_path = os.path.join(self.temp_dir, "default", "xlog")
         os.makedirs(self.xlog_path)
         self.basebackup_path = os.path.join(self.temp_dir, "default", "basebackup")
         os.makedirs(self.basebackup_path)
         self.pghoard = PGHoard(config_path)
+        self.real_check_pg_server_version = self.pghoard.check_pg_server_version
+        self.pghoard.check_pg_server_version = Mock(return_value="psql (PostgreSQL) 9.4.4")
+        self.real_check_pg_versions_ok = self.pghoard.check_pg_versions_ok
+        self.pghoard.check_pg_versions_ok = Mock(return_value=True)
+
+    def test_handle_site(self):
+        self.pghoard.handle_site("default", self.config["backup_sites"]["default"])
+        self.assertEqual(self.pghoard.receivexlogs, {})
+        self.assertEqual(len(self.pghoard.time_since_last_backup_check), 1)
 
     def test_get_local_basebackups_info(self):
         self.assertEqual([], self.pghoard.get_local_basebackups_info(self.basebackup_path))
@@ -101,4 +117,6 @@ class TestPGHoard(TestCase):
 
     def tearDown(self):
         self.pghoard.quit()
+        self.pghoard.check_pg_server_version = self.real_check_pg_server_version
+        self.pghoard.check_pg_versions_ok = self.real_check_pg_versions_ok
         shutil.rmtree(self.temp_dir)
