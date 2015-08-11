@@ -6,7 +6,7 @@ See LICENSE for details
 """
 
 from . import __version__
-from . common import Queue, Empty, lzma_open_read
+from . common import Queue, Empty, lzma_decompressor, IO_BLOCK_SIZE
 from threading import Thread
 import json
 import logging
@@ -112,9 +112,16 @@ class RequestHandler(BaseHTTPRequestHandler):
         else:
             archived_file_path = os.path.join(self.server.config['backup_location'], site, "compressed_%s" % filetype, filename + ".xz")
             if os.path.exists(archived_file_path):
-                compressed_fp = lzma_open_read(archived_file_path, "rb")
-                target_fp = open(target_path, "wb")
-                shutil.copyfileobj(compressed_fp, target_fp)
+                decompressor = lzma_decompressor()
+                with open(archived_file_path, "rb") as compressed_fp:
+                    with open(target_path, "wb") as target_fp:
+                        while True:
+                            data = compressed_fp.read(IO_BLOCK_SIZE)
+                            if not data:
+                                break
+                            data = decompressor.decompress(data)
+                            if data:
+                                target_fp.write(data)
                 return "", {"Content-length": "0"}, 206
             else:
                 self.server.log.debug("Could not find: %r, returning 404", archived_file_path)
