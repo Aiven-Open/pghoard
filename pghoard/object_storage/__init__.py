@@ -84,8 +84,8 @@ class TransferAgent(Thread):
                 self.handle_upload(start_time, key, file_to_transfer)
             else:
                 self.handle_download(start_time, key, file_to_transfer)
-            self.log.debug("%r transfer of key: %r, size: %r, took %.3fs", file_to_transfer["operation"],
-                           key, file_to_transfer.get("file_size", "UNKNOWN"), time.time() - start_time)
+            self.log.info("%r transfer of key: %r, size: %r, took %.3fs", file_to_transfer["operation"],
+                          key, file_to_transfer.get("file_size", "UNKNOWN"), time.time() - start_time)
 
         self.log.info("Quitting TransferAgent")
 

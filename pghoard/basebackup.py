@@ -53,7 +53,7 @@ class PGBaseBackup(Thread):
         proc = subprocess.Popen(self.command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         set_subprocess_stdout_and_stderr_nonblocking(proc)
         self.pid = proc.pid
-        self.log.debug("Started: %r, running as PID: %r", self.command, self.pid)
+        self.log.info("Started: %r, running as PID: %r", self.command, self.pid)
         while self.running:
             rlist, _, _ = select.select([proc.stdout, proc.stderr], [], [], 1.0)
             for fd in rlist:

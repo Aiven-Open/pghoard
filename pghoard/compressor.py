@@ -138,9 +138,9 @@ class Compressor(Thread):
         else:
             compressed_filepath, compression_algorithm, compressed_file_size = self.compress_filepath(event['full_path'],
                                                                                                       self.get_compressed_file_path(site, filetype, os.path.dirname(event['full_path'])))
-        self.log.debug("Compressed %d byte file: %r to %d bytes, took: %.3fs",
-                       original_file_size, event['full_path'], compressed_file_size,
-                       time.time() - start_time)
+        self.log.info("Compressed %d byte file: %r to %d bytes, took: %.3fs",
+                      original_file_size, event['full_path'], compressed_file_size,
+                      time.time() - start_time)
 
         if event.get('delete_file_after_compression', True):
             os.unlink(event['full_path'])

@@ -5,6 +5,7 @@ Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
 
+from mock import Mock
 from pghoard.pghoard import PGHoard
 from unittest import TestCase
 import json
@@ -17,6 +18,11 @@ def create_json_conf(filepath, temp_dir):
     conf = {
         "backup_sites": {
             "default": {
+                "nodes": [{
+                    "host": "1.2.3.4",
+                }],
+                "basebackup_interval_hours": 1,
+                "basebackup_count": 1,
                 "object_storage": {},
             },
         },
@@ -26,16 +32,55 @@ def create_json_conf(filepath, temp_dir):
     }
     with open(filepath, "w") as fp:
         json.dump(conf, fp)
+    return conf
 
 
 class TestPGHoard(TestCase):
     def setUp(self):
         self.temp_dir = tempfile.mkdtemp()
         config_path = os.path.join(self.temp_dir, "pghoard.json")
-        create_json_conf(config_path, self.temp_dir)
+        self.config = create_json_conf(config_path, self.temp_dir)
         self.xlog_path = os.path.join(self.temp_dir, "default", "xlog")
         os.makedirs(self.xlog_path)
+        self.basebackup_path = os.path.join(self.temp_dir, "default", "basebackup")
+        os.makedirs(self.basebackup_path)
         self.pghoard = PGHoard(config_path)
+        self.real_check_pg_server_version = self.pghoard.check_pg_server_version
+        self.pghoard.check_pg_server_version = Mock(return_value="psql (PostgreSQL) 9.4.4")
+        self.real_check_pg_versions_ok = self.pghoard.check_pg_versions_ok
+        self.pghoard.check_pg_versions_ok = Mock(return_value=True)
+
+    def test_handle_site(self):
+        self.pghoard.handle_site("default", self.config["backup_sites"]["default"])
+        self.assertEqual(self.pghoard.receivexlogs, {})
+        self.assertEqual(len(self.pghoard.time_since_last_backup_check), 1)
+
+    def test_get_local_basebackups_info(self):
+        self.assertEqual([], self.pghoard.get_local_basebackups_info(self.basebackup_path))
+        bb_path = os.path.join(self.basebackup_path, "2015-07-03_0")
+        os.makedirs(bb_path)
+        #  Handle case where metadata file does not exist
+        self.assertEqual([], self.pghoard.get_local_basebackups_info(self.basebackup_path))
+        metadata_file_path = os.path.join(bb_path, "pghoard_metadata")
+        base_tar_path = os.path.join(bb_path, "base.tar.xz")
+        with open(base_tar_path, "wb") as fp:
+            fp.write(b"something")
+        with open(metadata_file_path, "wb") as fp:
+            fp.write(b"{}")
+        self.assertEqual("2015-07-03_0", self.pghoard.get_local_basebackups_info(self.basebackup_path)[0]["name"])
+
+        bb_path = os.path.join(self.basebackup_path, "2015-07-02_0")
+        os.makedirs(bb_path)
+
+        metadata_file_path = os.path.join(bb_path, "pghoard_metadata")
+        base_tar_path = os.path.join(bb_path, "base.tar.xz")
+        with open(base_tar_path, "wb") as fp:
+            fp.write(b"something")
+        with open(metadata_file_path, "wb") as fp:
+            fp.write(b"{}")
+        basebackups = self.pghoard.get_local_basebackups_info(self.basebackup_path)
+        self.assertEqual("2015-07-02_0", basebackups[0]["name"])
+        self.assertEqual("2015-07-03_0", basebackups[1]["name"])
 
     def test_alert_files(self):
         alert_file_path = os.path.join(self.temp_dir, "test_alert")
@@ -72,4 +117,6 @@ class TestPGHoard(TestCase):
 
     def tearDown(self):
         self.pghoard.quit()
+        self.pghoard.check_pg_server_version = self.real_check_pg_server_version
+        self.pghoard.check_pg_versions_ok = self.real_check_pg_versions_ok
         shutil.rmtree(self.temp_dir)

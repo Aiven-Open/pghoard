@@ -69,8 +69,8 @@ class PGHoard(object):
         signal.signal(signal.SIGHUP, self.load_config)
         signal.signal(signal.SIGINT, self.quit)
         signal.signal(signal.SIGTERM, self.quit)
-
-        self.time_since_last_backup_check = 0
+        self.time_since_last_backup = {}
+        self.time_since_last_backup_check = {}
         self.basebackups = {}
         self.receivexlogs = {}
         self.wal_queue = Queue()
@@ -212,44 +212,57 @@ class PGHoard(object):
             self.log.exception("Problem deleting: %r", basebackup)
 
     def get_local_basebackups_info(self, basebackup_path):
-        m_time, metadata = 0, {}
+        basebackup_list = []
         basebackups = sorted(os.listdir(basebackup_path))
-        if len(basebackups) > 0:
-            m_time = os.stat(os.path.join(basebackup_path, basebackups[-1])).st_mtime
-            with open(os.path.join(basebackup_path, basebackups[-1], "pghoard_metadata"), "r") as fp:
-                metadata = json.load(fp)
-        return basebackups, m_time, metadata
+        for basebackup in basebackups:
+            metadata_file_path = os.path.join(basebackup_path, basebackups[-1], "pghoard_metadata")
+            try:
+                #  TODO: if we add more compression types, handle .xz ending
+                st = os.stat(os.path.join(basebackup_path, basebackup, "base.tar.xz"))
+                with open(metadata_file_path, "r") as fp:
+                    metadata = json.load(fp)
+                basebackup_list.append({"size": st.st_size, "last_modified": st.st_mtime,
+                                        "name": basebackup, "metadata": metadata})
+            except (OSError, IOError):
+                self.log.warning("metadata_file_path: %r or basebackup did not exist, ignoring basebackup: %r",
+                                 metadata_file_path, basebackups[-1])
+        return basebackup_list
 
     def get_remote_basebackups_info(self, site):
-        basebackups, m_time, metadata = [], 0, {}
+        basebackup_list = []
         storage = self.site_transfers.get(site)
         if not storage:
             obs_key, obs_value = self.config['backup_sites'][site]['object_storage'].copy().popitem()
             storage = get_object_storage_transfer(obs_key, obs_value)
             self.site_transfers[site] = storage
+
         results = storage.list_path(site + "/basebackup/")
         if results:
             basebackups_dict = dict((basebackup['name'], basebackup) for basebackup in results)
             basebackups = sorted(basebackups_dict.keys())
-            basebackup = basebackups_dict[basebackups[-1]]
-            m_time = basebackup['last_modified'].timestamp()
-            metadata = basebackup['metadata']
-        return basebackups, m_time, metadata
+            for basebackup_name in basebackups:
+                b_dict = basebackups_dict[basebackup_name]
+                b_dict["last_modified"] = b_dict["last_modified"].timestamp()
+                basebackup_list.append(b_dict)
+        return basebackup_list
 
     def check_backup_count_and_state(self, site, basebackup_path, xlog_path):
         allowed_basebackup_count = self.config['backup_sites'][site]['basebackup_count']
-        remote = False
+        m_time, remote = 0, False
         if 'object_storage' in self.config['backup_sites'][site] and self.config['backup_sites'][site]['object_storage']:
-            basebackups, m_time, metadata = self.get_remote_basebackups_info(site)
+            basebackups = self.get_remote_basebackups_info(site)
             remote = True
         else:
-            basebackups, m_time, metadata = self.get_local_basebackups_info(basebackup_path)
-        self.log.debug("Found %r basebackups, m_time: %r, metadata: %r", basebackups, m_time, metadata)
+            basebackups = self.get_local_basebackups_info(basebackup_path)
+        self.log.debug("Found %r basebackups", basebackups)
+
+        if basebackups:  # Needs to be the m_time of the newest basebackup
+            m_time = basebackups[-1]["last_modified"]
 
         if len(basebackups) >= allowed_basebackup_count:
             self.log.warning("Too many basebackups: %d>%d, %r, starting to get rid of %r",
                              len(basebackups), allowed_basebackup_count, basebackups, basebackups[0])
-            last_wal_segment_still_needed = metadata['start-wal-segment']
+            last_wal_segment_still_needed = basebackups[0]['metadata']['start-wal-segment']
             if not remote:
                 self.delete_local_wal_before(last_wal_segment_still_needed, xlog_path)
                 basebackup_to_be_deleted = os.path.join(basebackup_path, basebackups[0])
@@ -258,8 +271,7 @@ class PGHoard(object):
                 self.delete_remote_wal_before(last_wal_segment_still_needed, site)
                 self.delete_remote_basebackup(site, basebackups[0])
         self.state["backup_sites"][site]['basebackups'] = basebackups
-        time_since_last_backup = time.time() - m_time
-        return time_since_last_backup
+        return time.time() - m_time
 
     def set_state_defaults(self, site):
         if site not in self.state:
@@ -308,30 +320,34 @@ class PGHoard(object):
         connection_string = create_pgpass_file(self.log, connection_info)
         return connection_string, slot
 
+    def handle_site(self, site, site_config):
+        self.set_state_defaults(site)
+        xlog_path, basebackup_path = self.create_backup_site_paths(site)
+        if time.time() - self.time_since_last_backup_check.get(site, 0) > 3600:
+            time_since_last_backup = self.check_backup_count_and_state(site, basebackup_path, xlog_path)
+            self.time_since_last_backup[site] = time_since_last_backup
+            self.time_since_last_backup_check[site] = time.time()
+
+        chosen_backup_node = random.choice(site_config["nodes"])
+
+        if site not in self.receivexlogs and site_config.get("active_backup_mode") == "pg_receivexlog":
+            # Create a pg_receivexlog listener for all sites
+            connection_string, slot = self.get_passwordless_connection_string(chosen_backup_node)
+            self.receivexlog_listener(site, xlog_path, connection_string, slot)
+
+        if self.time_since_last_backup.get(site, 0) > self.config['backup_sites'][site]['basebackup_interval_hours'] * 3600 \
+           and site not in self.basebackups:
+            self.log.debug("Starting to create a new basebackup for: %r since time from previous: %r",
+                           site, self.time_since_last_backup.get(site, 0))
+            connection_string, slot = self.get_passwordless_connection_string(chosen_backup_node)
+            self.create_basebackup(site, connection_string, basebackup_path)
+
     def run(self):
         self.start_threads_on_startup()
         self.startup_walk_for_missed_files()
         while self.running:
             for site, site_config in self.config['backup_sites'].items():
-                self.set_state_defaults(site)
-                xlog_path, basebackup_path = self.create_backup_site_paths(site)
-                if time.time() - self.time_since_last_backup_check > 3600:
-                    time_since_last_backup = self.check_backup_count_and_state(site, basebackup_path, xlog_path)
-                    self.time_since_last_backup_check = time.time()
-
-                chosen_backup_node = random.choice(site_config["nodes"])
-
-                if site not in self.receivexlogs and site_config.get("active_backup_mode") == "pg_receivexlog":
-                    # Create a pg_receivexlog listener for all sites
-                    connection_string, slot = self.get_passwordless_connection_string(chosen_backup_node)
-                    self.receivexlog_listener(site, xlog_path, connection_string, slot)
-
-                if time_since_last_backup > self.config['backup_sites'][site]['basebackup_interval_hours'] * 3600 \
-                   and site not in self.basebackups:
-                    self.log.debug("Starting to create a new basebackup for: %r since time from previous: %r",
-                                   site, time_since_last_backup)
-                    connection_string, slot = self.get_passwordless_connection_string(chosen_backup_node)
-                    self.create_basebackup(site, connection_string, basebackup_path)
+                self.handle_site(site, site_config)
             self.write_backup_state_to_json_file()
             time.sleep(5.0)
 
@@ -393,7 +409,7 @@ class PGHoard(object):
         else:
             self.log_level = logging._levelNames[self.config.get("log_level", "DEBUG")]  # pylint: disable=no-member,protected-access
         try:
-            self.log.setLevel(self.log_level)
+            logging.basicConfig(level=self.log_level, format=default_log_format_str)
         except ValueError:
             self.log.exception("Problem with log_level: %r", self.log_level)
         # we need the failover_command to be converted into subprocess [] format
@@ -413,7 +429,6 @@ class PGHoard(object):
 
 
 def main(argv):
-    logging.basicConfig(level=logging.INFO, format=default_log_format_str)
     if len(argv) != 2:
         print("Usage: {} <config filename>".format(argv[0]))
         return 1
