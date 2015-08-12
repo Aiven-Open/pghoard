@@ -5,9 +5,12 @@ Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
 
-from mock import Mock
 from pghoard.pghoard import PGHoard
 from unittest import TestCase
+try:
+    from unittest.mock import Mock  # pylint: disable=no-name-in-module
+except ImportError:
+    from mock import Mock  # pylint: disable=import-error, no-name-in-module
 import json
 import os
 import shutil
