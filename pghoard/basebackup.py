@@ -66,8 +66,9 @@ class PGBaseBackup(Thread):
         self.log.debug("Ran: %r, took: %.3fs to run, returncode: %r", self.command, time.time() - start_time,
                        proc.returncode)
         basebackup_path = os.path.join(self.basebackup_location, "base.tar")
-        start_wal_segment = self.parse_backup_label(basebackup_path)
-        self.set_basebackup_metadata(self.basebackup_location, {"start-wal-segment": start_wal_segment})
-        self.compression_queue.put({"type": "CREATE", "full_path": basebackup_path,
-                                    "start-wal-segment": start_wal_segment})
+        if os.path.exists(basebackup_path):
+            start_wal_segment = self.parse_backup_label(basebackup_path)
+            self.set_basebackup_metadata(self.basebackup_location, {"start-wal-segment": start_wal_segment})
+            self.compression_queue.put({"type": "CREATE", "full_path": basebackup_path,
+                                        "start-wal-segment": start_wal_segment})
         self.running = False
