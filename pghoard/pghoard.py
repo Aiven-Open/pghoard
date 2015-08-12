@@ -419,6 +419,8 @@ class PGHoard(object):
         self.log.warning("Quitting, signal: %r, frame: %r", _signal, _frame)
         self.running = False
         self.inotify.running = False
+        for basebackup in self.basebackups.values():
+            basebackup.running = False
         for receivexlog in self.receivexlogs.values():
             receivexlog.running = False
         for compressor in self.compressors:
