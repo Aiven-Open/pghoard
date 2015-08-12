@@ -55,17 +55,21 @@ def create_pgdata_dir(pgdata):
 
 
 def create_recovery_conf(dirpath, site, primary_conninfo):
-    content = """# pghoard created recovery.conf
-standby_mode = 'on'
-primary_conninfo = {primary_conninfo}
-trigger_file = {trigger_file}
-restore_command = 'pghoard_restore get %f %p --site {site}'
-recovery_target_timeline = 'latest'
-""".format(primary_conninfo=adapt(primary_conninfo),
-           trigger_file=adapt(os.path.join(dirpath, "trigger_file")),
-           site=site)
+    lines = [
+        "# pghoard created recovery.conf",
+        "standby_mode = 'on'",
+        "recovery_target_timeline = 'latest'",
+        "trigger_file = {}".format(adapt(os.path.join(dirpath, "trigger_file"))),
+        "restore_command = 'pghoard_restore get %f %p --site {}'".format(site),
+    ]
+    if primary_conninfo:
+        lines.append("primary_conninfo = {}".format(adapt(primary_conninfo)))
+    content = "\n".join(lines) + "\n"
     filepath = os.path.join(dirpath, "recovery.conf")
-    open(filepath, "w").write(content)
+    filepath_tmp = filepath + ".tmp"
+    with open(filepath_tmp, "w") as fp:
+        fp.write(content)
+    os.rename(filepath_tmp, filepath)
 
 
 class Restore(object):
