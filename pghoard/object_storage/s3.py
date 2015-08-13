@@ -9,7 +9,7 @@ import boto.s3
 import dateutil.parser
 from boto.s3.connection import Location
 from boto.s3.key import Key
-from pghoard.errors import InvalidConfigurationError, StorageError
+from pghoard.errors import FileNotFoundFromStorageError, InvalidConfigurationError
 from .base import BaseTransfer
 
 
@@ -30,10 +30,10 @@ class S3Transfer(BaseTransfer):
         self.bucket = self.get_or_create_bucket(self.bucket_name)
         self.log.debug("S3Transfer initialized")
 
-    def get_metadata_for_key(self, key):
-        item = self.bucket.get_key(key)
-        if not item:
-            raise StorageError("S3 key '{}' not found".format(key))
+    def get_metadata_for_key(self, obj_key):
+        item = self.bucket.get_key(obj_key)
+        if item is None:
+            raise FileNotFoundFromStorageError(obj_key)
 
         return item.metadata
 
@@ -53,13 +53,17 @@ class S3Transfer(BaseTransfer):
         return return_list
 
     def get_contents_to_file(self, obj_key, filepath_to_store_to):
-        key = self.bucket.get_key(obj_key)
-        key.get_contents_to_filename(filepath_to_store_to)
-        return key.metadata
+        item = self.bucket.get_key(obj_key)
+        if item is None:
+            raise FileNotFoundFromStorageError(obj_key)
+        item.get_contents_to_filename(filepath_to_store_to)
+        return item.metadata
 
     def get_contents_to_string(self, obj_key):
-        key = self.bucket.get_key(obj_key)
-        return key.get_contents_as_string(), key.metadata
+        item = self.bucket.get_key(obj_key)
+        if item is None:
+            raise FileNotFoundFromStorageError(obj_key)
+        return item.get_contents_as_string(), item.metadata
 
     def store_file_from_memory(self, name, memstring, metadata=None):
         key = Key(self.bucket)
