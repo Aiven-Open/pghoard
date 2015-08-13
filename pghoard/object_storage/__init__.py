@@ -5,7 +5,7 @@ Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
 from pghoard.common import Empty
-from pghoard.errors import InvalidConfigurationError
+from pghoard.errors import FileNotFoundFromStorageError, InvalidConfigurationError
 from threading import Thread
 import logging
 import os
@@ -104,8 +104,11 @@ class TransferAgent(Thread):
             self.state[site]["download"][filetype]["data"] += file_to_transfer["file_size"]
             self.state[site]["download"][filetype]["count"] += 1
             self.state[site]["download"][filetype]["time_taken"] += time.time() - start_time
-        except Exception:  # pylint: disable=broad-except
-            self.log.exception("Problem happened when downloading: %r, %r", key, file_to_transfer)
+        except Exception as ex:  # pylint: disable=broad-except
+            if isinstance(ex, FileNotFoundFromStorageError):
+                self.log.warning("%r not found from storage", key)
+            else:
+                self.log.exception("Problem happened when downloading: %r, %r", key, file_to_transfer)
             if "callback_queue" in file_to_transfer:
                 file_to_transfer["callback_queue"].put({"success": False})
 

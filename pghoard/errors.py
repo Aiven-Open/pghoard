@@ -16,3 +16,7 @@ class InvalidConfigurationError(Error):
 
 class StorageError(Error):
     """storage exception"""
+
+
+class FileNotFoundFromStorageError(StorageError):
+    """file not found from remote storage"""
