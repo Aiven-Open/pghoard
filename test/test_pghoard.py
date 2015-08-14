@@ -105,7 +105,6 @@ class TestPGHoard(TestCase):
                 "compression_queue": 0,
                 "transfer_queue": 0,
             },
-            "data_transfer": {},
             "transfer_agents": [{}, {}],
             "pg_receivexlogs": {},
             "pg_basebackups": {},

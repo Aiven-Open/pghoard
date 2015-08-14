@@ -58,7 +58,6 @@ class PGHoard(object):
         self.site_transfers = {}
         self.state = {
             "backup_sites": {},
-            "data_transfer": {},
             "startup_time": datetime.datetime.utcnow().isoformat(),
             }
         self.load_config()
