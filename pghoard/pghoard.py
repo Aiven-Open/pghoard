@@ -272,7 +272,7 @@ class PGHoard(object):
         return time.time() - m_time
 
     def set_state_defaults(self, site):
-        if site not in self.state:
+        if site not in self.state["backup_sites"]:
             self.state['backup_sites'][site] = {"basebackups": []}
 
     def startup_walk_for_missed_files(self):
