@@ -5,34 +5,25 @@ Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
 from __future__ import print_function
-from .common import lzma_decompressor, lzma_open_read, default_log_format_str
+from .common import lzma_decompressor, default_log_format_str, IO_BLOCK_SIZE
 from .errors import Error
 from .object_storage import get_object_storage_transfer
 from psycopg2.extensions import adapt
 from requests import Session
 import argparse
 import dateutil.parser
-import datetime
 import json
 import logging
 import os
-import random
 import shutil
 import sys
 import tarfile
+import tempfile
 import time
 
 
 class RestoreError(Exception):
     """Restore error"""
-
-
-def store_response_to_file(filepath, response):
-    decompressor = lzma_decompressor()
-    with open(filepath, "wb") as f:
-        for chunk in response.iter_content(chunk_size=8192):
-            if chunk:  # filter out keep-alive new chunks
-                f.write(decompressor.decompress(chunk))
 
 
 def create_pgdata_dir(pgdata):
@@ -205,10 +196,23 @@ class Restore(object):
                 raise Error("Target directory '{}' exists and --overwrite not specified, aborting.".format(pgdata))
 
         create_pgdata_dir(pgdata)
-        _, tar_path, tar = self.storage.get_basebackup_file(basebackup)
+        tmp_raw = tempfile.TemporaryFile()
+        _ = self.storage.get_basebackup_file_to_fileobj(basebackup, tmp_raw)
+        tmp_raw.seek(0)
+        # TODO: we naively need a second copy for decompression, address
+        #   with filters at later time
+        decompressor = lzma_decompressor()
+        tmp = tempfile.TemporaryFile()
+        while True:
+            chunk = tmp_raw.read(IO_BLOCK_SIZE)
+            if chunk == "":
+                break
+            tmp.write(decompressor.decompress(chunk))
+        tmp_raw.close()
+        tmp.seek(0)
+        tar = tarfile.TarFile(fileobj=tmp)
         tar.extractall(pgdata)
         tar.close()
-        os.unlink(tar_path)
 
         create_recovery_conf(pgdata, site, primary_conninfo,
                              recovery_target_time=recovery_target_time,
@@ -252,15 +256,10 @@ class ObjectStore(object):
         for r in result:
             print("%s\t%s\t%s\t%s" % (r["name"], r["size"], r["last_modified"], r["metadata"]))
 
-    def get_basebackup_file(self, basebackup):
+    def get_basebackup_file_to_fileobj(self, basebackup, fileobj):
         metadata = self.storage.get_metadata_for_key(basebackup)
-        basebackup_path = os.path.join(self.pgdata, "base-{}-{:08x}.tar.xz".format(
-            datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S"),
-            random.getrandbits(32),
-        ))
-        self.storage.get_contents_to_file(basebackup, basebackup_path)
-        tar = tarfile.TarFile(fileobj=lzma_open_read(basebackup_path, "rb"))
-        return metadata["start-wal-segment"], basebackup_path, tar
+        self.storage.get_contents_to_fileobj(basebackup, fileobj)
+        return metadata["start-wal-segment"]
 
 
 class HTTPRestore(object):
@@ -289,15 +288,14 @@ class HTTPRestore(object):
         for r in basebackups:
             print("{}\t{}".format(r["name"], r["size"]))
 
-    def get_basebackup_file(self, basebackup):
+    def get_basebackup_file_to_fileobj(self, basebackup, fileobj):
         uri = "http://" + self.host + ":" + str(self.port) + "/" + self.site + "/basebackups/" + basebackup
         response = self.session.get(uri, stream=True)
         if response.status_code != 200:
             raise Error("Incorrect basebackup: %{!r} or site: {!r} defined".format(basebackup, self.site))
-        basebackup_path = os.path.join(self.pgdata, "base.tar.xz")
-        store_response_to_file(basebackup_path, response)
-        tar = tarfile.TarFile(fileobj=open(basebackup_path, "rb"))
-        return response.headers["x-pghoard-start-wal-segment"], basebackup_path, tar
+        for chunk in response.iter_content(chunk_size=IO_BLOCK_SIZE):
+            fileobj.write(chunk)
+        return response.headers["x-pghoard-start-wal-segment"]
 
     def get_archive_file(self, filename, target_path, path_prefix=None):
         start_time = time.time()
