@@ -321,7 +321,7 @@ class PGHoard(object):
     def handle_site(self, site, site_config):
         self.set_state_defaults(site)
         xlog_path, basebackup_path = self.create_backup_site_paths(site)
-        if time.time() - self.time_since_last_backup_check.get(site, 0) > 3600:
+        if time.time() - self.time_since_last_backup_check.get(site, 0) > 60:
             time_since_last_backup = self.check_backup_count_and_state(site, basebackup_path, xlog_path)
             self.time_since_last_backup[site] = time_since_last_backup
             self.time_since_last_backup_check[site] = time.time()
