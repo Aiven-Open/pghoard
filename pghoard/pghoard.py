@@ -73,7 +73,6 @@ class PGHoard(object):
         self.time_since_last_backup_check = {}
         self.basebackups = {}
         self.receivexlogs = {}
-        self.wal_queue = Queue()
         self.compressors = []
         self.transfer_agents = []
 
