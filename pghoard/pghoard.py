@@ -407,7 +407,7 @@ class PGHoard(object):
         else:
             self.log_level = logging._levelNames[self.config.get("log_level", "DEBUG")]  # pylint: disable=no-member,protected-access
         try:
-            logging.basicConfig(level=self.log_level, format=default_log_format_str)
+            logging.getLogger().setLevel(self.log_level)
         except ValueError:
             self.log.exception("Problem with log_level: %r", self.log_level)
         # we need the failover_command to be converted into subprocess [] format
@@ -436,6 +436,7 @@ def main(argv):
         print("{}: {!r} doesn't exist".format(argv[0], argv[1]))
         return 1
     try:
+        logging.basicConfig(level=logging.DEBUG, format=default_log_format_str)
         pghoard = PGHoard(sys.argv[1])
     except InvalidConfigurationError as ex:
         print("{}: failed to load config {}".format(argv[0], ex))
