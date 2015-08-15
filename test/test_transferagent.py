@@ -61,7 +61,7 @@ class TestTransferAgent(TestCase):
         self.transfer_queue.put({"local_path": self.temp_dir, "filetype": "xlog", "site": "default",
                                  "callback_queue": callback_queue, "operation": "download", "target_path": self.temp_dir})
         self.assertEqual(self.compression_queue.get(timeout=1.0), {'blob': b'joo', 'metadata': {'key': 'value'}, 'type': 'decompression',
-                                                                   "callback_queue": callback_queue, "local_path": self.temp_dir})
+                                                                   'callback_queue': callback_queue, 'local_path': self.temp_dir, 'site': 'default'})
 
     def test_handle_upload_xlog(self):
         callback_queue = Queue()

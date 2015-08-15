@@ -25,12 +25,12 @@ rpm:
 
 build-dep-fed:
 	sudo yum -y install postgresql-server python-autopep8 \
-		python3-boto python3-dateutil python3-pep8 \
-		python3-psycopg2 python3-pylint python3-pytest \
+		python3-boto python3-cryptography python3-dateutil \
+		python3-pep8 python3-psycopg2 python3-pylint python3-pytest \
 		python3-pytest-cov python3-requests \
-		python-backports-lzma python-boto python-dateutil python-pep8 \
-		python-psycopg2 pylint pytest python-mock \
-		python-pytest-cov python-requests rpm-build
+		python-backports-lzma python-boto python-cryptography \
+		python-dateutil python-pep8 python-psycopg2 pylint pytest \
+		python-mock python-pytest-cov python-requests rpm-build
 
 test: pep8 pylint unittest
 
