@@ -11,6 +11,7 @@ from .object_storage import get_object_storage_transfer
 from psycopg2.extensions import adapt
 from requests import Session
 import argparse
+import dateutil.parser
 import datetime
 import json
 import logging
@@ -40,7 +41,7 @@ def create_pgdata_dir(pgdata):
     os.chmod(pgdata, 0o700)
 
 
-def create_recovery_conf(dirpath, site, primary_conninfo):
+def create_recovery_conf(dirpath, site, primary_conninfo, recovery_target_time):
     lines = [
         "# pghoard created recovery.conf",
         "standby_mode = 'on'",
@@ -50,6 +51,8 @@ def create_recovery_conf(dirpath, site, primary_conninfo):
     ]
     if primary_conninfo:
         lines.append("primary_conninfo = {}".format(adapt(primary_conninfo)))
+    if recovery_target_time:
+        lines.append("recovery_target_time = {}".format(recovery_target_time))
     content = "\n".join(lines) + "\n"
     filepath = os.path.join(dirpath, "recovery.conf")
     filepath_tmp = filepath + ".tmp"
@@ -78,9 +81,9 @@ class Restore(object):
         parser = argparse.ArgumentParser()
         sub = parser.add_subparsers(help="sub-command help")
 
-        def generic_args():
+        def generic_args(require_config=True):
             cmd.add_argument("--site", help="pghoard site", required=True)
-            cmd.add_argument("--config", help="pghoard config file", required=True)
+            cmd.add_argument("--config", help="pghoard config file", required=require_config)
 
         def host_port_args():
             cmd.add_argument("--host", help="pghoard repository host", default="localhost")
@@ -92,6 +95,14 @@ class Restore(object):
             cmd.add_argument("--target-dir", help="pghoard restore target 'pgdata' dir", required=True)
             cmd.add_argument("--overwrite", help="overwrite existing target directory",
                              default=False, action="store_true")
+            cmd.add_argument("--recovery-target-time", help="PostgreSQL recovery_target_time")
+
+        cmd = self.add_cmd(sub, self.get)
+        cmd.add_argument("filename", help="filename to retrieve")
+        cmd.add_argument("target_path", help="local target filename")
+        host_port_args()
+        generic_args(require_config=False)
+        cmd.add_argument("--path-prefix", help="path_prefix (useful for testing)")
 
         cmd = self.add_cmd(sub, self.get_basebackup_http)
         cmd.add_argument("filename", help="filename to retrieve")
@@ -112,10 +123,18 @@ class Restore(object):
         generic_args()
         return parser
 
+    def get(self, arg):
+        """Download a WAL file through pghoard. Used in pghoard restore_command"""
+        self.storage = HTTPRestore(arg.host, arg.port, arg.site)
+        if not self.storage.get_archive_file(arg.filename, arg.target_path, arg.path_prefix):
+            return 1
+
     def get_basebackup_http(self, arg):
         """Download a basebackup from a HTTP source"""
         self.storage = HTTPRestore(arg.host, arg.port, arg.site, arg.target_dir)
-        self._get_basebackup(arg.target_dir, arg.basebackup, arg.site, arg.primary_conninfo, overwrite=arg.overwrite)
+        self._get_basebackup(arg.target_dir, arg.basebackup, arg.site, arg.primary_conninfo,
+                             recovery_target_time=arg.recovery_target_time,
+                             overwrite=arg.overwrite)
 
     def list_basebackups_http(self, arg):
         """List available basebackups from a HTTP source"""
@@ -138,19 +157,37 @@ class Restore(object):
         """Download a basebackup from an object store"""
         try:
             self.storage = self._get_object_storage(arg.config, arg.site, arg.target_dir)
-            self._get_basebackup(arg.target_dir, arg.basebackup, arg.site, arg.primary_conninfo, overwrite=arg.overwrite)
+            self._get_basebackup(arg.target_dir, arg.basebackup, arg.site, arg.primary_conninfo,
+                                 recovery_target_time=arg.recovery_target_time,
+                                 overwrite=arg.overwrite)
         except Exception as ex:
             raise RestoreError("{}: {}".format(ex.__class__.__name__, ex))
 
-    def _get_basebackup(self, pgdata, basebackup, site, primary_conninfo, overwrite=False):
+    def _find_nearest_basebackup(self, recovery_target_time=None):
+        applicable_basebackups = {}
+
+        basebackups = self.storage.list_basebackups()
+        for basebackup in basebackups:
+            backup_start_time = dateutil.parser.parse(basebackup["metadata"]["start-time"])
+            if recovery_target_time:
+                if backup_start_time <= recovery_target_time:
+                    applicable_basebackups[backup_start_time] = basebackup
+            else:
+                applicable_basebackups[backup_start_time] = basebackup
+
+        if not applicable_basebackups:
+            raise RestoreError("No applicable basebackups found, exiting")
+        basebackup = applicable_basebackups[max(applicable_basebackups)]
+        print("Found: {} basebackups, selecting: {} for restore".format(applicable_basebackups, basebackup))
+        return basebackup["name"]
+
+    def _get_basebackup(self, pgdata, basebackup, site, primary_conninfo, recovery_target_time=None, overwrite=False):
         #  If basebackup that we want it set as latest, figure out which one it is
-        if basebackup == "latest":
-            basebackups = self.storage.list_basebackups()  # pylint: disable=protected-access
-            if not basebackups:
-                print("No basebackups found, exiting")
-                sys.exit(-1)
-            basebackup = max(entry["name"] for entry in basebackups)
-            print("Found: {} basebackups, selecting: {} for restore".format(basebackups, basebackup))
+        if recovery_target_time:
+            recovery_target_time = dateutil.parser.parse(recovery_target_time)
+            basebackup = self._find_nearest_basebackup(recovery_target_time)
+        elif basebackup == "latest":
+            basebackup = self._find_nearest_basebackup()
 
         if os.path.exists(pgdata):
             if overwrite:
@@ -164,7 +201,7 @@ class Restore(object):
         tar.close()
         os.unlink(tar_path)
 
-        create_recovery_conf(pgdata, site, primary_conninfo)
+        create_recovery_conf(pgdata, site, primary_conninfo, recovery_target_time)
 
         print("Basebackup complete.")
         print("You can start PostgreSQL by running pg_ctl -D %s start" % pgdata)
