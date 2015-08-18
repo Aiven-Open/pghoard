@@ -46,6 +46,7 @@ class TestTransferAgent(PGHoardTestCase):
 
     def tearDown(self):
         self.transfer_agent.running = False
+        self.transfer_queue.put({"type": "QUIT"})
         self.transfer_agent.join()
         super(TestTransferAgent, self).tearDown()
 

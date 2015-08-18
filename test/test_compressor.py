@@ -38,6 +38,7 @@ class TestCompression(PGHoardTestCase):
 
     def tearDown(self):
         self.compressor.running = False
+        self.compression_queue.put({"type": "QUIT"})
         self.compressor.join()
         super(TestCompression, self).tearDown()
 

@@ -29,8 +29,9 @@ class TestInotify(PGHoardTestCase):
 
     def tearDown(self):
         self.inotify.running = False
-        self.inotify.join()
+        # NOTE: tearDown() removes the watched dir which terminates inotify immediately
         super(TestInotify, self).tearDown()
+        self.inotify.join()
 
     def test_create_file(self):
         with open(os.path.join(self.temp_dir, "bar"), "wb") as fp:

@@ -76,6 +76,8 @@ class TransferAgent(Thread):
                 file_to_transfer = self.transfer_queue.get(timeout=1.0)
             except Empty:
                 continue
+            if file_to_transfer["type"] == "QUIT":
+                break
             self.log.debug("Starting to %r %r, size: %r",
                            file_to_transfer["type"], file_to_transfer["local_path"],
                            file_to_transfer.get("file_size", "unknown"))

@@ -76,6 +76,8 @@ class Compressor(Thread):
             except Empty:
                 continue
             try:
+                if event["type"] == "QUIT":
+                    break
                 if event["type"] == "DECOMPRESSION":
                     self.handle_decompression_event(event)
                 else:
