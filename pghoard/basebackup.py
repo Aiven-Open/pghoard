@@ -13,7 +13,7 @@ import select
 import subprocess
 import time
 
-from . common import set_subprocess_stdout_and_stderr_nonblocking
+from . common import set_subprocess_stdout_and_stderr_nonblocking, terminate_subprocess
 
 from tarfile import TarFile
 from threading import Thread
@@ -63,8 +63,9 @@ class PGBaseBackup(Thread):
                     self.latest_activity = datetime.datetime.utcnow()
             if proc.poll() is not None:
                 break
-        self.log.debug("Ran: %r, took: %.3fs to run, returncode: %r", self.command, time.time() - start_time,
-                       proc.returncode)
+        rc = terminate_subprocess(proc, log=self.log)
+        self.log.debug("Ran: %r, took: %.3fs to run, returncode: %r",
+                       self.command, time.time() - start_time, rc)
         basebackup_path = os.path.join(self.basebackup_location, "base.tar")
         if os.path.exists(basebackup_path):
             start_wal_segment = self.parse_backup_label(basebackup_path)
