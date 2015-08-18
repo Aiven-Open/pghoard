@@ -4,22 +4,16 @@ pghoard
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
+from .base import PGHoardTestCase
 from pghoard.common import Queue
 from pghoard.common import lzma
 from pghoard.compressor import Compressor
-from unittest import TestCase
-import logging
 import os
-import shutil
-import tempfile
-
-format_str = "%(asctime)s\t%(name)s\t%(threadName)s\t%(levelname)s\t%(message)s"
-logging.basicConfig(level=logging.DEBUG, format=format_str)
 
 
-class TestCompression(TestCase):
+class TestCompression(PGHoardTestCase):
     def setUp(self):
-        self.temp_dir = tempfile.mkdtemp()
+        super(TestCompression, self).setUp()
         self.config = {
             "backup_sites": {
                 "default": {
@@ -41,6 +35,11 @@ class TestCompression(TestCase):
                                      compression_queue=self.compression_queue,
                                      transfer_queue=self.transfer_queue)
         self.compressor.start()
+
+    def tearDown(self):
+        self.compressor.running = False
+        self.compressor.join()
+        super(TestCompression, self).tearDown()
 
     def test_get_event_type(self):
         filetype = self.compressor.get_event_filetype({"type": "MOVE", "src_path": "00000001000000000000000C.partial",
@@ -100,7 +99,3 @@ class TestCompression(TestCase):
         self.assertTrue(os.path.exists(local_filepath))
         with open(local_filepath, "rb") as fp:
             assert fp.read() == b"foo"
-
-    def tearDown(self):
-        self.compressor.running = False
-        shutil.rmtree(self.temp_dir)

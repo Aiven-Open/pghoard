@@ -4,27 +4,20 @@ pghoard
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
+from .base import PGHoardTestCase
 from pghoard.archive_command import archive
 from pghoard.common import Queue, lzma_open
 from pghoard.compressor import Compressor
 from pghoard.restore import HTTPRestore
 from pghoard.webserver import WebServer
-from unittest import TestCase
-import logging
 import os
 import random
-import shutil
-import tempfile
 import time
 
-format_str = "%(asctime)s\t%(name)s\t%(threadName)s\t%(levelname)s\t%(message)s"
-logging.basicConfig(level=logging.DEBUG, format=format_str)
 
-
-class TestWebServer(TestCase):
+class TestWebServer(PGHoardTestCase):
     def setUp(self):
-        self.log = logging.getLogger("TestWebServer")
-        self.temp_dir = tempfile.mkdtemp()
+        super(TestWebServer, self).setUp()
         self.compressed_xlog_path = os.path.join(self.temp_dir, "default", "compressed_xlog")
         self.basebackup_path = os.path.join(self.temp_dir, "default", "basebackup")
         self.compressed_timeline_path = os.path.join(self.temp_dir, "default", "compressed_timeline")
@@ -67,6 +60,11 @@ class TestWebServer(TestCase):
         self.http_restore = HTTPRestore("localhost", self.config['http_port'], site="default", pgdata=self.pgdata_path)
         time.sleep(0.05)  # Hack to give the server time to start up
 
+    def tearDown(self):
+        self.webserver.running = False
+        self.webserver.join()
+        super(TestWebServer, self).tearDown()
+
     def test_list_empty_basebackups(self):
         self.assertEqual(self.http_restore.list_basebackups(), [])  # pylint: disable=protected-access
 
@@ -104,7 +102,3 @@ class TestWebServer(TestCase):
         lzma_open(filepath + ".xz", mode="wb", preset=0).write(b"jee")
         self.http_restore.get_archive_file(xlog_file, "pg_xlog/" + xlog_file, path_prefix=self.pgdata_path)
         self.assertTrue(os.path.exists(os.path.join(self.pg_xlog_dir, xlog_file)))
-
-    def tearDown(self):
-        self.webserver.close()
-        shutil.rmtree(self.temp_dir)

@@ -4,24 +4,13 @@ pghoard
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
+from .base import Mock, PGHoardTestCase
 from pghoard.common import Queue
 from pghoard.object_storage import TransferAgent
-from unittest import TestCase
-try:
-    from unittest.mock import Mock  # pylint: disable=no-name-in-module
-except ImportError:
-    from mock import Mock  # pylint: disable=import-error, no-name-in-module
-import logging
 import os
-import shutil
-import tempfile
-
-format_str = "%(asctime)s\t%(name)s\t%(threadName)s\t%(levelname)s\t%(message)s"
-logging.basicConfig(level=logging.DEBUG, format=format_str)
 
 
 class MockStorage(Mock):
-
     def get_contents_to_string(self, key):  # pylint: disable=unused-argument
         return b"joo", {"key": "value"}
 
@@ -29,9 +18,9 @@ class MockStorage(Mock):
         pass
 
 
-class TestTransferAgent(TestCase):
+class TestTransferAgent(PGHoardTestCase):
     def setUp(self):
-        self.temp_dir = tempfile.mkdtemp()
+        super(TestTransferAgent, self).setUp()
         self.config = {
             "backup_sites": {
                 "default": {
@@ -54,6 +43,11 @@ class TestTransferAgent(TestCase):
         self.transfer_queue = Queue()
         self.transfer_agent = TransferAgent(self.config, self.compression_queue, self.transfer_queue)
         self.transfer_agent.start()
+
+    def tearDown(self):
+        self.transfer_agent.running = False
+        self.transfer_agent.join()
+        super(TestTransferAgent, self).tearDown()
 
     def test_handle_download(self):
         callback_queue = Queue()
@@ -86,7 +80,3 @@ class TestTransferAgent(TestCase):
                                               "compression_algorithm": "lzma"}})
         self.assertEqual(callback_queue.get(timeout=1.0), {"success": True})
         self.assertFalse(os.path.exists(self.foo_basebackup_path))
-
-    def tearDown(self):
-        self.transfer_agent.running = False
-        shutil.rmtree(self.temp_dir)

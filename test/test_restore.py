@@ -4,16 +4,14 @@ pghoard
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
-
+from .base import PGHoardTestCase
 from pghoard.restore import create_recovery_conf
-from tempfile import mkdtemp
-from shutil import rmtree
 import os
 
 
-def test_create_recovery_conf():
-    td = mkdtemp(prefix="pghoardtest.")
-    try:
+class TestRecoveryConf(PGHoardTestCase):
+    def test_create_recovery_conf(self):
+        td = self.temp_dir
         fn = os.path.join(td, "recovery.conf")
 
         def getdata():
@@ -28,5 +26,3 @@ def test_create_recovery_conf():
         create_recovery_conf(td, "dummysite", "dbname='test'")
         assert "primary_conninfo" in getdata()  # make sure it's there
         assert "''test''" in getdata()  # make sure it's quoted
-    finally:
-        rmtree(td)
