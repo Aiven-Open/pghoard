@@ -179,6 +179,11 @@ state of pghoard's backup activities.
 Configuration keys
 ==================
 
+``active`` (default ``True``)
+
+Can be set on a per backup_site level to False to disable the taking of new backups
+and to stop the deletion of old ones.
+
 ``active_backup_mode`` (no default)
 
 Can be either ``pg_receivexlog`` or ``archive_command``. If set to
