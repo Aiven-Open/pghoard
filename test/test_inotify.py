@@ -4,32 +4,34 @@ pghoard
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
+from .base import PGHoardTestCase
 from pghoard.common import Queue
 from pghoard.inotify import InotifyWatcher
-import logging
+from unittest import SkipTest
 import os
 import platform
-import shutil
-import tempfile
-import unittest
-
-format_str = "%(asctime)s\t%(name)s\t%(threadName)s\t%(levelname)s\t%(message)s"
-logging.basicConfig(level=logging.DEBUG, format=format_str)
 
 
-class TestInotify(unittest.TestCase):
+class TestInotify(PGHoardTestCase):
     def setUp(self):
         if platform.system() == "Darwin":
-            raise unittest.SkipTest()
+            raise SkipTest()
+
+        super(TestInotify, self).setUp()
 
         self.queue = Queue()
-        self.temp_dir = tempfile.mkdtemp()
         self.foo_path = os.path.join(self.temp_dir, "foo")
         with open(self.foo_path, "w") as out:
             out.write("foo")
         self.inotify = InotifyWatcher(self.queue, ignore_modified=False)
         self.inotify.add_watch(self.temp_dir)
         self.inotify.start()
+
+    def tearDown(self):
+        self.inotify.running = False
+        # NOTE: tearDown() removes the watched dir which terminates inotify immediately
+        super(TestInotify, self).tearDown()
+        self.inotify.join()
 
     def test_create_file(self):
         with open(os.path.join(self.temp_dir, "bar"), "wb") as fp:
@@ -52,7 +54,3 @@ class TestInotify(unittest.TestCase):
         self.assertEqual(event['type'], "MOVE")
         self.assertEqual(event['src_path'], self.foo_path)
         self.assertEqual(event['full_path'], os.path.join(self.temp_dir, "foo2"))
-
-    def tearDown(self):
-        self.inotify.running = False
-        shutil.rmtree(self.temp_dir)

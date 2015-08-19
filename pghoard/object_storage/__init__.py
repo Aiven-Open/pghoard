@@ -76,16 +76,21 @@ class TransferAgent(Thread):
                 file_to_transfer = self.transfer_queue.get(timeout=1.0)
             except Empty:
                 continue
-            self.log.debug("Starting to %r %r, size: %r", file_to_transfer["operation"],
-                           file_to_transfer["local_path"], file_to_transfer.get("file_size", "unknown"))
+            if file_to_transfer["type"] == "QUIT":
+                break
+            self.log.debug("Starting to %r %r, size: %r",
+                           file_to_transfer["type"], file_to_transfer["local_path"],
+                           file_to_transfer.get("file_size", "unknown"))
             start_time = time.time()
             key = self.form_key_path(file_to_transfer)
-            if file_to_transfer["operation"] == "upload":
+            if file_to_transfer["type"] == "UPLOAD":
                 self.handle_upload(start_time, key, file_to_transfer)
             else:
                 self.handle_download(start_time, key, file_to_transfer)
-            self.log.info("%r transfer of key: %r, size: %r, took %.3fs", file_to_transfer["operation"],
-                          key, file_to_transfer.get("file_size", "UNKNOWN"), time.time() - start_time)
+            self.log.info("%r transfer of key: %r, size: %r, took %.3fs",
+                          file_to_transfer["type"], key,
+                          file_to_transfer.get("file_size", "UNKNOWN"),
+                          time.time() - start_time)
 
         self.log.info("Quitting TransferAgent")
 
@@ -98,9 +103,13 @@ class TransferAgent(Thread):
             content, metadata = storage.get_contents_to_string(key)
             file_to_transfer["file_size"] = len(content)
             # Note that here we flip the local_path to mean the target_path
-            self.compression_queue.put({"type": "decompression", "blob": content, "metadata": metadata,
-                                        "callback_queue": file_to_transfer["callback_queue"],
-                                        "local_path": file_to_transfer["target_path"]})
+            self.compression_queue.put({
+                "blob": content,
+                "callback_queue": file_to_transfer["callback_queue"],
+                "local_path": file_to_transfer["target_path"],
+                "metadata": metadata,
+                "type": "DECOMPRESSION",
+            })
             self.state[site]["download"][filetype]["data"] += file_to_transfer["file_size"]
             self.state[site]["download"][filetype]["count"] += 1
             self.state[site]["download"][filetype]["time_taken"] += time.time() - start_time

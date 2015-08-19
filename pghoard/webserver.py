@@ -47,10 +47,12 @@ class WebServer(Thread):
         self.address = self.config.get("http_address", '')
         self.port = self.config.get("http_port", 16000)
         self.server = None
+        self._running = False
         self.log.debug("WebServer initialized with address: %r port: %r", self.address, self.port)
 
     def run(self):
         # We bind the port only when we start running
+        self._running = True
         self.server = OwnHTTPServer((self.address, self.port), RequestHandler)
         self.server.config = self.config  # pylint: disable=attribute-defined-outside-init
         self.server.log = self.log  # pylint: disable=attribute-defined-outside-init
@@ -63,6 +65,20 @@ class WebServer(Thread):
         if self.server:
             self.server.shutdown()
         self.log.debug("Closed WebServer")
+        self._running = False
+
+    @property
+    def running(self):
+        return self._running
+
+    @running.setter
+    def running(self, value):
+        if self._running == value:
+            return
+        if value:
+            self.run()
+        else:
+            self.close()
 
 
 class RequestHandler(BaseHTTPRequestHandler):
@@ -78,8 +94,14 @@ class RequestHandler(BaseHTTPRequestHandler):
 
         if self.server.config["backup_sites"][site]['object_storage']:
             callback_queue = Queue()
-            self.server.transfer_queue.put({"local_path": filename, "target_path": target_path, "filetype": filetype,
-                                            "site": site, "callback_queue": callback_queue, "operation": "download"})
+            self.server.transfer_queue.put({
+                "callback_queue": callback_queue,
+                "filetype": filetype,
+                "local_path": filename,
+                "site": site,
+                "target_path": target_path,
+                "type": "DOWNLOAD",
+            })
             response = callback_queue.get(timeout=30.0)
             self.server.log.debug("Handled a restore request for: %r %r, took: %.3fs",
                                   site, target_path, time.time() - start_time)

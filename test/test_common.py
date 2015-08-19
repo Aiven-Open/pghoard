@@ -4,24 +4,17 @@ pghoard
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
-import logging
-import os
-import shutil
-import tempfile
+from .base import PGHoardTestCase
 from pghoard.common import (
     create_pgpass_file,
     convert_pg_command_version_to_number,
     get_connection_info,
     )
 from pghoard.errors import Error
-from unittest import TestCase
+import os
 
 
-class TestCommon(TestCase):
-    def setUp(self):
-        self.log = logging.getLogger("TestCommon")
-        self.temp_dir = tempfile.mkdtemp()
-
+class TestCommon(PGHoardTestCase):
     def test_create_pgpass_file(self):
         original_home = os.environ['HOME']
 
@@ -74,6 +67,3 @@ class TestCommon(TestCase):
             convert_pg_command_version_to_number("PostgreSQL) 9.6devel")
         with self.assertRaises(Error):
             convert_pg_command_version_to_number("test (PostgreSQL) 9devel")
-
-    def tearDown(self):
-        shutil.rmtree(self.temp_dir)

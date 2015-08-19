@@ -4,24 +4,13 @@ pghoard
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
+from .base import Mock, PGHoardTestCase
 from pghoard.common import Queue
 from pghoard.object_storage import TransferAgent
-from unittest import TestCase
-try:
-    from unittest.mock import Mock  # pylint: disable=no-name-in-module
-except ImportError:
-    from mock import Mock  # pylint: disable=import-error, no-name-in-module
-import logging
 import os
-import shutil
-import tempfile
-
-format_str = "%(asctime)s\t%(name)s\t%(threadName)s\t%(levelname)s\t%(message)s"
-logging.basicConfig(level=logging.DEBUG, format=format_str)
 
 
 class MockStorage(Mock):
-
     def get_contents_to_string(self, key):  # pylint: disable=unused-argument
         return b"joo", {"key": "value"}
 
@@ -29,9 +18,9 @@ class MockStorage(Mock):
         pass
 
 
-class TestTransferAgent(TestCase):
+class TestTransferAgent(PGHoardTestCase):
     def setUp(self):
-        self.temp_dir = tempfile.mkdtemp()
+        super(TestTransferAgent, self).setUp()
         self.config = {
             "backup_sites": {
                 "default": {
@@ -55,23 +44,46 @@ class TestTransferAgent(TestCase):
         self.transfer_agent = TransferAgent(self.config, self.compression_queue, self.transfer_queue)
         self.transfer_agent.start()
 
+    def tearDown(self):
+        self.transfer_agent.running = False
+        self.transfer_queue.put({"type": "QUIT"})
+        self.transfer_agent.join()
+        super(TestTransferAgent, self).tearDown()
+
     def test_handle_download(self):
         callback_queue = Queue()
         self.transfer_agent.get_object_storage = MockStorage()
-        self.transfer_queue.put({"local_path": self.temp_dir, "filetype": "xlog", "site": "default",
-                                 "callback_queue": callback_queue, "operation": "download", "target_path": self.temp_dir})
-        self.assertEqual(self.compression_queue.get(timeout=1.0), {'blob': b'joo', 'metadata': {'key': 'value'}, 'type': 'decompression',
-                                                                   "callback_queue": callback_queue, "local_path": self.temp_dir})
+        self.transfer_queue.put({
+            "callback_queue": callback_queue,
+            "filetype": "xlog",
+            "local_path": self.temp_dir,
+            "site": "default",
+            "target_path": self.temp_dir,
+            "type": "DOWNLOAD",
+        })
+        expected_event = {
+            "blob": b"joo",
+            "callback_queue": callback_queue,
+            "local_path": self.temp_dir,
+            "metadata": {"key": "value"},
+            "type": "DECOMPRESSION",
+        }
+        assert self.compression_queue.get(timeout=1.0) == expected_event
 
     def test_handle_upload_xlog(self):
         callback_queue = Queue()
         storage = MockStorage()
         self.transfer_agent.get_object_storage = storage
         self.assertTrue(os.path.exists(self.foo_path))
-        self.transfer_queue.put({"local_path": self.foo_path, "filetype": "xlog", "site": "default", "file_size": 3,
-                                 "callback_queue": callback_queue, "operation": "upload",
-                                 "metadata": {"start-wal-segment": "00000001000000000000000C",
-                                              "compression_algorithm": "lzma"}})
+        self.transfer_queue.put({
+            "callback_queue": callback_queue,
+            "file_size": 3,
+            "filetype": "xlog",
+            "local_path": self.foo_path,
+            "metadata": {"start-wal-segment": "00000001000000000000000C", "compression_algorithm": "lzma"},
+            "site": "default",
+            "type": "UPLOAD",
+        })
         self.assertEqual(callback_queue.get(timeout=1.0), {"success": True})
         self.assertFalse(os.path.exists(self.foo_path))
 
@@ -80,13 +92,14 @@ class TestTransferAgent(TestCase):
         storage = MockStorage()
         self.transfer_agent.get_object_storage = storage
         self.assertTrue(os.path.exists(self.foo_path))
-        self.transfer_queue.put({"local_path": self.foo_basebackup_path, "filetype": "basebackup", "site": "default", "file_size": 3,
-                                 "callback_queue": callback_queue, "operation": "upload",
-                                 "metadata": {"start-wal-segment": "00000001000000000000000C",
-                                              "compression_algorithm": "lzma"}})
+        self.transfer_queue.put({
+            "callback_queue": callback_queue,
+            "file_size": 3,
+            "filetype": "basebackup",
+            "local_path": self.foo_basebackup_path,
+            "metadata": {"start-wal-segment": "00000001000000000000000C", "compression_algorithm": "lzma"},
+            "site": "default",
+            "type": "UPLOAD",
+        })
         self.assertEqual(callback_queue.get(timeout=1.0), {"success": True})
         self.assertFalse(os.path.exists(self.foo_basebackup_path))
-
-    def tearDown(self):
-        self.transfer_agent.running = False
-        shutil.rmtree(self.temp_dir)

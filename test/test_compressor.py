@@ -4,22 +4,16 @@ pghoard
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
+from .base import PGHoardTestCase
 from pghoard.common import Queue
 from pghoard.common import lzma
 from pghoard.compressor import Compressor
-from unittest import TestCase
-import logging
 import os
-import shutil
-import tempfile
-
-format_str = "%(asctime)s\t%(name)s\t%(threadName)s\t%(levelname)s\t%(message)s"
-logging.basicConfig(level=logging.DEBUG, format=format_str)
 
 
-class TestCompression(TestCase):
+class TestCompression(PGHoardTestCase):
     def setUp(self):
-        self.temp_dir = tempfile.mkdtemp()
+        super(TestCompression, self).setUp()
         self.config = {
             "backup_sites": {
                 "default": {
@@ -42,13 +36,25 @@ class TestCompression(TestCase):
                                      transfer_queue=self.transfer_queue)
         self.compressor.start()
 
+    def tearDown(self):
+        self.compressor.running = False
+        self.compression_queue.put({"type": "QUIT"})
+        self.compressor.join()
+        super(TestCompression, self).tearDown()
+
     def test_get_event_type(self):
-        filetype = self.compressor.get_event_filetype({"type": "MOVE", "src_path": "00000001000000000000000C.partial",
-                                                       "full_path": "00000001000000000000000C"})
+        filetype = self.compressor.get_event_filetype({
+            "full_path": "00000001000000000000000C",
+            "src_path": "00000001000000000000000C.partial",
+            "type": "MOVE",
+        })
         self.assertEqual(filetype, "xlog")
         # todo check timeline history file naming format
-        filetype = self.compressor.get_event_filetype({"type": "MOVE", "src_path": "1.history.partial",
-                                                       "full_path": "1.history"})
+        filetype = self.compressor.get_event_filetype({
+            "full_path": "1.history",
+            "src_path": "1.history.partial",
+            "type": "MOVE",
+        })
         self.assertEqual(filetype, "timeline")
         filetype = self.compressor.get_event_filetype({"type": "CREATE", "full_path": "base.tar"})
         self.assertEqual(filetype, "basebackup")
@@ -57,19 +63,31 @@ class TestCompression(TestCase):
         self.compression_queue.put({"type": "MOVE", "src_path": self.foo_path_partial,
                                     "full_path": self.foo_path})
         transfer_event = self.transfer_queue.get(timeout=1.0)
-        expected = {'local_path': (self.foo_path + ".xz").replace("/xlog/", "/compressed_xlog/"),
-                    'filetype': 'xlog', 'site': 'default',
-                    'metadata': {'compression-algorithm': 'lzma', 'original-file-size': 3}}
+        expected = {
+            "filetype": "xlog",
+            "local_path": (self.foo_path + ".xz").replace("/xlog/", "/compressed_xlog/"),
+            "metadata": {"compression-algorithm": "lzma", "original-file-size": 3},
+            "site": "default",
+        }
         for key, value in expected.items():
             assert transfer_event[key] == value
 
     def test_compress_to_memory(self):
-        event = {"type": "MOVE", "src_path": self.foo_path_partial,
-                 "full_path": self.foo_path, "delete_file_after_compression": False,
-                 "compress_to_memory": True}
+        event = {
+            "compress_to_memory": True,
+            "delete_file_after_compression": False,
+            "full_path": self.foo_path,
+            "src_path": self.foo_path_partial,
+            "type": "MOVE",
+        }
         self.compressor.handle_event(event, filetype="xlog")
-        expected = {'filetype': 'xlog', 'site': 'default', "local_path": self.foo_path, "callback_queue": None,
-                    'metadata': {'compression-algorithm': 'lzma', 'original-file-size': 3}}
+        expected = {
+            "callback_queue": None,
+            "filetype": "xlog",
+            "local_path": self.foo_path,
+            "metadata": {"compression-algorithm": "lzma", "original-file-size": 3},
+            "site": "default",
+        }
         transfer_event = self.transfer_queue.get()
         for key, value in expected.items():
             assert transfer_event[key] == value
@@ -77,13 +95,23 @@ class TestCompression(TestCase):
 
     def test_archive_command_compression(self):
         callback_queue = Queue()
-        event = {"type": "CREATE", "src_path": self.foo_path_partial,
-                 "full_path": self.foo_path, "delete_file_after_compression": False,
-                 "compress_to_memory": True, "callback_queue": callback_queue}
+        event = {
+            "callback_queue": callback_queue,
+            "compress_to_memory": True,
+            "delete_file_after_compression": False,
+            "full_path": self.foo_path,
+            "src_path": self.foo_path_partial,
+            "type": "CREATE",
+        }
         transfer_event = self.compression_queue.put(event)
         transfer_event = self.transfer_queue.get(timeout=1.0)
-        expected = {'filetype': 'xlog', 'site': 'default', 'local_path': self.foo_path,
-                    'metadata': {'compression-algorithm': 'lzma', 'original-file-size': 3}, "callback_queue": callback_queue}
+        expected = {
+            "callback_queue": callback_queue,
+            "filetype": "xlog",
+            "local_path": self.foo_path,
+            "metadata": {"compression-algorithm": "lzma", "original-file-size": 3},
+            "site": "default",
+        }
         for key, value in expected.items():
             assert transfer_event[key] == value
         assert lzma.decompress(transfer_event["blob"]) == b"foo"
@@ -91,16 +119,14 @@ class TestCompression(TestCase):
     def test_decompression_event(self):
         callback_queue = Queue()
         local_filepath = os.path.join(self.temp_dir, "00000001000000000000000D")
-        self.compression_queue.put({"local_path": local_filepath,
-                                    "filetype": "xlog",
-                                    "blob": lzma.compress(b"foo"),
-                                    "callback_queue": callback_queue,
-                                    "type": "decompression"})
+        self.compression_queue.put({
+            "blob": lzma.compress(b"foo"),
+            "callback_queue": callback_queue,
+            "filetype": "xlog",
+            "local_path": local_filepath,
+            "type": "DECOMPRESSION",
+        })
         callback_queue.get(timeout=1.0)
         self.assertTrue(os.path.exists(local_filepath))
         with open(local_filepath, "rb") as fp:
             assert fp.read() == b"foo"
-
-    def tearDown(self):
-        self.compressor.running = False
-        shutil.rmtree(self.temp_dir)

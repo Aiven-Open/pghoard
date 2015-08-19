@@ -76,7 +76,9 @@ class Compressor(Thread):
             except Empty:
                 continue
             try:
-                if 'type' in event and event['type'] == "decompression":
+                if event["type"] == "QUIT":
+                    break
+                if event["type"] == "DECOMPRESSION":
                     self.handle_decompression_event(event)
                 else:
                     filetype = self.get_event_filetype(event)
@@ -158,9 +160,9 @@ class Compressor(Thread):
                 "file_size": compressed_file_size,
                 "filetype": filetype,
                 "metadata": metadata,
-                "operation": "upload",
                 "site": site,
-                }
+                "type": "UPLOAD",
+            }
             if event.get("compress_to_memory", False):
                 transfer_object['blob'] = compressed_blob
                 transfer_object['local_path'] = event['full_path']

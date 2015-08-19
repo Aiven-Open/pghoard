@@ -4,17 +4,10 @@ pghoard
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
-
+from .base import Mock, PGHoardTestCase
 from pghoard.pghoard import PGHoard
-from unittest import TestCase
-try:
-    from unittest.mock import Mock  # pylint: disable=no-name-in-module
-except ImportError:
-    from mock import Mock  # pylint: disable=import-error, no-name-in-module
 import json
 import os
-import shutil
-import tempfile
 
 
 def create_json_conf(filepath, temp_dir):
@@ -38,9 +31,9 @@ def create_json_conf(filepath, temp_dir):
     return conf
 
 
-class TestPGHoard(TestCase):
+class TestPGHoard(PGHoardTestCase):
     def setUp(self):
-        self.temp_dir = tempfile.mkdtemp()
+        super(TestPGHoard, self).setUp()
         config_path = os.path.join(self.temp_dir, "pghoard.json")
         self.config = create_json_conf(config_path, self.temp_dir)
         self.xlog_path = os.path.join(self.temp_dir, "default", "xlog")
@@ -52,6 +45,12 @@ class TestPGHoard(TestCase):
         self.pghoard.check_pg_server_version = Mock(return_value="psql (PostgreSQL) 9.4.4")
         self.real_check_pg_versions_ok = self.pghoard.check_pg_versions_ok
         self.pghoard.check_pg_versions_ok = Mock(return_value=True)
+
+    def tearDown(self):
+        self.pghoard.quit()
+        self.pghoard.check_pg_server_version = self.real_check_pg_server_version
+        self.pghoard.check_pg_versions_ok = self.real_check_pg_versions_ok
+        super(TestPGHoard, self).tearDown()
 
     def test_handle_site(self):
         self.pghoard.handle_site("default", self.config["backup_sites"]["default"])
@@ -116,9 +115,3 @@ class TestPGHoard(TestCase):
             fp.write(b"foo")
         self.pghoard.startup_walk_for_missed_files()
         self.assertEqual(self.pghoard.compression_queue.qsize(), 1)
-
-    def tearDown(self):
-        self.pghoard.quit()
-        self.pghoard.check_pg_server_version = self.real_check_pg_server_version
-        self.pghoard.check_pg_versions_ok = self.real_check_pg_versions_ok
-        shutil.rmtree(self.temp_dir)

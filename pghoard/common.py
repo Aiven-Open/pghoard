@@ -9,6 +9,7 @@ import fcntl
 import logging
 import os
 import re
+import time
 from . errors import Error
 
 try:
@@ -178,6 +179,21 @@ def set_subprocess_stdout_and_stderr_nonblocking(proc):
     for fd in [proc.stdout.fileno(), proc.stderr.fileno()]:
         fl = fcntl.fcntl(fd, fcntl.F_GETFL)
         fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
+
+
+def terminate_subprocess(proc, timeout=0.1, log=None):
+    if proc.poll() is None:
+        if log:
+            log.info("Sending SIGTERM to %r", proc)
+        proc.terminate()
+        timeout_time = time.time() + timeout
+        while proc.poll() is None and time.time() < timeout_time:
+            time.sleep(0.02)
+        if proc.poll() is None:
+            if log:
+                log.info("Sending SIGKILL to %r", proc)
+            proc.kill()
+    return proc.returncode
 
 
 def convert_pg_command_version_to_number(command_version_string):

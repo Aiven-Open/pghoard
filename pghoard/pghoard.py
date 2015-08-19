@@ -417,15 +417,16 @@ class PGHoard(object):
         self.log.warning("Quitting, signal: %r, frame: %r", _signal, _frame)
         self.running = False
         self.inotify.running = False
-        for basebackup in self.basebackups.values():
-            basebackup.running = False
-        for receivexlog in self.receivexlogs.values():
-            receivexlog.running = False
-        for compressor in self.compressors:
-            compressor.running = False
-        for ta in self.transfer_agents:
-            ta.running = False
-        self.webserver.close()
+        all_threads = [self.webserver]
+        all_threads.extend(self.basebackups.values())
+        all_threads.extend(self.receivexlogs.values())
+        all_threads.extend(self.compressors)
+        all_threads.extend(self.transfer_agents)
+        for t in all_threads:
+            t.running = False
+        for t in all_threads:
+            if t.is_alive():
+                t.join()
 
 
 def main(argv):
