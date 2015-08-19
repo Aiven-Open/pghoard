@@ -78,13 +78,15 @@ class GoogleTransfer(BaseTransfer):
         self.log.debug("Starting to fetch the contents of: %r to: %r", obj_key, filepath_to_store_to)
         fileobj = FileIO(filepath_to_store_to, mode="wb")
         done = False
+        metadata = {}
         try:
-            self.get_contents_to_fileobj(obj_key, fileobj)
+            metadata = self.get_contents_to_fileobj(obj_key, fileobj)
             done = True
         finally:
             fileobj.close()
             if not done:
                 os.unlink(filepath_to_store_to)
+        return metadata
 
     def get_contents_to_fileobj(self, obj_key, fileobj_to_store_to):
         done = False
@@ -94,6 +96,7 @@ class GoogleTransfer(BaseTransfer):
             status, done = download.next_chunk()
             if status:
                 self.log.debug("Download of %r: %d%%", obj_key, status.progress() * 100)
+        return self.get_metadata_for_key(obj_key)
 
     def get_contents_to_string(self, obj_key):
         self.log.debug("Starting to fetch the contents of: %r", obj_key)

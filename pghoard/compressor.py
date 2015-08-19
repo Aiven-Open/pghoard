@@ -129,10 +129,12 @@ class Compressor(Thread):
 
     def handle_decompression_event(self, event):
         start_time = time.time()
-        decompressor = lzma_decompressor()
-        with open(event['local_path'], "wb") as fp:
-            data = decompressor.decompress(event['blob'])
-            fp.write(data)
+        with open(event["local_path"], "wb") as fp:
+            if "metadata" in event and event["metadata"].get("compression-algorithm", None) == "lzma":
+                decompressor = lzma_decompressor()
+                fp.write(decompressor.decompress(event["blob"]))
+            else:
+                fp.write(event["blob"])
 
         self.log.debug("Decompressed %d byte file: %r to %d bytes, took: %.3fs",
                        len(event['blob']), event['local_path'], os.path.getsize(event['local_path']),

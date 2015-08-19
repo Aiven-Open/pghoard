@@ -124,6 +124,7 @@ class TestCompression(PGHoardTestCase):
             "callback_queue": callback_queue,
             "filetype": "xlog",
             "local_path": local_filepath,
+            "metadata": {"compression-algorithm": "lzma", "original-file-size": 3},
             "type": "DECOMPRESSION",
         })
         callback_queue.get(timeout=1.0)
