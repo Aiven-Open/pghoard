@@ -196,20 +196,22 @@ class Restore(object):
                 raise Error("Target directory '{}' exists and --overwrite not specified, aborting.".format(pgdata))
 
         create_pgdata_dir(pgdata)
-        tmp_raw = tempfile.TemporaryFile()
-        _ = self.storage.get_basebackup_file_to_fileobj(basebackup, tmp_raw)
-        tmp_raw.seek(0)
-        # TODO: we naively need a second copy for decompression, address
-        #   with filters at later time
-        decompressor = lzma_decompressor()
         tmp = tempfile.TemporaryFile()
-        while True:
-            chunk = tmp_raw.read(8192)
-            if chunk == "":
-                break
-            tmp.write(decompressor.decompress(chunk))
-        tmp_raw.close()
+        metadata = self.storage.get_basebackup_file_to_fileobj(basebackup, tmp)
         tmp.seek(0)
+        if metadata.get("compression-algorithm", None) == "lzma":
+            # TODO: we naively need a second copy for decompression, address
+            #   with filters at later time
+            tmp_raw = tmp
+            decompressor = lzma_decompressor()
+            tmp = tempfile.TemporaryFile()
+            while True:
+                chunk = tmp_raw.read(8192)
+                if chunk == "":
+                    break
+                tmp.write(decompressor.decompress(chunk))
+            tmp_raw.close()
+            tmp.seek(0)
         tar = tarfile.TarFile(fileobj=tmp)
         tar.extractall(pgdata)
         tar.close()
@@ -259,7 +261,7 @@ class ObjectStore(object):
     def get_basebackup_file_to_fileobj(self, basebackup, fileobj):
         metadata = self.storage.get_metadata_for_key(basebackup)
         self.storage.get_contents_to_fileobj(basebackup, fileobj)
-        return metadata["start-wal-segment"]
+        return metadata
 
 
 class HTTPRestore(object):
@@ -295,7 +297,11 @@ class HTTPRestore(object):
             raise Error("Incorrect basebackup: %{!r} or site: {!r} defined".format(basebackup, self.site))
         for chunk in response.iter_content(chunk_size=8192):
             fileobj.write(chunk)
-        return response.headers["x-pghoard-start-wal-segment"]
+        metadata = {}
+        for key, value in response.headers.items():
+            if key.startswith("x-pghoard-"):
+                metadata[key[10:]] = value
+        return metadata
 
     def get_archive_file(self, filename, target_path, path_prefix=None):
         start_time = time.time()
