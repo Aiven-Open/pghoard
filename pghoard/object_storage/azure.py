@@ -53,6 +53,11 @@ class AzureTransfer(BaseTransfer):
         self.log.debug("Starting to fetch the contents of: %r to: %r", obj_key, filepath_to_store_to)
         return self.conn.get_blob_to_path(self.container_name, obj_key, filepath_to_store_to)
 
+    def get_contents_to_fileobj(self, obj_key, fileobj_to_store_to):
+        obj_key = fix_path(obj_key)
+        self.log.debug("Starting to fetch the contents of: %r", obj_key)
+        return self.conn.get_blob_to_file(self.container_name, obj_key, fileobj_to_store_to)
+
     def get_contents_to_string(self, obj_key):
         obj_key = fix_path(obj_key)
         self.log.debug("Starting to fetch the contents of: %r", obj_key)
