@@ -150,6 +150,7 @@ class Compressor(Thread):
         metadata = {'compression-algorithm': compression_algorithm, 'original-file-size': original_file_size}
         if 'start-wal-segment' in event:
             metadata['start-wal-segment'] = event['start-wal-segment']
+            metadata['start-time'] = event['start-time']
 
         self.set_state_defaults_for_site(site)
         self.state[site][filetype]["original_data"] += original_file_size

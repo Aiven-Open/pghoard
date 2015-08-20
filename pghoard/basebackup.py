@@ -4,7 +4,7 @@ pghoard - pg_basebackup handler
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
-
+import dateutil.parser
 import datetime
 import json
 import logging
@@ -44,8 +44,12 @@ class PGBaseBackup(Thread):
         for line in content.split(b"\n"):
             if line.startswith(b"START WAL LOCATION"):
                 start_wal_segment = line.split(b" ")[5].strip(b")").decode("utf8")
-        self.log.debug("Found: %r as starting wal segment", start_wal_segment)
-        return start_wal_segment
+            elif line.startswith(b"START TIME: "):
+                start_time_text = line[len("START TIME: "):].decode("utf8")
+                start_time = dateutil.parser.parse(start_time_text).isoformat()  # pylint: disable=no-member
+        self.log.debug("Found: %r as starting wal segment, start_time: %r", start_wal_segment,
+                       start_time)
+        return start_wal_segment, start_time
 
     def run(self):
         self.log.debug("Starting to run: %r", self.command)
@@ -68,8 +72,10 @@ class PGBaseBackup(Thread):
                        self.command, time.time() - start_time, rc)
         basebackup_path = os.path.join(self.basebackup_location, "base.tar")
         if os.path.exists(basebackup_path):
-            start_wal_segment = self.parse_backup_label(basebackup_path)
-            self.set_basebackup_metadata(self.basebackup_location, {"start-wal-segment": start_wal_segment})
+            start_wal_segment, start_time = self.parse_backup_label(basebackup_path)
+            self.set_basebackup_metadata(self.basebackup_location,
+                                         {"start-wal-segment": start_wal_segment,
+                                          "start-time": start_time})
             self.compression_queue.put({"type": "CREATE", "full_path": basebackup_path,
-                                        "start-wal-segment": start_wal_segment})
+                                        "start-wal-segment": start_wal_segment, "start-time": start_time})
         self.running = False
