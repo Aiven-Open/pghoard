@@ -24,6 +24,9 @@ except ImportError:
     from urlparse import urlparse, parse_qs  # pylint: disable=no-name-in-module, import-error
 
 
+IO_BLOCK_SIZE = 2 ** 20  # 1 MiB
+
+
 if hasattr(lzma, "open"):
     lzma_open = lzma.open  # pylint: disable=no-member, maybe-no-member
     lzma_open_read = lzma.open  # pylint: disable=no-member, maybe-no-member

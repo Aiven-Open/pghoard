@@ -6,7 +6,6 @@ See LICENSE for details
 """
 import dateutil.parser
 import datetime
-import json
 import logging
 import os
 import select
@@ -29,14 +28,6 @@ class PGBaseBackup(Thread):
         self.running = True
         self.pid = None
         self.latest_activity = datetime.datetime.utcnow()
-
-    def set_basebackup_metadata(self, dirpath, metadata):
-        start_time = time.time()
-        metadata_file_path = os.path.join(dirpath, "pghoard_metadata")
-        with open(metadata_file_path, "w") as fp:
-            json.dump(metadata, fp)
-        self.log.debug("Set: %r to %r, took: %.2fs", dirpath, metadata,
-                       time.time() - start_time)
 
     def parse_backup_label(self, basebackup_path):
         tar = TarFile(basebackup_path)
@@ -73,9 +64,6 @@ class PGBaseBackup(Thread):
         basebackup_path = os.path.join(self.basebackup_location, "base.tar")
         if os.path.exists(basebackup_path):
             start_wal_segment, start_time = self.parse_backup_label(basebackup_path)
-            self.set_basebackup_metadata(self.basebackup_location,
-                                         {"start-wal-segment": start_wal_segment,
-                                          "start-time": start_time})
             self.compression_queue.put({"type": "CREATE", "full_path": basebackup_path,
-                                        "start-wal-segment": start_wal_segment, "start-time": start_time})
+                                        "metadata": {"start-wal-segment": start_wal_segment, "start-time": start_time}})
         self.running = False

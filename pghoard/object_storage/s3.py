@@ -59,6 +59,13 @@ class S3Transfer(BaseTransfer):
         item.get_contents_to_filename(filepath_to_store_to)
         return item.metadata
 
+    def get_contents_to_fileobj(self, obj_key, fileobj_to_store_to):
+        item = self.bucket.get_key(obj_key)
+        if item is None:
+            raise FileNotFoundFromStorageError(obj_key)
+        item.get_contents_to_file(fileobj_to_store_to)
+        return item.metadata
+
     def get_contents_to_string(self, obj_key):
         item = self.bucket.get_key(obj_key)
         if item is None:
