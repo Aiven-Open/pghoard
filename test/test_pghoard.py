@@ -38,6 +38,8 @@ class TestPGHoard(PGHoardTestCase):
         self.config = create_json_conf(config_path, self.temp_dir)
         self.xlog_path = os.path.join(self.temp_dir, "default", "xlog")
         os.makedirs(self.xlog_path)
+        self.compressed_xlog_path = os.path.join(self.temp_dir, "default", "compressed_xlog")
+        os.makedirs(self.compressed_xlog_path)
         self.basebackup_path = os.path.join(self.temp_dir, "default", "basebackup")
         os.makedirs(self.basebackup_path)
         self.pghoard = PGHoard(config_path)
@@ -96,11 +98,14 @@ class TestPGHoard(PGHoardTestCase):
                 fp.write(b"something")
             with open(os.path.join(bb_path, "pghoard_metadata"), "w") as fp:
                 json.dump({"start-wal-segment": wal}, fp)
+            with open(os.path.join(self.compressed_xlog_path, wal + ".xz"), "wb") as fp:
+                fp.write(b"something")
         basebackups = self.pghoard.get_local_basebackups_info(self.basebackup_path)
         self.assertEqual(3, len(basebackups))
         self.pghoard.check_backup_count_and_state("default")
         basebackups = self.pghoard.get_local_basebackups_info(self.basebackup_path)
         self.assertEqual(1, len(basebackups))
+        self.assertEqual(1, len(os.listdir(self.compressed_xlog_path)))
 
     def test_alert_files(self):
         alert_file_path = os.path.join(self.temp_dir, "test_alert")

@@ -177,13 +177,13 @@ class PGHoard(object):
         while wal_segment_no > 0:
             # Note this does not take care of timelines/older PGs
             wal_segment_no -= 1
-            wal_segment = hex(wal_segment_no)[2:].upper().zfill(24)
-            wal_path = os.path.join(xlog_path, wal_segment)
-            if not os.path.exists(wal_path):
-                self.log.debug("wal_path %r not found, returning", wal_path)
+            wal_segment = format(wal_segment_no, "x").upper().zfill(24)
+            compressed_wal_path = os.path.join(xlog_path, wal_segment + ".xz")
+            if not os.path.exists(compressed_wal_path):
+                self.log.debug("wal_path %r not found, returning", compressed_wal_path)
                 break
-            self.log.debug("Deleting wal_file: %r", wal_path)
-            os.unlink(wal_path)
+            self.log.debug("Deleting wal_file: %r", compressed_wal_path)
+            os.unlink(compressed_wal_path)
 
     def delete_remote_wal_before(self, wal_segment, site):
         self.log.debug("Starting WAL deletion from: %r before: %r", site, wal_segment)
@@ -244,8 +244,11 @@ class PGHoard(object):
                 basebackup_list.append(b_dict)
         return basebackup_list
 
-    def check_backup_count_and_state(self, site, basebackup_path, xlog_path):
+    def check_backup_count_and_state(self, site):
         allowed_basebackup_count = self.config['backup_sites'][site]['basebackup_count']
+        backup_path = os.path.join(self.config["backup_location"], site)
+        basebackup_path = os.path.join(backup_path, "basebackup")
+        compressed_xlog_path = os.path.join(backup_path, "compressed_xlog")
         m_time, remote = 0, False
         if 'object_storage' in self.config['backup_sites'][site] and self.config['backup_sites'][site]['object_storage']:
             basebackups = self.get_remote_basebackups_info(site)
@@ -262,7 +265,7 @@ class PGHoard(object):
                              len(basebackups), allowed_basebackup_count, basebackups, basebackups[0])
             last_wal_segment_still_needed = basebackups[0]['metadata']['start-wal-segment']
             if not remote:
-                self.delete_local_wal_before(last_wal_segment_still_needed, xlog_path)
+                self.delete_local_wal_before(last_wal_segment_still_needed, compressed_xlog_path)
                 basebackup_to_be_deleted = os.path.join(basebackup_path, basebackups[0]["name"])
                 shutil.rmtree(basebackup_to_be_deleted)
             else:
@@ -328,7 +331,7 @@ class PGHoard(object):
             return
 
         if time.time() - self.time_since_last_backup_check.get(site, 0) > 60:
-            time_since_last_backup = self.check_backup_count_and_state(site, basebackup_path, xlog_path)
+            time_since_last_backup = self.check_backup_count_and_state(site)
             self.time_since_last_backup[site] = time_since_last_backup
             self.time_since_last_backup_check[site] = time.time()
 
