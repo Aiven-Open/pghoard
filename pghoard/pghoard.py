@@ -257,7 +257,7 @@ class PGHoard(object):
         if basebackups:  # Needs to be the m_time of the newest basebackup
             m_time = basebackups[-1]["last_modified"]
 
-        if len(basebackups) >= allowed_basebackup_count:
+        if len(basebackups) > allowed_basebackup_count:
             self.log.warning("Too many basebackups: %d>%d, %r, starting to get rid of %r",
                              len(basebackups), allowed_basebackup_count, basebackups, basebackups[0])
             last_wal_segment_still_needed = basebackups[0]['metadata']['start-wal-segment']
