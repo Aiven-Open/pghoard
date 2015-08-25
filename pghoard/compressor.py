@@ -7,6 +7,7 @@ See LICENSE for details
 
 from .common import Empty, lzma_compressor, lzma_decompressor, IO_BLOCK_SIZE
 from threading import Thread
+import json
 import logging
 import os
 import time
@@ -25,8 +26,17 @@ class Compressor(Thread):
 
     def get_compressed_file_path(self, site, filetype, original_path):
         if filetype == "basebackup":
-            return original_path
-        return os.path.join(self.config["backup_location"], site, "compressed_" + filetype)
+            rest, backupfile = os.path.split(original_path)
+            rest, backupdir = os.path.split(rest)
+            return os.path.join(self.config["backup_location"], site, "basebackup", backupdir, backupfile + ".xz")
+        return os.path.join(self.config["backup_location"], site, "compressed_" + filetype, os.path.basename(original_path) + ".xz")
+
+    def get_metadata_path(self, site, filetype, original_path):
+        if filetype == "basebackup":
+            rest, _ = os.path.split(original_path)
+            rest, backupdir = os.path.split(rest)
+            return os.path.join(self.config["backup_location"], site, "basebackup", backupdir, "pghoard_metadata")
+        return None
 
     def find_site_for_file(self, filepath):
         # Formats like:
@@ -36,16 +46,15 @@ class Compressor(Thread):
             return filepath.split("/")[-4]
         return filepath.split("/")[-3]
 
-    def compress_filepath(self, filepath, compression_dir):
-        compressed_filepath, algorithm = self.compress_lzma_filepath(filepath, compression_dir)
-        compressed_file_size = os.stat(compressed_filepath).st_size
-        return compressed_filepath, algorithm, compressed_file_size
+    def compress_filepath(self, filepath, targetfilepath):
+        algorithm = self.compress_lzma_filepath(filepath, targetfilepath)
+        compressed_file_size = os.stat(targetfilepath).st_size
+        return algorithm, compressed_file_size
 
-    def compress_lzma_filepath(self, filepath, compression_dir):
-        lzma_filepath = os.path.join(compression_dir, os.path.basename(filepath)) + ".xz"
+    def compress_lzma_filepath(self, filepath, targetfilepath):
         compressor = lzma_compressor(preset=0)
         with open(filepath, "rb") as input_file:
-            with open(lzma_filepath, "wb") as output_file:
+            with open(targetfilepath, "wb") as output_file:
                 while True:
                     input_data = input_file.read(IO_BLOCK_SIZE)
                     if not input_data:
@@ -57,7 +66,7 @@ class Compressor(Thread):
                 compressed_data = compressor.flush()
                 if compressed_data:
                     output_file.write(compressed_data)
-        return lzma_filepath, "lzma"
+        return "lzma"
 
     def compress_filepath_to_memory(self, filepath):
         compressed_data, algorithm, compressed_file_size = self.compress_lzma_filepath_to_memory(filepath)
@@ -143,8 +152,8 @@ class Compressor(Thread):
             compressed_blob, compression_algorithm, compressed_file_size = self.compress_filepath_to_memory(event['full_path'])
 
         else:
-            compressed_filepath, compression_algorithm, compressed_file_size = self.compress_filepath(event['full_path'],
-                                                                                                      self.get_compressed_file_path(site, filetype, os.path.dirname(event['full_path'])))
+            compressed_filepath = self.get_compressed_file_path(site, filetype, event["full_path"])
+            compression_algorithm, compressed_file_size = self.compress_filepath(event["full_path"], compressed_filepath)
         self.log.info("Compressed %d byte file: %r to %d bytes, took: %.3fs",
                       original_file_size, event['full_path'], compressed_file_size,
                       time.time() - start_time)
@@ -152,10 +161,12 @@ class Compressor(Thread):
         if event.get('delete_file_after_compression', True):
             os.unlink(event['full_path'])
 
-        metadata = {'compression-algorithm': compression_algorithm, 'original-file-size': original_file_size}
-        if 'start-wal-segment' in event:
-            metadata['start-wal-segment'] = event['start-wal-segment']
-            metadata['start-time'] = event['start-time']
+        metadata = event.get("metadata", {})
+        metadata.update({"compression-algorithm": compression_algorithm, "original-file-size": original_file_size})
+        metadata_path = self.get_metadata_path(site, filetype, event["full_path"])
+        if metadata_path:
+            with open(metadata_path, "w") as fp:
+                json.dump(metadata, fp)
 
         self.set_state_defaults_for_site(site)
         self.state[site][filetype]["original_data"] += original_file_size

@@ -37,14 +37,6 @@ except ImportError:
     daemon = None
 
 
-def get_basebackup_path(basebackup_path):
-    for i in range(1000):
-        final_basebackup_path = os.path.join(basebackup_path, datetime.datetime.utcnow().strftime("%Y-%m-%d") + "_" + str(i))
-        if not os.path.exists(final_basebackup_path):
-            os.makedirs(final_basebackup_path)
-            return final_basebackup_path
-
-
 class PGHoard(object):
     def __init__(self, config_path):
         self.log = logging.getLogger("pghoard")
@@ -106,18 +98,30 @@ class PGHoard(object):
         pg_version_server = self.check_pg_server_version(connection_string)
         if not self.check_pg_versions_ok(pg_version_server, "pg_basebackup"):
             return
-        final_basebackup_path = get_basebackup_path(basebackup_path)
+        i = 0
+        while True:
+            tsdir = datetime.datetime.utcnow().strftime("%Y-%m-%d") + "_" + str(i)
+            raw_basebackup_path = os.path.join(basebackup_path + "_incoming", tsdir)
+            final_basebackup_path = os.path.join(basebackup_path, tsdir)
+            # the backup directory names need not to be a sequence, so we lean
+            #  towards skipping over any partial or leftover progress below
+            if not os.path.exists(raw_basebackup_path) and not os.path.exists(final_basebackup_path):
+                os.makedirs(raw_basebackup_path)
+                os.makedirs(final_basebackup_path)
+                break
+            i += 1
+
         command = [
             self.config.get("pg_basebackup_path", "/usr/bin/pg_basebackup"),
             "--dbname", connection_string,
             "--format", "tar",
             "--xlog",
-            "--pgdata", final_basebackup_path,
+            "--pgdata", raw_basebackup_path,
             "--progress",
             "--label", "initial_base_backup",
             "--verbose",
             ]
-        thread = PGBaseBackup(command, final_basebackup_path, self.compression_queue)
+        thread = PGBaseBackup(command, raw_basebackup_path, self.compression_queue)
         thread.start()
         self.basebackups[cluster] = thread
 
@@ -163,7 +167,8 @@ class PGHoard(object):
 
         paths_to_create = [site_path, xlog_path, basebackup_path,
                            os.path.join(site_path, "compressed_xlog"),
-                           os.path.join(site_path, "compressed_timeline")]
+                           os.path.join(site_path, "compressed_timeline"),
+                           os.path.join(site_path, "basebackup_incoming")]
 
         for path in paths_to_create:
             if not os.path.exists(path):
