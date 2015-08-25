@@ -84,6 +84,24 @@ class TestPGHoard(PGHoardTestCase):
         self.assertEqual("2015-07-02_0", basebackups[0]["name"])
         self.assertEqual("2015-07-03_0", basebackups[1]["name"])
 
+    def test_local_check_backup_count_and_state(self):
+        self.pghoard.set_state_defaults("default")
+        self.assertEqual([], self.pghoard.get_local_basebackups_info(self.basebackup_path))
+        for bb, wal in [("2015-08-25_0", "000000010000000000000001"),
+                        ("2015-08-25_1", "000000010000000000000002"),
+                        ("2015-08-25_2", "000000010000000000000003")]:
+            bb_path = os.path.join(self.basebackup_path, bb)
+            os.makedirs(bb_path)
+            with open(os.path.join(bb_path, "base.tar.xz"), "wb") as fp:
+                fp.write(b"something")
+            with open(os.path.join(bb_path, "pghoard_metadata"), "w") as fp:
+                json.dump({"start-wal-segment": wal}, fp)
+        basebackups = self.pghoard.get_local_basebackups_info(self.basebackup_path)
+        self.assertEqual(3, len(basebackups))
+        self.pghoard.check_backup_count_and_state("default")
+        basebackups = self.pghoard.get_local_basebackups_info(self.basebackup_path)
+        self.assertEqual(1, len(basebackups))
+
     def test_alert_files(self):
         alert_file_path = os.path.join(self.temp_dir, "test_alert")
         self.pghoard.create_alert_file("test_alert")

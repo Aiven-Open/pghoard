@@ -257,17 +257,18 @@ class PGHoard(object):
         if basebackups:  # Needs to be the m_time of the newest basebackup
             m_time = basebackups[-1]["last_modified"]
 
-        if len(basebackups) > allowed_basebackup_count:
+        while len(basebackups) > allowed_basebackup_count:
             self.log.warning("Too many basebackups: %d>%d, %r, starting to get rid of %r",
                              len(basebackups), allowed_basebackup_count, basebackups, basebackups[0])
             last_wal_segment_still_needed = basebackups[0]['metadata']['start-wal-segment']
             if not remote:
                 self.delete_local_wal_before(last_wal_segment_still_needed, xlog_path)
-                basebackup_to_be_deleted = os.path.join(basebackup_path, basebackups[0])
+                basebackup_to_be_deleted = os.path.join(basebackup_path, basebackups[0]["name"])
                 shutil.rmtree(basebackup_to_be_deleted)
             else:
                 self.delete_remote_wal_before(last_wal_segment_still_needed, site)
                 self.delete_remote_basebackup(site, basebackups[0])
+            basebackups = basebackups[1:]
         self.state["backup_sites"][site]['basebackups'] = basebackups
         return time.time() - m_time
 
