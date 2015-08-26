@@ -39,7 +39,11 @@ class S3Transfer(BaseTransfer):
 
     def delete_key(self, key_name):
         self.log.debug("Deleting key: %r", key_name)
-        return self.bucket.delete_key(key_name).size is not None
+        key = self.bucket.get_key(key_name)
+        if key:
+            key.delete()
+            return True
+        return False
 
     def list_path(self, path):
         return_list = []

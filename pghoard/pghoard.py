@@ -278,7 +278,7 @@ class PGHoard(object):
                 shutil.rmtree(basebackup_to_be_deleted)
             else:
                 self.delete_remote_wal_before(last_wal_segment_still_needed, site)
-                self.delete_remote_basebackup(site, basebackups[0])
+                self.delete_remote_basebackup(site, basebackups[0]["name"])
             basebackups = basebackups[1:]
         self.state["backup_sites"][site]['basebackups'] = basebackups
         return time.time() - m_time
