@@ -139,6 +139,9 @@ class TransferAgent(Thread):
                     else:
                         self.log.debug("Deleting file: %r since it has been uploaded", file_to_transfer["local_path"])
                         os.unlink(file_to_transfer["local_path"])
+                        metadata_path = file_to_transfer["local_path"] + ".metadata"
+                        if os.path.exists(metadata_path):
+                            os.unlink(metadata_path)
                 except:  # pylint: disable=bare-except
                     self.log.exception("Problem in deleting file: %r", file_to_transfer["local_path"])
             self.state[site]["upload"][filetype]["data"] += file_to_transfer["file_size"]

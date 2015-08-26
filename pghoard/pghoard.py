@@ -189,6 +189,9 @@ class PGHoard(object):
                 break
             self.log.debug("Deleting wal_file: %r", compressed_wal_path)
             os.unlink(compressed_wal_path)
+            metadata_path = os.path.join(xlog_path, wal_segment + ".metadata")
+            if os.path.exists(metadata_path):
+                os.unlink(metadata_path)
 
     def delete_remote_wal_before(self, wal_segment, site):
         self.log.debug("Starting WAL deletion from: %r before: %r", site, wal_segment)

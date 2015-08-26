@@ -36,7 +36,7 @@ class Compressor(Thread):
             rest, _ = os.path.split(original_path)
             rest, backupdir = os.path.split(rest)
             return os.path.join(self.config["backup_location"], site, "basebackup", backupdir, "pghoard_metadata")
-        return None
+        return os.path.join(self.config["backup_location"], site, "compressed_" + filetype, os.path.basename(original_path) + ".xz.metadata")
 
     def find_site_for_file(self, filepath):
         # Formats like:
