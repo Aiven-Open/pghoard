@@ -112,14 +112,14 @@ class RequestHandler(BaseHTTPRequestHandler):
         else:
             metadata = {}
             archived_file_path = os.path.join(self.server.config['backup_location'], site, "compressed_%s" % filetype, filename + ".xz")
-            metadata_path = os.path.join(self.server.config['backup_location'], site, "compressed_%s" % filetype, filename + ".metadata")
+            metadata_path = archived_file_path + ".metadata"
             if os.path.exists(metadata_path):
                 with open(metadata_path, "r") as fp:
                     metadata = json.load(fp)
             if os.path.exists(archived_file_path):
                 with open(archived_file_path, "rb") as source_fp:
                     with open(target_path, "wb") as target_fp:
-                        if metadata.get("compression_algorithm") == "lzma":
+                        if metadata.get("compression-algorithm") == "lzma":
                             source_fp = lzma_open_read(source_fp, "r")
                         while True:
                             data = source_fp.read(IO_BLOCK_SIZE)

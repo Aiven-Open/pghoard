@@ -10,6 +10,7 @@ from pghoard.common import Queue, lzma_open
 from pghoard.compressor import Compressor
 from pghoard.restore import HTTPRestore
 from pghoard.webserver import WebServer
+import json
 import os
 import random
 import time
@@ -97,8 +98,16 @@ class TestWebServer(PGHoardTestCase):
 #        self.http_restore.get_basebackup_file()
 
     def test_get_archived_file(self):
+        content = b"testing123"
         xlog_file = "00000001000000000000000F"
         filepath = os.path.join(self.compressed_xlog_path, xlog_file)
         lzma_open(filepath + ".xz", mode="wb", preset=0).write(b"jee")
+        with lzma_open(filepath + ".xz", mode="wb", preset=0) as fp:
+            fp.write(content)
+        with open(filepath + ".xz.metadata", "w") as fp:
+            json.dump({"compression-algorithm": "lzma", "original-file-size": len(content)}, fp)
         self.http_restore.get_archive_file(xlog_file, "pg_xlog/" + xlog_file, path_prefix=self.pgdata_path)
         self.assertTrue(os.path.exists(os.path.join(self.pg_xlog_dir, xlog_file)))
+        with open(os.path.join(self.pg_xlog_dir, xlog_file), "rb") as fp:
+            restored_data = fp.read()
+        self.assertEqual(content, restored_data)

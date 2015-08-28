@@ -80,7 +80,7 @@ class TestTransferAgent(PGHoardTestCase):
             "file_size": 3,
             "filetype": "xlog",
             "local_path": self.foo_path,
-            "metadata": {"start-wal-segment": "00000001000000000000000C", "compression_algorithm": "lzma"},
+            "metadata": {"start-wal-segment": "00000001000000000000000C"},
             "site": "default",
             "type": "UPLOAD",
         })
@@ -97,7 +97,7 @@ class TestTransferAgent(PGHoardTestCase):
             "file_size": 3,
             "filetype": "basebackup",
             "local_path": self.foo_basebackup_path,
-            "metadata": {"start-wal-segment": "00000001000000000000000C", "compression_algorithm": "lzma"},
+            "metadata": {"start-wal-segment": "00000001000000000000000C"},
             "site": "default",
             "type": "UPLOAD",
         })
