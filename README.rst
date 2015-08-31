@@ -240,6 +240,9 @@ This key is a mapping from key id to keys. Keys in turn are mapping from
 respectively. Public key needs to be specified for storing backups. Private
 key needs to be in place for restoring encrypted backups.
 
+You can use ``pghoard_create_keys`` to generate and output encryption keys
+in the ``pghoard`` configuration format.
+
 ``http_address`` (default ``""``)
 
 HTTP webserver address, by default pghoard binds to all available addresses.
