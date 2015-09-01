@@ -22,6 +22,11 @@ pg_basebackup that is run against the database in question.
 pghoard compresses the received WAL logs and basebackups with LZMA (level 0)
 in order to ensure good compression speed and relatively small backup size.
 
+Optionally, pghoard can encrypt backed up data at rest. Each individual
+file is encrypted and authenticated with file specific keys. The file
+specific keys are included in the backup in turn encrypted with a master
+RSA private/public key pair.
+
 pghoard also supports backing up and restoring from either a local machine
 or from various object stores (AWS S3, Azure, Ceph, Google Cloud.)
 
@@ -220,6 +225,23 @@ more there are the more diskspace will be used.
 How often to take a new basebackup of a cluster. The shorter the interval,
 the faster your recovery will be, but the more CPU/IO usage is
 required from the servers it takes the basebackup from.
+
+``encryption_key_id`` (no default)
+
+Specifies the encryption key used when storing encrypted backups. If this
+configuration directive is specified, you must also define the public key
+for storing as well as private key for retrieving stored backups. These
+keys are specified with ``encryption_keys`` dictionary.
+
+``encryption_keys`` (no default)
+
+This key is a mapping from key id to keys. Keys in turn are mapping from
+``public`` and ``private`` to PEM encoded RSA public and private keys
+respectively. Public key needs to be specified for storing backups. Private
+key needs to be in place for restoring encrypted backups.
+
+You can use ``pghoard_create_keys`` to generate and output encryption keys
+in the ``pghoard`` configuration format.
 
 ``http_address`` (default ``""``)
 

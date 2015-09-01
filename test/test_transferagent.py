@@ -66,6 +66,7 @@ class TestTransferAgent(PGHoardTestCase):
             "callback_queue": callback_queue,
             "local_path": self.temp_dir,
             "metadata": {"key": "value"},
+            "site": "default",
             "type": "DECOMPRESSION",
         }
         assert self.compression_queue.get(timeout=1.0) == expected_event

@@ -4,7 +4,7 @@ pghoard
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
-from .base import PGHoardTestCase
+from .base import PGHoardTestCase, CONSTANT_TEST_RSA_PUBLIC_KEY, CONSTANT_TEST_RSA_PRIVATE_KEY
 from pghoard.common import Queue
 from pghoard.common import lzma
 from pghoard.compressor import Compressor
@@ -18,6 +18,12 @@ class TestCompression(PGHoardTestCase):
             "backup_sites": {
                 "default": {
                     "object_storage": {"s3": {}},
+                    "encryption_keys": {
+                        "testkey": {
+                            "public": CONSTANT_TEST_RSA_PUBLIC_KEY,
+                            "private": CONSTANT_TEST_RSA_PRIVATE_KEY
+                        }
+                    }
                 },
             },
             "backup_location": self.temp_dir,
@@ -93,6 +99,27 @@ class TestCompression(PGHoardTestCase):
             assert transfer_event[key] == value
         assert lzma.decompress(transfer_event["blob"]) == b"foo"
 
+    def test_compress_encrypt_to_memory(self):
+        self.compressor.config["backup_sites"]["default"]["encryption_key_id"] = "testkey"
+        event = {
+            "compress_to_memory": True,
+            "delete_file_after_compression": False,
+            "full_path": self.foo_path,
+            "src_path": self.foo_path_partial,
+            "type": "MOVE",
+        }
+        self.compressor.handle_event(event, filetype="xlog")
+        expected = {
+            "callback_queue": None,
+            "filetype": "xlog",
+            "local_path": self.foo_path,
+            "metadata": {"compression-algorithm": "lzma", "encryption-key-id": "testkey", "original-file-size": 3},
+            "site": "default",
+        }
+        transfer_event = self.transfer_queue.get()
+        for key, value in expected.items():
+            assert transfer_event[key] == value
+
     def test_archive_command_compression(self):
         callback_queue = Queue()
         event = {
@@ -125,6 +152,25 @@ class TestCompression(PGHoardTestCase):
             "filetype": "xlog",
             "local_path": local_filepath,
             "metadata": {"compression-algorithm": "lzma", "original-file-size": 3},
+            "site": "default",
+            "type": "DECOMPRESSION",
+        })
+        callback_queue.get(timeout=1.0)
+        self.assertTrue(os.path.exists(local_filepath))
+        with open(local_filepath, "rb") as fp:
+            assert fp.read() == b"foo"
+
+    def test_decompression_decrypt_event(self):
+        blob = self.compressor.compress_lzma_filepath_to_memory(self.foo_path, CONSTANT_TEST_RSA_PUBLIC_KEY)
+        callback_queue = Queue()
+        local_filepath = os.path.join(self.temp_dir, "00000001000000000000000E")
+        self.compression_queue.put({
+            "blob": blob,
+            "callback_queue": callback_queue,
+            "filetype": "xlog",
+            "local_path": local_filepath,
+            "metadata": {"compression-algorithm": "lzma", "encryption-key-id": "testkey", "original-file-size": 3},
+            "site": "default",
             "type": "DECOMPRESSION",
         })
         callback_queue.get(timeout=1.0)

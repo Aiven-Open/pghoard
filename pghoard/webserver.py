@@ -7,6 +7,7 @@ See LICENSE for details
 
 from . import __version__
 from . common import Empty, IO_BLOCK_SIZE, lzma_open_read, Queue
+from . encryptor import DecryptorFile
 from threading import Thread
 import json
 import logging
@@ -119,6 +120,8 @@ class RequestHandler(BaseHTTPRequestHandler):
             if os.path.exists(archived_file_path):
                 with open(archived_file_path, "rb") as source_fp:
                     with open(target_path, "wb") as target_fp:
+                        if "encryption-key-id" in metadata:
+                            source_fp = DecryptorFile(source_fp, self.server.config["backup_sites"][site]["encryption_keys"][metadata["encryption-key-id"]]["private"])
                         if metadata.get("compression-algorithm") == "lzma":
                             source_fp = lzma_open_read(source_fp, "r")
                         while True:

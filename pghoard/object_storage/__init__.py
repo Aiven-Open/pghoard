@@ -108,6 +108,7 @@ class TransferAgent(Thread):
                 "callback_queue": file_to_transfer["callback_queue"],
                 "local_path": file_to_transfer["target_path"],
                 "metadata": metadata,
+                "site": site,
                 "type": "DECOMPRESSION",
             })
             self.state[site]["download"][filetype]["data"] += file_to_transfer["file_size"]

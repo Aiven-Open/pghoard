@@ -6,6 +6,7 @@ See LICENSE for details
 """
 from __future__ import print_function
 from .common import default_log_format_str, IO_BLOCK_SIZE, lzma_open_read
+from .encryptor import DecryptorFile
 from .errors import Error
 from .object_storage import get_object_storage_transfer
 from psycopg2.extensions import adapt
@@ -58,8 +59,9 @@ def create_recovery_conf(dirpath, site, primary_conninfo,
 
 class Restore(object):
     def __init__(self):
-        self.storage = None
+        self.config = None
         self.log = logging.getLogger("PGHoardRestore")
+        self.storage = None
 
     def missing_libs(self, arg):
         raise RestoreError("Command not available: {}: {}".format(arg.ex.__class__.__name__, arg.ex))
@@ -125,8 +127,13 @@ class Restore(object):
         if not self.storage.get_archive_file(arg.filename, arg.target_path, arg.path_prefix):
             return 1
 
+    def _load_config(self, configfile):
+        with open(configfile) as fp:
+            self.config = json.load(fp)
+
     def get_basebackup_http(self, arg):
         """Download a basebackup from a HTTP source"""
+        self.config = self._load_config(arg.config)
         self.storage = HTTPRestore(arg.host, arg.port, arg.site, arg.target_dir)
         self._get_basebackup(arg.target_dir, arg.basebackup, arg.site, arg.primary_conninfo,
                              recovery_target_time=arg.recovery_target_time,
@@ -135,25 +142,26 @@ class Restore(object):
 
     def list_basebackups_http(self, arg):
         """List available basebackups from a HTTP source"""
+        self.config = self._load_config(arg.config)
         self.storage = HTTPRestore(arg.host, arg.port, arg.site)
         self.storage.show_basebackup_list()
 
-    def _get_object_storage(self, config, site, pgdata):
-        with open(config) as fp:
-            config = json.load(fp)
-        ob = config["backup_sites"][site]["object_storage"]
+    def _get_object_storage(self, site, pgdata):
+        ob = self.config["backup_sites"][site]["object_storage"]
         storage = get_object_storage_transfer(list(ob.keys())[0], list(ob.values())[0])
         return ObjectStore(storage, site, pgdata)
 
     def list_basebackups(self, arg):
         """List basebackups from an object store"""
-        self.storage = self._get_object_storage(arg.config, arg.site, pgdata=None)
+        self.config = self._load_config(arg.config)
+        self.storage = self._get_object_storage(arg.site, pgdata=None)
         self.storage.show_basebackup_list()
 
     def get_basebackup(self, arg):
         """Download a basebackup from an object store"""
+        self.config = self._load_config(arg.config)
         try:
-            self.storage = self._get_object_storage(arg.config, arg.site, arg.target_dir)
+            self.storage = self._get_object_storage(arg.site, arg.target_dir)
             self._get_basebackup(arg.target_dir, arg.basebackup, arg.site, arg.primary_conninfo,
                                  recovery_target_time=arg.recovery_target_time,
                                  recovery_target_xid=arg.recovery_target_xid,
@@ -199,6 +207,9 @@ class Restore(object):
         tmp = tempfile.TemporaryFile()
         metadata = self.storage.get_basebackup_file_to_fileobj(basebackup, tmp)
         tmp.seek(0)
+        if "encryption-key-id" in metadata:
+            # Wrap stream into DecryptorFile object
+            tmp = DecryptorFile(tmp, self.config["backup_sites"][site]["encryption_keys"][metadata["encryption-key-id"]]["private"])
         if metadata.get("compression-algorithm", None) == "lzma":
             # Wrap stream into LZMAFile object
             tmp = lzma_open_read(tmp, "r")
