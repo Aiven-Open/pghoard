@@ -7,10 +7,18 @@ See LICENSE for details
 import boto.exception
 import boto.s3
 import dateutil.parser
-from boto.s3.connection import Location
 from boto.s3.key import Key
 from pghoard.errors import FileNotFoundFromStorageError, InvalidConfigurationError
 from .base import BaseTransfer
+
+
+def _location_for_region(region):
+    """return a s3 bucket location closest to the selected region, used when
+    a new bucket must be created.  implemented according to
+    http://docs.aws.amazon.com/general/latest/gr/rande.html#s3_region"""
+    if not region or region == "us-east-1":
+        return ""
+    return region
 
 
 class S3Transfer(BaseTransfer):
@@ -18,6 +26,7 @@ class S3Transfer(BaseTransfer):
                  host=None, port=None, is_secure=False):
         BaseTransfer.__init__(self)
         self.region = region
+        self.location = _location_for_region(region)
         self.bucket_name = bucket_name
         if host and port:
             self.conn = boto.connect_s3(aws_access_key_id=aws_access_key_id,
@@ -100,15 +109,18 @@ class S3Transfer(BaseTransfer):
         try:
             bucket = self.conn.get_bucket(bucket_name)
         except boto.exception.S3ResponseError as ex:
-            if ex.status != 301:
+            if ex.status == 404:
+                bucket = None
+            elif ex.status == 301:
+                # Bucket exists on another region, find out which
+                location = self.conn.get_bucket(bucket_name, validate=False).get_location()
+                raise InvalidConfigurationError("bucket {!r} is in location {!r}, tried to use {!r}"
+                                                .format(bucket_name, location, self.location))
+            else:
                 raise
-            # Bucket exists on another region, find out which
-            location = self.conn.get_bucket(bucket_name, validate=False).get_location()
-            raise InvalidConfigurationError("bucket {!r} is in region {!r}, tried to use {!r}"
-                                            .format(bucket_name, location, self.region))
         if not bucket:
-            self.log.debug("Creating bucket: %r", bucket_name)
-            bucket = self.conn.create_bucket(bucket_name, location=Location.EU)
+            self.log.debug("Creating bucket: %r in location: %r", bucket_name, self.location)
+            bucket = self.conn.create_bucket(bucket_name, location=self.location)
         else:
             self.log.debug("Found bucket: %r", bucket_name)
         return bucket
