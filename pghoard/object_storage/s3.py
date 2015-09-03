@@ -100,12 +100,15 @@ class S3Transfer(BaseTransfer):
         try:
             bucket = self.conn.get_bucket(bucket_name)
         except boto.exception.S3ResponseError as ex:
-            if ex.status != 301:
+            if ex.status == 404:
+                bucket = None
+            elif ex.status == 301:
+                # Bucket exists on another region, find out which
+                location = self.conn.get_bucket(bucket_name, validate=False).get_location()
+                raise InvalidConfigurationError("bucket {!r} is in region {!r}, tried to use {!r}"
+                                                .format(bucket_name, location, self.region))
+            else:
                 raise
-            # Bucket exists on another region, find out which
-            location = self.conn.get_bucket(bucket_name, validate=False).get_location()
-            raise InvalidConfigurationError("bucket {!r} is in region {!r}, tried to use {!r}"
-                                            .format(bucket_name, location, self.region))
         if not bucket:
             self.log.debug("Creating bucket: %r", bucket_name)
             bucket = self.conn.create_bucket(bucket_name, location=Location.EU)
