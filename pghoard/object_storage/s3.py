@@ -7,6 +7,7 @@ See LICENSE for details
 import boto.exception
 import boto.s3
 import dateutil.parser
+from boto.s3.connection import OrdinaryCallingFormat
 from boto.s3.key import Key
 from pghoard.errors import FileNotFoundFromStorageError, InvalidConfigurationError
 from .base import BaseTransfer
@@ -32,7 +33,7 @@ class S3Transfer(BaseTransfer):
             self.conn = boto.connect_s3(aws_access_key_id=aws_access_key_id,
                                         aws_secret_access_key=aws_secret_access_key,
                                         host=host, port=port, is_secure=is_secure,
-                                        calling_format=boto.s3.connection.OrdinaryCallingFormat())
+                                        calling_format=OrdinaryCallingFormat())
         else:
             self.conn = boto.s3.connect_to_region(region_name=region, aws_access_key_id=aws_access_key_id,
                                                   aws_secret_access_key=aws_secret_access_key)
