@@ -25,6 +25,8 @@ class EncryptorError(Exception):
 
 class Encryptor(object):
     def __init__(self, rsa_public_key_pem):
+        if isinstance(rsa_public_key_pem, str):
+            rsa_public_key_pem = rsa_public_key_pem.encode("utf-8")
         self.rsa_public_key = serialization.load_pem_public_key(rsa_public_key_pem, backend=default_backend())
         self.cipher = None
         self.authenticator = None
@@ -60,6 +62,8 @@ class Encryptor(object):
 
 class Decryptor(object):
     def __init__(self, rsa_private_key_pem):
+        if isinstance(rsa_private_key_pem, str):
+            rsa_private_key_pem = rsa_private_key_pem.encode("utf-8")
         self.rsa_private_key = serialization.load_pem_private_key(rsa_private_key_pem, password=None, backend=default_backend())
         self.cipher = None
         self.authenticator = None
