@@ -129,7 +129,8 @@ class Restore(object):
 
     def _load_config(self, configfile):
         with open(configfile) as fp:
-            self.config = json.load(fp)
+            config = json.load(fp)
+        return config
 
     def get_basebackup_http(self, arg):
         """Download a basebackup from a HTTP source"""
