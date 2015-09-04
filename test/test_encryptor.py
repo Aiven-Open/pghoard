@@ -6,6 +6,7 @@ See LICENSE for details
 """
 from .base import PGHoardTestCase, CONSTANT_TEST_RSA_PUBLIC_KEY, CONSTANT_TEST_RSA_PRIVATE_KEY
 from pghoard.encryptor import Decryptor, DecryptorFile, Encryptor
+import json
 import tarfile
 import tempfile
 
@@ -25,6 +26,11 @@ class TestEncryptor(PGHoardTestCase):
         decryptor = Decryptor(CONSTANT_TEST_RSA_PRIVATE_KEY)
         result = decryptor.update(ciphertext) + decryptor.finalize()
         self.assertEqual(plaintext, result)
+        public_key = json.loads(json.dumps(CONSTANT_TEST_RSA_PUBLIC_KEY))
+        private_key = json.loads(json.dumps(CONSTANT_TEST_RSA_PRIVATE_KEY))
+        encryptor = Encryptor(public_key)
+        decryptor = Decryptor(private_key)
+        self.assertEqual(plaintext, decryptor.update(encryptor.update(plaintext) + encryptor.finalize()) + decryptor.finalize())
 
     def test_decryptorfile(self):
         plaintext = b"test"
