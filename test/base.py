@@ -16,7 +16,7 @@ except ImportError:
     from mock import Mock  # pylint: disable=import-error, no-name-in-module, unused-import
 
 
-CONSTANT_TEST_RSA_PUBLIC_KEY = b"""\
+CONSTANT_TEST_RSA_PUBLIC_KEY = """\
 -----BEGIN PUBLIC KEY-----
 MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDQ9yu7rNmu0GFMYeQq9Jo2B3d9
 hv5t4a+54TbbxpJlks8T27ipgsaIjqiQP7+uXNfU6UCzGFEHs9R5OELtO3Hq0Dn+
@@ -24,7 +24,7 @@ JGdxJlJ1prxVkvjCICCpiOkhc2ytmn3PWRuVf2VyeAddslEWHuXhZPptvIr593kF
 lWN+9KPe+5bXS8of+wIDAQAB
 -----END PUBLIC KEY-----"""
 
-CONSTANT_TEST_RSA_PRIVATE_KEY = b"""\
+CONSTANT_TEST_RSA_PRIVATE_KEY = """\
 -----BEGIN PRIVATE KEY-----
 MIICdwIBADANBgkqhkiG9w0BAQEFAASCAmEwggJdAgEAAoGBAND3K7us2a7QYUxh
 5Cr0mjYHd32G/m3hr7nhNtvGkmWSzxPbuKmCxoiOqJA/v65c19TpQLMYUQez1Hk4

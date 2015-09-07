@@ -25,8 +25,8 @@ class EncryptorError(Exception):
 
 class Encryptor(object):
     def __init__(self, rsa_public_key_pem):
-        if isinstance(rsa_public_key_pem, str):
-            rsa_public_key_pem = rsa_public_key_pem.encode("utf-8")
+        if not isinstance(rsa_public_key_pem, bytes):
+            rsa_public_key_pem = rsa_public_key_pem.encode("ascii")
         self.rsa_public_key = serialization.load_pem_public_key(rsa_public_key_pem, backend=default_backend())
         self.cipher = None
         self.authenticator = None
@@ -62,8 +62,8 @@ class Encryptor(object):
 
 class Decryptor(object):
     def __init__(self, rsa_private_key_pem):
-        if isinstance(rsa_private_key_pem, str):
-            rsa_private_key_pem = rsa_private_key_pem.encode("utf-8")
+        if not isinstance(rsa_private_key_pem, bytes):
+            rsa_private_key_pem = rsa_private_key_pem.encode("ascii")
         self.rsa_private_key = serialization.load_pem_private_key(rsa_private_key_pem, password=None, backend=default_backend())
         self.cipher = None
         self.authenticator = None
@@ -122,7 +122,9 @@ class DecryptorFile(io.BufferedIOBase):
         super(DecryptorFile, self).__init__()
         self.buffer = b""
         self.buffer_offset = 0
-        self.decryptor = Decryptor(rsa_private_key_pem)
+        self.decryptor = None
+        self.key = rsa_private_key_pem
+        self.offset = 0
         self.state = "OPEN"
         self.source_fp = source_fp
 
@@ -131,6 +133,11 @@ class DecryptorFile(io.BufferedIOBase):
             raise ValueError("I/O operation on closed file")
 
     def _read_all(self):
+        if self.state == "EOF":
+            retval = self.buffer[self.buffer_offset:]
+            self.buffer_offset = 0
+            self.buffer = b""
+            return retval
         blocks = []
         if self.buffer_offset > 0:
             blocks.append(self.buffer)
@@ -140,13 +147,15 @@ class DecryptorFile(io.BufferedIOBase):
             data = self.source_fp.read(IO_BLOCK_SIZE)
             if not data:
                 self.state = "EOF"
+                data = self.decryptor.finalize()
+                if data:
+                    blocks.append(data)
+                    self.offset += len(data)
                 break
             data = self.decryptor.update(data)
             if data:
+                self.offset += len(data)
                 blocks.append(data)
-        data = self.decryptor.finalize()
-        if data:
-            blocks.append(data)
         return b"".join(blocks)
 
     def _read_block(self, size):
@@ -154,6 +163,12 @@ class DecryptorFile(io.BufferedIOBase):
         if size <= readylen:
             retval = self.buffer[self.buffer_offset:self.buffer_offset + size]
             self.buffer_offset += size
+            self.offset += len(retval)
+            return retval
+        if self.state == "EOF":
+            retval = self.buffer[self.buffer_offset:]
+            self.buffer_offset = 0
+            self.buffer = b""
             return retval
         blocks = []
         if self.buffer_offset:
@@ -182,6 +197,7 @@ class DecryptorFile(io.BufferedIOBase):
             retval = self.buffer
             self.buffer = b""
             self.buffer_offset = 0
+        self.offset += len(retval)
         return retval
 
     def close(self):
@@ -206,12 +222,17 @@ class DecryptorFile(io.BufferedIOBase):
 
     def peek(self, size=-1):  # pylint: disable=unused-argument
         self._check_not_closed()
-        # XXX
-        return b""
+        if len(self.buffer):
+            return self.buffer
+        data = self.read(size)
+        self.buffer += data
+        return data
 
     def read(self, size=-1):
         """Read up to size decrypted bytes"""
         self._check_not_closed()
+        if not self.decryptor:
+            self.decryptor = Decryptor(self.key)
         if self.state == "EOF" or size == 0:
             return b""
         elif size < 0:
@@ -227,22 +248,53 @@ class DecryptorFile(io.BufferedIOBase):
         self._check_not_closed()
         return self.state in ["OPEN", "EOF"]
 
-    def seek(self, offset, whence=0):  # pylint: disable=unused-argument
+    def seek(self, offset, whence=0):
         self._check_not_closed()
-        raise OSError("Seek on a stream that is not seekable")
+        if whence == 0:
+            if offset < 0:
+                raise ValueError("negative seek position")
+            if self.offset == offset:
+                return self.offset
+            elif self.offset < offset:
+                _ = self.read(offset - self.offset)
+                return self.offset
+            elif self.offset > offset:
+                # simulate backward seek by restarting from the beginning
+                self.buffer = b""
+                self.buffer_offset = 0
+                self.source_fp.seek(0)
+                self.offset = 0
+                self.decryptor = None
+                self.state = "OPEN"
+                _ = self.read(offset)
+                return self.offset
+            else:
+                _ = self.read(self.offset - offset)
+                return self.offset
+        elif whence == 1:
+            if offset != 0:
+                raise io.UnsupportedOperation("can't do nonzero cur-relative seeks")
+            return self.offset
+        elif whence == 2:
+            if offset != 0:
+                raise io.UnsupportedOperation("can't do nonzero end-relative seeks")
+            _ = self.read()
+            return self.offset
+        else:
+            raise ValueError("Invalid whence value")
 
     def seekable(self):
         """True if this stream supports random access"""
         self._check_not_closed()
-        return False
+        return self.source_fp.seekable()
 
     def tell(self):
         self._check_not_closed()
-        raise OSError("Tell on a stream that is not seekable")
+        return self.offset
 
     def truncate(self):
         self._check_not_closed()
-        raise OSError("Truncate on a stream that is not seekable")
+        raise io.UnsupportedOperation("Truncate not supported")
 
     def writable(self):
         """True if this stream supports writing"""
