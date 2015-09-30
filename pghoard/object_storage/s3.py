@@ -112,6 +112,9 @@ class S3Transfer(BaseTransfer):
         except boto.exception.S3ResponseError as ex:
             if ex.status == 404:
                 bucket = None
+            elif ex.status == 403:
+                self.log.warning("Failed to verify access to bucket, proceeding without validation")
+                bucket = self.conn.get_bucket(bucket_name, validate=False)
             elif ex.status == 301:
                 # Bucket exists on another region, find out which
                 location = self.conn.get_bucket(bucket_name, validate=False).get_location()
