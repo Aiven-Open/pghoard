@@ -325,7 +325,7 @@ class HTTPRestore(object):
         response = self.session.get(uri, headers=headers, stream=True)
         self.log.debug("Got archived file: %r, %r status_code: %r took: %.2fs", filename, target_path,
                        response.status_code, time.time() - start_time)
-        return response.status_code in (200, 206)
+        return response.status_code in (200, 201)
 
 
 def main():

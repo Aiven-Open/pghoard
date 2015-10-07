@@ -17,7 +17,7 @@ else:
 def archive(port, site, xlog_file):
     conn = HTTPConnection(host="localhost", port=port)
     conn.request("PUT", "/" + site + "/archive/" + xlog_file)
-    if conn.getresponse().status == 206:
+    if conn.getresponse().status == 201:
         return True
     return False
 

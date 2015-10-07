@@ -107,7 +107,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             self.server.log.debug("Handled a restore request for: %r %r, took: %.3fs",
                                   site, target_path, time.time() - start_time)
             if response['success']:
-                return "", {"Content-length": "0"}, 206
+                return "", {"Content-length": "0"}, 201
             else:
                 return "", {"Content-length": "0"}, 404
         else:
@@ -129,7 +129,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                             if not data:
                                 break
                             target_fp.write(data)
-                return "", {"Content-length": "0"}, 206
+                return "", {"Content-length": "0"}, 201
             else:
                 self.server.log.debug("Could not find: %r, returning 404", archived_file_path)
                 return "", {"Content-length": "0"}, 404
@@ -166,14 +166,19 @@ class RequestHandler(BaseHTTPRequestHandler):
             callback_queue = Queue()
             if not self.server.config['backup_sites'][site].get("object_storage"):
                 compress_to_memory = False
-            compression_event = {"type": "CREATE", "full_path": xlog_path, "site": site,
-                                 "delete_file_after_compression": False, "compress_to_memory": compress_to_memory,
-                                 "callback_queue": callback_queue}
+            compression_event = {
+                "type": "CREATE",
+                "callback_queue": callback_queue,
+                "compress_to_memory": compress_to_memory,
+                "delete_file_after_compression": False,
+                "full_path": xlog_path,
+                "site": site,
+            }
             self.server.compression_queue.put(compression_event)
             try:
                 response = callback_queue.get(timeout=30)
                 if response['success']:
-                    self.send_response(206)
+                    self.send_response(201)  # resource created
                     self.send_header("Content-length", "0")
                     self.end_headers()
                 self.server.log.debug("Handled an archival request for: %r %r, took: %.3fs",
@@ -219,7 +224,7 @@ class RequestHandler(BaseHTTPRequestHandler):
 
             for header_key, header_value in headers.items():
                 self.send_header(header_key, header_value)
-            if status not in (206, 404):
+            if status not in (201, 404):
                 if 'Content-type' not in headers:
                     if isinstance(response, dict):
                         mimetype = "application/json"
