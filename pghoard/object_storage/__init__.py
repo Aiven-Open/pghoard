@@ -46,12 +46,11 @@ class TransferAgent(Thread):
 
     def set_state_defaults_for_site(self, site):
         if site not in self.state:
-            self.state[site] = {"upload": {"basebackup": {"data": 0, "count": 0, "time_taken": 0.0},
-                                           "xlog": {"data": 0, "count": 0, "time_taken": 0.0},
-                                           "timeline": {"data": 0, "count": 0, "time_taken": 0.0}},
-                                "download": {"basebackup": {"data": 0, "count": 0, "time_taken": 0.0},
-                                             "xlog": {"data": 0, "count": 0, "time_taken": 0.0},
-                                             "timeline": {"data": 0, "count": 0, "time_taken": 0.0}}}
+            EMPTY = {"data": 0, "count": 0, "time_taken": 0.0, "failures": 0}
+            self.state[site] = {
+                "upload": {"basebackup": EMPTY.copy(), "xlog": EMPTY.copy(), "timeline": EMPTY.copy()},
+                "download": {"basebackup": EMPTY.copy(), "xlog": EMPTY.copy(), "timeline": EMPTY.copy()},
+            }
 
     def get_object_storage(self, site_name):
         storage = self.site_transfers.get(site_name)
@@ -83,20 +82,38 @@ class TransferAgent(Thread):
                            file_to_transfer.get("file_size", "unknown"))
             start_time = time.time()
             key = self.form_key_path(file_to_transfer)
-            if file_to_transfer["type"] == "UPLOAD":
-                self.handle_upload(start_time, key, file_to_transfer)
+            oper = file_to_transfer["type"].lower()
+            oper_func = getattr(self, "handle_" + oper, None)
+            if oper_func is None:
+                self.log.warning("Invalid operation %r", file_to_transfer["type"])
+                continue
+            site = file_to_transfer["site"]
+            filetype = file_to_transfer["filetype"]
+
+            result = oper_func(site, key, file_to_transfer)
+
+            # increment statistics counters
+            self.set_state_defaults_for_site(site)
+            oper_size = file_to_transfer.get("file_size", 0)
+            if result["success"]:
+                self.state[site][oper][filetype]["count"] += 1
+                self.state[site][oper][filetype]["data"] += oper_size
+                self.state[site][oper][filetype]["time_taken"] += time.time() - start_time
             else:
-                self.handle_download(start_time, key, file_to_transfer)
-            self.log.info("%r transfer of key: %r, size: %r, took %.3fs",
-                          file_to_transfer["type"], key,
-                          file_to_transfer.get("file_size", "UNKNOWN"),
-                          time.time() - start_time)
+                self.state[site][oper][filetype]["failures"] += 1
+
+            # push result to callback_queue if provided
+            if result.get("call_callback", True) and "callback_queue" in file_to_transfer:
+                file_to_transfer["callback_queue"].put(result)
+
+            self.log.info("%r %stransfer of key: %r, size: %r, took %.3fs",
+                          file_to_transfer["type"],
+                          "FAILED " if not result["success"] else "",
+                          key, oper_size, time.time() - start_time)
 
         self.log.info("Quitting TransferAgent")
 
-    def handle_download(self, start_time, key, file_to_transfer):
-        site, filetype = file_to_transfer["site"], file_to_transfer["filetype"]
-        self.set_state_defaults_for_site(site)
+    def handle_download(self, site, key, file_to_transfer):
         try:
             storage = self.get_object_storage(site)
 
@@ -111,20 +128,15 @@ class TransferAgent(Thread):
                 "site": site,
                 "type": "DECOMPRESSION",
             })
-            self.state[site]["download"][filetype]["data"] += file_to_transfer["file_size"]
-            self.state[site]["download"][filetype]["count"] += 1
-            self.state[site]["download"][filetype]["time_taken"] += time.time() - start_time
+            return {"success": True, "call_callback": False}
         except Exception as ex:  # pylint: disable=broad-except
             if isinstance(ex, FileNotFoundFromStorageError):
                 self.log.warning("%r not found from storage", key)
             else:
                 self.log.exception("Problem happened when downloading: %r, %r", key, file_to_transfer)
-            if "callback_queue" in file_to_transfer:
-                file_to_transfer["callback_queue"].put({"success": False})
+            return {"success": False}
 
-    def handle_upload(self, start_time, key, file_to_transfer):
-        site, filetype = file_to_transfer["site"], file_to_transfer["filetype"]
-        self.set_state_defaults_for_site(site)
+    def handle_upload(self, site, key, file_to_transfer):
         try:
             storage = self.get_object_storage(site)
             if "blob" in file_to_transfer:
@@ -145,13 +157,10 @@ class TransferAgent(Thread):
                             os.unlink(metadata_path)
                 except:  # pylint: disable=bare-except
                     self.log.exception("Problem in deleting file: %r", file_to_transfer["local_path"])
-            self.state[site]["upload"][filetype]["data"] += file_to_transfer["file_size"]
-            self.state[site]["upload"][filetype]["count"] += 1
-            self.state[site]["upload"][filetype]["time_taken"] += time.time() - start_time
-            if "callback_queue" in file_to_transfer and file_to_transfer["callback_queue"]:
-                file_to_transfer["callback_queue"].put({"success": True})
+            return {"success": True}
         except Exception:  # pylint: disable=broad-except
             self.log.exception("Problem in moving file: %r, need to retry", file_to_transfer["local_path"])
             # TODO come up with something so we don't busy loop
             time.sleep(0.5)
             self.transfer_queue.put(file_to_transfer)
+            return {"success": False, "call_callback": False}
