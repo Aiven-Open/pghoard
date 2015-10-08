@@ -26,14 +26,16 @@ class TestCompression(PGHoardTestCase):
                     }
                 },
             },
-            "backup_location": self.temp_dir,
+            "backup_location": os.path.join(self.temp_dir, "backups"),
         }
         self.compression_queue = Queue()
         self.transfer_queue = Queue()
-        self.foo_path = os.path.join(self.temp_dir, "default", "xlog", "00000001000000000000000C")
-        self.foo_path_partial = os.path.join(self.temp_dir, "default", "xlog", "00000001000000000000000C.partial")
-        os.makedirs(os.path.join(self.temp_dir, "default", "xlog"))
-        os.makedirs(os.path.join(self.temp_dir, "default", "compressed_xlog"))
+        self.incoming_path = os.path.join(self.temp_dir, "default", "xlog")
+        os.makedirs(self.incoming_path)
+        self.handled_path = os.path.join(self.config["backup_location"], "default", "xlog")
+        os.makedirs(self.handled_path)
+        self.foo_path = os.path.join(self.incoming_path, "00000001000000000000000C")
+        self.foo_path_partial = os.path.join(self.incoming_path, "00000001000000000000000C.partial")
         with open(self.foo_path, "w") as out:
             out.write("foo")
 
@@ -66,12 +68,15 @@ class TestCompression(PGHoardTestCase):
         self.assertEqual(filetype, "basebackup")
 
     def test_compress_to_file(self):
-        self.compression_queue.put({"type": "MOVE", "src_path": self.foo_path_partial,
-                                    "full_path": self.foo_path})
+        self.compression_queue.put({
+            "type": "MOVE",
+            "src_path": self.foo_path_partial,
+            "full_path": self.foo_path,
+        })
         transfer_event = self.transfer_queue.get(timeout=1.0)
         expected = {
             "filetype": "xlog",
-            "local_path": (self.foo_path + ".xz").replace("/xlog/", "/compressed_xlog/"),
+            "local_path": self.foo_path.replace(self.incoming_path, self.handled_path),
             "metadata": {"compression-algorithm": "lzma", "original-file-size": 3},
             "site": "default",
         }

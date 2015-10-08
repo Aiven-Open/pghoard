@@ -6,8 +6,7 @@ See LICENSE for details
 """
 
 from . import __version__
-from . common import Empty, IO_BLOCK_SIZE, lzma_open_read, Queue
-from . encryptor import DecryptorFile
+from . common import Empty, Queue
 from threading import Thread
 import json
 import logging
@@ -90,49 +89,23 @@ class RequestHandler(BaseHTTPRequestHandler):
         start_time = time.time()
 
         target_path = self.headers.get("x-pghoard-target-path")
-        #  return_file = self.headers.get("x-pghoard-return-file", False) TODO: add support for fetching files from object storage and returning them through HTTP
-        self.server.log.debug("Requesting site: %r, filename: %r, filetype: %r, target_path: %r", site, filename, filetype, target_path)
+        self.server.log.debug("Requesting site: %r, filename: %r, filetype: %r, target_path: %r",
+                              site, filename, filetype, target_path)
 
-        if self.server.config["backup_sites"][site]['object_storage']:
-            callback_queue = Queue()
-            self.server.transfer_queue.put({
-                "callback_queue": callback_queue,
-                "filetype": filetype,
-                "local_path": filename,
-                "site": site,
-                "target_path": target_path,
-                "type": "DOWNLOAD",
-            })
-            response = callback_queue.get(timeout=30.0)
-            self.server.log.debug("Handled a restore request for: %r %r, took: %.3fs",
-                                  site, target_path, time.time() - start_time)
-            if response['success']:
-                return "", {"Content-length": "0"}, 201
-            else:
-                return "", {"Content-length": "0"}, 404
-        else:
-            metadata = {}
-            archived_file_path = os.path.join(self.server.config['backup_location'], site, "compressed_%s" % filetype, filename + ".xz")
-            metadata_path = archived_file_path + ".metadata"
-            if os.path.exists(metadata_path):
-                with open(metadata_path, "r") as fp:
-                    metadata = json.load(fp)
-            if os.path.exists(archived_file_path):
-                with open(archived_file_path, "rb") as source_fp:
-                    with open(target_path, "wb") as target_fp:
-                        if "encryption-key-id" in metadata:
-                            source_fp = DecryptorFile(source_fp, self.server.config["backup_sites"][site]["encryption_keys"][metadata["encryption-key-id"]]["private"])
-                        if metadata.get("compression-algorithm") == "lzma":
-                            source_fp = lzma_open_read(source_fp, "r")
-                        while True:
-                            data = source_fp.read(IO_BLOCK_SIZE)
-                            if not data:
-                                break
-                            target_fp.write(data)
-                return "", {"Content-length": "0"}, 201
-            else:
-                self.server.log.debug("Could not find: %r, returning 404", archived_file_path)
-                return "", {"Content-length": "0"}, 404
+        callback_queue = Queue()
+        self.server.transfer_queue.put({
+            "callback_queue": callback_queue,
+            "filetype": filetype,
+            "local_path": filename,
+            "site": site,
+            "target_path": target_path,
+            "type": "DOWNLOAD",
+        })
+        response = callback_queue.get(timeout=30.0)
+        self.server.log.debug("Handled a restore request for: %r %r, took: %.3fs",
+                              site, target_path, time.time() - start_time)
+        http_status = 201 if response["success"] else 404
+        return "", {"Content-length": "0"}, http_status
 
     def list_basebackups(self, site):
         basebackup_dir = os.path.join(self.server.config['backup_location'], site, "basebackup")
@@ -160,36 +133,37 @@ class RequestHandler(BaseHTTPRequestHandler):
 
     def handle_archival_request(self, site, filename):
         start_time, compress_to_memory = time.time(), True
-        xlog_path = os.path.join(self.server.config["backup_sites"][site].get("pg_xlog_directory", "/var/lib/pgsql/data/pg_xlog/"), filename)
+        xlog_dir = self.server.config["backup_sites"][site].get("pg_xlog_directory", "/var/lib/pgsql/data/pg_xlog/")
+        xlog_path = os.path.join(xlog_dir, filename)
         self.server.log.debug("Got request to archive: %r %r, %r", site, filename, xlog_path)
-        if os.path.exists(xlog_path):
-            callback_queue = Queue()
-            if not self.server.config['backup_sites'][site].get("object_storage"):
-                compress_to_memory = False
-            compression_event = {
-                "type": "CREATE",
-                "callback_queue": callback_queue,
-                "compress_to_memory": compress_to_memory,
-                "delete_file_after_compression": False,
-                "full_path": xlog_path,
-                "site": site,
-            }
-            self.server.compression_queue.put(compression_event)
-            try:
-                response = callback_queue.get(timeout=30)
-                if response['success']:
-                    self.send_response(201)  # resource created
-                    self.send_header("Content-length", "0")
-                    self.end_headers()
-                self.server.log.debug("Handled an archival request for: %r %r, took: %.3fs",
-                                      site, xlog_path, time.time() - start_time)
-                return
-            except Empty:
-                self.server.log.exception("Problem in getting a response in time, returning 404, took: %.2fs",
-                                          time.time() - start_time)
-        else:
+        if not os.path.exists(xlog_path):
             self.server.log.debug("xlog_path: %r did not exist, cannot archive, returning 404", xlog_path)
             self.send_response(404)
+
+        callback_queue = Queue()
+        if not self.server.config["backup_sites"][site].get("object_storage"):
+            compress_to_memory = False
+        compression_event = {
+            "type": "CREATE",
+            "callback_queue": callback_queue,
+            "compress_to_memory": compress_to_memory,
+            "delete_file_after_compression": False,
+            "full_path": xlog_path,
+            "site": site,
+        }
+        self.server.compression_queue.put(compression_event)
+        try:
+            response = callback_queue.get(timeout=30)
+            if response["success"]:
+                self.send_response(201)  # resource created
+                self.send_header("Content-length", "0")
+                self.end_headers()
+            self.server.log.debug("Handled an archival request for: %r %r, took: %.3fs",
+                                  site, xlog_path, time.time() - start_time)
+            return
+        except Empty:
+            self.server.log.exception("Problem in getting a response in time, returning 404, took: %.2fs",
+                                      time.time() - start_time)
 
     def do_PUT(self):
         site, path = self.log_and_parse_request()

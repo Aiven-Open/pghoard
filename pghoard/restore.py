@@ -153,8 +153,7 @@ class Restore(object):
         self.storage.show_basebackup_list()
 
     def _get_object_storage(self, site, pgdata):
-        ob = self.config["backup_sites"][site]["object_storage"]
-        storage = get_object_storage_transfer(list(ob.keys())[0], list(ob.values())[0])
+        storage = get_object_storage_transfer(self.config, site)
         return ObjectStore(storage, site, pgdata)
 
     def list_basebackups(self, arg):

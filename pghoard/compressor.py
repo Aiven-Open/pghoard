@@ -27,17 +27,11 @@ class Compressor(Thread):
 
     def get_compressed_file_path(self, site, filetype, original_path):
         if filetype == "basebackup":
-            rest, backupfile = os.path.split(original_path)
-            rest, backupdir = os.path.split(rest)
-            return os.path.join(self.config["backup_location"], site, "basebackup", backupdir, backupfile + ".xz")
-        return os.path.join(self.config["backup_location"], site, "compressed_" + filetype, os.path.basename(original_path) + ".xz")
-
-    def get_metadata_path(self, site, filetype, original_path):
-        if filetype == "basebackup":
             rest, _ = os.path.split(original_path)
-            rest, backupdir = os.path.split(rest)
-            return os.path.join(self.config["backup_location"], site, "basebackup", backupdir, "pghoard_metadata")
-        return os.path.join(self.config["backup_location"], site, "compressed_" + filetype, os.path.basename(original_path) + ".xz.metadata")
+            rest, backupname = os.path.split(rest)
+        else:
+            backupname = os.path.basename(original_path)
+        return os.path.join(self.config["backup_location"], site, filetype, backupname)
 
     def find_site_for_file(self, filepath):
         # Formats like:
@@ -163,6 +157,7 @@ class Compressor(Thread):
         if event.get("compress_to_memory", False):
             compressed_blob = self.compress_lzma_filepath_to_memory(event["full_path"], rsa_public_key)
             compressed_file_size = len(compressed_blob)
+            compressed_filepath = None
         else:
             compressed_filepath = self.get_compressed_file_path(site, filetype, event["full_path"])
             self.compress_lzma_filepath(event["full_path"], compressed_filepath, rsa_public_key)
@@ -178,8 +173,8 @@ class Compressor(Thread):
         metadata.update({"compression-algorithm": "lzma", "original-file-size": original_file_size})
         if encryption_key_id:
             metadata.update({"encryption-key-id": encryption_key_id})
-        metadata_path = self.get_metadata_path(site, filetype, event["full_path"])
-        if metadata_path:
+        if compressed_filepath:
+            metadata_path = compressed_filepath + ".metadata"
             with open(metadata_path, "w") as fp:
                 json.dump(metadata, fp)
 
@@ -187,27 +182,26 @@ class Compressor(Thread):
         self.state[site][filetype]["original_data"] += original_file_size
         self.state[site][filetype]["compressed_data"] += compressed_file_size
         self.state[site][filetype]["count"] += 1
-        if self.config['backup_sites'][site].get("object_storage"):
-            transfer_object = {
-                "file_size": compressed_file_size,
-                "filetype": filetype,
-                "metadata": metadata,
-                "site": site,
-                "type": "UPLOAD",
-            }
-            if event.get("compress_to_memory", False):
-                transfer_object['blob'] = compressed_blob
-                transfer_object['local_path'] = event['full_path']
-                transfer_object['callback_queue'] = event.get('callback_queue')
-            else:
-                transfer_object['local_path'] = compressed_filepath
-            self.transfer_queue.put(transfer_object)
-        elif 'callback_queue' in event and event['callback_queue']:
-            event['callback_queue'].put({"success": True})
+        transfer_object = {
+            "callback_queue": event.get("callback_queue"),
+            "file_size": compressed_file_size,
+            "filetype": filetype,
+            "metadata": metadata,
+            "site": site,
+            "type": "UPLOAD",
+        }
+        if event.get("compress_to_memory", False):
+            transfer_object['blob'] = compressed_blob
+            transfer_object['local_path'] = event['full_path']
+        else:
+            transfer_object['local_path'] = compressed_filepath
+        self.transfer_queue.put(transfer_object)
         return True
 
     def set_state_defaults_for_site(self, site):
         if site not in self.state:
-            self.state[site] = {"basebackup": {"original_data": 0, "compressed_data": 0, "count": 0},
-                                "xlog": {"original_data": 0, "compressed_data": 0, "count": 0},
-                                "timeline": {"original_data": 0, "compressed_data": 0, "count": 0}}
+            self.state[site] = {
+                "basebackup": {"original_data": 0, "compressed_data": 0, "count": 0},
+                "xlog": {"original_data": 0, "compressed_data": 0, "count": 0},
+                "timeline": {"original_data": 0, "compressed_data": 0, "count": 0},
+            }

@@ -9,6 +9,7 @@ from pghoard.archive_command import archive
 from pghoard.common import Queue, lzma_compressor, lzma_open
 from pghoard.compressor import Compressor
 from pghoard.encryptor import Encryptor
+from pghoard.object_storage import TransferAgent
 from pghoard.restore import HTTPRestore
 from pghoard.webserver import WebServer
 import json
@@ -20,9 +21,10 @@ import time
 class TestWebServer(PGHoardTestCase):
     def setUp(self):
         super(TestWebServer, self).setUp()
-        self.compressed_xlog_path = os.path.join(self.temp_dir, "default", "compressed_xlog")
-        self.basebackup_path = os.path.join(self.temp_dir, "default", "basebackup")
-        self.compressed_timeline_path = os.path.join(self.temp_dir, "default", "compressed_timeline")
+        backup_site_path = os.path.join(self.temp_dir, "backups", "default")
+        self.compressed_xlog_path = os.path.join(backup_site_path, "xlog")
+        self.basebackup_path = os.path.join(backup_site_path, "basebackup")
+        self.compressed_timeline_path = os.path.join(backup_site_path, "timeline")
         self.pgdata_path = os.path.join(self.temp_dir, "pgdata")
         self.pg_xlog_dir = os.path.join(self.pgdata_path, "pg_xlog")
 
@@ -35,7 +37,7 @@ class TestWebServer(PGHoardTestCase):
             },
             "http_address": "127.0.0.1",
             "http_port": random.randint(1024, 32000),
-            "backup_location": self.temp_dir,
+            "backup_location": os.path.join(self.temp_dir, "backups"),
         }
         self.compression_queue = Queue()
         self.transfer_queue = Queue()
@@ -50,11 +52,17 @@ class TestWebServer(PGHoardTestCase):
         with open(self.uncompressed_foo_path, "wb") as out_file:
             out_file.write(b"foo")
         self.foo_path = os.path.join(self.compressed_xlog_path, "00000001000000000000000C")
-        with open(self.foo_path, "wb") as out_file:
-            out_file.write(b"foo")
-        with open(self.foo_path, "rb") as fp:
-            lzma_open(self.foo_path + ".xz", mode="wb", preset=0).write(fp.read())
+        with lzma_open(self.foo_path, mode="wb", preset=0) as fp:
+            fp.write(b"foo")
 
+        self.compressor = Compressor(config=self.config,
+                                     compression_queue=self.compression_queue,
+                                     transfer_queue=self.transfer_queue)
+        self.compressor.start()
+        self.tagent = TransferAgent(config=self.config,
+                                    compression_queue=self.compression_queue,
+                                    transfer_queue=self.transfer_queue)
+        self.tagent.start()
         self.webserver = WebServer(config=self.config,
                                    compression_queue=self.compression_queue,
                                    transfer_queue=self.transfer_queue)
@@ -63,23 +71,24 @@ class TestWebServer(PGHoardTestCase):
         time.sleep(0.05)  # Hack to give the server time to start up
 
     def tearDown(self):
+        self.compressor.running = False
+        self.tagent.running = False
         self.webserver.running = False
+        self.compression_queue.put({"type": "QUIT"})
+        self.transfer_queue.put({"type": "QUIT"})
         self.webserver.join()
+        self.tagent.join()
+        self.compressor.join()
         super(TestWebServer, self).tearDown()
 
     def test_list_empty_basebackups(self):
         self.assertEqual(self.http_restore.list_basebackups(), [])  # pylint: disable=protected-access
 
     def test_archiving(self):
-        compressor = Compressor(config=self.config,
-                                compression_queue=self.compression_queue,
-                                transfer_queue=self.transfer_queue)
-        compressor.start()
         xlog_file = "00000001000000000000000C"
         self.assertTrue(archive(port=self.config['http_port'], site="default", xlog_file=xlog_file))
         self.assertTrue(os.path.exists(os.path.join(self.compressed_xlog_path, xlog_file)))
         self.log.error(os.path.join(self.compressed_xlog_path, xlog_file))
-        compressor.running = False
 
     def test_archiving_backup_label_from_archive_command(self):
         compressor = Compressor(config=self.config,
@@ -102,9 +111,9 @@ class TestWebServer(PGHoardTestCase):
         content = b"testing123"
         xlog_file = "00000001000000000000000F"
         filepath = os.path.join(self.compressed_xlog_path, xlog_file)
-        with lzma_open(filepath + ".xz", mode="wb", preset=0) as fp:
+        with lzma_open(filepath, mode="wb", preset=0) as fp:
             fp.write(content)
-        with open(filepath + ".xz.metadata", "w") as fp:
+        with open(filepath + ".metadata", "w") as fp:
             json.dump({"compression-algorithm": "lzma", "original-file-size": len(content)}, fp)
         self.http_restore.get_archive_file(xlog_file, "pg_xlog/" + xlog_file, path_prefix=self.pgdata_path)
         self.assertTrue(os.path.exists(os.path.join(self.pg_xlog_dir, xlog_file)))
@@ -120,9 +129,9 @@ class TestWebServer(PGHoardTestCase):
         encrypted_content = encryptor.update(compressed_content) + encryptor.finalize()
         xlog_file = "000000010000000000000010"
         filepath = os.path.join(self.compressed_xlog_path, xlog_file)
-        with open(filepath + ".xz", mode="wb") as fp:
+        with open(filepath, mode="wb") as fp:
             fp.write(encrypted_content)
-        with open(filepath + ".xz.metadata", "w") as fp:
+        with open(filepath + ".metadata", "w") as fp:
             json.dump({"compression-algorithm": "lzma", "original-file-size": len(content), "encryption-key-id": "testkey"}, fp)
         self.webserver.config["backup_sites"]["default"]["encryption_keys"] = {"testkey": {"public": CONSTANT_TEST_RSA_PUBLIC_KEY, "private": CONSTANT_TEST_RSA_PRIVATE_KEY}}
         self.http_restore.get_archive_file(xlog_file, "pg_xlog/" + xlog_file, path_prefix=self.pgdata_path)

@@ -20,3 +20,7 @@ class StorageError(Error):
 
 class FileNotFoundFromStorageError(StorageError):
     """file not found from remote storage"""
+
+
+class LocalFileIsRemoteFileError(StorageError):
+    """file transfer operation source and destination point to the same file"""

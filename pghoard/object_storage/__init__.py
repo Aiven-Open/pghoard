@@ -5,7 +5,11 @@ Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
 from pghoard.common import Empty
-from pghoard.errors import FileNotFoundFromStorageError, InvalidConfigurationError
+from pghoard.errors import (
+    FileNotFoundFromStorageError,
+    InvalidConfigurationError,
+    LocalFileIsRemoteFileError,
+)
 from threading import Thread
 import logging
 import os
@@ -13,23 +17,49 @@ import shutil
 import time
 
 
-def get_object_storage_transfer(key, value):
-    if key == "azure":
-        from . azure import AzureTransfer
-        storage = AzureTransfer(value["account_name"], value["account_key"], value.get("container_name", "pghoard"))
-    elif key == "google":
-        from . google import GoogleTransfer
-        storage = GoogleTransfer(project_id=value["project_id"],
-                                 bucket_name=value.get("bucket_name", "pghoard"),
-                                 credential_file=value.get("credential_file"))
-    elif key == "s3":
-        from . s3 import S3Transfer
-        storage = S3Transfer(value["aws_access_key_id"], value["aws_secret_access_key"],
-                             value.get("region", ""), value['bucket_name'],
-                             host=value.get("host"), port=value.get("port"), is_secure=value.get("is_secure", False))
-    else:
-        raise InvalidConfigurationError("unknown storage type {0!r}".format(key))
-    return storage
+def get_object_storage_transfer(config, site):
+    try:
+        obs = config["backup_sites"][site]["object_storage"]
+        # NOTE: `obs` is a dict in format {"type": {config..}} but it's
+        # expected to contain just a single item.
+        storage_type, storage_config = obs.copy().popitem()
+    except KeyError:
+        # fall back to `local` driver at `backup_location` if set
+        if not config.get("backup_location"):
+            return None
+        storage_type = "local"
+        storage_config = config["backup_location"]
+
+    # TODO: consider just passing **storage_config to the various Transfers
+    if storage_type == "azure":
+        from pghoard.object_storage.azure import AzureTransfer
+        return AzureTransfer(
+            account_name=storage_config["account_name"],
+            account_key=storage_config["account_key"],
+            container_name=storage_config.get("container_name", "pghoard"),
+        )
+    elif storage_type == "google":
+        from pghoard.object_storage.google import GoogleTransfer
+        return GoogleTransfer(
+            project_id=storage_config["project_id"],
+            bucket_name=storage_config.get("bucket_name", "pghoard"),
+            credential_file=storage_config.get("credential_file"),
+        )
+    elif storage_type == "s3":
+        from pghoard.object_storage.s3 import S3Transfer
+        return S3Transfer(
+            aws_access_key_id=storage_config["aws_access_key_id"],
+            aws_secret_access_key=storage_config["aws_secret_access_key"],
+            region=storage_config.get("region", ""),
+            bucket_name=storage_config["bucket_name"],
+            host=storage_config.get("host"),
+            port=storage_config.get("port"),
+            is_secure=storage_config.get("is_secure", False),
+        )
+    elif storage_type == "local":
+        from pghoard.object_storage.local import LocalTransfer
+        return LocalTransfer(backup_location=storage_config)
+    raise InvalidConfigurationError("unsupported storage type {0!r}".format(storage_type))
 
 
 class TransferAgent(Thread):
@@ -55,10 +85,9 @@ class TransferAgent(Thread):
     def get_object_storage(self, site_name):
         storage = self.site_transfers.get(site_name)
         if not storage:
-            cfg = self.config["backup_sites"][site_name].get("object_storage", {})
-            for key, value in cfg.items():
-                storage = get_object_storage_transfer(key, value)
-                self.site_transfers[site_name] = storage
+            storage = get_object_storage_transfer(self.config, site_name)
+            self.site_transfers[site_name] = storage
+
         return storage
 
     def form_key_path(self, file_to_transfer):
@@ -139,12 +168,18 @@ class TransferAgent(Thread):
     def handle_upload(self, site, key, file_to_transfer):
         try:
             storage = self.get_object_storage(site)
+            unlink_local = False
             if "blob" in file_to_transfer:
                 storage.store_file_from_memory(key, file_to_transfer["blob"],
                                                metadata=file_to_transfer["metadata"])
             else:
-                storage.store_file_from_disk(key, file_to_transfer["local_path"],
-                                             metadata=file_to_transfer["metadata"])
+                try:
+                    storage.store_file_from_disk(key, file_to_transfer["local_path"],
+                                                 metadata=file_to_transfer["metadata"])
+                    unlink_local = True
+                except LocalFileIsRemoteFileError:
+                    pass
+            if unlink_local:
                 try:
                     if file_to_transfer["filetype"] == "basebackup":
                         self.log.debug("Deleting directory path: %r", os.path.dirname(file_to_transfer["local_path"]))
