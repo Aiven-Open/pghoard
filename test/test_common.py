@@ -23,23 +23,23 @@ class TestCommon(PGHoardTestCase):
                 return fp.read()
         os.environ['HOME'] = self.temp_dir
         # make sure our pgpass entry ends up in the file and the call returns a connection string without password
-        pwl = create_pgpass_file(self.log, "host=localhost port='5432' user=foo password='bar' dbname=replication")
+        pwl = create_pgpass_file("host=localhost port='5432' user=foo password='bar' dbname=replication")
         assert pwl == "dbname='replication' host='localhost' port='5432' user='foo'"
         assert get_pgpass_contents() == b'localhost:5432:replication:foo:bar\n'
         # See that it does not add a new row when repeated
-        pwl = create_pgpass_file(self.log, "host=localhost port='5432' user=foo password='bar' dbname=replication")
+        pwl = create_pgpass_file("host=localhost port='5432' user=foo password='bar' dbname=replication")
         assert pwl == "dbname='replication' host='localhost' port='5432' user='foo'"
         assert get_pgpass_contents() == b'localhost:5432:replication:foo:bar\n'
         # See that it does not add a new row when repeated as url
-        pwl = create_pgpass_file(self.log, "postgres://foo:bar@localhost/replication")
+        pwl = create_pgpass_file("postgres://foo:bar@localhost/replication")
         # NOTE: create_pgpass_file() always returns the string in libpq format
         assert pwl == "dbname='replication' host='localhost' user='foo'"
         assert get_pgpass_contents() == b'localhost:5432:replication:foo:bar\n'
         # See that it add a new row for a different user
-        create_pgpass_file(self.log, "postgres://another:bar@localhost/replication")
+        create_pgpass_file("postgres://another:bar@localhost/replication")
         assert get_pgpass_contents() == b'localhost:5432:replication:foo:bar\nlocalhost:5432:replication:another:bar\n'
         # See that it replaces the previous row when we change password
-        pwl = create_pgpass_file(self.log, "postgres://foo:xyz@localhost/replication")
+        pwl = create_pgpass_file("postgres://foo:xyz@localhost/replication")
         assert get_pgpass_contents() == b'localhost:5432:replication:another:bar\nlocalhost:5432:replication:foo:xyz\n'
         os.environ['HOME'] = original_home
 
