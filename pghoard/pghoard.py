@@ -20,6 +20,7 @@ import sys
 import time
 from . basebackup import PGBaseBackup
 from . common import (
+    datetime_to_timestamp,
     create_pgpass_file, get_connection_info,
     convert_pg_command_version_to_number,
     default_log_format_str, set_syslog_handler, Queue)
@@ -183,8 +184,7 @@ class PGHoard(object):
         while True:
             # Note this does not take care of timelines/older PGs
             wal_segment_no -= 1
-            wal_segment = hex(wal_segment_no)[2:].upper().zfill(24)
-            wal_path = "%s/xlog/%s" % (site, wal_segment)
+            wal_path = "{}/xlog/{:024X}".format(site, wal_segment_no)
             self.log.debug("Deleting wal_file: %r", wal_path)
             try:
                 if not storage.delete_key(wal_path):
@@ -214,7 +214,7 @@ class PGHoard(object):
             basebackups = sorted(basebackups_dict.keys())
             for basebackup_name in basebackups:
                 b_dict = basebackups_dict[basebackup_name]
-                b_dict["last_modified"] = b_dict["last_modified"].timestamp()
+                b_dict["last_modified"] = datetime_to_timestamp(b_dict["last_modified"])
                 basebackup_list.append(b_dict)
         return basebackup_list
 
