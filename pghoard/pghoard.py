@@ -15,12 +15,12 @@ import os
 import psycopg2
 import random
 import signal
-import shutil
 import socket
 import sys
 import time
 from . basebackup import PGBaseBackup
 from . common import (
+    datetime_to_timestamp,
     create_pgpass_file, get_connection_info,
     convert_pg_command_version_to_number,
     default_log_format_str, set_syslog_handler, Queue)
@@ -104,10 +104,9 @@ class PGHoard(object):
             raw_basebackup_path = os.path.join(basebackup_path + "_incoming", tsdir)
             final_basebackup_path = os.path.join(basebackup_path, tsdir)
             # the backup directory names need not to be a sequence, so we lean
-            #  towards skipping over any partial or leftover progress below
+            # towards skipping over any partial or leftover progress below
             if not os.path.exists(raw_basebackup_path) and not os.path.exists(final_basebackup_path):
                 os.makedirs(raw_basebackup_path)
-                os.makedirs(final_basebackup_path)
                 break
             i += 1
 
@@ -165,33 +164,18 @@ class PGHoard(object):
         xlog_path = os.path.join(site_path, "xlog")
         basebackup_path = os.path.join(site_path, "basebackup")
 
-        paths_to_create = [site_path, xlog_path, basebackup_path,
-                           os.path.join(site_path, "compressed_xlog"),
-                           os.path.join(site_path, "compressed_timeline"),
-                           os.path.join(site_path, "basebackup_incoming")]
+        paths_to_create = [
+            site_path,
+            xlog_path,
+            basebackup_path,
+            basebackup_path + "_incoming",
+        ]
 
         for path in paths_to_create:
             if not os.path.exists(path):
                 os.makedirs(path)
 
         return xlog_path, basebackup_path
-
-    def delete_local_wal_before(self, wal_segment, xlog_path):
-        self.log.debug("Starting WAL deletion from: %r before: %r", xlog_path, wal_segment)
-        wal_segment_no = int(wal_segment, 16)
-        while wal_segment_no > 0:
-            # Note this does not take care of timelines/older PGs
-            wal_segment_no -= 1
-            wal_segment = format(wal_segment_no, "x").upper().zfill(24)
-            compressed_wal_path = os.path.join(xlog_path, wal_segment + ".xz")
-            if not os.path.exists(compressed_wal_path):
-                self.log.debug("wal_path %r not found, returning", compressed_wal_path)
-                break
-            self.log.debug("Deleting wal_file: %r", compressed_wal_path)
-            os.unlink(compressed_wal_path)
-            metadata_path = os.path.join(xlog_path, wal_segment + ".metadata")
-            if os.path.exists(metadata_path):
-                os.unlink(metadata_path)
 
     def delete_remote_wal_before(self, wal_segment, site):
         self.log.debug("Starting WAL deletion from: %r before: %r", site, wal_segment)
@@ -200,8 +184,7 @@ class PGHoard(object):
         while True:
             # Note this does not take care of timelines/older PGs
             wal_segment_no -= 1
-            wal_segment = hex(wal_segment_no)[2:].upper().zfill(24)
-            wal_path = "%s/xlog/%s" % (site, wal_segment)
+            wal_path = "{}/xlog/{:024X}".format(site, wal_segment_no)
             self.log.debug("Deleting wal_file: %r", wal_path)
             try:
                 if not storage.delete_key(wal_path):
@@ -212,34 +195,17 @@ class PGHoard(object):
 
     def delete_remote_basebackup(self, site, basebackup):
         storage = self.site_transfers.get(site)
+        obj_key = site + "/basebackup/" + basebackup
         try:
-            storage.delete_key(basebackup)
+            storage.delete_key(obj_key)
         except:  # FIXME: don't catch all exceptions; pylint: disable=bare-except
-            self.log.exception("Problem deleting: %r", basebackup)
-
-    def get_local_basebackups_info(self, basebackup_path):
-        basebackup_list = []
-        basebackups = sorted(os.listdir(basebackup_path))
-        for basebackup in basebackups:
-            metadata_file_path = os.path.join(basebackup_path, basebackups[-1], "pghoard_metadata")
-            try:
-                #  TODO: if we add more compression types, handle .xz ending
-                st = os.stat(os.path.join(basebackup_path, basebackup, "base.tar.xz"))
-                with open(metadata_file_path, "r") as fp:
-                    metadata = json.load(fp)
-                basebackup_list.append({"size": st.st_size, "last_modified": st.st_mtime,
-                                        "name": basebackup, "metadata": metadata})
-            except (OSError, IOError):
-                self.log.warning("metadata_file_path: %r or basebackup did not exist, ignoring basebackup: %r",
-                                 metadata_file_path, basebackups[-1])
-        return basebackup_list
+            self.log.exception("Problem deleting: %r", obj_key)
 
     def get_remote_basebackups_info(self, site):
         basebackup_list = []
         storage = self.site_transfers.get(site)
         if not storage:
-            obs_key, obs_value = self.config['backup_sites'][site]['object_storage'].copy().popitem()
-            storage = get_object_storage_transfer(obs_key, obs_value)
+            storage = get_object_storage_transfer(self.config, site)
             self.site_transfers[site] = storage
 
         results = storage.list_path(site + "/basebackup/")
@@ -248,25 +214,17 @@ class PGHoard(object):
             basebackups = sorted(basebackups_dict.keys())
             for basebackup_name in basebackups:
                 b_dict = basebackups_dict[basebackup_name]
-                b_dict["last_modified"] = b_dict["last_modified"].timestamp()
+                b_dict["last_modified"] = datetime_to_timestamp(b_dict["last_modified"])
                 basebackup_list.append(b_dict)
         return basebackup_list
 
     def check_backup_count_and_state(self, site):
         allowed_basebackup_count = self.config['backup_sites'][site]['basebackup_count']
-        backup_path = os.path.join(self.config["backup_location"], site)
-        basebackup_path = os.path.join(backup_path, "basebackup")
-        compressed_xlog_path = os.path.join(backup_path, "compressed_xlog")
-        m_time, remote = 0, False
-        if 'object_storage' in self.config['backup_sites'][site] and self.config['backup_sites'][site]['object_storage']:
-            basebackups = self.get_remote_basebackups_info(site)
-            remote = True
-        else:
-            basebackups = self.get_local_basebackups_info(basebackup_path)
+        basebackups = self.get_remote_basebackups_info(site)
         self.log.debug("Found %r basebackups", basebackups)
 
-        if basebackups:  # Needs to be the m_time of the newest basebackup
-            m_time = basebackups[-1]["last_modified"]
+        # Needs to be the m_time of the newest basebackup
+        m_time = basebackups[-1]["last_modified"] if basebackups else 0
 
         while len(basebackups) > allowed_basebackup_count:
             self.log.warning("Too many basebackups: %d>%d, %r, starting to get rid of %r",
@@ -278,14 +236,9 @@ class PGHoard(object):
             if basebackups:
                 last_wal_segment_still_needed = basebackups[0]["metadata"]["start-wal-segment"]
 
-            if not remote:
-                if last_wal_segment_still_needed:
-                    self.delete_local_wal_before(last_wal_segment_still_needed, compressed_xlog_path)
-                shutil.rmtree(os.path.join(basebackup_path, basebackup_to_be_deleted["name"]))
-            else:
-                if last_wal_segment_still_needed:
-                    self.delete_remote_wal_before(last_wal_segment_still_needed, site)
-                self.delete_remote_basebackup(site, basebackup_to_be_deleted["name"])
+            if last_wal_segment_still_needed:
+                self.delete_remote_wal_before(last_wal_segment_still_needed, site)
+            self.delete_remote_basebackup(site, basebackup_to_be_deleted["name"])
         self.state["backup_sites"][site]['basebackups'] = basebackups
         return time.time() - m_time
 
@@ -298,10 +251,12 @@ class PGHoard(object):
             xlog_path, basebackup_path = self.create_backup_site_paths(site)  # pylint: disable=unused-variable
             for filename in os.listdir(xlog_path):
                 if not filename.endswith(".partial"):
-                    compression_event = {"type": "CREATE",
-                                         "full_path": os.path.join(xlog_path, filename),
-                                         "site": site,
-                                         "delete_file_after_compression": True}
+                    compression_event = {
+                        "delete_file_after_compression": True,
+                        "full_path": os.path.join(xlog_path, filename),
+                        "site": site,
+                        "type": "CREATE",
+                    }
                     self.log.debug("Found: %r when starting up, adding to compression queue", compression_event)
                     self.compression_queue.put(compression_event)
 

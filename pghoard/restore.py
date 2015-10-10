@@ -153,8 +153,7 @@ class Restore(object):
         self.storage.show_basebackup_list()
 
     def _get_object_storage(self, site, pgdata):
-        ob = self.config["backup_sites"][site]["object_storage"]
-        storage = get_object_storage_transfer(list(ob.keys())[0], list(ob.values())[0])
+        storage = get_object_storage_transfer(self.config, site)
         return ObjectStore(storage, site, pgdata)
 
     def list_basebackups(self, arg):
@@ -325,7 +324,7 @@ class HTTPRestore(object):
         response = self.session.get(uri, headers=headers, stream=True)
         self.log.debug("Got archived file: %r, %r status_code: %r took: %.2fs", filename, target_path,
                        response.status_code, time.time() - start_time)
-        return response.status_code in (200, 206)
+        return response.status_code in (200, 201)
 
 
 def main():

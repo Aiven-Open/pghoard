@@ -5,6 +5,7 @@ Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
 
+import datetime
 import fcntl
 import logging
 import os
@@ -209,3 +210,12 @@ def convert_pg_command_version_to_number(command_version_string):
     vernum = match.group(1) + ".0"  # padding for development versions
     parts = vernum.split(".")
     return int(parts[0]) * 10000 + int(parts[1]) * 100 + int(parts[2])
+
+
+def datetime_to_timestamp(td):
+    """mimic datetime.timestamp() as available on python 3.0+
+    NOTE: drop this function once we drop python 2 support"""
+    if hasattr(td, "timestamp"):
+        return td.timestamp()
+    delta = td - datetime.datetime(1970, 1, 1, tzinfo=td.tzinfo)
+    return delta.total_seconds()

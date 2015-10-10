@@ -22,7 +22,7 @@ def create_json_conf(filepath, temp_dir):
                 "object_storage": {},
             },
         },
-        "backup_location": temp_dir,
+        "backup_location": os.path.join(temp_dir, "backups"),
         "alert_file_dir": temp_dir,
         "json_state_file_path": temp_dir + "/state.json",
     }
@@ -36,11 +36,10 @@ class TestPGHoard(PGHoardTestCase):
         super(TestPGHoard, self).setUp()
         config_path = os.path.join(self.temp_dir, "pghoard.json")
         self.config = create_json_conf(config_path, self.temp_dir)
-        self.xlog_path = os.path.join(self.temp_dir, "default", "xlog")
-        os.makedirs(self.xlog_path)
-        self.compressed_xlog_path = os.path.join(self.temp_dir, "default", "compressed_xlog")
+        backup_site_path = os.path.join(self.config["backup_location"], "default")
+        self.compressed_xlog_path = os.path.join(backup_site_path, "xlog")
         os.makedirs(self.compressed_xlog_path)
-        self.basebackup_path = os.path.join(self.temp_dir, "default", "basebackup")
+        self.basebackup_path = os.path.join(backup_site_path, "basebackup")
         os.makedirs(self.basebackup_path)
         self.pghoard = PGHoard(config_path)
         self.real_check_pg_server_version = self.pghoard.check_pg_server_version
@@ -60,50 +59,46 @@ class TestPGHoard(PGHoardTestCase):
         self.assertEqual(len(self.pghoard.time_since_last_backup_check), 1)
 
     def test_get_local_basebackups_info(self):
-        self.assertEqual([], self.pghoard.get_local_basebackups_info(self.basebackup_path))
+        assert self.pghoard.get_remote_basebackups_info("default") == []
         bb_path = os.path.join(self.basebackup_path, "2015-07-03_0")
-        os.makedirs(bb_path)
-        #  Handle case where metadata file does not exist
-        self.assertEqual([], self.pghoard.get_local_basebackups_info(self.basebackup_path))
-        metadata_file_path = os.path.join(bb_path, "pghoard_metadata")
-        base_tar_path = os.path.join(bb_path, "base.tar.xz")
-        with open(base_tar_path, "wb") as fp:
+        # Handle case where metadata file does not exist
+        assert self.pghoard.get_remote_basebackups_info("default") == []
+        metadata_file_path = bb_path + ".metadata"
+        with open(bb_path, "wb") as fp:
             fp.write(b"something")
         with open(metadata_file_path, "wb") as fp:
-            fp.write(b"{}")
-        self.assertEqual("2015-07-03_0", self.pghoard.get_local_basebackups_info(self.basebackup_path)[0]["name"])
+            fp.write(b"{\"a\":1}")
+        available_backup = self.pghoard.get_remote_basebackups_info("default")[0]
+        assert available_backup["name"] == "2015-07-03_0"
+        assert available_backup["metadata"] == {"a": 1}
 
         bb_path = os.path.join(self.basebackup_path, "2015-07-02_0")
-        os.makedirs(bb_path)
-
-        metadata_file_path = os.path.join(bb_path, "pghoard_metadata")
-        base_tar_path = os.path.join(bb_path, "base.tar.xz")
-        with open(base_tar_path, "wb") as fp:
+        metadata_file_path = bb_path + ".metadata"
+        with open(bb_path, "wb") as fp:
             fp.write(b"something")
         with open(metadata_file_path, "wb") as fp:
             fp.write(b"{}")
-        basebackups = self.pghoard.get_local_basebackups_info(self.basebackup_path)
+        basebackups = self.pghoard.get_remote_basebackups_info("default")
         self.assertEqual("2015-07-02_0", basebackups[0]["name"])
         self.assertEqual("2015-07-03_0", basebackups[1]["name"])
 
     def test_local_check_backup_count_and_state(self):
         self.pghoard.set_state_defaults("default")
-        self.assertEqual([], self.pghoard.get_local_basebackups_info(self.basebackup_path))
+        assert self.pghoard.get_remote_basebackups_info("default") == []
         for bb, wal in [("2015-08-25_0", "000000010000000000000001"),
                         ("2015-08-25_1", "000000010000000000000002"),
                         ("2015-08-25_2", "000000010000000000000003")]:
             bb_path = os.path.join(self.basebackup_path, bb)
-            os.makedirs(bb_path)
-            with open(os.path.join(bb_path, "base.tar.xz"), "wb") as fp:
+            with open(bb_path, "wb") as fp:
                 fp.write(b"something")
-            with open(os.path.join(bb_path, "pghoard_metadata"), "w") as fp:
+            with open(bb_path + ".metadata", "w") as fp:
                 json.dump({"start-wal-segment": wal}, fp)
-            with open(os.path.join(self.compressed_xlog_path, wal + ".xz"), "wb") as fp:
+            with open(os.path.join(self.compressed_xlog_path, wal), "wb") as fp:
                 fp.write(b"something")
-        basebackups = self.pghoard.get_local_basebackups_info(self.basebackup_path)
+        basebackups = self.pghoard.get_remote_basebackups_info("default")
         self.assertEqual(3, len(basebackups))
         self.pghoard.check_backup_count_and_state("default")
-        basebackups = self.pghoard.get_local_basebackups_info(self.basebackup_path)
+        basebackups = self.pghoard.get_remote_basebackups_info("default")
         self.assertEqual(1, len(basebackups))
         self.assertEqual(1, len(os.listdir(self.compressed_xlog_path)))
 
@@ -134,7 +129,7 @@ class TestPGHoard(PGHoardTestCase):
         assert empty_state == state
 
     def test_startup_walk_for_missed_files(self):
-        with open(os.path.join(self.xlog_path, "000000010000000000000004"), "wb") as fp:
+        with open(os.path.join(self.compressed_xlog_path, "000000010000000000000004"), "wb") as fp:
             fp.write(b"foo")
         self.pghoard.startup_walk_for_missed_files()
         self.assertEqual(self.pghoard.compression_queue.qsize(), 1)
