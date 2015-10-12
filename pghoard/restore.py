@@ -281,9 +281,17 @@ class HTTPRestore(object):
         self.pgdata = pgdata
         self.session = Session()
 
+    def _url(self, filetype, name=None):
+        return "http://{host}:{port}/{site}/{type}{sep}{name}".format(
+            host=self.host,
+            port=self.port,
+            site=self.site,
+            type=filetype,
+            sep="" if name is None else "/",
+            name=name or "")
+
     def list_basebackups(self):
-        uri = "http://" + self.host + ":" + str(self.port) + "/" + self.site + "/basebackups"
-        response = self.session.get(uri)
+        response = self.session.get(self._url("basebackups"))
         basebackups = []
         for basebackup, values in response.json()["basebackups"].items():
             basebackups.append({"name": basebackup, "size": values["size"]})
@@ -299,8 +307,7 @@ class HTTPRestore(object):
             print("{}\t{}".format(r["name"], r["size"]))
 
     def get_basebackup_file_to_fileobj(self, basebackup, fileobj):
-        uri = "http://" + self.host + ":" + str(self.port) + "/" + self.site + "/basebackups/" + basebackup
-        response = self.session.get(uri, stream=True)
+        response = self.session.get(self._url("basebackups", basebackup), stream=True)
         if response.status_code != 200:
             raise Error("Incorrect basebackup: %{!r} or site: {!r} defined".format(basebackup, self.site))
         for chunk in response.iter_content(chunk_size=IO_BLOCK_SIZE):
@@ -315,16 +322,23 @@ class HTTPRestore(object):
         start_time = time.time()
         self.log.debug("Getting archived file: %r, target_path: %r, path_prefix: %r",
                        filename, target_path, path_prefix)
-        uri = "http://" + self.host + ":" + str(self.port) + "/" + self.site + "/" + filename
         if not path_prefix:
             final_target_path = os.path.join(os.getcwd(), target_path)
         else:
             final_target_path = os.path.join(path_prefix, target_path)
         headers = {"x-pghoard-target-path": final_target_path}
-        response = self.session.get(uri, headers=headers, stream=True)
-        self.log.debug("Got archived file: %r, %r status_code: %r took: %.2fs", filename, target_path,
-                       response.status_code, time.time() - start_time)
+        response = self.session.get(self._url(filename), headers=headers, stream=True)
+        self.log.debug("Got archived file: %r, %r status_code: %r took: %.2fs",
+                       filename, target_path, response.status_code, time.time() - start_time)
         return response.status_code in (200, 201)
+
+    def query_archive_file(self, filename):
+        start_time = time.time()
+        self.log.debug("Querying archived file: %r", filename)
+        response = self.session.head(self._url(filename), stream=True)
+        self.log.debug("Queried archived file: %r, status_code: %r took: %.2fs",
+                       filename, response.status_code, time.time() - start_time)
+        return response.status_code == 200
 
 
 def main():

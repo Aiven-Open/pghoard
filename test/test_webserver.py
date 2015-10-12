@@ -94,6 +94,7 @@ class TestWebServer(object):
             fp.write(content)
         with open(backup_xlog_path + ".metadata", "w") as fp:
             json.dump({"compression-algorithm": "lzma", "original-file-size": len(content)}, fp)
+        assert http_restore.query_archive_file(xlog_file) is True
         http_restore.get_archive_file(xlog_file, "pg_xlog/" + xlog_file, path_prefix=pgdata)
         assert os.path.exists(os.path.join(pgdata, "pg_xlog", xlog_file)) is True
         with open(os.path.join(pgdata, "pg_xlog", xlog_file), "rb") as fp:

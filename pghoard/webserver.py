@@ -85,10 +85,9 @@ class RequestHandler(BaseHTTPRequestHandler):
     disable_nagle_algorithm = True
     server_version = "pghoard/" + __version__
 
-    def get_wal_or_timeline_file(self, site, filename, filetype):
+    def _wal_or_timeline_file_op(self, site, filename, filetype, method):
         start_time = time.time()
 
-        method = "DOWNLOAD"
         target_path = self.headers.get("x-pghoard-target-path")
         self.server.log.debug("Requesting site: %r, filename: %r, filetype: %r, target_path: %r",
                               site, filename, filetype, target_path)
@@ -105,6 +104,10 @@ class RequestHandler(BaseHTTPRequestHandler):
         response = callback_queue.get(timeout=30.0)
         self.server.log.debug("Handled a %s request for: %r %r, took: %.3fs",
                               method, site, target_path, time.time() - start_time)
+        return response
+
+    def get_wal_or_timeline_file(self, site, filename, filetype):
+        response = self._wal_or_timeline_file_op(site, filename, filetype, "DOWNLOAD")
         http_status = 201 if response["success"] else 404
         return "", {"content-length": "0"}, http_status
 
@@ -201,6 +204,17 @@ class RequestHandler(BaseHTTPRequestHandler):
         self.send_header("content-length", "0")
         self.end_headers()
         return None, None
+
+    def do_HEAD(self):
+        site, path = self.log_and_parse_request()
+        op_type, op_target = self._oper_type_from_path(path)
+        if not op_type:
+            return
+        response = self._wal_or_timeline_file_op(site, op_target, op_type, "METADATA")
+        http_status = 200 if response["success"] else 404
+        self.send_response(http_status)
+        self.send_header("content-length", "0")
+        self.end_headers()
 
     def do_GET(self):
         site, path = self.log_and_parse_request()
