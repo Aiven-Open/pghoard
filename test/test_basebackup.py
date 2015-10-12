@@ -27,5 +27,5 @@ LABEL: pg_basebackup base backup
             tfile.add(os.path.join(td, "backup_label"), arcname="backup_label")
         pgb = PGBaseBackup(command=None, basebackup_location=None, compression_queue=None)
         start_wal_segment, start_time = pgb.parse_backup_label(fn)
-        self.assertEqual(start_wal_segment, "000000010000000000000004")
-        self.assertEqual(start_time, "2015-02-12T14:07:19+00:00")
+        assert start_wal_segment == "000000010000000000000004"
+        assert start_time == "2015-02-12T14:07:19+00:00"

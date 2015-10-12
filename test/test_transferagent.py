@@ -4,6 +4,7 @@ pghoard
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
+# pylint: disable=attribute-defined-outside-init
 from .base import Mock, PGHoardTestCase
 from pghoard.common import Queue
 from pghoard.object_storage import TransferAgent
@@ -19,8 +20,8 @@ class MockStorage(Mock):
 
 
 class TestTransferAgent(PGHoardTestCase):
-    def setUp(self):
-        super(TestTransferAgent, self).setUp()
+    def setup_method(self, method):
+        super(TestTransferAgent, self).setup_method(method)
         self.config = {
             "backup_sites": {
                 "default": {
@@ -44,11 +45,11 @@ class TestTransferAgent(PGHoardTestCase):
         self.transfer_agent = TransferAgent(self.config, self.compression_queue, self.transfer_queue)
         self.transfer_agent.start()
 
-    def tearDown(self):
+    def teardown_method(self, method):
         self.transfer_agent.running = False
         self.transfer_queue.put({"type": "QUIT"})
         self.transfer_agent.join()
-        super(TestTransferAgent, self).tearDown()
+        super(TestTransferAgent, self).teardown_method(method)
 
     def test_handle_download(self):
         callback_queue = Queue()
@@ -75,7 +76,7 @@ class TestTransferAgent(PGHoardTestCase):
         callback_queue = Queue()
         storage = MockStorage()
         self.transfer_agent.get_object_storage = storage
-        self.assertTrue(os.path.exists(self.foo_path))
+        assert os.path.exists(self.foo_path) is True
         self.transfer_queue.put({
             "callback_queue": callback_queue,
             "file_size": 3,
@@ -85,14 +86,14 @@ class TestTransferAgent(PGHoardTestCase):
             "site": "default",
             "type": "UPLOAD",
         })
-        self.assertEqual(callback_queue.get(timeout=1.0), {"success": True})
-        self.assertFalse(os.path.exists(self.foo_path))
+        assert callback_queue.get(timeout=1.0) == {"success": True}
+        assert os.path.exists(self.foo_path) is False
 
     def test_handle_upload_basebackup(self):
         callback_queue = Queue()
         storage = MockStorage()
         self.transfer_agent.get_object_storage = storage
-        self.assertTrue(os.path.exists(self.foo_path))
+        assert os.path.exists(self.foo_path) is True
         self.transfer_queue.put({
             "callback_queue": callback_queue,
             "file_size": 3,
@@ -102,5 +103,5 @@ class TestTransferAgent(PGHoardTestCase):
             "site": "default",
             "type": "UPLOAD",
         })
-        self.assertEqual(callback_queue.get(timeout=1.0), {"success": True})
-        self.assertFalse(os.path.exists(self.foo_basebackup_path))
+        assert callback_queue.get(timeout=1.0) == {"success": True}
+        assert os.path.exists(self.foo_basebackup_path) is False

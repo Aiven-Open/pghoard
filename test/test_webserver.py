@@ -4,6 +4,7 @@ pghoard
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
+# pylint: disable=attribute-defined-outside-init
 from .base import PGHoardTestCase, CONSTANT_TEST_RSA_PUBLIC_KEY, CONSTANT_TEST_RSA_PRIVATE_KEY
 from pghoard.archive_command import archive
 from pghoard.common import Queue, lzma_compressor, lzma_open
@@ -19,8 +20,8 @@ import time
 
 
 class TestWebServer(PGHoardTestCase):
-    def setUp(self):
-        super(TestWebServer, self).setUp()
+    def setup_method(self, method):
+        super(TestWebServer, self).setup_method(method)
         backup_site_path = os.path.join(self.temp_dir, "backups", "default")
         self.compressed_xlog_path = os.path.join(backup_site_path, "xlog")
         self.basebackup_path = os.path.join(backup_site_path, "basebackup")
@@ -70,7 +71,7 @@ class TestWebServer(PGHoardTestCase):
         self.http_restore = HTTPRestore("localhost", self.config['http_port'], site="default", pgdata=self.pgdata_path)
         time.sleep(0.05)  # Hack to give the server time to start up
 
-    def tearDown(self):
+    def teardown_method(self, method):
         self.compressor.running = False
         self.tagent.running = False
         self.webserver.running = False
@@ -79,15 +80,18 @@ class TestWebServer(PGHoardTestCase):
         self.webserver.join()
         self.tagent.join()
         self.compressor.join()
-        super(TestWebServer, self).tearDown()
+        super(TestWebServer, self).teardown_method(method)
 
-    def test_list_empty_basebackups(self):
-        self.assertEqual(self.http_restore.list_basebackups(), [])  # pylint: disable=protected-access
+    def test_list_empty_basebackups(self, capsys):
+        assert self.http_restore.list_basebackups() == []
+        self.http_restore.show_basebackup_list()
+        out, _ = capsys.readouterr()
+        assert "default" in out
 
     def test_archiving(self):
         xlog_file = "00000001000000000000000C"
-        self.assertTrue(archive(port=self.config['http_port'], site="default", xlog_file=xlog_file))
-        self.assertTrue(os.path.exists(os.path.join(self.compressed_xlog_path, xlog_file)))
+        assert archive(port=self.config["http_port"], site="default", xlog_file=xlog_file) is True
+        assert os.path.exists(os.path.join(self.compressed_xlog_path, xlog_file)) is True
         self.log.error(os.path.join(self.compressed_xlog_path, xlog_file))
 
     def test_archiving_backup_label_from_archive_command(self):
@@ -100,12 +104,9 @@ class TestWebServer(PGHoardTestCase):
         xlog_path = os.path.join(self.pg_xlog_dir, xlog_file)
         with open(xlog_path, "w") as fp:
             fp.write("jee")
-        self.assertTrue(archive(port=self.config['http_port'], site="default", xlog_file=xlog_file))
-        self.assertFalse(os.path.exists(os.path.join(self.compressed_xlog_path, xlog_file)))
+        assert archive(port=self.config["http_port"], site="default", xlog_file=xlog_file) is True
+        assert os.path.exists(os.path.join(self.compressed_xlog_path, xlog_file)) is False
         compressor.running = False
-
-#    def test_get_basebackup_file(self):
-#        self.http_restore.get_basebackup_file()
 
     def test_get_archived_file(self):
         content = b"testing123"
@@ -116,10 +117,10 @@ class TestWebServer(PGHoardTestCase):
         with open(filepath + ".metadata", "w") as fp:
             json.dump({"compression-algorithm": "lzma", "original-file-size": len(content)}, fp)
         self.http_restore.get_archive_file(xlog_file, "pg_xlog/" + xlog_file, path_prefix=self.pgdata_path)
-        self.assertTrue(os.path.exists(os.path.join(self.pg_xlog_dir, xlog_file)))
+        assert os.path.exists(os.path.join(self.pg_xlog_dir, xlog_file)) is True
         with open(os.path.join(self.pg_xlog_dir, xlog_file), "rb") as fp:
             restored_data = fp.read()
-        self.assertEqual(content, restored_data)
+        assert content == restored_data
 
     def test_get_encrypted_archived_file(self):
         content = b"testing123"
@@ -135,7 +136,7 @@ class TestWebServer(PGHoardTestCase):
             json.dump({"compression-algorithm": "lzma", "original-file-size": len(content), "encryption-key-id": "testkey"}, fp)
         self.webserver.config["backup_sites"]["default"]["encryption_keys"] = {"testkey": {"public": CONSTANT_TEST_RSA_PUBLIC_KEY, "private": CONSTANT_TEST_RSA_PRIVATE_KEY}}
         self.http_restore.get_archive_file(xlog_file, "pg_xlog/" + xlog_file, path_prefix=self.pgdata_path)
-        self.assertTrue(os.path.exists(os.path.join(self.pg_xlog_dir, xlog_file)))
+        assert os.path.exists(os.path.join(self.pg_xlog_dir, xlog_file)) is True
         with open(os.path.join(self.pg_xlog_dir, xlog_file), "rb") as fp:
             restored_data = fp.read()
-        self.assertEqual(content, restored_data)
+        assert content == restored_data
