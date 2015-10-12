@@ -109,16 +109,18 @@ class RequestHandler(BaseHTTPRequestHandler):
         return "", {"content-length": "0"}, http_status
 
     def list_basebackups(self, site):
-        basebackup_dir = os.path.join(self.server.config['backup_location'], site, "basebackup")
+        basebackup_dir = os.path.join(self.server.config["backup_location"], site, "basebackup")
         basebackup_dict = {}
         for backup in os.listdir(basebackup_dir):
-            path = os.path.join(self.server.config['backup_location'], site, "basebackup", backup, "base.tar.xz")
+            if backup.startswith(".") or backup.endswith(".metadata"):
+                continue
+            path = os.path.join(self.server.config["backup_location"], site, "basebackup", backup)
             basebackup_dict[backup] = {"size": os.stat(path).st_size}
         return {"basebackups": basebackup_dict}, {}, 200
 
     def get_basebackup(self, site, which_one):
-        backup_path = os.path.join(self.server.config['backup_location'], site, "basebackup", which_one, "base.tar.xz")
-        backup_metadata = os.path.join(self.server.config['backup_location'], site, "basebackup", which_one, "pghoard_metadata")
+        backup_path = os.path.join(self.server.config["backup_location"], site, "basebackup", which_one)
+        backup_metadata = os.path.join(self.server.config["backup_location"], site, "basebackup", which_one + ".metadata")
         with open(backup_metadata, "r") as fp:
             metadata = json.load(fp)
         headers = {}
@@ -182,6 +184,8 @@ class RequestHandler(BaseHTTPRequestHandler):
             self.send_response(404)
             return None, None
 
+        # FIXME: we use `basebackups` in URLs but `basebackup` on disk, pick
+        # one and use it everywhere
         if len(path) >= 2 and path[1] == "basebackups":
             if len(path) == 2:
                 return "basebackups", None

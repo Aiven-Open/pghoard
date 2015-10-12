@@ -7,12 +7,13 @@ See LICENSE for details
 # pylint: disable=attribute-defined-outside-init
 from .base import CONSTANT_TEST_RSA_PUBLIC_KEY, CONSTANT_TEST_RSA_PRIVATE_KEY
 from pghoard.archive_command import archive
-from pghoard.common import lzma_compressor, lzma_open
+from pghoard.common import create_connection_string, lzma_compressor, lzma_open
 from pghoard.encryptor import Encryptor
 from pghoard.restore import HTTPRestore
 import json
 import os
 import pytest
+import time
 
 
 @pytest.fixture
@@ -27,6 +28,43 @@ class TestWebServer(object):
         http_restore.show_basebackup_list()
         out, _ = capsys.readouterr()
         assert "default" in out
+
+    def test_basebackups(self, capsys, db, http_restore, pghoard, tmpdir):  # pylint: disable=redefined-outer-name
+        tmpdir = str(tmpdir)
+        pghoard.create_backup_site_paths("default")
+        conn_str = create_connection_string(db["user"])
+        basebackup_path = os.path.join(pghoard.config["backup_location"], "default", "basebackup")
+        backup_thread, final_location = pghoard.create_basebackup("default", conn_str, basebackup_path)
+        assert backup_thread is not None
+        # wait for backup to appear; metadata file is written once we're done so wait for it
+        metadata_file = final_location + ".metadata"
+        timeout = time.time() + 20
+        while not os.path.exists(metadata_file) and (time.time() < timeout):
+            time.sleep(1)
+        assert os.path.exists(metadata_file)
+        # it should now show up on our list
+        backups = http_restore.list_basebackups()
+        assert len(backups) == 1
+        assert backups[0]["size"] > 0
+        assert backups[0]["name"] == os.path.basename(final_location)
+        # make sure they show up on the printable listing, too
+        http_restore.show_basebackup_list()
+        out, _ = capsys.readouterr()
+        assert str(backups[0]["size"]) in out
+        assert backups[0]["name"] in out
+        # test file access
+        # NOTE: get_archive_file isn't currently really compatible with
+        # basebackups as it's not possible to request a basebackup to be
+        # written to a file and get_archive_file returns a boolean status
+        aresult = http_restore.get_archive_file("basebackups/" + backups[0]["name"],
+                                                target_path="dltest", path_prefix=tmpdir)
+        assert aresult is True
+        # test restoring using get_basebackup_file_to_fileobj
+        with open(os.path.join(tmpdir, "b.tar"), "wb") as fp:
+            metadata = http_restore.get_basebackup_file_to_fileobj(backups[0]["name"], fp)
+        assert set(metadata) == {"compression-algorithm", "original-file-size", "start-time", "start-wal-segment"}
+        assert metadata["compression-algorithm"] == "lzma"
+        # TODO: check that we can restore the backup
 
     def test_archiving(self, pghoard):
         # inject a fake WAL file for testing
