@@ -84,12 +84,12 @@ class PGHoard(object):
             self.log.error("pghoard does not support versions earlier than 9.3, found: %r", pg_version_server)
             self.create_alert_file("version_unsupported_error")
             return False
-        output = os.popen(self.config.get(command + "_path", "/usr/bin/" + command) + " --version").read().strip()
+        command_path = self.config.get(command + "_path", "/usr/bin/" + command)
+        output = os.popen(command_path + " --version").read().strip()
         pg_version_client = convert_pg_command_version_to_number(output)
-        if pg_version_server != pg_version_client:
-            # FIXME: should we just check for the same major version?
-            self.log.error("Server version: %r does not match %s client version: %r",
-                           pg_version_server, command, pg_version_client)
+        if pg_version_server // 100 != pg_version_client // 100:
+            self.log.error("Server version: %r does not match %s version: %r",
+                           pg_version_server, command_path, pg_version_client)
             self.create_alert_file("version_mismatch_error")
             return False
         return True
