@@ -38,7 +38,8 @@ unittest:
 	$(PYTHON) -m pytest $(PYTEST_ARG) test/
 
 coverage:
-	$(PYTHON) -m pytest $(PYTEST_ARG) --cov-report term-missing --cov pghoard test/
+	$(PYTHON) -m coverage run --source pghoard -m pytest $(PYTEST_ARG) test/
+	$(PYTHON) -m coverage report --show-missing
 
 pylint:
 	$(PYTHON) -m pylint.lint --rcfile .pylintrc $(PYTHON_SOURCE_DIRS)
