@@ -12,3 +12,8 @@ script:
   - "make pylint"
   - "make pep8"
   - "make unittest"
+
+addons:
+  apt:
+    packages:
+      - postgresql-9.4

@@ -9,6 +9,7 @@ from dateutil import tz
 from pghoard.restore import create_recovery_conf, Restore, RestoreError
 import datetime
 import os
+import pytest
 
 
 class TestRecoveryConf(PGHoardTestCase):
@@ -20,15 +21,16 @@ class TestRecoveryConf(PGHoardTestCase):
                        {"name": "2015-02-13_0", "metadata": {"start-time": "2015-02-13T14:07:19+00:00"}}]
 
         r.storage.list_basebackups = Mock(return_value=basebackups)
-        self.assertEqual(r._find_nearest_basebackup(), "2015-02-13_0")  # pylint: disable=protected-access
+        assert r._find_nearest_basebackup() == "2015-02-13_0"  # pylint: disable=protected-access
         utc = tz.tzutc()
         recovery_time = datetime.datetime(2015, 2, 1)
         recovery_time = recovery_time.replace(tzinfo=utc)
-        self.assertRaises(RestoreError, r._find_nearest_basebackup, recovery_time)  # pylint: disable=protected-access
+        with pytest.raises(RestoreError):
+            r._find_nearest_basebackup(recovery_time)  # pylint: disable=protected-access
 
         recovery_time = datetime.datetime(2015, 2, 12, 14, 20)
         recovery_time = recovery_time.replace(tzinfo=utc)
-        self.assertEqual(r._find_nearest_basebackup(recovery_time), "2015-02-12_0")  # pylint: disable=protected-access
+        assert r._find_nearest_basebackup(recovery_time) == "2015-02-12_0"  # pylint: disable=protected-access
 
     def test_create_recovery_conf(self):
         td = self.temp_dir

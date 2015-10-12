@@ -4,6 +4,7 @@ pghoard
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
+# pylint: disable=attribute-defined-outside-init
 from .base import Mock, PGHoardTestCase
 from pghoard.pghoard import PGHoard
 import json
@@ -32,8 +33,8 @@ def create_json_conf(filepath, temp_dir):
 
 
 class TestPGHoard(PGHoardTestCase):
-    def setUp(self):
-        super(TestPGHoard, self).setUp()
+    def setup_method(self, method):
+        super(TestPGHoard, self).setup_method(method)
         config_path = os.path.join(self.temp_dir, "pghoard.json")
         self.config = create_json_conf(config_path, self.temp_dir)
         backup_site_path = os.path.join(self.config["backup_location"], "default")
@@ -47,16 +48,16 @@ class TestPGHoard(PGHoardTestCase):
         self.real_check_pg_versions_ok = self.pghoard.check_pg_versions_ok
         self.pghoard.check_pg_versions_ok = Mock(return_value=True)
 
-    def tearDown(self):
+    def teardown_method(self, method):
         self.pghoard.quit()
         self.pghoard.check_pg_server_version = self.real_check_pg_server_version
         self.pghoard.check_pg_versions_ok = self.real_check_pg_versions_ok
-        super(TestPGHoard, self).tearDown()
+        super(TestPGHoard, self).teardown_method(method)
 
     def test_handle_site(self):
         self.pghoard.handle_site("default", self.config["backup_sites"]["default"])
-        self.assertEqual(self.pghoard.receivexlogs, {})
-        self.assertEqual(len(self.pghoard.time_since_last_backup_check), 1)
+        assert self.pghoard.receivexlogs == {}
+        assert len(self.pghoard.time_since_last_backup_check) == 1
 
     def test_get_local_basebackups_info(self):
         assert self.pghoard.get_remote_basebackups_info("default") == []
@@ -79,8 +80,8 @@ class TestPGHoard(PGHoardTestCase):
         with open(metadata_file_path, "wb") as fp:
             fp.write(b"{}")
         basebackups = self.pghoard.get_remote_basebackups_info("default")
-        self.assertEqual("2015-07-02_0", basebackups[0]["name"])
-        self.assertEqual("2015-07-03_0", basebackups[1]["name"])
+        assert "2015-07-02_0" == basebackups[0]["name"]
+        assert "2015-07-03_0" == basebackups[1]["name"]
 
     def test_local_check_backup_count_and_state(self):
         self.pghoard.set_state_defaults("default")
@@ -96,18 +97,18 @@ class TestPGHoard(PGHoardTestCase):
             with open(os.path.join(self.compressed_xlog_path, wal), "wb") as fp:
                 fp.write(b"something")
         basebackups = self.pghoard.get_remote_basebackups_info("default")
-        self.assertEqual(3, len(basebackups))
+        assert 3 == len(basebackups)
         self.pghoard.check_backup_count_and_state("default")
         basebackups = self.pghoard.get_remote_basebackups_info("default")
-        self.assertEqual(1, len(basebackups))
-        self.assertEqual(1, len(os.listdir(self.compressed_xlog_path)))
+        assert 1 == len(basebackups)
+        assert 1 == len(os.listdir(self.compressed_xlog_path))
 
     def test_alert_files(self):
         alert_file_path = os.path.join(self.temp_dir, "test_alert")
         self.pghoard.create_alert_file("test_alert")
-        self.assertTrue(os.path.exists(alert_file_path))
+        assert os.path.exists(alert_file_path) is True
         self.pghoard.delete_alert_file("test_alert")
-        self.assertFalse(os.path.exists(alert_file_path))
+        assert os.path.exists(alert_file_path) is False
 
     def test_backup_state_file(self):
         self.pghoard.write_backup_state_to_json_file()
@@ -132,4 +133,4 @@ class TestPGHoard(PGHoardTestCase):
         with open(os.path.join(self.compressed_xlog_path, "000000010000000000000004"), "wb") as fp:
             fp.write(b"foo")
         self.pghoard.startup_walk_for_missed_files()
-        self.assertEqual(self.pghoard.compression_queue.qsize(), 1)
+        assert self.pghoard.compression_queue.qsize() == 1

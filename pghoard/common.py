@@ -26,6 +26,7 @@ except ImportError:
 
 
 IO_BLOCK_SIZE = 2 ** 20  # 1 MiB
+LOG = logging.getLogger("pghoard.common")
 
 
 if hasattr(lzma, "open"):
@@ -139,7 +140,7 @@ def parse_connection_string_libpq(connection_string):
     return fields
 
 
-def create_pgpass_file(log, connection_string_or_info):
+def create_pgpass_file(connection_string_or_info):
     """Look up password from the given object which can be a dict or a
     string and write a possible password in a pgpass file;
     returns a connection_string without a password in it"""
@@ -159,7 +160,7 @@ def create_pgpass_file(log, connection_string_or_info):
     else:
         pgpass_lines = []
     if pwline in pgpass_lines:
-        log.debug("Not adding authentication data to: %s since it's already there", pgpass_path)
+        LOG.debug("Not adding authentication data to: %s since it's already there", pgpass_path)
     else:
         # filter out any existing lines with our linekey and add the new line
         pgpass_lines = [line for line in pgpass_lines if not line.startswith(linekey)] + [pwline]
@@ -167,8 +168,31 @@ def create_pgpass_file(log, connection_string_or_info):
         with open(pgpass_path, "w") as fp:
             os.fchmod(fp.fileno(), 0o600)
             fp.write(content)
-        log.debug("Wrote %r to %r", pwline, pgpass_path)
+        LOG.debug("Wrote %r to %r", pwline, pgpass_path)
     return create_connection_string(info)
+
+
+def replication_connection_string_using_pgpass(target_node_info):
+    """Process the input `target_node_info` entry which may be a libpq
+    connection string or uri, or a dict containing key:value pairs of
+    connection info entries or just the connection string with a
+    replication slot name.  Create a pgpass entry for this in case it
+    contains a password and return a libpq-format connection string
+    without the password in it and a possible replication slot."""
+    slot = None
+    if isinstance(target_node_info, dict):
+        target_node_info = target_node_info.copy()
+        slot = target_node_info.pop("slot", None)
+        if list(target_node_info) == ["connection_string"]:
+            # if the dict only contains the `connection_string` key use it as-is
+            target_node_info = target_node_info["connection_string"]
+    # make sure it's a replication connection to the host
+    # pointed by the key using the "replication" pseudo-db
+    connection_info = get_connection_info(target_node_info)
+    connection_info["dbname"] = "replication"
+    connection_info["replication"] = "true"
+    connection_string = create_pgpass_file(connection_info)
+    return connection_string, slot
 
 
 def set_syslog_handler(syslog_address, syslog_facility, logger):

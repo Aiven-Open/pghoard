@@ -21,7 +21,7 @@ import time
 from . basebackup import PGBaseBackup
 from . common import (
     datetime_to_timestamp,
-    create_pgpass_file, get_connection_info,
+    replication_connection_string_using_pgpass,
     convert_pg_command_version_to_number,
     default_log_format_str, set_syslog_handler, Queue)
 from . compressor import Compressor
@@ -84,12 +84,12 @@ class PGHoard(object):
             self.log.error("pghoard does not support versions earlier than 9.3, found: %r", pg_version_server)
             self.create_alert_file("version_unsupported_error")
             return False
-        output = os.popen(self.config.get(command + "_path", "/usr/bin/" + command) + " --version").read().strip()
+        command_path = self.config.get(command + "_path", "/usr/bin/" + command)
+        output = os.popen(command_path + " --version").read().strip()
         pg_version_client = convert_pg_command_version_to_number(output)
-        if pg_version_server != pg_version_client:
-            # FIXME: should we just check for the same major version?
-            self.log.error("Server version: %r does not match %s client version: %r",
-                           pg_version_server, command, pg_version_client)
+        if pg_version_server // 100 != pg_version_client // 100:
+            self.log.error("Server version: %r does not match %s version: %r",
+                           pg_version_server, command_path, pg_version_client)
             self.create_alert_file("version_mismatch_error")
             return False
         return True
@@ -97,7 +97,7 @@ class PGHoard(object):
     def create_basebackup(self, cluster, connection_string, basebackup_path):
         pg_version_server = self.check_pg_server_version(connection_string)
         if not self.check_pg_versions_ok(pg_version_server, "pg_basebackup"):
-            return
+            return None, None
         i = 0
         while True:
             tsdir = datetime.datetime.utcnow().strftime("%Y-%m-%d") + "_" + str(i)
@@ -123,6 +123,7 @@ class PGHoard(object):
         thread = PGBaseBackup(command, raw_basebackup_path, self.compression_queue)
         thread.start()
         self.basebackups[cluster] = thread
+        return thread, final_basebackup_path
 
     def check_pg_server_version(self, connection_string):
         pg_version = None
@@ -269,28 +270,6 @@ class PGHoard(object):
         for ta in self.transfer_agents:
             ta.start()
 
-    def get_passwordless_connection_string(self, chosen_backup_node):
-        """Process the input chosen_backup_node entry which may be a libpq
-        connection string or uri, or a dict containing key:value pairs of
-        connection info entries or just the connection string with a
-        replication slot name.  Create a pgpass entry for this in case it
-        contains a password and return a libpq-format connection string
-        without the password in it and a possible replication slot."""
-        slot = None
-        if isinstance(chosen_backup_node, dict):
-            chosen_backup_node = chosen_backup_node.copy()
-            slot = chosen_backup_node.pop("slot", None)
-            if list(chosen_backup_node) == ["connection_string"]:
-                # if the dict only contains the `connection_string` key use it as-is
-                chosen_backup_node = chosen_backup_node["connection_string"]
-        # make sure it's a replication connection to the host
-        # pointed by the key using the "replication" pseudo-db
-        connection_info = get_connection_info(chosen_backup_node)
-        connection_info["dbname"] = "replication"
-        connection_info["replication"] = "true"
-        connection_string = create_pgpass_file(self.log, connection_info)
-        return connection_string, slot
-
     def handle_site(self, site, site_config):
         self.set_state_defaults(site)
         xlog_path, basebackup_path = self.create_backup_site_paths(site)
@@ -308,14 +287,14 @@ class PGHoard(object):
 
         if site not in self.receivexlogs and site_config.get("active_backup_mode") == "pg_receivexlog":
             # Create a pg_receivexlog listener for all sites
-            connection_string, slot = self.get_passwordless_connection_string(chosen_backup_node)
+            connection_string, slot = replication_connection_string_using_pgpass(chosen_backup_node)
             self.receivexlog_listener(site, xlog_path, connection_string, slot)
 
         if self.time_since_last_backup.get(site, 0) > self.config['backup_sites'][site]['basebackup_interval_hours'] * 3600 \
            and site not in self.basebackups:
             self.log.debug("Starting to create a new basebackup for: %r since time from previous: %r",
                            site, self.time_since_last_backup.get(site, 0))
-            connection_string, slot = self.get_passwordless_connection_string(chosen_backup_node)
+            connection_string, slot = replication_connection_string_using_pgpass(chosen_backup_node)
             self.create_basebackup(site, connection_string, basebackup_path)
 
     def run(self):

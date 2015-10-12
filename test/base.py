@@ -4,10 +4,10 @@ pghoard
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
+# pylint: disable=attribute-defined-outside-init
 from pghoard.common import default_log_format_str
 from shutil import rmtree
 from tempfile import mkdtemp
-from unittest import TestCase
 import logging
 
 try:
@@ -43,12 +43,15 @@ nkMAHqg9PS372Cs=
 -----END PRIVATE KEY-----"""
 
 
-class PGHoardTestCase(TestCase):
-    def setUp(self):
-        self.log = logging.getLogger(self.__class__.__name__)
+class PGHoardTestCase(object):
+    @classmethod
+    def setup_class(cls):
+        cls.log = logging.getLogger(cls.__name__)
+
+    def setup_method(self, method):  # pylint: disable=unused-argument
         self.temp_dir = mkdtemp(prefix=self.__class__.__name__)
 
-    def tearDown(self):
+    def teardown_method(self, method):  # pylint: disable=unused-argument
         rmtree(self.temp_dir)
 
 

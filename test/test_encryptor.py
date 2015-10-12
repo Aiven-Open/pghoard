@@ -12,25 +12,25 @@ import tempfile
 
 
 class TestEncryptor(PGHoardTestCase):
-    def setUp(self):
-        super(TestEncryptor, self).setUp()
+    def setup_method(self, method):
+        super(TestEncryptor, self).setup_method(method)
 
-    def tearDown(self):
-        super(TestEncryptor, self).tearDown()
+    def teardown_method(self, method):
+        super(TestEncryptor, self).teardown_method(method)
 
     def test_encryptor_decryptor(self):
         plaintext = b"test"
         encryptor = Encryptor(CONSTANT_TEST_RSA_PUBLIC_KEY)
         ciphertext = encryptor.update(plaintext) + encryptor.finalize()
-        self.assertFalse(plaintext in ciphertext)
+        assert plaintext not in ciphertext
         decryptor = Decryptor(CONSTANT_TEST_RSA_PRIVATE_KEY)
         result = decryptor.update(ciphertext) + decryptor.finalize()
-        self.assertEqual(plaintext, result)
+        assert plaintext == result
         public_key = json.loads(json.dumps(CONSTANT_TEST_RSA_PUBLIC_KEY))
         private_key = json.loads(json.dumps(CONSTANT_TEST_RSA_PRIVATE_KEY))
         encryptor = Encryptor(public_key)
         decryptor = Decryptor(private_key)
-        self.assertEqual(plaintext, decryptor.update(encryptor.update(plaintext) + encryptor.finalize()) + decryptor.finalize())
+        assert plaintext == decryptor.update(encryptor.update(plaintext) + encryptor.finalize()) + decryptor.finalize()
 
     def test_decryptorfile(self):
         plaintext = b"test"
@@ -41,13 +41,13 @@ class TestEncryptor(PGHoardTestCase):
         fp.seek(0)
         fp = DecryptorFile(fp, CONSTANT_TEST_RSA_PRIVATE_KEY)
         result = fp.read()
-        self.assertEqual(plaintext, result)
+        assert plaintext == result
         fp.seek(0)
         result = fp.read()
-        self.assertEqual(plaintext, result)
+        assert plaintext == result
         fp.seek(2)
         result = fp.read(1)
-        self.assertEqual(plaintext[2:3], result)
+        assert plaintext[2:3] == result
 
     def test_decryptorfile_for_tarfile(self):
         testdata = b"file contents"
@@ -73,13 +73,13 @@ class TestEncryptor(PGHoardTestCase):
         tmp = DecryptorFile(tmp, CONSTANT_TEST_RSA_PRIVATE_KEY)
         tar = tarfile.TarFile(fileobj=tmp, mode="r")
         info = tar.getmember("archived_content")
-        self.assertTrue(info.isfile())
-        self.assertEqual(info.size, len(testdata))
+        assert info.isfile() is True
+        assert info.size == len(testdata)
         content_file = tar.extractfile("archived_content")
         tar.extract("archived_content", "/tmp/testout")
         content = content_file.read()  # pylint: disable=no-member
         content_file.close()  # pylint: disable=no-member
-        self.assertEqual(testdata, content)
+        assert testdata == content
         tar.close()
         tmp.close()
         data_tmp.close()

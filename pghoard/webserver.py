@@ -44,7 +44,7 @@ class WebServer(Thread):
         self.config = config
         self.compression_queue = compression_queue
         self.transfer_queue = transfer_queue
-        self.address = self.config.get("http_address", '')
+        self.address = self.config.get("http_address", "")
         self.port = self.config.get("http_port", 16000)
         self.server = None
         self._running = False
@@ -85,7 +85,7 @@ class RequestHandler(BaseHTTPRequestHandler):
     disable_nagle_algorithm = True
     server_version = "pghoard/" + __version__
 
-    def get_wal_or_timeline_file(self, site, filename, filetype):
+    def _wal_or_timeline_file_op(self, site, filename, filetype, method):
         start_time = time.time()
 
         target_path = self.headers.get("x-pghoard-target-path")
@@ -99,30 +99,36 @@ class RequestHandler(BaseHTTPRequestHandler):
             "local_path": filename,
             "site": site,
             "target_path": target_path,
-            "type": "DOWNLOAD",
+            "type": method,
         })
         response = callback_queue.get(timeout=30.0)
-        self.server.log.debug("Handled a restore request for: %r %r, took: %.3fs",
-                              site, target_path, time.time() - start_time)
+        self.server.log.debug("Handled a %s request for: %r %r, took: %.3fs",
+                              method, site, target_path, time.time() - start_time)
+        return response
+
+    def get_wal_or_timeline_file(self, site, filename, filetype):
+        response = self._wal_or_timeline_file_op(site, filename, filetype, "DOWNLOAD")
         http_status = 201 if response["success"] else 404
-        return "", {"Content-length": "0"}, http_status
+        return "", {"content-length": "0"}, http_status
 
     def list_basebackups(self, site):
-        basebackup_dir = os.path.join(self.server.config['backup_location'], site, "basebackup")
+        basebackup_dir = os.path.join(self.server.config["backup_location"], site, "basebackup")
         basebackup_dict = {}
         for backup in os.listdir(basebackup_dir):
-            path = os.path.join(self.server.config['backup_location'], site, "basebackup", backup, "base.tar.xz")
+            if backup.startswith(".") or backup.endswith(".metadata"):
+                continue
+            path = os.path.join(self.server.config["backup_location"], site, "basebackup", backup)
             basebackup_dict[backup] = {"size": os.stat(path).st_size}
         return {"basebackups": basebackup_dict}, {}, 200
 
     def get_basebackup(self, site, which_one):
-        backup_path = os.path.join(self.server.config['backup_location'], site, "basebackup", which_one, "base.tar.xz")
-        backup_metadata = os.path.join(self.server.config['backup_location'], site, "basebackup", which_one, "pghoard_metadata")
+        backup_path = os.path.join(self.server.config["backup_location"], site, "basebackup", which_one)
+        backup_metadata = os.path.join(self.server.config["backup_location"], site, "basebackup", which_one + ".metadata")
         with open(backup_metadata, "r") as fp:
             metadata = json.load(fp)
         headers = {}
         for key, value in metadata.items():
-            headers['x-pghoard-' + key] = value
+            headers["x-pghoard-" + key] = value
         return open(backup_path, "rb"), headers, 200
 
     def log_and_parse_request(self):
@@ -156,7 +162,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             response = callback_queue.get(timeout=30)
             if response["success"]:
                 self.send_response(201)  # resource created
-                self.send_header("Content-length", "0")
+                self.send_header("content-length", "0")
                 self.end_headers()
             self.server.log.debug("Handled an archival request for: %r %r, took: %.3fs",
                                   site, xlog_path, time.time() - start_time)
@@ -167,57 +173,88 @@ class RequestHandler(BaseHTTPRequestHandler):
 
     def do_PUT(self):
         site, path = self.log_and_parse_request()
-        if site in self.server.config['backup_sites']:
+        if site in self.server.config["backup_sites"]:
             if path[1] == "archive":
                 self.handle_archival_request(site, path[2])
                 return
         self.send_response(404)
 
-    def do_GET(self):
-        site, path = self.log_and_parse_request()
-        if site in self.server.config['backup_sites']:
-            try:
-                if path[1] == "basebackups":  # TODO use something nicer to map URIs
-                    if len(path) == 2:
-                        response, headers, status = self.list_basebackups(site)
-                    elif len(path) == 3:
-                        response, headers, status = self.get_basebackup(site, path[2])
-                elif len(path[1]) == 24 and len(path) == 2:
-                    response, headers, status = self.get_wal_or_timeline_file(site, path[1], "xlog")
-                elif path[1].endswith(".history"):
-                    response, headers, status = self.get_wal_or_timeline_file(site, path[1], "timeline")
-                else:
-                    self.send_response(404)
-                    return
-            except:  # pylint: disable=bare-except
-                self.server.log.exception("Exception occured when processing: %r", path)
-                self.send_response(404)
-                return
-
-            self.send_response(status)
-
-            for header_key, header_value in headers.items():
-                self.send_header(header_key, header_value)
-            if status not in (201, 404):
-                if 'Content-type' not in headers:
-                    if isinstance(response, dict):
-                        mimetype = "application/json"
-                        response = json.dumps(response, indent=4).encode("utf8")
-                        size = len(response)
-                    elif hasattr(response, "read"):
-                        mimetype = "application/x-xz"
-                        size = os.fstat(response.fileno()).st_size  # pylint: disable=maybe-no-member
-                    self.send_header('Content-type', mimetype)
-                    self.send_header('Content-length', str(size))
-            self.end_headers()
-
-            if isinstance(response, bytes):
-                self.wfile.write(response)
-            elif hasattr(response, "read"):
-                if hasattr(os, "sendfile"):
-                    os.sendfile(self.wfile.fileno(), response.fileno(), 0, size)  # pylint: disable=maybe-no-member
-                else:
-                    shutil.copyfileobj(response, self.wfile)
-        else:
+    def _oper_type_from_path(self, path):
+        # TODO use something nicer to map URIs
+        site = path[0]
+        if site not in self.server.config["backup_sites"]:
             self.server.log.warning("Site: %r not found, path was: %r", site, path)
             self.send_response(404)
+            return None, None
+
+        # FIXME: we use `basebackups` in URLs but `basebackup` on disk, pick
+        # one and use it everywhere
+        if len(path) >= 2 and path[1] == "basebackups":
+            if len(path) == 2:
+                return "basebackups", None
+            elif len(path) == 3:
+                return "basebackups", path[2]
+        elif len(path) == 2 and len(path[1]) == 24:
+            return "xlog", path[1]
+        elif path[1].endswith(".history"):
+            return "timeline", path[1]
+
+        self.server.log.warning("Invalid operation path %r", path)
+        self.send_response(404)
+        self.send_header("content-length", "0")
+        self.end_headers()
+        return None, None
+
+    def do_HEAD(self):
+        site, path = self.log_and_parse_request()
+        op_type, op_target = self._oper_type_from_path(path)
+        if not op_type:
+            return
+        response = self._wal_or_timeline_file_op(site, op_target, op_type, "METADATA")
+        http_status = 200 if response["success"] else 404
+        self.send_response(http_status)
+        self.send_header("content-length", "0")
+        self.end_headers()
+
+    def do_GET(self):
+        site, path = self.log_and_parse_request()
+        op_type, op_target = self._oper_type_from_path(path)
+        if not op_type:
+            return
+
+        try:
+            if op_type == "basebackups" and op_target is None:
+                response, headers, status = self.list_basebackups(site)
+            elif op_type == "basebackups":
+                response, headers, status = self.get_basebackup(site, op_target)
+            elif op_type in ("timeline", "xlog"):
+                response, headers, status = self.get_wal_or_timeline_file(site, op_target, op_type)
+        except:  # pylint: disable=bare-except
+            self.server.log.exception("Exception occured when processing: %r", path)
+            self.send_response(404)
+            return
+
+        self.send_response(status)
+
+        for header_key, header_value in headers.items():
+            self.send_header(header_key, header_value)
+        if status not in (201, 404):
+            if "content-type" not in headers:
+                if isinstance(response, dict):
+                    mimetype = "application/json"
+                    response = json.dumps(response, indent=4).encode("utf8")
+                    size = len(response)
+                elif hasattr(response, "read"):
+                    mimetype = "application/octet-stream"
+                    size = os.fstat(response.fileno()).st_size  # pylint: disable=maybe-no-member
+                self.send_header("content-type", mimetype)
+                self.send_header("content-length", str(size))
+        self.end_headers()
+
+        if isinstance(response, bytes):
+            self.wfile.write(response)
+        elif hasattr(response, "read"):
+            if hasattr(os, "sendfile"):
+                os.sendfile(self.wfile.fileno(), response.fileno(), 0, size)  # pylint: disable=maybe-no-member
+            else:
+                shutil.copyfileobj(response, self.wfile)

@@ -80,6 +80,7 @@ class TransferAgent(Thread):
             self.state[site] = {
                 "upload": {"basebackup": EMPTY.copy(), "xlog": EMPTY.copy(), "timeline": EMPTY.copy()},
                 "download": {"basebackup": EMPTY.copy(), "xlog": EMPTY.copy(), "timeline": EMPTY.copy()},
+                "metadata": {"basebackup": EMPTY.copy(), "xlog": EMPTY.copy(), "timeline": EMPTY.copy()},
             }
 
     def get_object_storage(self, site_name):
@@ -90,11 +91,9 @@ class TransferAgent(Thread):
 
         return storage
 
-    def form_key_path(self, file_to_transfer):
-        if file_to_transfer["filetype"] == "basebackup":
-            name = os.path.basename(os.path.dirname(file_to_transfer["local_path"]))
-        else:
-            name = os.path.splitext(os.path.basename(file_to_transfer["local_path"]))[0]
+    @staticmethod
+    def form_key_path(file_to_transfer):
+        name = os.path.basename(file_to_transfer["local_path"])
         key = "/".join([file_to_transfer["site"], file_to_transfer["filetype"], name])
         return key
 
@@ -132,7 +131,7 @@ class TransferAgent(Thread):
                 self.state[site][oper][filetype]["failures"] += 1
 
             # push result to callback_queue if provided
-            if result.get("call_callback", True) and "callback_queue" in file_to_transfer:
+            if result.get("call_callback", True) and file_to_transfer.get("callback_queue"):
                 file_to_transfer["callback_queue"].put(result)
 
             self.log.info("%r %stransfer of key: %r, size: %r, took %.3fs",
@@ -141,6 +140,19 @@ class TransferAgent(Thread):
                           key, oper_size, time.time() - start_time)
 
         self.log.info("Quitting TransferAgent")
+
+    def handle_metadata(self, site, key, file_to_transfer):
+        try:
+            storage = self.get_object_storage(site)
+            metadata = storage.get_metadata_for_key(key)
+            file_to_transfer["file_size"] = len(repr(metadata))  # approx
+            return {"success": True, "metadata": metadata}
+        except Exception as ex:  # pylint: disable=broad-except
+            if isinstance(ex, FileNotFoundFromStorageError):
+                self.log.warning("%r not found from storage", key)
+            else:
+                self.log.exception("Problem happened when retrieving metadata: %r, %r", key, file_to_transfer)
+            return {"success": False}
 
     def handle_download(self, site, key, file_to_transfer):
         try:
@@ -181,15 +193,11 @@ class TransferAgent(Thread):
                     pass
             if unlink_local:
                 try:
-                    if file_to_transfer["filetype"] == "basebackup":
-                        self.log.debug("Deleting directory path: %r", os.path.dirname(file_to_transfer["local_path"]))
-                        shutil.rmtree(os.path.dirname(file_to_transfer["local_path"]))
-                    else:
-                        self.log.debug("Deleting file: %r since it has been uploaded", file_to_transfer["local_path"])
-                        os.unlink(file_to_transfer["local_path"])
-                        metadata_path = file_to_transfer["local_path"] + ".metadata"
-                        if os.path.exists(metadata_path):
-                            os.unlink(metadata_path)
+                    self.log.debug("Deleting file: %r since it has been uploaded", file_to_transfer["local_path"])
+                    os.unlink(file_to_transfer["local_path"])
+                    metadata_path = file_to_transfer["local_path"] + ".metadata"
+                    if os.path.exists(metadata_path):
+                        os.unlink(metadata_path)
                 except:  # pylint: disable=bare-except
                     self.log.exception("Problem in deleting file: %r", file_to_transfer["local_path"])
             return {"success": True}

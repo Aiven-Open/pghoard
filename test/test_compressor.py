@@ -4,6 +4,7 @@ pghoard
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
+# pylint: disable=attribute-defined-outside-init
 from .base import PGHoardTestCase, CONSTANT_TEST_RSA_PUBLIC_KEY, CONSTANT_TEST_RSA_PRIVATE_KEY
 from pghoard.common import Queue
 from pghoard.common import lzma
@@ -12,8 +13,8 @@ import os
 
 
 class TestCompression(PGHoardTestCase):
-    def setUp(self):
-        super(TestCompression, self).setUp()
+    def setup_method(self, method):
+        super(TestCompression, self).setup_method(method)
         self.config = {
             "backup_sites": {
                 "default": {
@@ -44,11 +45,11 @@ class TestCompression(PGHoardTestCase):
                                      transfer_queue=self.transfer_queue)
         self.compressor.start()
 
-    def tearDown(self):
+    def teardown_method(self, method):
         self.compressor.running = False
         self.compression_queue.put({"type": "QUIT"})
         self.compressor.join()
-        super(TestCompression, self).tearDown()
+        super(TestCompression, self).teardown_method(method)
 
     def test_get_event_type(self):
         filetype = self.compressor.get_event_filetype({
@@ -56,16 +57,16 @@ class TestCompression(PGHoardTestCase):
             "src_path": "00000001000000000000000C.partial",
             "type": "MOVE",
         })
-        self.assertEqual(filetype, "xlog")
+        assert filetype == "xlog"
         # todo check timeline history file naming format
         filetype = self.compressor.get_event_filetype({
             "full_path": "1.history",
             "src_path": "1.history.partial",
             "type": "MOVE",
         })
-        self.assertEqual(filetype, "timeline")
+        assert filetype == "timeline"
         filetype = self.compressor.get_event_filetype({"type": "CREATE", "full_path": "base.tar"})
-        self.assertEqual(filetype, "basebackup")
+        assert filetype == "basebackup"
 
     def test_compress_to_file(self):
         self.compression_queue.put({
@@ -161,7 +162,7 @@ class TestCompression(PGHoardTestCase):
             "type": "DECOMPRESSION",
         })
         callback_queue.get(timeout=1.0)
-        self.assertTrue(os.path.exists(local_filepath))
+        assert os.path.exists(local_filepath) is True
         with open(local_filepath, "rb") as fp:
             assert fp.read() == b"foo"
 
@@ -179,6 +180,6 @@ class TestCompression(PGHoardTestCase):
             "type": "DECOMPRESSION",
         })
         callback_queue.get(timeout=1.0)
-        self.assertTrue(os.path.exists(local_filepath))
+        assert os.path.exists(local_filepath) is True
         with open(local_filepath, "rb") as fp:
             assert fp.read() == b"foo"
