@@ -7,12 +7,15 @@ See LICENSE for details
 # pylint: disable=attribute-defined-outside-init
 from .base import CONSTANT_TEST_RSA_PUBLIC_KEY, CONSTANT_TEST_RSA_PRIVATE_KEY
 from pghoard.archive_command import archive
+from pghoard.archive_sync import ArchiveSync
 from pghoard.common import create_connection_string, lzma_compressor, lzma_open
 from pghoard.encryptor import Encryptor
 from pghoard.restore import HTTPRestore
 import json
 import os
+import psycopg2
 import pytest
+import re
 import time
 
 
@@ -75,6 +78,54 @@ class TestWebServer(object):
         backup_xlog_path = os.path.join(pghoard.config["backup_location"], "default", "xlog", xlog_file)
         assert archive(port=pghoard.config["http_port"], site="default", xlog_file=xlog_file) is True
         assert os.path.exists(backup_xlog_path)
+        os.unlink(foo_path)
+
+    def test_archive_sync(self, db, pghoard):
+        # force a couple of wal segment switches
+        conn = psycopg2.connect(create_connection_string(db["user"]))
+        conn.autocommit = True
+        cursor = conn.cursor()
+        cursor.execute("CREATE TABLE IF NOT EXISTS testint (i INT)")
+        cursor.execute("INSERT INTO testint (i) VALUES (%s)", [0])
+        cursor.execute("SELECT pg_switch_xlog()")
+        cursor.execute("INSERT INTO testint (i) VALUES (%s)", [1])
+        cursor.execute("SELECT pg_switch_xlog()")
+        cursor.execute("INSERT INTO testint (i) VALUES (%s)", [2])
+        cursor.execute("SELECT pg_switch_xlog()")
+        cursor.execute("INSERT INTO testint (i) VALUES (%s)", [3])
+        cursor.execute("SELECT pg_switch_xlog()")
+        xlog_re = re.compile("^[A-F0-9]{24}$")
+        # we should have at least 4 xlog files now (there may be more in
+        # case other tests created them -- we share a single postresql
+        # cluster between all tests)
+        pg_xlog_dir = pghoard.config["backup_sites"]["default"]["pg_xlog_directory"]
+        pg_xlogs = {f for f in os.listdir(pg_xlog_dir) if xlog_re.match(f)}
+        assert len(pg_xlogs) >= 4
+        # check what we have archived, there should be at least the three
+        # above xlogs that are NOT there at the moment
+        archive_xlog_dir = os.path.join(pghoard.config["backup_location"], "default", "xlog")
+        archived_xlogs = {f for f in os.listdir(archive_xlog_dir) if xlog_re.match(f)}
+        assert len(pg_xlogs - archived_xlogs) >= 4
+        # now perform an archive sync
+        arsy = ArchiveSync()
+        arsy.run(["--site", "default", "--config", pghoard.config_path])
+        # and now archive should include all our xlogs
+        archived_xlogs = {f for f in os.listdir(archive_xlog_dir) if xlog_re.match(f)}
+        assert archived_xlogs.issuperset(pg_xlogs)
+        # if we delete a wal file that's not the latest archival shouldn't
+        # do anything as we always walk the list down from newest to oldest
+        current_wal = arsy.get_current_wal_file(pghoard.config, "default")
+        old_xlogs = sorted(wal for wal in pg_xlogs if wal < current_wal)
+        os.unlink(os.path.join(archive_xlog_dir, old_xlogs[-2]))
+        arsy.run(["--site", "default", "--config", pghoard.config_path])
+        archived_xlogs = {f for f in os.listdir(archive_xlog_dir) if xlog_re.match(f)}
+        assert not archived_xlogs.issuperset(pg_xlogs)
+        assert old_xlogs[-2] not in archived_xlogs
+        # now delete the topmost wal file, this should cause both to get resynced
+        os.unlink(os.path.join(archive_xlog_dir, old_xlogs[-1]))
+        arsy.run(["--site", "default", "--config", pghoard.config_path])
+        archived_xlogs = {f for f in os.listdir(archive_xlog_dir) if xlog_re.match(f)}
+        assert archived_xlogs.issuperset(pg_xlogs)
 
     def test_archiving_backup_label_from_archive_command(self, pghoard):
         bl_file = "000000010000000000000002.00000028.backup"
