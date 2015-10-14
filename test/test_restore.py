@@ -13,6 +13,44 @@ import pytest
 
 
 class TestRecoveryConf(PGHoardTestCase):
+    def test_recovery_targets(self, tmpdir):
+        r = Restore()
+        r._load_config = Mock()  # pylint: disable=protected-access
+        r._get_object_storage = Mock()  # pylint: disable=protected-access
+        with pytest.raises(RestoreError) as excinfo:
+            r.run(args=[
+                "get-basebackup-http",
+                "--config=" + str(tmpdir),
+                "--target-dir=" + str(tmpdir),
+                "--host=localhost",
+                "--port=1",
+                "--site=test",
+                "--recovery-target-action=promote",
+                "--recovery-target-name=foobar",
+                "--recovery-target-xid=42",
+            ])
+        assert "at most one" in str(excinfo.value)
+        with pytest.raises(RestoreError) as excinfo:
+            r.run(args=[
+                "get-basebackup",
+                "--config=" + str(tmpdir),
+                "--target-dir=" + str(tmpdir),
+                "--site=test",
+                "--recovery-target-action=promote",
+                "--recovery-target-name=foobar",
+                "--recovery-target-xid=42",
+            ])
+        assert "at most one" in str(excinfo.value)
+        with pytest.raises(RestoreError) as excinfo:
+            r.run(args=[
+                "get-basebackup",
+                "--config=" + str(tmpdir),
+                "--target-dir=" + str(tmpdir),
+                "--site=test",
+                "--recovery-target-action=promote",
+                "--recovery-target-time=foobar",
+            ])
+        assert "recovery_target_time 'foobar'" in str(excinfo.value)
 
     def test_find_nearest_backup(self):
         r = Restore()
@@ -48,3 +86,27 @@ class TestRecoveryConf(PGHoardTestCase):
         create_recovery_conf(td, "dummysite", "dbname='test'")
         assert "primary_conninfo" in getdata()  # make sure it's there
         assert "''test''" in getdata()  # make sure it's quoted
+        content = create_recovery_conf(td, "dummysite",
+                                       recovery_end_command="echo 'done' > /tmp/done",
+                                       recovery_target_xid="42")
+        assert content == getdata()
+        assert "primary_conninfo" not in content
+        assert "recovery_end_command = 'echo ''done'' > /tmp/done'" in content
+
+        # NOTE: multiple recovery targets don't really make sense in
+        # recovery.conf: PostgreSQL just uses the last entry.
+        # create_recovery_conf doesn't check them as it's called late enough
+        # for that check to be useless.  Let's just make sure we can write
+        # lines for all of them.
+        now = datetime.datetime.now()
+        content = create_recovery_conf(td, "dummysite",
+                                       recovery_end_command="/bin/false",
+                                       recovery_target_action="shutdown",
+                                       recovery_target_name="testpoint",
+                                       recovery_target_time=now,
+                                       recovery_target_xid="42")
+        assert "recovery_target_action" in content
+        assert "recovery_target_name" in content
+        assert "recovery_target_time" in content
+        assert "recovery_target_xid" in content
+        assert str(now) in content

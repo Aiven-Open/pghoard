@@ -23,7 +23,7 @@ import tempfile
 import time
 
 
-class RestoreError(Exception):
+class RestoreError(Error):
     """Restore error"""
 
 
@@ -33,10 +33,13 @@ def create_pgdata_dir(pgdata):
     os.chmod(pgdata, 0o700)
 
 
-def create_recovery_conf(dirpath, site, primary_conninfo,
+def create_recovery_conf(dirpath, site,
+                         primary_conninfo=None,
+                         recovery_end_command=None,
+                         recovery_target_action=None,
+                         recovery_target_name=None,
                          recovery_target_time=None,
-                         recovery_target_xid=None,
-                         recovery_target_action=None):
+                         recovery_target_xid=None):
     lines = [
         "# pghoard created recovery.conf",
         "standby_mode = 'on'",
@@ -46,18 +49,23 @@ def create_recovery_conf(dirpath, site, primary_conninfo,
     ]
     if primary_conninfo:
         lines.append("primary_conninfo = {}".format(adapt(primary_conninfo)))
-    if recovery_target_time:
-        lines.append("recovery_target_time = '{}'".format(recovery_target_time))
-    elif recovery_target_xid:
-        lines.append("recovery_target_xid = '{}'".format(recovery_target_xid))
+    if recovery_end_command:
+        lines.append("recovery_end_command = {}".format(adapt(recovery_end_command)))
     if recovery_target_action:
         lines.append("recovery_target_action = '{}'".format(recovery_target_action))
+    if recovery_target_name:
+        lines.append("recovery_target_name = '{}'".format(recovery_target_name))
+    if recovery_target_time:
+        lines.append("recovery_target_time = '{}'".format(recovery_target_time))
+    if recovery_target_xid:
+        lines.append("recovery_target_xid = '{}'".format(recovery_target_xid))
     content = "\n".join(lines) + "\n"
     filepath = os.path.join(dirpath, "recovery.conf")
     filepath_tmp = filepath + ".tmp"
     with open(filepath_tmp, "w") as fp:
         fp.write(content)
     os.rename(filepath_tmp, filepath)
+    return content
 
 
 class Restore(object):
@@ -95,9 +103,11 @@ class Restore(object):
             cmd.add_argument("--target-dir", help="pghoard restore target 'pgdata' dir", required=True)
             cmd.add_argument("--overwrite", help="overwrite existing target directory",
                              default=False, action="store_true")
+            cmd.add_argument("--recovery-end-command", help="PostgreSQL recovery_end_command", metavar="COMMAND")
+            cmd.add_argument("--recovery-target-action", help="PostgreSQL recovery_target_action", choices=["pause", "promote", "shutdown"])
+            cmd.add_argument("--recovery-target-name", help="PostgreSQL recovery_target_name", metavar="RESTOREPOINT")
             cmd.add_argument("--recovery-target-time", help="PostgreSQL recovery_target_time", metavar="ISO_TIMESTAMP")
             cmd.add_argument("--recovery-target-xid", help="PostgreSQL recovery_target_xid", metavar="XID")
-            cmd.add_argument("--recovery-target-action", help="PostgreSQL recovery_target_action", choices=["pause", "promote", "shutdown"])
 
         cmd = self.add_cmd(sub, self.get)
         cmd.add_argument("filename", help="filename to retrieve")
@@ -107,12 +117,9 @@ class Restore(object):
         cmd.add_argument("--path-prefix", help="path_prefix (useful for testing)")
 
         cmd = self.add_cmd(sub, self.get_basebackup_http)
-        cmd.add_argument("filename", help="filename to retrieve")
-        cmd.add_argument("target_path", help="local target filename")
         target_args()
         host_port_args()
         generic_args()
-        cmd.add_argument("--path-prefix", help="path_prefix (useful for testing)")
 
         cmd = self.add_cmd(sub, self.list_basebackups_http)
         host_port_args()
@@ -140,10 +147,13 @@ class Restore(object):
         """Download a basebackup from a HTTP source"""
         self.config = self._load_config(arg.config)
         self.storage = HTTPRestore(arg.host, arg.port, arg.site, arg.target_dir)
-        self._get_basebackup(arg.target_dir, arg.basebackup, arg.site, arg.primary_conninfo,
+        self._get_basebackup(arg.target_dir, arg.basebackup, arg.site,
+                             primary_conninfo=arg.primary_conninfo,
+                             recovery_end_command=arg.recovery_end_command,
+                             recovery_target_action=arg.recovery_target_action,
+                             recovery_target_name=arg.recovery_target_name,
                              recovery_target_time=arg.recovery_target_time,
                              recovery_target_xid=arg.recovery_target_xid,
-                             recovery_target_action=arg.recovery_target_action,
                              overwrite=arg.overwrite)
 
     def list_basebackups_http(self, arg):
@@ -167,11 +177,16 @@ class Restore(object):
         self.config = self._load_config(arg.config)
         try:
             self.storage = self._get_object_storage(arg.site, arg.target_dir)
-            self._get_basebackup(arg.target_dir, arg.basebackup, arg.site, arg.primary_conninfo,
+            self._get_basebackup(arg.target_dir, arg.basebackup, arg.site,
+                                 primary_conninfo=arg.primary_conninfo,
+                                 recovery_end_command=arg.recovery_end_command,
+                                 recovery_target_action=arg.recovery_target_action,
+                                 recovery_target_name=arg.recovery_target_name,
                                  recovery_target_time=arg.recovery_target_time,
                                  recovery_target_xid=arg.recovery_target_xid,
-                                 recovery_target_action=arg.recovery_target_action,
                                  overwrite=arg.overwrite)
+        except RestoreError:
+            raise
         except Exception as ex:
             raise RestoreError("{}: {}".format(ex.__class__.__name__, ex))
 
@@ -193,12 +208,25 @@ class Restore(object):
         print("Found: {} basebackups, selecting: {} for restore".format(applicable_basebackups, basebackup))
         return basebackup["name"]
 
-    def _get_basebackup(self, pgdata, basebackup, site, primary_conninfo,
-                        recovery_target_time=None, recovery_target_xid=None,
-                        recovery_target_action=None, overwrite=False):
-        #  If basebackup that we want it set as latest, figure out which one it is
+    def _get_basebackup(self, pgdata, basebackup, site,
+                        primary_conninfo=None,
+                        recovery_end_command=None,
+                        recovery_target_action=None,
+                        recovery_target_name=None,
+                        recovery_target_time=None,
+                        recovery_target_xid=None,
+                        overwrite=False):
+        targets = [recovery_target_name, recovery_target_time, recovery_target_xid]
+        if sum(0 if flag is None else 1 for flag in targets) > 1:
+            raise RestoreError("Specify at most one of recovery_target_name, "
+                               "recovery_target_time or recovery_target_xid")
+
+        # If basebackup that we want it set as latest, figure out which one it is
         if recovery_target_time:
-            recovery_target_time = dateutil.parser.parse(recovery_target_time)
+            try:
+                recovery_target_time = dateutil.parser.parse(recovery_target_time)
+            except ValueError as ex:
+                raise RestoreError("recovery_target_time {!r}: {}".format(recovery_target_time, ex))
             basebackup = self._find_nearest_basebackup(recovery_target_time)
         elif basebackup == "latest":
             basebackup = self._find_nearest_basebackup()
@@ -207,7 +235,7 @@ class Restore(object):
             if overwrite:
                 shutil.rmtree(pgdata)
             else:
-                raise Error("Target directory '{}' exists and --overwrite not specified, aborting.".format(pgdata))
+                raise RestoreError("Target directory '{}' exists and --overwrite not specified, aborting.".format(pgdata))
 
         create_pgdata_dir(pgdata)
         tmp = tempfile.TemporaryFile()
@@ -223,19 +251,25 @@ class Restore(object):
         tar.extractall(pgdata)
         tar.close()
 
-        create_recovery_conf(pgdata, site, primary_conninfo,
-                             recovery_target_time=recovery_target_time,
-                             recovery_target_xid=recovery_target_xid,
-                             recovery_target_action=recovery_target_action)
+        create_recovery_conf(
+            dirpath=pgdata,
+            site=site,
+            primary_conninfo=primary_conninfo,
+            recovery_end_command=recovery_end_command,
+            recovery_target_action=recovery_target_action,
+            recovery_target_name=recovery_target_name,
+            recovery_target_time=recovery_target_time,
+            recovery_target_xid=recovery_target_xid,
+        )
 
         print("Basebackup complete.")
         print("You can start PostgreSQL by running pg_ctl -D %s start" % pgdata)
         print("On systemd based systems you can run systemctl start postgresql")
         print("On SYSV Init based systems you can run /etc/init.d/postgresql start")
 
-    def run(self):
+    def run(self, args=None):
         parser = self.create_parser()
-        args = parser.parse_args()
+        args = parser.parse_args(args)
         if not hasattr(args, "func"):
             parser.print_help()
             return 1
