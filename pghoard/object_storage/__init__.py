@@ -52,6 +52,7 @@ def get_object_storage_transfer(config, site):
             aws_secret_access_key=storage_config["aws_secret_access_key"],
             region=storage_config.get("region", ""),
             bucket_name=storage_config["bucket_name"],
+            key_prefix=storage_config.get("key_prefix"),
             host=storage_config.get("host"),
             port=storage_config.get("port"),
             is_secure=storage_config.get("is_secure", False),

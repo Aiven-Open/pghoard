@@ -23,12 +23,20 @@ def _location_for_region(region):
 
 
 class S3Transfer(BaseTransfer):
-    def __init__(self, aws_access_key_id, aws_secret_access_key, region, bucket_name,
-                 host=None, port=None, is_secure=False):
+    def __init__(self,
+                 aws_access_key_id,
+                 aws_secret_access_key,
+                 region,
+                 bucket_name,
+                 key_prefix=None,
+                 host=None,
+                 port=None,
+                 is_secure=False):
         BaseTransfer.__init__(self)
         self.region = region
         self.location = _location_for_region(region)
         self.bucket_name = bucket_name
+        self.key_prefix = key_prefix
         if host and port:
             self.conn = boto.connect_s3(aws_access_key_id=aws_access_key_id,
                                         aws_secret_access_key=aws_secret_access_key,
@@ -40,7 +48,18 @@ class S3Transfer(BaseTransfer):
         self.bucket = self.get_or_create_bucket(self.bucket_name)
         self.log.debug("S3Transfer initialized")
 
+    def _prefix_key(self, key):
+        if self.key_prefix:
+            key = "{}{}".format(self.key_prefix, key)
+        return key
+
+    def _remove_key_prefix(self, key):
+        if self.key_prefix:
+            key = key[len(self.key_prefix):]
+        return key
+
     def get_metadata_for_key(self, obj_key):
+        obj_key = self._prefix_key(obj_key)
         item = self.bucket.get_key(obj_key)
         if item is None:
             raise FileNotFoundFromStorageError(obj_key)
@@ -48,6 +67,7 @@ class S3Transfer(BaseTransfer):
         return item.metadata
 
     def delete_key(self, key_name):
+        key_name = self._prefix_key(key_name)
         self.log.debug("Deleting key: %r", key_name)
         key = self.bucket.get_key(key_name)
         if key:
@@ -56,17 +76,19 @@ class S3Transfer(BaseTransfer):
         return False
 
     def list_path(self, path):
+        path = self._prefix_key(path)
         return_list = []
         for r in self.bucket.list(path, "/"):
             return_list.append({
-                "name": r.name,
+                "name": self._remove_key_prefix(r.name),
                 "size": r.size,
                 "last_modified": dateutil.parser.parse(r.last_modified),
-                "metadata": self.get_metadata_for_key(r.name),
+                "metadata": self.get_metadata_for_key(self._remove_key_prefix(r.name)),
                 })
         return return_list
 
     def get_contents_to_file(self, obj_key, filepath_to_store_to):
+        obj_key = self._prefix_key(obj_key)
         item = self.bucket.get_key(obj_key)
         if item is None:
             raise FileNotFoundFromStorageError(obj_key)
@@ -74,6 +96,7 @@ class S3Transfer(BaseTransfer):
         return item.metadata
 
     def get_contents_to_fileobj(self, obj_key, fileobj_to_store_to):
+        obj_key = self._prefix_key(obj_key)
         item = self.bucket.get_key(obj_key)
         if item is None:
             raise FileNotFoundFromStorageError(obj_key)
@@ -81,12 +104,14 @@ class S3Transfer(BaseTransfer):
         return item.metadata
 
     def get_contents_to_string(self, obj_key):
+        obj_key = self._prefix_key(obj_key)
         item = self.bucket.get_key(obj_key)
         if item is None:
             raise FileNotFoundFromStorageError(obj_key)
         return item.get_contents_as_string(), item.metadata
 
     def store_file_from_memory(self, name, memstring, metadata=None):
+        name = self._prefix_key(name)
         key = Key(self.bucket)
         key.key = name
         if metadata:
@@ -99,6 +124,7 @@ class S3Transfer(BaseTransfer):
         key.set_contents_from_string(memstring, replace=False)
 
     def store_file_from_disk(self, name, filepath, metadata=None):
+        name = self._prefix_key(name)
         key = Key(self.bucket)
         key.key = name
         if metadata:
