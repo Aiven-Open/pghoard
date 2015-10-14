@@ -114,7 +114,7 @@ class Restore(object):
         cmd.add_argument("target_path", help="local target filename")
         host_port_args()
         generic_args(require_config=False)
-        cmd.add_argument("--path-prefix", help="path_prefix (useful for testing)")
+        cmd.add_argument("--target-path-prefix", help="target_path_prefix (useful for testing)")
 
         cmd = self.add_cmd(sub, self.get_basebackup_http)
         target_args()
@@ -135,7 +135,7 @@ class Restore(object):
     def get(self, arg):
         """Download a WAL file through pghoard. Used in pghoard restore_command"""
         self.storage = HTTPRestore(arg.host, arg.port, arg.site)
-        if not self.storage.get_archive_file(arg.filename, arg.target_path, arg.path_prefix):
+        if not self.storage.get_archive_file(arg.filename, arg.target_path, arg.target_path_prefix):
             return 1
 
     def _load_config(self, configfile):
@@ -164,7 +164,7 @@ class Restore(object):
 
     def _get_object_storage(self, site, pgdata):
         storage = get_object_storage_transfer(self.config, site)
-        return ObjectStore(storage, site, pgdata)
+        return ObjectStore(storage, self.config.get("path_prefix", ""), site, pgdata)
 
     def list_basebackups(self, arg):
         """List basebackups from an object store"""
@@ -282,14 +282,15 @@ class Restore(object):
 
 
 class ObjectStore(object):
-    def __init__(self, storage, site, pgdata):
+    def __init__(self, storage, path_prefix, site, pgdata):
         self.storage = storage
+        self.path_prefix = path_prefix
         self.site = site
         self.pgdata = pgdata
         self.log = logging.getLogger(self.__class__.__name__)
 
     def list_basebackups(self):
-        return self.storage.list_path(self.site + "/basebackup/")
+        return self.storage.list_path(os.path.join(self.path_prefix, self.site, "basebackup"))
 
     def show_basebackup_list(self):
         result = self.list_basebackups()
@@ -352,14 +353,14 @@ class HTTPRestore(object):
                 metadata[key[len("x-pghoard-"):]] = value
         return metadata
 
-    def get_archive_file(self, filename, target_path, path_prefix=None):
+    def get_archive_file(self, filename, target_path, target_path_prefix=None):
         start_time = time.time()
-        self.log.debug("Getting archived file: %r, target_path: %r, path_prefix: %r",
-                       filename, target_path, path_prefix)
-        if not path_prefix:
+        self.log.debug("Getting archived file: %r, target_path: %r, target_path_prefix: %r",
+                       filename, target_path, target_path_prefix)
+        if not target_path_prefix:
             final_target_path = os.path.join(os.getcwd(), target_path)
         else:
-            final_target_path = os.path.join(path_prefix, target_path)
+            final_target_path = os.path.join(target_path_prefix, target_path)
         headers = {"x-pghoard-target-path": final_target_path}
         response = self.session.get(self._url(filename), headers=headers, stream=True)
         self.log.debug("Got archived file: %r, %r status_code: %r took: %.2fs",

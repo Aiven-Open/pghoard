@@ -56,6 +56,7 @@ class GoogleTransfer(BaseTransfer):
     def list_path(self, path):
         self.log.info("Asking for listing of: %r", path)
         return_list = []
+        path = path.rstrip("/") + "/"
         for item in unpaginate(self.gs_objects, lambda o: o.list(bucket=self.bucket_name, delimiter="/", prefix=path)):
             if item["name"].endswith("/"):
                 continue  # skip directory level objects

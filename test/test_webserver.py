@@ -60,7 +60,7 @@ class TestWebServer(object):
         # basebackups as it's not possible to request a basebackup to be
         # written to a file and get_archive_file returns a boolean status
         aresult = http_restore.get_archive_file("basebackups/" + backups[0]["name"],
-                                                target_path="dltest", path_prefix=tmpdir)
+                                                target_path="dltest", target_path_prefix=tmpdir)
         assert aresult is True
         # test restoring using get_basebackup_file_to_fileobj
         with open(os.path.join(tmpdir, "b.tar"), "wb") as fp:
@@ -146,7 +146,7 @@ class TestWebServer(object):
         with open(backup_xlog_path + ".metadata", "w") as fp:
             json.dump({"compression-algorithm": "lzma", "original-file-size": len(content)}, fp)
         assert http_restore.query_archive_file(xlog_file) is True
-        http_restore.get_archive_file(xlog_file, "pg_xlog/" + xlog_file, path_prefix=pgdata)
+        http_restore.get_archive_file(xlog_file, "pg_xlog/" + xlog_file, target_path_prefix=pgdata)
         assert os.path.exists(os.path.join(pgdata, "pg_xlog", xlog_file)) is True
         with open(os.path.join(pgdata, "pg_xlog", xlog_file), "rb") as fp:
             restored_data = fp.read()
@@ -171,7 +171,7 @@ class TestWebServer(object):
                 "private": CONSTANT_TEST_RSA_PRIVATE_KEY,
             },
         }
-        http_restore.get_archive_file(xlog_file, "pg_xlog/" + xlog_file, path_prefix=pgdata)
+        http_restore.get_archive_file(xlog_file, "pg_xlog/" + xlog_file, target_path_prefix=pgdata)
         assert os.path.exists(os.path.join(pgdata, "pg_xlog", xlog_file))
         with open(os.path.join(pgdata, "pg_xlog", xlog_file), "rb") as fp:
             restored_data = fp.read()

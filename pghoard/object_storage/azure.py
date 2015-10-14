@@ -33,7 +33,7 @@ class AzureTransfer(BaseTransfer):
 
     def list_path(self, path):
         return_list = []
-        path = fix_path(path)
+        path = fix_path(path).rstrip("/") + "/"
         self.log.info("Asking for listing of: %r", path)
         for r in self.conn.list_blobs(self.container_name, prefix=path, delimiter="/",
                                       include="metadata"):
