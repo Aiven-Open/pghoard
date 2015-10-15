@@ -94,8 +94,10 @@ class TransferAgent(Thread):
     @staticmethod
     def form_key_path(file_to_transfer):
         name = os.path.basename(file_to_transfer["local_path"])
-        key = "/".join([file_to_transfer["site"], file_to_transfer["filetype"], name])
-        return key
+        return os.path.join(file_to_transfer["path_prefix"],
+                            file_to_transfer["site"],
+                            file_to_transfer["filetype"],
+                            name)
 
     def run(self):
         while self.running:
@@ -108,6 +110,7 @@ class TransferAgent(Thread):
             self.log.debug("Starting to %r %r, size: %r",
                            file_to_transfer["type"], file_to_transfer["local_path"],
                            file_to_transfer.get("file_size", "unknown"))
+            file_to_transfer.setdefault("path_prefix", self.config.get("path_prefix", ""))
             start_time = time.time()
             key = self.form_key_path(file_to_transfer)
             oper = file_to_transfer["type"].lower()

@@ -161,7 +161,7 @@ class PGHoard(object):
         self.receivexlogs[cluster] = thread
 
     def create_backup_site_paths(self, site):
-        site_path = os.path.join(self.config["backup_location"], site)
+        site_path = os.path.join(self.config["backup_location"], self.config.get("path_prefix", ""), site)
         xlog_path = os.path.join(site_path, "xlog")
         basebackup_path = os.path.join(site_path, "basebackup")
 
@@ -185,7 +185,10 @@ class PGHoard(object):
         while True:
             # Note this does not take care of timelines/older PGs
             wal_segment_no -= 1
-            wal_path = "{}/xlog/{:024X}".format(site, wal_segment_no)
+            wal_path = os.path.join(self.config.get("path_prefix", ""),
+                                    site,
+                                    "xlog",
+                                    "{:024X}".format(wal_segment_no))
             self.log.debug("Deleting wal_file: %r", wal_path)
             try:
                 if not storage.delete_key(wal_path):
@@ -196,7 +199,10 @@ class PGHoard(object):
 
     def delete_remote_basebackup(self, site, basebackup):
         storage = self.site_transfers.get(site)
-        obj_key = site + "/basebackup/" + basebackup
+        obj_key = os.path.join(self.config.get("path_prefix", ""),
+                               site,
+                               "basebackup",
+                               basebackup)
         try:
             storage.delete_key(obj_key)
         except:  # FIXME: don't catch all exceptions; pylint: disable=bare-except
@@ -209,7 +215,9 @@ class PGHoard(object):
             storage = get_object_storage_transfer(self.config, site)
             self.site_transfers[site] = storage
 
-        results = storage.list_path(site + "/basebackup/")
+        results = storage.list_path(os.path.join(self.config.get("path_prefix", ""),
+                                                 site,
+                                                 "basebackup"))
         if results:
             basebackups_dict = dict((basebackup['name'], basebackup) for basebackup in results)
             basebackups = sorted(basebackups_dict.keys())

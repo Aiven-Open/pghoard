@@ -23,8 +23,14 @@ def _location_for_region(region):
 
 
 class S3Transfer(BaseTransfer):
-    def __init__(self, aws_access_key_id, aws_secret_access_key, region, bucket_name,
-                 host=None, port=None, is_secure=False):
+    def __init__(self,
+                 aws_access_key_id,
+                 aws_secret_access_key,
+                 region,
+                 bucket_name,
+                 host=None,
+                 port=None,
+                 is_secure=False):
         BaseTransfer.__init__(self)
         self.region = region
         self.location = _location_for_region(region)
@@ -57,7 +63,7 @@ class S3Transfer(BaseTransfer):
 
     def list_path(self, path):
         return_list = []
-        for r in self.bucket.list(path, "/"):
+        for r in self.bucket.list(path.rstrip("/") + "/", "/"):
             return_list.append({
                 "name": r.name,
                 "size": r.size,

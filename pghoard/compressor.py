@@ -31,7 +31,7 @@ class Compressor(Thread):
             rest, backupname = os.path.split(rest)
         else:
             backupname = os.path.basename(original_path)
-        return os.path.join(self.config["backup_location"], site, filetype, backupname)
+        return os.path.join(self.config["backup_location"], self.config.get("path_prefix", ""), site, filetype, backupname)
 
     def find_site_for_file(self, filepath):
         # Formats like:
