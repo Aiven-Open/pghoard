@@ -59,7 +59,7 @@ class TestWebServer(object):
         # NOTE: get_archive_file isn't currently really compatible with
         # basebackups as it's not possible to request a basebackup to be
         # written to a file and get_archive_file returns a boolean status
-        aresult = http_restore.get_archive_file("basebackups/" + backups[0]["name"],
+        aresult = http_restore.get_archive_file("basebackup/" + backups[0]["name"],
                                                 target_path="dltest", target_path_prefix=tmpdir)
         assert aresult is True
         # test restoring using get_basebackup_file_to_fileobj

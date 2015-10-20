@@ -81,6 +81,7 @@ class TransferAgent(Thread):
                 "upload": {"basebackup": EMPTY.copy(), "xlog": EMPTY.copy(), "timeline": EMPTY.copy()},
                 "download": {"basebackup": EMPTY.copy(), "xlog": EMPTY.copy(), "timeline": EMPTY.copy()},
                 "metadata": {"basebackup": EMPTY.copy(), "xlog": EMPTY.copy(), "timeline": EMPTY.copy()},
+                "list": {"basebackup": EMPTY.copy(), "xlog": EMPTY.copy(), "timeline": EMPTY.copy()},
             }
 
     def get_object_storage(self, site_name):
@@ -143,6 +144,19 @@ class TransferAgent(Thread):
                           key, oper_size, time.time() - start_time)
 
         self.log.info("Quitting TransferAgent")
+
+    def handle_list(self, site, key, file_to_transfer):
+        try:
+            storage = self.get_object_storage(site)
+            items = storage.list_path(key)
+            file_to_transfer["file_size"] = len(repr(items))  # approx
+            return {"success": True, "items": items}
+        except Exception as ex:  # pylint: disable=broad-except
+            if isinstance(ex, FileNotFoundFromStorageError):
+                self.log.warning("%r not found from storage", key)
+            else:
+                self.log.exception("Problem happened when retrieving metadata: %r, %r", key, file_to_transfer)
+            return {"success": False}
 
     def handle_metadata(self, site, key, file_to_transfer):
         try:

@@ -6,7 +6,7 @@ See LICENSE for details
 """
 
 from . import __version__
-from . common import Empty, Queue
+from . common import Empty, Queue, json_encode
 from threading import Thread
 import json
 import logging
@@ -85,7 +85,7 @@ class RequestHandler(BaseHTTPRequestHandler):
     disable_nagle_algorithm = True
     server_version = "pghoard/" + __version__
 
-    def _wal_or_timeline_file_op(self, site, filename, filetype, method):
+    def _transfer_agent_op(self, site, filename, filetype, method):
         start_time = time.time()
 
         target_path = self.headers.get("x-pghoard-target-path")
@@ -107,19 +107,16 @@ class RequestHandler(BaseHTTPRequestHandler):
         return response
 
     def get_wal_or_timeline_file(self, site, filename, filetype):
-        response = self._wal_or_timeline_file_op(site, filename, filetype, "DOWNLOAD")
+        response = self._transfer_agent_op(site, filename, filetype, "DOWNLOAD")
         http_status = 201 if response["success"] else 404
         return "", {"content-length": "0"}, http_status
 
     def list_basebackups(self, site):
-        basebackup_dir = os.path.join(self.server.config["backup_location"], site, "basebackup")
-        basebackup_dict = {}
-        for backup in os.listdir(basebackup_dir):
-            if backup.startswith(".") or backup.endswith(".metadata"):
-                continue
-            path = os.path.join(self.server.config["backup_location"], site, "basebackup", backup)
-            basebackup_dict[backup] = {"size": os.stat(path).st_size}
-        return {"basebackups": basebackup_dict}, {}, 200
+        response = self._transfer_agent_op(site, "", "basebackup", "LIST")
+        if not response["success"]:
+            return "", {"content-length": "0"}, 500
+        result = {"basebackups": response["items"]}
+        return result, {}, 200
 
     def get_basebackup(self, site, which_one):
         backup_path = os.path.join(self.server.config["backup_location"], site, "basebackup", which_one)
@@ -187,13 +184,11 @@ class RequestHandler(BaseHTTPRequestHandler):
             self.send_response(404)
             return None, None
 
-        # FIXME: we use `basebackups` in URLs but `basebackup` on disk, pick
-        # one and use it everywhere
-        if len(path) >= 2 and path[1] == "basebackups":
+        if len(path) >= 2 and path[1] == "basebackup":
             if len(path) == 2:
-                return "basebackups", None
+                return "basebackup", None
             elif len(path) == 3:
-                return "basebackups", path[2]
+                return "basebackup", path[2]
         elif len(path) == 2 and len(path[1]) == 24:
             return "xlog", path[1]
         elif path[1].endswith(".history"):
@@ -210,7 +205,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         op_type, op_target = self._oper_type_from_path(path)
         if not op_type:
             return
-        response = self._wal_or_timeline_file_op(site, op_target, op_type, "METADATA")
+        response = self._transfer_agent_op(site, op_target, op_type, "METADATA")
         http_status = 200 if response["success"] else 404
         self.send_response(http_status)
         self.send_header("content-length", "0")
@@ -223,9 +218,9 @@ class RequestHandler(BaseHTTPRequestHandler):
             return
 
         try:
-            if op_type == "basebackups" and op_target is None:
+            if op_type == "basebackup" and op_target is None:
                 response, headers, status = self.list_basebackups(site)
-            elif op_type == "basebackups":
+            elif op_type == "basebackup":
                 response, headers, status = self.get_basebackup(site, op_target)
             elif op_type in ("timeline", "xlog"):
                 response, headers, status = self.get_wal_or_timeline_file(site, op_target, op_type)
@@ -242,7 +237,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             if "content-type" not in headers:
                 if isinstance(response, dict):
                     mimetype = "application/json"
-                    response = json.dumps(response, indent=4).encode("utf8")
+                    response = json_encode(response, compact=False, binary=True)
                     size = len(response)
                 elif hasattr(response, "read"):
                     mimetype = "application/octet-stream"
