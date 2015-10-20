@@ -41,10 +41,20 @@ class ArchiveSync(object):
 
     def __init__(self):
         self.log = logging.getLogger(self.__class__.__name__)
+        self.config = None
+        self.site = None
+        self.backup_site = None
+        self.base_url = None
 
-    def get_current_wal_file(self, config, site):
+    def set_config(self, config, site):
+        self.config = config
+        self.site = site
+        self.backup_site = config["backup_sites"][site]
+        self.base_url = "http://127.0.0.1:{}/{}".format(config["http_port"], site)
+
+    def get_current_wal_file(self):
         # identify the (must be) local database
-        node_info = config["backup_sites"][site]["nodes"][0]
+        node_info = self.backup_site["nodes"][0]
         conn_str, _ = replication_connection_string_using_pgpass(node_info)
         # unfortunately psycopg2's available versions don't support
         # replication protocol so we'll just have to execute psql to figure
@@ -55,8 +65,8 @@ class ArchiveSync(object):
         # everything older than that
         return construct_wal_name(sysinfo)
 
-    def archive_sync(self, config, site):
-        current_wal_file = self.get_current_wal_file(config, site)
+    def archive_sync(self):
+        current_wal_file = self.get_current_wal_file()
 
         # Find relevant xlog files.  We do this by checking archival status
         # of all XLOG files older than the one currently open (ie reverse
@@ -65,7 +75,7 @@ class ArchiveSync(object):
         # collecting a list we start archiving them from oldest to newest.
         # This is done so we don't break our missing archive detection logic
         # if sync is interrupted for some reason.
-        xlog_dir = config["backup_sites"][site]["pg_xlog_directory"]
+        xlog_dir = self.backup_site["pg_xlog_directory"]
         xlog_files = sorted(os.listdir(xlog_dir), reverse=True)
         need_archival = []
         for xlog_file in xlog_files:
@@ -76,8 +86,7 @@ class ArchiveSync(object):
             elif xlog_file > current_wal_file:
                 self.log.info("Skipping future WAL file %r", xlog_file)
             else:
-                resp = requests.head("http://127.0.0.1:{port}/{site}/{file}"
-                                     .format(port=config["http_port"], site=site, file=xlog_file))
+                resp = requests.head("{base}/{file}".format(base=self.base_url, file=xlog_file))
                 if resp.status_code == 200:
                     self.log.info("WAL file %r already archived", xlog_file)
                     break
@@ -85,8 +94,7 @@ class ArchiveSync(object):
                 need_archival.append(xlog_file)
 
         for xlog_file in sorted(need_archival):  # sort oldest to newest
-            resp = requests.put("http://127.0.0.1:{port}/{site}/archive/{file}"
-                                .format(port=config["http_port"], site=site, file=xlog_file))
+            resp = requests.put("{base}/archive/{file}".format(base=self.base_url, file=xlog_file))
             if resp.status_code != 201:
                 self.log.error("WAL file %r archival failed with status code %r",
                                xlog_file, resp.status_code)
@@ -101,13 +109,13 @@ class ArchiveSync(object):
         try:
             with open(args.config) as fp:
                 config = json.load(fp)
-            _ = config["backup_sites"][args.site]
+            self.set_config(config, args.site)
         except KeyError:
             raise SyncError("Site {!r} not configured in {!r}".format(args.site, args.config))
         except ValueError:
             raise SyncError("Invalid JSON configuration file {!r}".format(args.config))
         try:
-            return self.archive_sync(config, args.site)
+            return self.archive_sync()
         except KeyboardInterrupt:
             print("*** interrupted by keyboard ***")
             return 1

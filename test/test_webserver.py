@@ -114,7 +114,7 @@ class TestWebServer(object):
         assert archived_xlogs.issuperset(pg_xlogs)
         # if we delete a wal file that's not the latest archival shouldn't
         # do anything as we always walk the list down from newest to oldest
-        current_wal = arsy.get_current_wal_file(pghoard.config, "default")
+        current_wal = arsy.get_current_wal_file()
         old_xlogs = sorted(wal for wal in pg_xlogs if wal < current_wal)
         os.unlink(os.path.join(archive_xlog_dir, old_xlogs[-2]))
         arsy.run(["--site", "default", "--config", pghoard.config_path])
