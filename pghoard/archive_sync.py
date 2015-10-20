@@ -65,8 +65,24 @@ class ArchiveSync(object):
         # everything older than that
         return construct_wal_name(sysinfo)
 
+    def get_first_required_wal_segment(self):
+        resp = requests.get("{base}/basebackup".format(base=self.base_url))
+        if resp.status_code != 200:
+            self.log.error("Error looking up basebackups")
+            return None
+        items = resp.json()["basebackups"]
+        if not items:
+            self.log.error("Unable to find any basebackups")
+            return None
+        # NOTE: select latest basebackup by name, not necessarily by latest
+        # wal segment as we'll anyway try to restore the latest basebackup
+        # *by name*.
+        latest_basebackup = max(items, key=lambda item: item["name"])
+        return latest_basebackup["metadata"]["start-wal-segment"]
+
     def archive_sync(self):
         current_wal_file = self.get_current_wal_file()
+        first_required_wal_file = self.get_first_required_wal_segment()
 
         # Find relevant xlog files.  We do this by checking archival status
         # of all XLOG files older than the one currently open (ie reverse
@@ -84,12 +100,15 @@ class ArchiveSync(object):
             if xlog_file == current_wal_file:
                 self.log.info("Skipping currently open WAL file %r", xlog_file)
             elif xlog_file > current_wal_file:
-                self.log.info("Skipping future WAL file %r", xlog_file)
+                self.log.debug("Skipping recycled WAL file %r", xlog_file)
+            elif first_required_wal_file is not None and xlog_file < first_required_wal_file:
+                self.log.info("WAL file %r is not needed for the latest basebackup", xlog_file)
+                break
             else:
                 resp = requests.head("{base}/{file}".format(base=self.base_url, file=xlog_file))
                 if resp.status_code == 200:
                     self.log.info("WAL file %r already archived", xlog_file)
-                    break
+                    continue
                 self.log.info("WAL file %r needs to be archived", xlog_file)
                 need_archival.append(xlog_file)
 

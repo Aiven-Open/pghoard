@@ -112,16 +112,16 @@ class TestWebServer(object):
         # and now archive should include all our xlogs
         archived_xlogs = {f for f in os.listdir(archive_xlog_dir) if xlog_re.match(f)}
         assert archived_xlogs.issuperset(pg_xlogs)
-        # if we delete a wal file that's not the latest archival shouldn't
-        # do anything as we always walk the list down from newest to oldest
+        # if we delete a wal file that's not the latest archival it should
+        # get synced to the archive as we don't have a basebackup newer than
+        # it
         current_wal = arsy.get_current_wal_file()
         old_xlogs = sorted(wal for wal in pg_xlogs if wal < current_wal)
         os.unlink(os.path.join(archive_xlog_dir, old_xlogs[-2]))
         arsy.run(["--site", "default", "--config", pghoard.config_path])
         archived_xlogs = {f for f in os.listdir(archive_xlog_dir) if xlog_re.match(f)}
-        assert not archived_xlogs.issuperset(pg_xlogs)
-        assert old_xlogs[-2] not in archived_xlogs
-        # now delete the topmost wal file, this should cause both to get resynced
+        assert archived_xlogs.issuperset(pg_xlogs)
+        # delete the topmost wal file, this should cause resync too
         os.unlink(os.path.join(archive_xlog_dir, old_xlogs[-1]))
         arsy.run(["--site", "default", "--config", pghoard.config_path])
         archived_xlogs = {f for f in os.listdir(archive_xlog_dir) if xlog_re.match(f)}
