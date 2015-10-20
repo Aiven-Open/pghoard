@@ -7,6 +7,7 @@ See LICENSE for details
 
 import datetime
 import fcntl
+import json
 import logging
 import os
 import re
@@ -243,3 +244,20 @@ def datetime_to_timestamp(td):
         return td.timestamp()
     delta = td - datetime.datetime(1970, 1, 1, tzinfo=td.tzinfo)
     return delta.total_seconds()
+
+
+def default_json_serialization(obj):
+    if isinstance(obj, datetime.datetime):
+        if obj.tzinfo:
+            return obj.isoformat().replace("+00:00", "Z")
+        # assume UTC for datetime objects without a timezone
+        return obj.isoformat() + "Z"
+
+
+def json_encode(obj, compact=True, binary=False):
+    res = json.dumps(obj,
+                     sort_keys=not compact,
+                     indent=None if compact else 4,
+                     separators=(",", ":") if compact else None,
+                     default=default_json_serialization)
+    return res.encode("utf-8") if binary else res

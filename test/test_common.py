@@ -8,9 +8,13 @@ from .base import PGHoardTestCase
 from pghoard.common import (
     create_pgpass_file,
     convert_pg_command_version_to_number,
+    default_json_serialization,
     get_connection_info,
+    json_encode,
     )
 from pghoard.errors import Error
+import datetime
+import json
 import os
 import pytest
 
@@ -68,3 +72,21 @@ class TestCommon(PGHoardTestCase):
             convert_pg_command_version_to_number("PostgreSQL) 9.6devel")
         with pytest.raises(Error):
             convert_pg_command_version_to_number("test (PostgreSQL) 9devel")
+
+    def test_json_serialization(self):
+        ob = {
+            "foo": [
+                "bar",
+                "baz",
+                42,
+            ],
+            "t": datetime.datetime(2015, 9, 1, 4, 0, 0),
+            "f": 0.42,
+        }
+        res = json.dumps(ob, default=default_json_serialization, separators=(",", ":"), sort_keys=True)
+        assert res == '{"f":0.42,"foo":["bar","baz",42],"t":"2015-09-01T04:00:00Z"}'
+
+        assert isinstance(json_encode(ob), str)
+        assert isinstance(json_encode(ob, binary=True), bytes)
+        assert "\n" not in json_encode(ob)
+        assert "\n" in json_encode(ob, compact=False)
