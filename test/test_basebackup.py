@@ -33,7 +33,7 @@ LABEL: pg_basebackup base backup
 
     def test_basebackups(self, db, pghoard):
         pghoard.create_backup_site_paths("default")
-        conn_str = create_connection_string(db["user"])
+        conn_str = create_connection_string(db.user)
         basebackup_path = os.path.join(pghoard.config["backup_location"], "default", "basebackup")
         backup_thread, final_location = pghoard.create_basebackup("default", conn_str, basebackup_path)
         assert backup_thread is not None

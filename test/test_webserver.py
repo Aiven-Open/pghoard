@@ -35,7 +35,7 @@ class TestWebServer(object):
     def test_basebackups(self, capsys, db, http_restore, pghoard, tmpdir):  # pylint: disable=redefined-outer-name
         tmpdir = str(tmpdir)
         pghoard.create_backup_site_paths("default")
-        conn_str = create_connection_string(db["user"])
+        conn_str = create_connection_string(db.user)
         basebackup_path = os.path.join(pghoard.config["backup_location"], "default", "basebackup")
         backup_thread, final_location = pghoard.create_basebackup("default", conn_str, basebackup_path)
         assert backup_thread is not None
@@ -82,7 +82,7 @@ class TestWebServer(object):
 
     def test_archive_sync(self, db, pghoard):
         # force a couple of wal segment switches
-        conn = psycopg2.connect(create_connection_string(db["user"]))
+        conn = psycopg2.connect(create_connection_string(db.user))
         conn.autocommit = True
         cursor = conn.cursor()
         cursor.execute("CREATE TABLE IF NOT EXISTS testint (i INT)")
