@@ -16,6 +16,7 @@ import os
 import psycopg2
 import pytest
 import re
+import shutil
 import time
 
 
@@ -32,8 +33,7 @@ class TestWebServer(object):
         out, _ = capsys.readouterr()
         assert "default" in out
 
-    def test_basebackups(self, capsys, db, http_restore, pghoard, tmpdir):  # pylint: disable=redefined-outer-name
-        tmpdir = str(tmpdir)
+    def _run_and_wait_basebackup(self, pghoard, db):
         pghoard.create_backup_site_paths("default")
         conn_str = create_connection_string(db.user)
         basebackup_path = os.path.join(pghoard.config["backup_location"], "default", "basebackup")
@@ -45,7 +45,11 @@ class TestWebServer(object):
         while not os.path.exists(metadata_file) and (time.time() < timeout):
             time.sleep(1)
         assert os.path.exists(metadata_file)
-        # it should now show up on our list
+        return final_location
+
+    def test_basebackups(self, capsys, db, http_restore, pghoard, tmpdir):  # pylint: disable=redefined-outer-name
+        tmpdir = str(tmpdir)
+        final_location = self._run_and_wait_basebackup(pghoard, db)
         backups = http_restore.list_basebackups()
         assert len(backups) == 1
         assert backups[0]["size"] > 0
@@ -80,20 +84,19 @@ class TestWebServer(object):
         assert os.path.exists(backup_xlog_path)
         os.unlink(foo_path)
 
-    def test_archive_sync(self, db, pghoard):
-        # force a couple of wal segment switches
+    def _switch_xlog(self, db, count):
         conn = psycopg2.connect(create_connection_string(db.user))
         conn.autocommit = True
         cursor = conn.cursor()
         cursor.execute("CREATE TABLE IF NOT EXISTS testint (i INT)")
-        cursor.execute("INSERT INTO testint (i) VALUES (%s)", [0])
-        cursor.execute("SELECT pg_switch_xlog()")
-        cursor.execute("INSERT INTO testint (i) VALUES (%s)", [1])
-        cursor.execute("SELECT pg_switch_xlog()")
-        cursor.execute("INSERT INTO testint (i) VALUES (%s)", [2])
-        cursor.execute("SELECT pg_switch_xlog()")
-        cursor.execute("INSERT INTO testint (i) VALUES (%s)", [3])
-        cursor.execute("SELECT pg_switch_xlog()")
+        for n in range(count):
+            cursor.execute("INSERT INTO testint (i) VALUES (%s)", [n])
+            cursor.execute("SELECT pg_switch_xlog()")
+        conn.close()
+
+    def test_archive_sync(self, db, pghoard):
+        # force a couple of wal segment switches
+        self._switch_xlog(db, 4)
         xlog_re = re.compile("^[A-F0-9]{24}$")
         # we should have at least 4 xlog files now (there may be more in
         # case other tests created them -- we share a single postresql
@@ -126,6 +129,46 @@ class TestWebServer(object):
         arsy.run(["--site", "default", "--config", pghoard.config_path])
         archived_xlogs = {f for f in os.listdir(archive_xlog_dir) if xlog_re.match(f)}
         assert archived_xlogs.issuperset(pg_xlogs)
+        # let's do a little dance to turn our DB into a standby and then
+        # promote it, forcing a timeline switch
+        db.kill(force=False)
+        with open(os.path.join(db.pgdata, "recovery.conf"), "w") as fp:
+            fp.write(
+                "standby_mode = 'on'\n"
+                "recovery_target_timeline = 'latest'\n"
+                "restore_command = 'false'\n"
+            )
+        # start PG and promote it
+        db.run_pg()
+        db.run_cmd("pg_ctl", "-D", db.pgdata, "promote")
+        time.sleep(2)
+        timeline_re = re.compile(r"^[A-F0-9]{8}\.history$")
+        # we should have a single timeline file in pg_xlog now
+        pg_xlog_timelines = {f for f in os.listdir(pg_xlog_dir) if timeline_re.match(f)}
+        assert pg_xlog_timelines != set()
+        # but there should be nothing archived as archive_command wasn't setup
+        archive_tli_dir = os.path.join(pghoard.config["backup_location"], "default", "timeline")
+        archived_timelines = {f for f in os.listdir(archive_tli_dir) if timeline_re.match(f)}
+        assert archived_timelines == set()
+        # let's hit archive sync
+        arsy.run(["--site", "default", "--config", pghoard.config_path])
+        # now we should have an archived timeline
+        archived_timelines = {f for f in os.listdir(archive_tli_dir) if timeline_re.match(f)}
+        assert archived_timelines.issuperset(pg_xlog_timelines)
+        # let's take a new basebackup
+        self._run_and_wait_basebackup(pghoard, db)
+        # nuke archives and resync them
+        shutil.rmtree(archive_tli_dir)
+        os.makedirs(archive_tli_dir)
+        shutil.rmtree(archive_xlog_dir)
+        os.makedirs(archive_xlog_dir)
+        self._switch_xlog(db, 1)
+        arsy.run(["--site", "default", "--config", pghoard.config_path])
+        # assume no timeline files and at one or more wal files (but not more than three)
+        assert os.listdir(archive_tli_dir) == []
+        archived_xlogs = {f for f in os.listdir(archive_xlog_dir) if xlog_re.match(f)}
+        assert len(archived_xlogs) >= 1
+        assert len(archived_xlogs) <= 3
 
     def test_archiving_backup_label_from_archive_command(self, pghoard):
         bl_file = "000000010000000000000002.00000028.backup"

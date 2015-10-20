@@ -10,6 +10,7 @@ import argparse
 import json
 import logging
 import os
+import re
 import requests
 import subprocess
 import sys
@@ -93,11 +94,17 @@ class ArchiveSync(object):
         # if sync is interrupted for some reason.
         xlog_dir = self.backup_site["pg_xlog_directory"]
         xlog_files = sorted(os.listdir(xlog_dir), reverse=True)
+        xlog_re = re.compile("^[A-F0-9]{24}$")
+        timeline_re = re.compile(r"^[A-F0-9]{8}\.history$")
         need_archival = []
         for xlog_file in xlog_files:
-            if "." in xlog_file or len(xlog_file) != 24:
-                continue   # not a WAL file
-            if xlog_file == current_wal_file:
+            archive_type = None
+            if timeline_re.match(xlog_file):
+                # We want all timeline files
+                archive_type = "TIMELINE"
+            elif not xlog_re.match(xlog_file):
+                pass   # not a WAL or timeline file
+            elif xlog_file == current_wal_file:
                 self.log.info("Skipping currently open WAL file %r", xlog_file)
             elif xlog_file > current_wal_file:
                 self.log.debug("Skipping recycled WAL file %r", xlog_file)
@@ -105,20 +112,25 @@ class ArchiveSync(object):
                 self.log.info("WAL file %r is not needed for the latest basebackup", xlog_file)
                 break
             else:
+                # WAL file in range first_required_wal_file .. current_wal_file
+                archive_type = "WAL"
+
+            if archive_type:
                 resp = requests.head("{base}/{file}".format(base=self.base_url, file=xlog_file))
                 if resp.status_code == 200:
-                    self.log.info("WAL file %r already archived", xlog_file)
+                    self.log.info("%s file %r already archived", archive_type, xlog_file)
                     continue
-                self.log.info("WAL file %r needs to be archived", xlog_file)
+                self.log.info("%s file %r needs to be archived", archive_type, xlog_file)
                 need_archival.append(xlog_file)
 
         for xlog_file in sorted(need_archival):  # sort oldest to newest
             resp = requests.put("{base}/archive/{file}".format(base=self.base_url, file=xlog_file))
+            archive_type = "TIMELINE" if ".history" in xlog_file else "WAL"
             if resp.status_code != 201:
-                self.log.error("WAL file %r archival failed with status code %r",
-                               xlog_file, resp.status_code)
+                self.log.error("%s file %r archival failed with status code %r",
+                               archive_type, xlog_file, resp.status_code)
             else:
-                self.log.info("WAL file %r archived", xlog_file)
+                self.log.info("%s file %r archived", archive_type, xlog_file)
 
     def run(self, args=None):
         parser = argparse.ArgumentParser()
