@@ -298,7 +298,7 @@ class ObjectStore(object):
         print(line)
         print("=" * len(line))
         print("basebackup\t\t\tsize\tlast_modified\t\t\tmetadata")
-        for r in result:
+        for r in sorted(result, key=lambda b: b["name"]):
             print("%s\t%s\t%s\t%s" % (r["name"], r["size"], r["last_modified"], r["metadata"]))
 
     def get_basebackup_file_to_fileobj(self, basebackup, fileobj):
@@ -307,13 +307,11 @@ class ObjectStore(object):
         return metadata
 
 
-class HTTPRestore(object):
+class HTTPRestore(ObjectStore):
     def __init__(self, host, port, site, pgdata=None):
-        self.log = logging.getLogger("HTTPRestore")
+        super(HTTPRestore, self).__init__(storage=None, path_prefix=None, site=site, pgdata=pgdata)
         self.host = host
         self.port = port
-        self.site = site
-        self.pgdata = pgdata
         self.session = Session()
 
     def _url(self, filetype, name=None):
@@ -326,23 +324,11 @@ class HTTPRestore(object):
             name=name or "")
 
     def list_basebackups(self):
-        response = self.session.get(self._url("basebackups"))
-        basebackups = []
-        for basebackup, values in response.json()["basebackups"].items():
-            basebackups.append({"name": basebackup, "size": values["size"]})
-        return basebackups
-
-    def show_basebackup_list(self):
-        basebackups = self.list_basebackups()
-        line = "Available %r basebackups:" % self.site
-        print(line)
-        print("=" * len(line))
-        print("basebackup\t\tsize")
-        for r in basebackups:
-            print("{}\t{}".format(r["name"], r["size"]))
+        response = self.session.get(self._url("basebackup"))
+        return response.json()["basebackups"]
 
     def get_basebackup_file_to_fileobj(self, basebackup, fileobj):
-        response = self.session.get(self._url("basebackups", basebackup), stream=True)
+        response = self.session.get(self._url("basebackup", basebackup), stream=True)
         if response.status_code != 200:
             raise Error("Incorrect basebackup: %{!r} or site: {!r} defined".format(basebackup, self.site))
         for chunk in response.iter_content(chunk_size=IO_BLOCK_SIZE):

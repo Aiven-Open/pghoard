@@ -16,10 +16,39 @@ import tempfile
 import time
 
 
+class TestPG(object):
+    def __init__(self, pgbin, pgdata):
+        self.pgbin = pgbin
+        self.pgdata = pgdata
+        self.pg = None
+        self.user = None
+
+    def run_cmd(self, cmd, *args):
+        argv = ["{}/{}".format(self.pgbin, cmd)]
+        argv.extend(args)
+        subprocess.check_call(argv)
+
+    def run_pg(self):
+        self.pg = subprocess.Popen([
+            "{}/postgres".format(self.pgbin),
+            "-D", self.pgdata, "-k", self.pgdata,
+            "-p", self.user["port"], "-c", "listen_addresses=",
+        ])
+        time.sleep(1.0)  # let pg start
+
+    def kill(self, force=True):
+        os.kill(self.pg.pid, signal.SIGKILL if force else signal.SIGTERM)
+        timeout = time.time() + 10
+        while (self.pg.poll() is None) and (time.time() < timeout):
+            time.sleep(1)
+        if not force and self.pg.poll() is None:
+            raise Exception("PG pid {} not dead".format(self.pg.pid))
+
+
 # NOTE: cannot use 'tmpdir' fixture here, it only works in 'function' scope
 @pytest.yield_fixture(scope="session")
 def db():
-    tmpdir_obj = py_path.local(tempfile.mkdtemp())
+    tmpdir_obj = py_path.local(tempfile.mkdtemp(prefix="pghoard_dbtest_"))
     tmpdir = str(tmpdir_obj)
     # try to find the binaries for these versions in some path
     versions = ["9.5", "9.4", "9.3"]
@@ -34,13 +63,11 @@ def db():
             break
     if not os.path.exists(pgbin):
         pgbin = "/usr/bin"
-    pgbinf = "{}/{{}}".format(pgbin).format
     pgdata = os.path.join(tmpdir, "pgdata")
-    subprocess.check_call([pgbinf("initdb"), "-D", pgdata, "--encoding", "utf-8"])
+    db = TestPG(pgbin, pgdata)  # pylint: disable=redefined-outer-name
+    db.run_cmd("initdb", "-D", pgdata, "--encoding", "utf-8")
     # NOTE: does not use TCP ports, no port conflicts
-    info = dict(host=pgdata, user="pghoard", password="pghoard", dbname="postgres", port="5432")
-    pg = subprocess.Popen([pgbinf("postgres"), "-D", pgdata, "-k", pgdata,
-                           "-p", info["port"], "-c", "listen_addresses="])
+    db.user = dict(host=pgdata, user="pghoard", password="pghoard", dbname="postgres", port="5432")
     # NOTE: point $HOME to tmpdir - $HOME shouldn't affect most tests, but
     # psql triest to find .pgpass file from there as do our functions that
     # manipulate pgpass.  By pointing $HOME there we make sure we're not
@@ -55,19 +82,12 @@ def db():
             "wal_keep_segments = 100\n"
             "wal_level = archive\n"
         )
+    db.run_pg()
     try:
-        time.sleep(1.0)  # let pg start
-        subprocess.check_call([pgbinf("createuser"), "-h", info["host"], "-p", info["port"], "-s", info["user"]])
-        yield {
-            "pgbin": pgbin,
-            "pgdata": pgdata,
-            "user": info,
-        }
+        db.run_cmd("createuser", "-h", db.user["host"], "-p", db.user["port"], "-s", db.user["user"])
+        yield db
     finally:
-        os.kill(pg.pid, signal.SIGKILL)
-        timeout = time.time() + 10
-        while (pg.poll() is None) and (time.time() < timeout):
-            time.sleep(1)
+        db.kill()
         try:
             tmpdir_obj.remove(rec=1)
         except:  # pylint: disable=bare-except
@@ -80,15 +100,15 @@ def pghoard(db, tmpdir):  # pylint: disable=redefined-outer-name
         "backup_location": os.path.join(str(tmpdir), "backups"),
         "backup_sites": {
             "default": {
-                "pg_xlog_directory": os.path.join(db["pgdata"], "pg_xlog"),
-                "nodes": [db["user"]],
+                "pg_xlog_directory": os.path.join(db.pgdata, "pg_xlog"),
+                "nodes": [db.user],
                 "object_storage": {},
             },
         },
         "http_address": "127.0.0.1",
         "http_port": random.randint(1024, 32000),
-        "pg_basebackup_path": os.path.join(db["pgbin"], "pg_basebackup"),
-        "pg_receivexlog_path": os.path.join(db["pgbin"], "pg_receivexlog_path"),
+        "pg_basebackup_path": os.path.join(db.pgbin, "pg_basebackup"),
+        "pg_receivexlog_path": os.path.join(db.pgbin, "pg_receivexlog_path"),
     }
     confpath = os.path.join(str(tmpdir), "config.json")
     with open(confpath, "w") as fp:
