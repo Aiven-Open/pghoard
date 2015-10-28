@@ -99,6 +99,13 @@ Setup
 After this you need to create a suitable JSON configuration file for your
 installation.
 
+0.  Make sure PostgreSQL is configured to allow WAL archival and retrieval.
+    ``postgresql.conf`` should have ``wal_level`` set to ``archive`` or
+    higher and ``max_wal_senders`` set to a non-zero value, for example::
+
+        wal_level = archive
+        max_wal_senders = 4
+
 1. Create a suitable PostgreSQL user account for pghoard::
 
      CREATE USER pghoard PASSWORD 'putyourpasswordhere' REPLICATION;
