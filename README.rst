@@ -141,10 +141,11 @@ There has been a problem in the authentication of at least one of the
 PostgreSQL connections.  This usually denotes a wrong username and/or
 password.
 
-``pg_hba_conf_error``
+``configuration_error``
 
 There has been a problem in the authentication of at least one of the
-PostgreSQL connections.  This usually denotes a missing pg_hba conf entry.
+PostgreSQL connections.  This usually denotes a missing pg_hba.conf entry or
+incompatible settings in postgresql.conf.
 
 ``version_mismatch_error``
 
