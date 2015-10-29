@@ -18,13 +18,15 @@ class TestCompression(PGHoardTestCase):
         self.config = {
             "backup_sites": {
                 "default": {
-                    "object_storage": {"s3": {}},
+                    "object_storage": {
+                        "storage_type": "s3",
+                    },
                     "encryption_keys": {
                         "testkey": {
                             "public": CONSTANT_TEST_RSA_PUBLIC_KEY,
                             "private": CONSTANT_TEST_RSA_PRIVATE_KEY
-                        }
-                    }
+                        },
+                    },
                 },
             },
             "backup_location": os.path.join(self.temp_dir, "backups"),

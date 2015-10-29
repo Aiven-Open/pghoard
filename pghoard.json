@@ -1,31 +1,30 @@
 {
-    "log_level": "DEBUG",
-    "http_address": "",
-    "http_port": 16000,
+    "backup_location": "/var/lib/pghoard",
     "backup_sites": {
-	"default": {
-	    "active_backup_mode": "pg_receivexlog",
-	    "basebackup_count": 2,
-	    "basebackup_interval_hours": 24,
-	    "nodes": [
-	        {
-	            "host": "127.0.0.1",
-	            "port": 5433,
-	            "user": "replication",
-	            "password": "example"
+        "default": {
+            "active_backup_mode": "pg_receivexlog",
+            "basebackup_count": 2,
+            "basebackup_interval_hours": 24,
+            "nodes": [
+                {
+                    "host": "127.0.0.1",
+                    "password": "example",
+                    "port": 5433,
+                    "user": "replication"
                 }
             ],
-	    "object_storage": {
-		"s3": {
-		    "aws_access_key_id": "xxx",
-		    "aws_secret_access_key": "ASDF",
-		    "region": "eu-central-1",
-		    "bucket_name": "pgbackups"
-		}
-	    }
-	}
+            "object_storage": {
+                "aws_access_key_id": "xxx",
+                "aws_secret_access_key": "ASDF",
+                "bucket_name": "pgbackups",
+                "region": "eu-central-1",
+                "storage_type": "s3"
+            }
+        }
     },
-    "backup_location": "/var/lib/pghoard",
+    "http_address": "",
+    "http_port": 16000,
+    "log_level": "DEBUG",
     "pg_basebackup_path": "/usr/pgsql-9.4/bin/pg_basebackup",
     "pg_receivexlog_path": "/usr/pgsql-9.4/bin/pg_receivexlog",
     "syslog": true,
