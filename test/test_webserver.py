@@ -145,11 +145,11 @@ class TestWebServer(object):
         timeline_re = re.compile(r"^[A-F0-9]{8}\.history$")
         # we should have a single timeline file in pg_xlog now
         pg_xlog_timelines = {f for f in os.listdir(pg_xlog_dir) if timeline_re.match(f)}
-        assert pg_xlog_timelines != set()
+        assert len(pg_xlog_timelines) > 0
         # but there should be nothing archived as archive_command wasn't setup
         archive_tli_dir = os.path.join(pghoard.config["backup_location"], "default", "timeline")
         archived_timelines = {f for f in os.listdir(archive_tli_dir) if timeline_re.match(f)}
-        assert archived_timelines == set()
+        assert len(archived_timelines) == 0
         # let's hit archive sync
         arsy.run(["--site", "default", "--config", pghoard.config_path])
         # now we should have an archived timeline
