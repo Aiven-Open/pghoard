@@ -75,7 +75,14 @@ def db():
     os.environ["HOME"] = tmpdir
     # allow replication connections
     with open(os.path.join(pgdata, "pg_hba.conf"), "w") as fp:
-        fp.write("local all all trust\nlocal replication all trust\n")
+        fp.write(
+            "local all disabled reject\n"
+            "local all passwordy md5\n"
+            "local all all trust\n"
+            "local replication disabled reject\n"
+            "local replication passwordy md5\n"
+            "local replication all trust\n"
+        )
     with open(os.path.join(pgdata, "postgresql.conf"), "a") as fp:
         fp.write(
             "max_wal_senders = 2\n"
@@ -84,6 +91,8 @@ def db():
         )
     db.run_pg()
     try:
+        db.run_cmd("createuser", "-h", db.user["host"], "-p", db.user["port"], "disabled")
+        db.run_cmd("createuser", "-h", db.user["host"], "-p", db.user["port"], "passwordy")
         db.run_cmd("createuser", "-h", db.user["host"], "-p", db.user["port"], "-s", db.user["user"])
         yield db
     finally:
@@ -97,6 +106,7 @@ def db():
 @pytest.yield_fixture
 def pghoard(db, tmpdir):  # pylint: disable=redefined-outer-name
     config = {
+        "alert_file_dir": os.path.join(str(tmpdir), "alerts"),
         "backup_location": os.path.join(str(tmpdir), "backups"),
         "backup_sites": {
             "default": {
@@ -119,6 +129,7 @@ def pghoard(db, tmpdir):  # pylint: disable=redefined-outer-name
     backup_xlog_path = os.path.join(backup_site_path, "xlog")
     backup_timeline_path = os.path.join(backup_site_path, "timeline")
 
+    os.makedirs(config["alert_file_dir"])
     os.makedirs(basebackup_path)
     os.makedirs(backup_xlog_path)
     os.makedirs(backup_timeline_path)

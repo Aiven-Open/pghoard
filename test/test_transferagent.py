@@ -25,7 +25,9 @@ class TestTransferAgent(PGHoardTestCase):
         self.config = {
             "backup_sites": {
                 "default": {
-                    "object_storage": {"s3": {}},
+                    "object_storage": {
+                        "storage_type": "s3",
+                    },
                 },
             },
             "backup_location": self.temp_dir,

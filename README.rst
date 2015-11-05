@@ -99,6 +99,13 @@ Setup
 After this you need to create a suitable JSON configuration file for your
 installation.
 
+0.  Make sure PostgreSQL is configured to allow WAL archival and retrieval.
+    ``postgresql.conf`` should have ``wal_level`` set to ``archive`` or
+    higher and ``max_wal_senders`` set to a non-zero value, for example::
+
+        wal_level = archive
+        max_wal_senders = 4
+
 1. Create a suitable PostgreSQL user account for pghoard::
 
      CREATE USER pghoard PASSWORD 'putyourpasswordhere' REPLICATION;
@@ -141,10 +148,11 @@ There has been a problem in the authentication of at least one of the
 PostgreSQL connections.  This usually denotes a wrong username and/or
 password.
 
-``pg_hba_conf_error``
+``configuration_error``
 
 There has been a problem in the authentication of at least one of the
-PostgreSQL connections.  This usually denotes a missing pg_hba conf entry.
+PostgreSQL connections.  This usually denotes a missing pg_hba.conf entry or
+incompatible settings in postgresql.conf.
 
 ``version_mismatch_error``
 
@@ -265,30 +273,46 @@ Determines log level of pghoard.
 
 If a file exists in this location, no new backup actions will be started.
 
-``object_storage`` (default ``n/a``)
+``object_storage`` (no default)
 
-This key is found within backup_sites under a specific site.
-The key which if set must be one of ``google``, ``aws`` or ``azure``.
-The object may contain object store specific keys as described below:
+Configured in ``backup_sites`` under a specific site.  If set, it must be an
+object describing a remote object storage.  The object must contain a key
+``storage_type`` describing the type of the store, other keys and values are
+specific to the storage type.
 
-If specified as ``google``, the keys that are needed are:
-``project_id`` containing the Google Storage project_id,
-``bucket_name`` bucket where you want to store the files (defaults to ``pghoard``),
-``credential_file`` for the path to the Google JSON credential file.
+The following object storage types are suppored:
 
-If specified as ``aws`` the keys that are needed are:
-``aws_access_key_id`` for the AWS access key id,
-``aws_secret_access_key`` for the AWS secret access key,
-``region`` for the S3 region where you want to store the objects,
-``bucket_name`` for the name of the bucket within S3 (needs to be unique)
-``host`` for overriding the used host for non AWS-S3 implementations,
-``port`` for overriding the used port for non AWS-S3 implementations,
-``issecure`` for overriding the requirement for https for non AWS-S3 implementations,
+* ``google`` for Google Cloud Storage, required configuration keys:
 
-If specified as ``azure`` the keys that are needed are:
-``account_name`` for the name of the Azure Storage account,
-``account_key`` for the secret key of the Azure Storage account,
-``container_name`` for the name of Azure Storage container used to store objects.
+ * ``project_id`` containing the Google Storage project identifier
+ * ``bucket_name`` bucket where you want to store the files (defaults to
+   ``pghoard``)
+ * ``credential_file`` for the path to the Google JSON credential file
+
+* ``s3`` for Amazon Web Services S3, required configuration keys:
+
+ * ``aws_access_key_id`` for the AWS access key id
+ * ``aws_secret_access_key`` for the AWS secret access key
+ * ``region`` S3 region of the bucket
+ * ``bucket_name`` name of the S3 bucket
+
+* ``s3`` for other S3 compatible services such as Ceph, required
+  configuration keys:
+
+ * ``aws_access_key_id`` for the AWS access key id
+ * ``aws_secret_access_key`` for the AWS secret access key
+ * ``bucket_name`` name of the S3 bucket
+ * ``host`` for overriding host for non AWS-S3 implementations
+ * ``port`` for overriding port for non AWS-S3 implementations
+ * ``issecure`` for overriding the requirement for https for non AWS-S3
+   implementations
+
+* ``azure`` for Microsoft Azure Storage, required configuration keys:
+
+ * ``account_name`` for the name of the Azure Storage account
+ * ``account_key`` for the secret key of the Azure Storage account
+ * ``container_name`` for the name of Azure Storage container used to store
+   objects
 
 ``pg_basebackup_path`` (default ``/usr/bin/pg_basebackup``)
 

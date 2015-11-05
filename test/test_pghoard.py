@@ -6,6 +6,7 @@ See LICENSE for details
 """
 # pylint: disable=attribute-defined-outside-init
 from .base import Mock, PGHoardTestCase
+from pghoard.common import create_connection_string
 from pghoard.pghoard import PGHoard
 import json
 import os
@@ -134,3 +135,34 @@ class TestPGHoard(PGHoardTestCase):
             fp.write(b"foo")
         self.pghoard.startup_walk_for_missed_files()
         assert self.pghoard.compression_queue.qsize() == 1
+
+
+class TestPGHoardWithPG(object):
+    def test_auth_alert_files(self, db, pghoard):
+        def clean_alert_files():
+            for f in os.listdir(pghoard.config["alert_file_dir"]):
+                os.unlink(os.path.join(pghoard.config["alert_file_dir"], f))
+
+        # connecting using the proper user should work and not yield any alerts
+        clean_alert_files()
+        conn_str = create_connection_string(db.user)
+        assert pghoard.check_pg_server_version(conn_str) is not None
+        assert os.listdir(pghoard.config["alert_file_dir"]) == []
+
+        # nonexistent user should yield a configuration error
+        clean_alert_files()
+        conn_str = create_connection_string(dict(db.user, user="nonexistent"))
+        assert pghoard.check_pg_server_version(conn_str) is None
+        assert os.listdir(pghoard.config["alert_file_dir"]) == ["configuration_error"]
+
+        # so should the disabled user
+        clean_alert_files()
+        conn_str = create_connection_string(dict(db.user, user="disabled"))
+        assert pghoard.check_pg_server_version(conn_str) is None
+        assert os.listdir(pghoard.config["alert_file_dir"]) == ["configuration_error"]
+
+        # existing user with an invalid password should cause an authentication error
+        clean_alert_files()
+        conn_str = create_connection_string(dict(db.user, user="passwordy"))
+        assert pghoard.check_pg_server_version(conn_str) is None
+        assert os.listdir(pghoard.config["alert_file_dir"]) == ["authentication_error"]

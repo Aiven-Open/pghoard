@@ -19,10 +19,8 @@ import time
 
 def get_object_storage_transfer(config, site):
     try:
-        obs = config["backup_sites"][site]["object_storage"]
-        # NOTE: `obs` is a dict in format {"type": {config..}} but it's
-        # expected to contain just a single item.
-        storage_type, storage_config = obs.copy().popitem()
+        storage_config = config["backup_sites"][site]["object_storage"]
+        storage_type = storage_config["storage_type"]
     except KeyError:
         # fall back to `local` driver at `backup_location` if set
         if not config.get("backup_location"):
