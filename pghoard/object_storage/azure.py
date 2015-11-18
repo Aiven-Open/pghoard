@@ -6,20 +6,15 @@ See LICENSE for details
 """
 import dateutil.parser
 import time
-from azure import WindowsAzureError  # pylint: disable=unused-import, import-self, import-error
 from azure.storage import BlobService  # pylint: disable=no-name-in-module, import-error
 from .base import BaseTransfer
 
 
-def fix_path(path):
-    if path[0] != "/":
-        path = "/" + path  # Azure seems to require a slash in the beginning
-    return path
-
-
 class AzureTransfer(BaseTransfer):
-    def __init__(self, account_name, account_key, container_name):
-        BaseTransfer.__init__(self)
+    def __init__(self, account_name, account_key, container_name, prefix=None):
+        # NOTE: Azure wants all paths to start with a slash
+        prefix = "/{}".format(prefix.lstrip("/") if prefix else "")
+        BaseTransfer.__init__(self, prefix=prefix)
         self.account_name = account_name
         self.account_key = account_key
         self.container_name = container_name
@@ -28,49 +23,59 @@ class AzureTransfer(BaseTransfer):
         self.log.debug("AzureTransfer initialized")
 
     def get_metadata_for_key(self, key):
-        key = fix_path(key)
-        return self.list_path(key)[0]['metadata']
+        key = self.format_key_for_backend(key)
+        return self._list_blobs(key)[0]["metadata"]
 
-    def list_path(self, path):
-        return_list = []
-        path = fix_path(path).rstrip("/") + "/"
-        self.log.info("Asking for listing of: %r", path)
-        for r in self.conn.list_blobs(self.container_name, prefix=path, delimiter="/",
-                                      include="metadata"):
-            entry = {"name": r.name, "size": r.properties.content_length,
-                     "last_modified": dateutil.parser.parse(r.properties.last_modified),
-                     "metadata": r.metadata}
-            return_list.append(entry)
-        return return_list
+    def _metadata_for_key(self, key):
+        return self._list_blobs(key)[0]["metadata"]
 
-    def delete_key(self, key_name):
-        key_name = fix_path(key_name)
-        self.log.debug("Deleting key: %r", key_name)
-        return self.conn.delete_blob(self.container_name, key_name)
+    def list_path(self, key):
+        path = self.format_key_for_backend(key, trailing_slash=True)
+        return self._list_blobs(path)
 
-    def get_contents_to_file(self, obj_key, filepath_to_store_to):
-        obj_key = fix_path(obj_key)
-        self.log.debug("Starting to fetch the contents of: %r to: %r", obj_key, filepath_to_store_to)
-        return self.conn.get_blob_to_path(self.container_name, obj_key, filepath_to_store_to)
+    def _list_blobs(self, path):
+        self.log.debug("Listing path %r", path)
+        items = self.conn.list_blobs(self.container_name, prefix=path, delimiter="/", include="metadata")
+        result = []
+        for item in items:
+            result.append({
+                "last_modified": dateutil.parser.parse(item.properties.last_modified),
+                "metadata": item.metadata,
+                "name": self.format_key_from_backend(item.name),
+                "size": item.properties.content_length,
+            })
+        return result
 
-    def get_contents_to_fileobj(self, obj_key, fileobj_to_store_to):
-        obj_key = fix_path(obj_key)
-        self.log.debug("Starting to fetch the contents of: %r", obj_key)
-        return self.conn.get_blob_to_file(self.container_name, obj_key, fileobj_to_store_to)
+    def delete_key(self, key):
+        key = self.format_key_for_backend(key)
+        self.log.debug("Deleting key: %r", key)
+        return self.conn.delete_blob(self.container_name, key)
 
-    def get_contents_to_string(self, obj_key):
-        obj_key = fix_path(obj_key)
-        self.log.debug("Starting to fetch the contents of: %r", obj_key)
-        return self.conn.get_blob_to_bytes(self.container_name, obj_key), self.get_metadata_for_key(obj_key)
+    def get_contents_to_file(self, key, filepath_to_store_to):
+        key = self.format_key_for_backend(key)
+        self.log.debug("Starting to fetch the contents of: %r to: %r", key, filepath_to_store_to)
+        return self.conn.get_blob_to_path(self.container_name, key, filepath_to_store_to)
+
+    def get_contents_to_fileobj(self, key, fileobj_to_store_to):
+        key = self.format_key_for_backend(key)
+        self.log.debug("Starting to fetch the contents of: %r", key)
+        return self.conn.get_blob_to_file(self.container_name, key, fileobj_to_store_to)
+
+    def get_contents_to_string(self, key):
+        key = self.format_key_for_backend(key)
+        self.log.debug("Starting to fetch the contents of: %r", key)
+        return self.conn.get_blob_to_bytes(self.container_name, key), self._metadata_for_key(key)
 
     def store_file_from_memory(self, key, memstring, metadata=None):
-        # For whatever reason Azure requires all values to be strings at the point of sending
+        key = self.format_key_for_backend(key)
+        # Azure requires all metadata keys and values to be strings
         metadata_to_send = dict((str(k), str(v)) for k, v in metadata.items())
         self.conn.put_block_blob_from_bytes(self.container_name, key, memstring,
                                             x_ms_meta_name_values=metadata_to_send)
 
     def store_file_from_disk(self, key, filepath, metadata=None):
-        # For whatever reason Azure requires all values to be strings at the point of sending
+        key = self.format_key_for_backend(key)
+        # Azure requires all metadata keys and values to be strings
         metadata_to_send = dict((str(k), str(v)) for k, v in metadata.items())
         self.conn.put_block_blob_from_path(self.container_name, key, filepath,
                                            x_ms_meta_name_values=metadata_to_send)
