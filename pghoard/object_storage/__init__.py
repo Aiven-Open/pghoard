@@ -35,12 +35,14 @@ def get_object_storage_transfer(config, site):
             account_name=storage_config["account_name"],
             account_key=storage_config["account_key"],
             container_name=storage_config.get("container_name", "pghoard"),
+            prefix=storage_config.get("prefix"),
         )
     elif storage_type == "google":
         from pghoard.object_storage.google import GoogleTransfer
         return GoogleTransfer(
             project_id=storage_config["project_id"],
             bucket_name=storage_config.get("bucket_name", "pghoard"),
+            prefix=storage_config.get("prefix"),
             credential_file=storage_config.get("credential_file"),
         )
     elif storage_type == "s3":
@@ -50,6 +52,7 @@ def get_object_storage_transfer(config, site):
             aws_secret_access_key=storage_config["aws_secret_access_key"],
             region=storage_config.get("region", ""),
             bucket_name=storage_config["bucket_name"],
+            prefix=storage_config.get("prefix"),
             host=storage_config.get("host"),
             port=storage_config.get("port"),
             is_secure=storage_config.get("is_secure", False),

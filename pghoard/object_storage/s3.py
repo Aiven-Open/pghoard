@@ -28,10 +28,11 @@ class S3Transfer(BaseTransfer):
                  aws_secret_access_key,
                  region,
                  bucket_name,
+                 prefix=None,
                  host=None,
                  port=None,
                  is_secure=False):
-        BaseTransfer.__init__(self)
+        BaseTransfer.__init__(self, prefix=prefix)
         self.region = region
         self.location = _location_for_region(region)
         self.bucket_name = bucket_name
@@ -46,71 +47,81 @@ class S3Transfer(BaseTransfer):
         self.bucket = self.get_or_create_bucket(self.bucket_name)
         self.log.debug("S3Transfer initialized")
 
-    def get_metadata_for_key(self, obj_key):
-        item = self.bucket.get_key(obj_key)
+    def get_metadata_for_key(self, key):
+        key = self.format_key_for_backend(key)
+        return self._metadata_for_key(key)
+
+    def _metadata_for_key(self, key):
+        item = self.bucket.get_key(key)
         if item is None:
-            raise FileNotFoundFromStorageError(obj_key)
+            raise FileNotFoundFromStorageError(key)
 
         return item.metadata
 
-    def delete_key(self, key_name):
-        self.log.debug("Deleting key: %r", key_name)
-        key = self.bucket.get_key(key_name)
+    def delete_key(self, key):
+        key = self.format_key_for_backend(key)
+        self.log.debug("Deleting key: %r", key)
+        key = self.bucket.get_key(key)
         if key:
             key.delete()
             return True
         return False
 
-    def list_path(self, path):
-        return_list = []
-        for r in self.bucket.list(path.rstrip("/") + "/", "/"):
-            return_list.append({
-                "name": r.name,
-                "size": r.size,
-                "last_modified": dateutil.parser.parse(r.last_modified),
-                "metadata": self.get_metadata_for_key(r.name),
-                })
-        return return_list
+    def list_path(self, key):
+        path = self.format_key_for_backend(key, trailing_slash=True)
+        self.log.debug("Listing path %r", path)
+        result = []
+        for item in self.bucket.list(path, "/"):
+            result.append({
+                "last_modified": dateutil.parser.parse(item.last_modified),
+                "metadata": self._metadata_for_key(item.name),
+                "name": self.format_key_from_backend(item.name),
+                "size": item.size,
+            })
+        return result
 
-    def get_contents_to_file(self, obj_key, filepath_to_store_to):
-        item = self.bucket.get_key(obj_key)
+    def get_contents_to_file(self, key, filepath_to_store_to):
+        key = self.format_key_for_backend(key)
+        item = self.bucket.get_key(key)
         if item is None:
-            raise FileNotFoundFromStorageError(obj_key)
+            raise FileNotFoundFromStorageError(key)
         item.get_contents_to_filename(filepath_to_store_to)
         return item.metadata
 
-    def get_contents_to_fileobj(self, obj_key, fileobj_to_store_to):
-        item = self.bucket.get_key(obj_key)
+    def get_contents_to_fileobj(self, key, fileobj_to_store_to):
+        key = self.format_key_for_backend(key)
+        item = self.bucket.get_key(key)
         if item is None:
-            raise FileNotFoundFromStorageError(obj_key)
+            raise FileNotFoundFromStorageError(key)
         item.get_contents_to_file(fileobj_to_store_to)
         return item.metadata
 
-    def get_contents_to_string(self, obj_key):
-        item = self.bucket.get_key(obj_key)
+    def get_contents_to_string(self, key):
+        key = self.format_key_for_backend(key)
+        item = self.bucket.get_key(key)
         if item is None:
-            raise FileNotFoundFromStorageError(obj_key)
+            raise FileNotFoundFromStorageError(key)
         return item.get_contents_as_string(), item.metadata
 
-    def store_file_from_memory(self, name, memstring, metadata=None):
-        key = Key(self.bucket)
-        key.key = name
+    def store_file_from_memory(self, key, memstring, metadata=None):
+        s3key = Key(self.bucket)
+        s3key.key = self.format_key_for_backend(key)
         if metadata:
             for k, v in metadata.items():
-                key.set_metadata(k, v)
+                s3key.set_metadata(k, v)
         # NOTE: replace=False isn't a foolproof way to make sure we don't
         # overwrite files since S3 doesn't support this natively, and it
         # basically just means doing a separate "check if file exists"
         # before uploading the file.
-        key.set_contents_from_string(memstring, replace=False)
+        s3key.set_contents_from_string(memstring, replace=False)
 
-    def store_file_from_disk(self, name, filepath, metadata=None):
-        key = Key(self.bucket)
-        key.key = name
+    def store_file_from_disk(self, key, filepath, metadata=None):
+        s3key = Key(self.bucket)
+        s3key.key = self.format_key_for_backend(key)
         if metadata:
             for k, v in metadata.items():
-                key.set_metadata(k, v)
-        key.set_contents_from_filename(filepath, replace=False)
+                s3key.set_metadata(k, v)
+        s3key.set_contents_from_filename(filepath, replace=False)
 
     def get_or_create_bucket(self, bucket_name):
         try:
