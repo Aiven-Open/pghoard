@@ -44,6 +44,7 @@ def get_object_storage_transfer(config, site):
             bucket_name=storage_config.get("bucket_name", "pghoard"),
             prefix=storage_config.get("prefix"),
             credential_file=storage_config.get("credential_file"),
+            credentials=storage_config.get("credentials"),
         )
     elif storage_type == "s3":
         from pghoard.object_storage.s3 import S3Transfer
