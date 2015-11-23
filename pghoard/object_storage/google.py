@@ -14,7 +14,9 @@ import time
 from googleapiclient.discovery import build  # pylint: disable=import-error
 from googleapiclient.errors import HttpError  # pylint: disable=import-error
 from googleapiclient.http import MediaFileUpload, MediaIoBaseUpload, MediaIoBaseDownload  # pylint: disable=import-error
-from oauth2client.client import GoogleCredentials, Error as OAuth2Error  # pylint: disable=import-error, unused-import
+from oauth2client import GOOGLE_TOKEN_URI  # pylint: disable=import-error
+from oauth2client.client import GoogleCredentials  # pylint: disable=import-error
+from oauth2client.service_account import _ServiceAccountCredentials  # pylint: disable=import-error
 from pghoard.errors import InvalidConfigurationError
 from .base import BaseTransfer
 
@@ -34,14 +36,36 @@ def unpaginate(domain, initial_op):
         request = domain.list_next(request, result)
 
 
+def get_credentials(credential_file=None, credentials=None):
+    if credential_file:
+        return GoogleCredentials.from_stream(credential_file)
+
+    if credentials and credentials["type"] == "service_account":
+        return _ServiceAccountCredentials(
+            service_account_id=credentials["client_id"],
+            service_account_email=credentials["client_email"],
+            private_key_id=credentials["private_key_id"],
+            private_key_pkcs8_text=credentials["private_key"],
+            scopes=[])
+
+    if credentials and credentials["type"] == "authorized_user":
+        return GoogleCredentials(
+            access_token=None,
+            client_id=credentials["client_id"],
+            client_secret=credentials["client_secret"],
+            refresh_token=credentials["refresh_token"],
+            token_expiry=None,
+            token_uri=GOOGLE_TOKEN_URI,
+            user_agent="pghoard")
+
+    return GoogleCredentials.get_application_default()
+
+
 class GoogleTransfer(BaseTransfer):
-    def __init__(self, project_id, bucket_name, credential_file=None, prefix=None):
+    def __init__(self, project_id, bucket_name, credential_file=None, credentials=None, prefix=None):
         BaseTransfer.__init__(self, prefix=prefix)
         self.project_id = project_id
-        if credential_file:
-            creds = GoogleCredentials.from_stream(credential_file)
-        else:
-            creds = GoogleCredentials.get_application_default()
+        creds = get_credentials(credential_file=credential_file, credentials=credentials)
         gs = build("storage", "v1", credentials=creds)
         self.gs_buckets = gs.buckets()  # pylint: disable=no-member
         self.gs_objects = gs.objects()  # pylint: disable=no-member
