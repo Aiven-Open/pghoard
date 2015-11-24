@@ -4,6 +4,7 @@ pghoard: fixtures for tests
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
+from pghoard.common import lzma_compressor, snappy
 from pghoard.pghoard import PGHoard
 from py import path as py_path  # pylint: disable=no-name-in-module
 import json
@@ -40,7 +41,7 @@ class TestPG(object):
         os.kill(self.pg.pid, signal.SIGKILL if force else signal.SIGTERM)
         timeout = time.time() + 10
         while (self.pg.poll() is None) and (time.time() < timeout):
-            time.sleep(1)
+            time.sleep(0.1)
         if not force and self.pg.poll() is None:
             raise Exception("PG pid {} not dead".format(self.pg.pid))
 
@@ -119,6 +120,9 @@ def pghoard(db, tmpdir):  # pylint: disable=redefined-outer-name
         "http_port": random.randint(1024, 32000),
         "pg_basebackup_path": os.path.join(db.pgbin, "pg_basebackup"),
         "pg_receivexlog_path": os.path.join(db.pgbin, "pg_receivexlog_path"),
+        "compression": {
+            "algorithm": "snappy" if snappy else "lzma",
+        }
     }
     confpath = os.path.join(str(tmpdir), "config.json")
     with open(confpath, "w") as fp:
@@ -136,6 +140,11 @@ def pghoard(db, tmpdir):  # pylint: disable=redefined-outer-name
 
     pgh = PGHoard(confpath)
     pgh.start_threads_on_startup()
+    if snappy:
+        pgh.Compressor = snappy.StreamCompressor
+    else:
+        pgh.Compressor = lambda: lzma_compressor(preset=0)
+
     time.sleep(0.05)  # Hack to give the server time to start up
     yield pgh
     pgh.quit()

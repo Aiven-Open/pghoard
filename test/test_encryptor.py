@@ -56,7 +56,7 @@ class TestEncryptor(PGHoardTestCase):
         data_tmp.flush()
 
         tmp = tempfile.TemporaryFile(prefix="test-pghoard.", mode="r+b")
-        tar = tarfile.TarFile(fileobj=tmp, mode="w")
+        tar = tarfile.open(fileobj=tmp, mode="w")
         tar.add(data_tmp.name, arcname="archived_content")
         tar.close()
 
@@ -71,7 +71,7 @@ class TestEncryptor(PGHoardTestCase):
 
         tmp.seek(0)
         tmp = DecryptorFile(tmp, CONSTANT_TEST_RSA_PRIVATE_KEY)
-        tar = tarfile.TarFile(fileobj=tmp, mode="r")
+        tar = tarfile.open(fileobj=tmp, mode="r")
         info = tar.getmember("archived_content")
         assert info.isfile() is True
         assert info.size == len(testdata)

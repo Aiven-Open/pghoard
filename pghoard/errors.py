@@ -7,20 +7,24 @@ See LICENSE for details
 
 
 class Error(Exception):
-    """generic pghoard exception"""
+    """Generic pghoard exception"""
 
 
 class InvalidConfigurationError(Error):
-    """invalid configuration"""
+    """Invalid configuration"""
 
 
 class StorageError(Error):
-    """storage exception"""
+    """Storage exception"""
 
 
 class FileNotFoundFromStorageError(StorageError):
-    """file not found from remote storage"""
+    """File not found from remote storage"""
 
 
 class LocalFileIsRemoteFileError(StorageError):
-    """file transfer operation source and destination point to the same file"""
+    """File transfer operation source and destination point to the same file"""
+
+
+class MissingLibraryError(Exception):
+    """Missing dependency library"""

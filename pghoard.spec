@@ -16,11 +16,11 @@ Requires:       postgresql-server, systemd
 BuildRequires:  %{requires}
 %if %{use_python3}
 Requires:       python3-boto, python3-cryptography python3-dateutil
-Requires:       python3-psycopg2, python3-requests
+Requires:       python3-psycopg2, python3-requests, python3-snappy
 BuildRequires:  python3-pep8, python3-pytest, python3-pylint, %{requires}
 %else
 Requires:       python-boto, python-cryptography, python-dateutil
-Requires:       python-psycopg2, python-requests
+Requires:       python-psycopg2, python-requests, python-snappy
 BuildRequires:  pylint, pytest, python-pep8, %{requires}
 %endif
 BuildArch:      noarch

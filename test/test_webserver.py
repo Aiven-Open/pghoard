@@ -8,7 +8,7 @@ See LICENSE for details
 from .base import CONSTANT_TEST_RSA_PUBLIC_KEY, CONSTANT_TEST_RSA_PRIVATE_KEY
 from pghoard.archive_command import archive
 from pghoard.archive_sync import ArchiveSync
-from pghoard.common import create_connection_string, lzma_compressor, lzma_open
+from pghoard.common import create_connection_string
 from pghoard.encryptor import Encryptor
 from pghoard.restore import HTTPRestore
 import json
@@ -70,7 +70,7 @@ class TestWebServer(object):
         with open(os.path.join(tmpdir, "b.tar"), "wb") as fp:
             metadata = http_restore.get_basebackup_file_to_fileobj(backups[0]["name"], fp)
         assert set(metadata) == {"compression-algorithm", "original-file-size", "start-time", "start-wal-segment"}
-        assert metadata["compression-algorithm"] == "lzma"
+        assert metadata["compression-algorithm"] == pghoard.config["compression"]["algorithm"]
         # TODO: check that we can restore the backup
 
     def test_archiving(self, pghoard):
@@ -184,10 +184,12 @@ class TestWebServer(object):
         xlog_file = "00000001000000000000000F"
         pgdata = os.path.dirname(pghoard.config["backup_sites"]["default"]["pg_xlog_directory"])
         backup_xlog_path = os.path.join(str(pghoard.config["backup_location"]), "default", "xlog", xlog_file)
-        with lzma_open(backup_xlog_path, mode="wb", preset=0) as fp:
-            fp.write(content)
+        compressor = pghoard.Compressor()
+        with open(backup_xlog_path, mode="wb") as fp:
+            fp.write(compressor.compress(content) + (compressor.flush() or b""))
         with open(backup_xlog_path + ".metadata", "w") as fp:
-            json.dump({"compression-algorithm": "lzma", "original-file-size": len(content)}, fp)
+            json.dump({"compression-algorithm": pghoard.config["compression"]["algorithm"],
+                       "original-file-size": len(content)}, fp)
         assert http_restore.query_archive_file(xlog_file) is True
         http_restore.get_archive_file(xlog_file, "pg_xlog/" + xlog_file, target_path_prefix=pgdata)
         assert os.path.exists(os.path.join(pgdata, "pg_xlog", xlog_file)) is True
@@ -197,8 +199,8 @@ class TestWebServer(object):
 
     def test_get_encrypted_archived_file(self, pghoard, http_restore):  # pylint: disable=redefined-outer-name
         content = b"testing123"
-        compressor = lzma_compressor()
-        compressed_content = compressor.compress(content) + compressor.flush()
+        compressor = pghoard.Compressor()
+        compressed_content = compressor.compress(content) + (compressor.flush() or b"")
         encryptor = Encryptor(CONSTANT_TEST_RSA_PUBLIC_KEY)
         encrypted_content = encryptor.update(compressed_content) + encryptor.finalize()
         xlog_file = "000000010000000000000010"
@@ -207,7 +209,9 @@ class TestWebServer(object):
         with open(backup_xlog_path, mode="wb") as fp:
             fp.write(encrypted_content)
         with open(backup_xlog_path + ".metadata", "w") as fp:
-            json.dump({"compression-algorithm": "lzma", "original-file-size": len(content), "encryption-key-id": "testkey"}, fp)
+            json.dump({"compression-algorithm": pghoard.config["compression"]["algorithm"],
+                       "original-file-size": len(content),
+                       "encryption-key-id": "testkey"}, fp)
         pghoard.webserver.config["backup_sites"]["default"]["encryption_keys"] = {
             "testkey": {
                 "public": CONSTANT_TEST_RSA_PUBLIC_KEY,

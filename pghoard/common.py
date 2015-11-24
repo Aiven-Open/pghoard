@@ -25,6 +25,11 @@ try:
 except ImportError:
     from urlparse import urlparse, parse_qs  # pylint: disable=no-name-in-module, import-error
 
+try:
+    import snappy
+except ImportError:
+    snappy = None
+
 
 IO_BLOCK_SIZE = 2 ** 20  # 1 MiB
 LOG = logging.getLogger("pghoard.common")
@@ -68,6 +73,44 @@ except ImportError:
 
 default_log_format_str = "%(asctime)s\t%(name)s\t%(threadName)s\t%(levelname)s\t%(message)s"
 syslog_format_str = '%(name)s %(levelname)s: %(message)s'
+
+
+class SnappyFile(object):
+    def __init__(self, fp):
+        self._comp = snappy.StreamDecompressor()
+        self._fp = fp
+        self._done = False
+        self._pos = 0
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, a, b, c):
+        pass
+
+    def tell(self):
+        return self._pos
+
+    def close(self):
+        pass
+
+    def read(self, byte_count=None):  # pylint: disable=unused-argument
+        # NOTE: byte_count arg is ignored, random size output is returned
+        if self._done:
+            return b""
+
+        while True:
+            compressed = self._fp.read(2 ** 20)
+            if not compressed:
+                self._done = True
+                output = self._comp.flush()
+                self._pos += len(output)
+                return output
+
+            output = self._comp.decompress(compressed)
+            if output:
+                self._pos += len(output)
+                return output
 
 
 def create_connection_string(connection_info):

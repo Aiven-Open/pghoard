@@ -4,18 +4,16 @@ pghoard - pg_basebackup handler
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
-import dateutil.parser
+from . common import set_subprocess_stdout_and_stderr_nonblocking, terminate_subprocess
+from threading import Thread
 import datetime
+import dateutil.parser
 import logging
 import os
 import select
 import subprocess
+import tarfile
 import time
-
-from . common import set_subprocess_stdout_and_stderr_nonblocking, terminate_subprocess
-
-from tarfile import TarFile
-from threading import Thread
 
 
 class PGBaseBackup(Thread):
@@ -30,7 +28,7 @@ class PGBaseBackup(Thread):
         self.latest_activity = datetime.datetime.utcnow()
 
     def parse_backup_label(self, basebackup_path):
-        tar = TarFile(basebackup_path)
+        tar = tarfile.open(basebackup_path)
         content = tar.extractfile("backup_label").read()  # pylint: disable=no-member
         for line in content.split(b"\n"):
             if line.startswith(b"START WAL LOCATION"):
