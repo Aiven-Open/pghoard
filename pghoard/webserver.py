@@ -109,12 +109,12 @@ class RequestHandler(BaseHTTPRequestHandler):
     def get_wal_or_timeline_file(self, site, filename, filetype):
         response = self._transfer_agent_op(site, filename, filetype, "DOWNLOAD")
         http_status = 201 if response["success"] else 404
-        return "", {"content-length": "0"}, http_status
+        return None, {}, http_status
 
     def list_basebackups(self, site):
         response = self._transfer_agent_op(site, "", "basebackup", "LIST")
         if not response["success"]:
-            return "", {"content-length": "0"}, 500
+            return None, {}, 500
         result = {"basebackups": response["items"]}
         return result, {}, 200
 
@@ -229,24 +229,31 @@ class RequestHandler(BaseHTTPRequestHandler):
             self.send_response(404)
             return
 
-        self.send_response(status)
+        if isinstance(response, dict):
+            headers["content-type"] = "application/json"
+            response = json_encode(response, compact=False, binary=True)
 
+        if "content-type" not in headers:
+            headers["content-type"] = "application/octet-stream"
+        if "content-length" not in headers:
+            size = None
+            if hasattr(response, "read"):
+                size = os.fstat(response.fileno()).st_size  # pylint: disable=maybe-no-member
+            elif isinstance(response, bytes):
+                size = len(response)
+            elif not response:
+                size = 0
+            if size is not None:
+                headers["content-length"] = str(size)
+
+        self.send_response(status)
         for header_key, header_value in headers.items():
             self.send_header(header_key, header_value)
-        if status not in (201, 404):
-            if "content-type" not in headers:
-                if isinstance(response, dict):
-                    mimetype = "application/json"
-                    response = json_encode(response, compact=False, binary=True)
-                    size = len(response)
-                elif hasattr(response, "read"):
-                    mimetype = "application/octet-stream"
-                    size = os.fstat(response.fileno()).st_size  # pylint: disable=maybe-no-member
-                self.send_header("content-type", mimetype)
-                self.send_header("content-length", str(size))
         self.end_headers()
 
-        if isinstance(response, bytes):
+        if not response:
+            pass
+        elif isinstance(response, bytes):
             self.wfile.write(response)
         elif hasattr(response, "read"):
             if hasattr(os, "sendfile"):
