@@ -17,7 +17,7 @@ from googleapiclient.http import MediaFileUpload, MediaIoBaseUpload, MediaIoBase
 from oauth2client import GOOGLE_TOKEN_URI  # pylint: disable=import-error
 from oauth2client.client import GoogleCredentials  # pylint: disable=import-error
 from oauth2client.service_account import _ServiceAccountCredentials  # pylint: disable=import-error
-from pghoard.errors import InvalidConfigurationError
+from pghoard.errors import FileNotFoundFromStorageError, InvalidConfigurationError
 from .base import BaseTransfer
 
 logging.getLogger("googleapiclient").setLevel(logging.WARNING)
@@ -125,7 +125,12 @@ class GoogleTransfer(BaseTransfer):
         download = MediaIoBaseDownload(fileobj_to_store_to, request, chunksize=CHUNK_SIZE)
         done = False
         while not done:
-            status, done = download.next_chunk()
+            try:
+                status, done = download.next_chunk()
+            except HttpError as ex:
+                if ex.resp["status"] == "404":
+                    raise FileNotFoundFromStorageError(key)
+                raise
             if status:
                 self.log.debug("Download of %r: %d%%", key, status.progress() * 100)
         return self._metadata_for_key(key)
@@ -134,7 +139,12 @@ class GoogleTransfer(BaseTransfer):
         key = self.format_key_for_backend(key)
         self.log.debug("Starting to fetch the contents of: %r", key)
         request = self.gs_objects.get_media(bucket=self.bucket_name, object=key)
-        data = request.execute()
+        try:
+            data = request.execute()
+        except HttpError as ex:
+            if ex.resp["status"] == "404":
+                raise FileNotFoundFromStorageError(key)
+            raise
         return data, self._metadata_for_key(key)
 
     def _upload(self, upload_type, local_object, key, metadata):
@@ -156,11 +166,31 @@ class GoogleTransfer(BaseTransfer):
         return self._upload(MediaFileUpload, filepath, key, metadata)
 
     def get_or_create_bucket(self, bucket_name):
-        """Try to create the bucket and quietly handle the case where it
-        already exists.  Note that we'll get a 400 Bad Request response for
+        """Look up the bucket if it already exists and try to create the
+        bucket in case it doesn't.  Note that we can't just always try to
+        unconditionally create the bucket as Google imposes a strict rate
+        limit on bucket creation operations, even if it doesn't result in a
+        new bucket.
+
+        Quietly handle the case where the bucket already exists to avoid
+        race conditions.  Note that we'll get a 400 Bad Request response for
         invalid bucket names ("Invalid bucket name") as well as for invalid
         project ("Invalid argument"), try to handle both gracefully."""
         start_time = time.time()
+
+        try:
+            self.gs_buckets.get(bucket=bucket_name).execute()
+            self.log.debug("Bucket: %r already exists, took: %.3fs", bucket_name, time.time() - start_time)
+        except HttpError as ex:
+            if ex.resp["status"] == "404":
+                pass  # we need to create it
+            elif ex.resp["status"] == "403":
+                raise InvalidConfigurationError("Bucket {0!r} exists but isn't accessible".format(bucket_name))
+            else:
+                raise
+        else:
+            return bucket_name
+
         try:
             req = self.gs_buckets.insert(project=self.project_id, body={"name": bucket_name})
             req.execute()
@@ -175,4 +205,5 @@ class GoogleTransfer(BaseTransfer):
                 raise InvalidConfigurationError("Invalid bucket name {0!r}".format(bucket_name))
             else:
                 raise
+
         return bucket_name
