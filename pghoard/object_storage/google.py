@@ -156,11 +156,31 @@ class GoogleTransfer(BaseTransfer):
         return self._upload(MediaFileUpload, filepath, key, metadata)
 
     def get_or_create_bucket(self, bucket_name):
-        """Try to create the bucket and quietly handle the case where it
-        already exists.  Note that we'll get a 400 Bad Request response for
+        """Look up the bucket if it already exists and try to create the
+        bucket in case it doesn't.  Note that we can't just always try to
+        unconditionally create the bucket as Google imposes a strict rate
+        limit on bucket creation operations, even if it doesn't result in a
+        new bucket.
+
+        Quietly handle the case where the bucket already exists to avoid
+        race conditions.  Note that we'll get a 400 Bad Request response for
         invalid bucket names ("Invalid bucket name") as well as for invalid
         project ("Invalid argument"), try to handle both gracefully."""
         start_time = time.time()
+
+        try:
+            self.gs_buckets.get(bucket=bucket_name).execute()
+            self.log.debug("Bucket: %r already exists, took: %.3fs", bucket_name, time.time() - start_time)
+        except HttpError as ex:
+            if ex.resp["status"] == "404":
+                pass  # we need to create it
+            elif ex.resp["status"] == "403":
+                raise InvalidConfigurationError("Bucket {0!r} exists but isn't accessible".format(bucket_name))
+            else:
+                raise
+        else:
+            return bucket_name
+
         try:
             req = self.gs_buckets.insert(project=self.project_id, body={"name": bucket_name})
             req.execute()
@@ -175,4 +195,5 @@ class GoogleTransfer(BaseTransfer):
                 raise InvalidConfigurationError("Invalid bucket name {0!r}".format(bucket_name))
             else:
                 raise
+
         return bucket_name
