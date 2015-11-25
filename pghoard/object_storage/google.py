@@ -17,7 +17,7 @@ from googleapiclient.http import MediaFileUpload, MediaIoBaseUpload, MediaIoBase
 from oauth2client import GOOGLE_TOKEN_URI  # pylint: disable=import-error
 from oauth2client.client import GoogleCredentials  # pylint: disable=import-error
 from oauth2client.service_account import _ServiceAccountCredentials  # pylint: disable=import-error
-from pghoard.errors import InvalidConfigurationError
+from pghoard.errors import FileNotFoundFromStorageError, InvalidConfigurationError
 from .base import BaseTransfer
 
 logging.getLogger("googleapiclient").setLevel(logging.WARNING)
@@ -125,7 +125,12 @@ class GoogleTransfer(BaseTransfer):
         download = MediaIoBaseDownload(fileobj_to_store_to, request, chunksize=CHUNK_SIZE)
         done = False
         while not done:
-            status, done = download.next_chunk()
+            try:
+                status, done = download.next_chunk()
+            except HttpError as ex:
+                if ex.resp["status"] == "404":
+                    raise FileNotFoundFromStorageError(key)
+                raise
             if status:
                 self.log.debug("Download of %r: %d%%", key, status.progress() * 100)
         return self._metadata_for_key(key)
@@ -134,7 +139,12 @@ class GoogleTransfer(BaseTransfer):
         key = self.format_key_for_backend(key)
         self.log.debug("Starting to fetch the contents of: %r", key)
         request = self.gs_objects.get_media(bucket=self.bucket_name, object=key)
-        data = request.execute()
+        try:
+            data = request.execute()
+        except HttpError as ex:
+            if ex.resp["status"] == "404":
+                raise FileNotFoundFromStorageError(key)
+            raise
         return data, self._metadata_for_key(key)
 
     def _upload(self, upload_type, local_object, key, metadata):
