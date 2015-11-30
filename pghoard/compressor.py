@@ -32,7 +32,10 @@ class Compressor(Thread):
             rest, backupname = os.path.split(rest)
         else:
             backupname = os.path.basename(original_path)
-        return os.path.join(self.config["backup_location"], self.config.get("path_prefix", ""), site, filetype, backupname)
+
+        cfp = os.path.join(self.config["backup_location"], self.config.get("path_prefix", ""), site, filetype, backupname)
+        self.log.debug("compressed_file_path for %r is %r", original_path, cfp)
+        return cfp
 
     def find_site_for_file(self, filepath):
         # Formats like:
@@ -73,8 +76,9 @@ class Compressor(Thread):
         encryptor = None
         if rsa_public_key:
             encryptor = Encryptor(rsa_public_key)
+        tmp_target_file_path = targetfilepath + ".tmp-compress"
         with open(filepath, "rb") as input_file:
-            with open(targetfilepath, "wb") as output_file:
+            with open(tmp_target_file_path, "wb") as output_file:
                 while True:
                     input_data = input_file.read(IO_BLOCK_SIZE)
                     if not input_data:
@@ -94,6 +98,8 @@ class Compressor(Thread):
 
                 if compressed_data:
                     output_file.write(compressed_data)
+
+        os.rename(tmp_target_file_path, targetfilepath)
 
     def compress_filepath_to_memory(self, filepath, rsa_public_key=None):
         # This is meant for WAL files compressed due to archive_command
@@ -137,11 +143,11 @@ class Compressor(Thread):
     def get_event_filetype(self, event):
         filetype = None
         # todo tighten these up by using a regexp
-        if event['type'] == "CREATE" and os.path.basename(event['full_path']) == "base.tar":
+        if event['type'] == "CLOSE_WRITE" and os.path.basename(event['full_path']) == "base.tar":
             filetype = "basebackup"
-        elif event['type'] == "CREATE" and os.path.basename(event['full_path']).endswith(".history"):
+        elif event['type'] == "CLOSE_WRITE" and os.path.basename(event['full_path']).endswith(".history"):
             filetype = "timeline"
-        elif event['type'] == "CREATE" and os.path.basename(event['full_path']) and \
+        elif event['type'] == "CLOSE_WRITE" and os.path.basename(event['full_path']) and \
              len(os.path.basename(event['full_path'])) == 24:  # noqa
             filetype = "xlog"
         elif event['type'] == "MOVE" and event['src_path'].endswith(".partial") and \

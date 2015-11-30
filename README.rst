@@ -19,8 +19,11 @@ use pghoard_archive_command as a PostgreSQL archive_command.
 With both modes of operations pghoard creates basebackups using
 pg_basebackup that is run against the database in question.
 
-pghoard compresses the received WAL logs and basebackups with LZMA (level 0)
-in order to ensure good compression speed and relatively small backup size.
+pghoard compresses the received WAL logs and basebackups with Snappy (default)
+or LZMA (level 0) in order to ensure good compression speed and relatively small
+backup size. For performance critical applications it is recommended to test
+both compression algorithms to find the most suitable trade-off for the
+particular use-case (snappy is much faster but yields larger compressed files).
 
 Optionally, pghoard can encrypt backed up data at rest. Each individual
 file is encrypted and authenticated with file specific keys. The file

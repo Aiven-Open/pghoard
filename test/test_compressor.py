@@ -82,7 +82,7 @@ class Compression(PGHoardTestCase):
             "type": "MOVE",
         })
         assert filetype == "timeline"
-        filetype = self.compressor.get_event_filetype({"type": "CREATE", "full_path": "base.tar"})
+        filetype = self.compressor.get_event_filetype({"type": "CLOSE_WRITE", "full_path": "base.tar"})
         assert filetype == "basebackup"
 
     def test_compress_to_file(self):
@@ -162,7 +162,7 @@ class Compression(PGHoardTestCase):
             "delete_file_after_compression": False,
             "full_path": self.foo_path,
             "src_path": self.foo_path_partial,
-            "type": "CREATE",
+            "type": "CLOSE_WRITE",
         }
         transfer_event = self.compression_queue.put(event)
         transfer_event = self.transfer_queue.get(timeout=1.0)

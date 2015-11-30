@@ -65,6 +65,6 @@ class PGBaseBackup(Thread):
             self.compression_queue.put({
                 "full_path": basebackup_path,
                 "metadata": {"start-wal-segment": start_wal_segment, "start-time": start_time},
-                "type": "CREATE",
+                "type": "CLOSE_WRITE",
             })
         self.running = False
