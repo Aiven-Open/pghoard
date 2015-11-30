@@ -243,13 +243,13 @@ class Restore(object):
         tmp.seek(0)
         if "encryption-key-id" in metadata:
             # Wrap stream into DecryptorFile object
-            tmp = DecryptorFile(tmp, self.config["backup_sites"][site]["encryption_keys"][metadata["encryption-key-id"]]["private"])
+            tmp = DecryptorFile(tmp, self.config["backup_sites"][site]["encryption_keys"][metadata["encryption-key-id"]]["private"])  # pylint: disable=redefined-variable-type
 
         if metadata.get("compression-algorithm") == "lzma":
             # Wrap stream into LZMAFile object
-            tmp = lzma_open_read(tmp, "r")
+            tmp = lzma_open_read(tmp, "r")  # pylint: disable=redefined-variable-type
         elif metadata.get("compression-algorithm") == "snappy":
-            tmp = SnappyFile(tmp)
+            tmp = SnappyFile(tmp)  # pylint: disable=redefined-variable-type
 
         tar = tarfile.open(fileobj=tmp, mode="r|")  # "r|" prevents seek()ing
         tar.extractall(pgdata)
