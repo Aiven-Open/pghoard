@@ -51,7 +51,8 @@ class Encryptor(object):
 
     def finalize(self):
         if self.cipher is None:
-            raise EncryptorError("Invalid state")
+            return b""  # empty plaintext input yields empty encrypted output
+
         ret = self.cipher.finalize()
         self.authenticator.update(ret)
         ret += self.authenticator.finalize()
@@ -107,8 +108,8 @@ class Decryptor(object):
 
     def finalize(self):
         if self.cipher is None:
-            raise EncryptorError("Invalid state")
-        if self.buf != self.authenticator.finalize():
+            return b""  # empty encrypted input yields empty plaintext output
+        elif self.buf != self.authenticator.finalize():
             raise EncryptorError("Integrity check failed")
         result = self.cipher.finalize()
         self.buf = b""
