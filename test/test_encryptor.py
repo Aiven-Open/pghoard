@@ -39,7 +39,7 @@ class TestEncryptor(PGHoardTestCase):
         fp = tempfile.TemporaryFile(prefix="test-pghoard.", mode="r+b")
         fp.write(ciphertext)
         fp.seek(0)
-        fp = DecryptorFile(fp, CONSTANT_TEST_RSA_PRIVATE_KEY)
+        fp = DecryptorFile(fp, CONSTANT_TEST_RSA_PRIVATE_KEY)  # pylint: disable=redefined-variable-type
         result = fp.read()
         assert plaintext == result
         fp.seek(0)
@@ -56,7 +56,7 @@ class TestEncryptor(PGHoardTestCase):
         data_tmp.flush()
 
         tmp = tempfile.TemporaryFile(prefix="test-pghoard.", mode="r+b")
-        tar = tarfile.TarFile(fileobj=tmp, mode="w")
+        tar = tarfile.open(fileobj=tmp, mode="w")
         tar.add(data_tmp.name, arcname="archived_content")
         tar.close()
 
@@ -70,8 +70,8 @@ class TestEncryptor(PGHoardTestCase):
         tmp.write(ciphertext)
 
         tmp.seek(0)
-        tmp = DecryptorFile(tmp, CONSTANT_TEST_RSA_PRIVATE_KEY)
-        tar = tarfile.TarFile(fileobj=tmp, mode="r")
+        tmp = DecryptorFile(tmp, CONSTANT_TEST_RSA_PRIVATE_KEY)  # pylint: disable=redefined-variable-type
+        tar = tarfile.open(fileobj=tmp, mode="r")
         info = tar.getmember("archived_content")
         assert info.isfile() is True
         assert info.size == len(testdata)

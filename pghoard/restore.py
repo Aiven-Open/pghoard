@@ -5,7 +5,7 @@ Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
 from __future__ import print_function
-from .common import default_log_format_str, IO_BLOCK_SIZE, lzma_open_read
+from .common import default_log_format_str, IO_BLOCK_SIZE, lzma_open_read, SnappyFile
 from .encryptor import DecryptorFile
 from .errors import Error
 from .object_storage import get_object_storage_transfer
@@ -243,11 +243,15 @@ class Restore(object):
         tmp.seek(0)
         if "encryption-key-id" in metadata:
             # Wrap stream into DecryptorFile object
-            tmp = DecryptorFile(tmp, self.config["backup_sites"][site]["encryption_keys"][metadata["encryption-key-id"]]["private"])
-        if metadata.get("compression-algorithm", None) == "lzma":
+            tmp = DecryptorFile(tmp, self.config["backup_sites"][site]["encryption_keys"][metadata["encryption-key-id"]]["private"])  # pylint: disable=redefined-variable-type
+
+        if metadata.get("compression-algorithm") == "lzma":
             # Wrap stream into LZMAFile object
-            tmp = lzma_open_read(tmp, "r")
-        tar = tarfile.TarFile(fileobj=tmp)
+            tmp = lzma_open_read(tmp, "r")  # pylint: disable=redefined-variable-type
+        elif metadata.get("compression-algorithm") == "snappy":
+            tmp = SnappyFile(tmp)  # pylint: disable=redefined-variable-type
+
+        tar = tarfile.open(fileobj=tmp, mode="r|")  # "r|" prevents seek()ing
         tar.extractall(pgdata)
         tar.close()
 

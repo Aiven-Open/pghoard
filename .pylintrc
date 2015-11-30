@@ -1,5 +1,6 @@
 [MESSAGES CONTROL]
 disable=I,
+    bad-option-value,
     duplicate-code,
     fixme,
     invalid-name,
@@ -13,7 +14,10 @@ disable=I,
     too-many-function-args,
     too-many-instance-attributes,
     too-many-locals,
-    too-many-public-methods
+    too-many-public-methods,
+    ungrouped-imports,
+    wrong-import-order,
+    wrong-import-position
 
 [REPORTS]
 output-format=text

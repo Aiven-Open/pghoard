@@ -11,6 +11,8 @@ from pghoard.common import (
     default_json_serialization,
     get_connection_info,
     json_encode,
+    snappy,
+    SnappyFile,
     )
 from pghoard.errors import Error
 import datetime
@@ -90,3 +92,23 @@ class TestCommon(PGHoardTestCase):
         assert isinstance(json_encode(ob, binary=True), bytes)
         assert "\n" not in json_encode(ob)
         assert "\n" in json_encode(ob, compact=False)
+
+    @pytest.mark.skipif(not snappy, reason="snappy not installed")
+    def test_snappy_read(self, tmpdir):
+        comp = snappy.StreamCompressor()
+        # generate two chunks with their own framing
+        compressed = comp.compress(b"hello, ") + comp.compress(b"world")
+        file_path = str(tmpdir.join("foo"))
+        with open(file_path, "wb") as fp:
+            fp.write(compressed)
+
+        out = []
+        with SnappyFile(open(file_path, "rb")) as fp:
+            while True:
+                chunk = fp.read()
+                if not chunk:
+                    break
+                out.append(chunk)
+
+        full = b"".join(out)
+        assert full == b"hello, world"

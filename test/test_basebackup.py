@@ -39,9 +39,9 @@ LABEL: pg_basebackup base backup
         assert backup_thread is not None
         timeout = time.time() + 20
         while backup_thread.running and time.time() < timeout:
-            time.sleep(1)
+            time.sleep(0.1)
         assert not backup_thread.running
         # wait for compression
         while not os.path.exists(final_location) and (time.time() < timeout):
-            time.sleep(1)
+            time.sleep(0.1)
         assert os.path.exists(final_location)

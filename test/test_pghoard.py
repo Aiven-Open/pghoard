@@ -81,8 +81,8 @@ class TestPGHoard(PGHoardTestCase):
         with open(metadata_file_path, "wb") as fp:
             fp.write(b"{}")
         basebackups = self.pghoard.get_remote_basebackups_info("default")
-        assert "2015-07-02_0" == basebackups[0]["name"]
-        assert "2015-07-03_0" == basebackups[1]["name"]
+        assert basebackups[0]["name"] == "2015-07-02_0"
+        assert basebackups[1]["name"] == "2015-07-03_0"
 
     def test_local_check_backup_count_and_state(self):
         self.pghoard.set_state_defaults("default")
@@ -98,11 +98,11 @@ class TestPGHoard(PGHoardTestCase):
             with open(os.path.join(self.compressed_xlog_path, wal), "wb") as fp:
                 fp.write(b"something")
         basebackups = self.pghoard.get_remote_basebackups_info("default")
-        assert 3 == len(basebackups)
+        assert len(basebackups) == 3
         self.pghoard.check_backup_count_and_state("default")
         basebackups = self.pghoard.get_remote_basebackups_info("default")
-        assert 1 == len(basebackups)
-        assert 1 == len(os.listdir(self.compressed_xlog_path))
+        assert len(basebackups) == 1
+        assert len(os.listdir(self.compressed_xlog_path)) == 1
 
     def test_alert_files(self):
         alert_file_path = os.path.join(self.temp_dir, "test_alert")
