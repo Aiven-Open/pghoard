@@ -141,7 +141,7 @@ class TestWebServer(object):
         # start PG and promote it
         db.run_pg()
         db.run_cmd("pg_ctl", "-D", db.pgdata, "promote")
-        time.sleep(2)
+        time.sleep(5)  # TODO: instead of sleeping, poll the db until ready
         timeline_re = re.compile(r"^[A-F0-9]{8}\.history$")
         # we should have a single timeline file in pg_xlog now
         pg_xlog_timelines = {f for f in os.listdir(pg_xlog_dir) if timeline_re.match(f)}
