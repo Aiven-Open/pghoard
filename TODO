@@ -1,7 +1,6 @@
 TODO
 ====
 
-* configurable recovery target recovery.conf (to be created by restore)
 * SSL support for Webserver
 * Authentication/authorization for Webserver for use in non private networks
 * check that we have the diskspace needed for a basebackup from PG
