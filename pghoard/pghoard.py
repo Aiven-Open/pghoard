@@ -69,11 +69,15 @@ class PGHoard(object):
 
         self.inotify = InotifyWatcher(self.compression_queue)
         self.webserver = WebServer(self.config, self.compression_queue, self.transfer_queue)
-        for _ in range(2):
+
+        for _ in range(self.config.get("compression", {}).get("thread_count", 5)):
             compressor = Compressor(self.config, self.compression_queue, self.transfer_queue)
             self.compressors.append(compressor)
+
+        for _ in range(self.config.get("transfer", {}).get("thread_count", 5)):
             ta = TransferAgent(self.config, self.compression_queue, self.transfer_queue)
             self.transfer_agents.append(ta)
+
         if daemon:  # If we can import systemd we always notify it
             daemon.notify("READY=1")
             self.log.info("Sent startup notification to systemd that pghoard is READY")

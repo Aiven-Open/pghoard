@@ -114,17 +114,18 @@ class TestPGHoard(PGHoardTestCase):
     def test_backup_state_file(self):
         self.pghoard.write_backup_state_to_json_file()
         state_path = os.path.join(self.temp_dir, "state.json")
+        thread_count = 5
         with open(state_path, "r") as fp:
             state = json.load(fp)
         empty_state = {
             "startup_time": self.pghoard.state["startup_time"],
             "backup_sites": {},
-            "compressors": [{}, {}],
+            "compressors": [{}] * thread_count,
             "queues": {
                 "compression_queue": 0,
                 "transfer_queue": 0,
             },
-            "transfer_agents": [{}, {}],
+            "transfer_agents": [{}] * thread_count,
             "pg_receivexlogs": {},
             "pg_basebackups": {},
         }

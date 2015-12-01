@@ -345,6 +345,14 @@ well)
 
 Determines syslog log facility. (requires syslog to be true as well)
 
+* ``compression`` WAL/basebackup compression parameters
+
+ * ``algorithm`` default ``"snappy"`` if available, otherwise ``"lzma"``
+ * ``thread_count`` (default ``5``) number of parallel compression threads
+
+* ``transfer`` WAL/basebackup transfer parameters
+
+ * ``thread_count`` (default ``5``) number of parallel uploads/downloads
 
 License
 =======
