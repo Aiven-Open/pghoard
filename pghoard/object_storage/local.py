@@ -35,12 +35,11 @@ class LocalTransfer(BaseTransfer):
         self.log.debug("Deleting key: %r", key)
         target_path = self.format_key_for_backend(key.strip("/"))
         if not os.path.exists(target_path):
-            return False
+            raise FileNotFoundFromStorageError(key)
         os.unlink(target_path)
         metadata_path = target_path + ".metadata"
         if os.path.exists(metadata_path):
             os.unlink(metadata_path)
-        return True
 
     def list_path(self, key):
         target_path = self.format_key_for_backend(key.strip("/"))

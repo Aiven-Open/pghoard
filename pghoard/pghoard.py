@@ -25,7 +25,7 @@ from . common import (
     convert_pg_command_version_to_number,
     default_log_format_str, set_syslog_handler, Queue)
 from . compressor import Compressor
-from . errors import InvalidConfigurationError
+from . errors import FileNotFoundFromStorageError, InvalidConfigurationError
 from . inotify import InotifyWatcher
 from . object_storage import TransferAgent, get_object_storage_transfer
 from . receivexlog import PGReceiveXLog
@@ -197,9 +197,10 @@ class PGHoard(object):
                                     "{:024X}".format(wal_segment_no))
             self.log.debug("Deleting wal_file: %r", wal_path)
             try:
-                if not storage.delete_key(wal_path):
-                    self.log.debug("Could not delete wal_file: %r, returning", wal_path)
-                    break
+                storage.delete_key(wal_path)
+            except FileNotFoundFromStorageError:
+                self.log.debug("Could not delete wal_file: %r, returning", wal_path)
+                break
             except:  # FIXME: don't catch all exceptions; pylint: disable=bare-except
                 self.log.exception("Problem deleting: %r", wal_path)
 
@@ -211,6 +212,8 @@ class PGHoard(object):
                                basebackup)
         try:
             storage.delete_key(obj_key)
+        except FileNotFoundFromStorageError:
+            self.log.info("Tried to delete non-existent basebackup %r", obj_key)
         except:  # FIXME: don't catch all exceptions; pylint: disable=bare-except
             self.log.exception("Problem deleting: %r", obj_key)
 
