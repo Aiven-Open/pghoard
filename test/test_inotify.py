@@ -37,21 +37,21 @@ class TestInotify(PGHoardTestCase):
     def test_create_file(self):
         with open(os.path.join(self.temp_dir, "bar"), "wb") as fp:
             fp.write(b"jee")
-        assert self.queue.get()["type"] == "CREATE"
-        assert self.queue.get()["type"] == "MODIFY"
+        assert self.queue.get(timeout=1.0)["type"] == "MODIFY"
+        assert self.queue.get(timeout=1.0)["type"] == "CLOSE_WRITE"
 
     def test_modify(self):
         with open(os.path.join(self.temp_dir, "foo"), "ab") as fp:
             fp.write(b"jee")
-        assert self.queue.get()["type"] == "MODIFY"
+        assert self.queue.get(timeout=1.0)["type"] == "MODIFY"
 
     def test_delete(self):
         os.unlink(self.foo_path)
-        assert self.queue.get()["type"] == "DELETE"
+        assert self.queue.get(timeout=1.0)["type"] == "DELETE"
 
     def test_move(self):
         os.rename(self.foo_path, os.path.join(self.temp_dir, "foo2"))
-        event = self.queue.get()
+        event = self.queue.get(timeout=1.0)
         assert event["type"] == "MOVE"
         assert event["src_path"] == self.foo_path
         assert event["full_path"] == os.path.join(self.temp_dir, "foo2")

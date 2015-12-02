@@ -147,7 +147,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         if not self.server.config["backup_sites"][site].get("object_storage"):
             compress_to_memory = False
         compression_event = {
-            "type": "CREATE",
+            "type": "CLOSE_WRITE",
             "callback_queue": callback_queue,
             "compress_to_memory": compress_to_memory,
             "delete_file_after_compression": False,

@@ -69,11 +69,15 @@ class PGHoard(object):
 
         self.inotify = InotifyWatcher(self.compression_queue)
         self.webserver = WebServer(self.config, self.compression_queue, self.transfer_queue)
-        for _ in range(2):
+
+        for _ in range(self.config.get("compression", {}).get("thread_count", 5)):
             compressor = Compressor(self.config, self.compression_queue, self.transfer_queue)
             self.compressors.append(compressor)
+
+        for _ in range(self.config.get("transfer", {}).get("thread_count", 5)):
             ta = TransferAgent(self.config, self.compression_queue, self.transfer_queue)
             self.transfer_agents.append(ta)
+
         if daemon:  # If we can import systemd we always notify it
             daemon.notify("READY=1")
             self.log.info("Sent startup notification to systemd that pghoard is READY")
@@ -151,7 +155,8 @@ class PGHoard(object):
             "--status-interval", "1",
             "--verbose",
             "--directory", xlog_location,
-            ]
+        ]
+
         if pg_version_server >= 90400 and slot:
             command.extend(["--slot", slot])
 
@@ -168,6 +173,7 @@ class PGHoard(object):
         paths_to_create = [
             site_path,
             xlog_path,
+            xlog_path + "_incoming",
             basebackup_path,
             basebackup_path + "_incoming",
         ]
@@ -264,7 +270,7 @@ class PGHoard(object):
                         "delete_file_after_compression": True,
                         "full_path": os.path.join(xlog_path, filename),
                         "site": site,
-                        "type": "CREATE",
+                        "type": "CLOSE_WRITE",
                     }
                     self.log.debug("Found: %r when starting up, adding to compression queue", compression_event)
                     self.compression_queue.put(compression_event)
@@ -296,7 +302,7 @@ class PGHoard(object):
         if site not in self.receivexlogs and site_config.get("active_backup_mode") == "pg_receivexlog":
             # Create a pg_receivexlog listener for all sites
             connection_string, slot = replication_connection_string_using_pgpass(chosen_backup_node)
-            self.receivexlog_listener(site, xlog_path, connection_string, slot)
+            self.receivexlog_listener(site, xlog_path + "_incoming", connection_string, slot)
 
         if self.time_since_last_backup.get(site, 0) > self.config['backup_sites'][site]['basebackup_interval_hours'] * 3600 \
            and site not in self.basebackups:

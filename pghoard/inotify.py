@@ -28,6 +28,7 @@ INOTIFY_EVENT_BUFFER_SIZE = 2048 * (ctypes.sizeof(InotifyEvent) + s_size)
 
 event_types = {
     "IN_MODIFY": 0x00000002,
+    "IN_CLOSE_WRITE": 0x00000008,
     "IN_CREATE": 0x00000100,
     "IN_MOVED_FROM": 0x00000040,
     "IN_MOVED_TO": 0x00000080,
@@ -92,25 +93,51 @@ class InotifyWatcher(Thread):
                 continue
             self.create_event(wd, mask, cookie, name)
 
+    def log_event(self, ev_type, full_path):
+        if self.log.getEffectiveLevel() > logging.DEBUG:
+            return
+
+        try:
+            st = os.stat(full_path)
+        except:  # pylint: disable=bare-except
+            st = None
+
+        self.log.debug("event: %s %s, %r", full_path, ev_type, st)
+
     def create_event(self, wd, mask, cookie, name):
         if mask & event_types['IN_IGNORED']:
             # explicit removal of watch or dir, ignore
             return
-        full_path = os.path.join(self.watch_to_path[wd], name.decode("utf8"))
-        if mask & event_types["IN_CREATE"] > 0:
-            self.compression_queue.put({"type": "CREATE", "full_path": full_path})
-        elif not self.ignore_modified and mask & event_types["IN_MODIFY"] > 0:  # no need for these
-            self.compression_queue.put({"type": "MODIFY", "full_path": full_path})
+
+        decoded_name = name.decode("utf8")
+        full_path = os.path.join(self.watch_to_path[wd], decoded_name)
+
+        if mask & event_types["IN_MODIFY"] > 0:
+            # a chunk was written to the file, handled first due to high volume
+            if not self.ignore_modified:
+                self.compression_queue.put({"type": "MODIFY", "full_path": full_path})
+        elif mask & event_types["IN_CREATE"] > 0:
+            # file was created but writing to it is not finished yet
+            self.log_event("IN_CREATE", full_path)
+        elif mask & event_types["IN_CLOSE_WRITE"] > 0:
+            # file was open for writing and was closed
+            self.log_event("IN_CLOSE_WRITE", full_path)
+            self.compression_queue.put({"type": "CLOSE_WRITE", "full_path": full_path})
         elif mask & event_types["IN_DELETE"] > 0:
+            self.log_event("IN_DELETE", full_path)
             self.compression_queue.put({"type": "DELETE", "full_path": full_path})
         elif mask & event_types["IN_DELETE_SELF"] > 0:
+            # the monitored directory was deleted
+            self.log_event("IN_DELETE_SELF", full_path)
             directory = self.watch_to_path.pop(wd, "")
             self.log.debug("Directory: %r that we were watching has been deleted, removing watch",
                            directory)
             self.libc.inotify_rm_watch(self.fd, wd)
         elif mask & event_types["IN_MOVED_FROM"] > 0:
+            self.log_event("IN_MOVED_FROM", full_path)
             self.cookies[cookie] = full_path
         elif mask & event_types["IN_MOVED_TO"] > 0:
+            self.log_event("IN_MOVED_TO", full_path)
             src_path = self.cookies.pop(cookie, None)
             if src_path:
                 self.compression_queue.put({"type": "MOVE", "full_path": full_path, "src_path": src_path})
