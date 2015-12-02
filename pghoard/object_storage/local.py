@@ -57,7 +57,7 @@ class LocalTransfer(BaseTransfer):
                 metadata = json.load(fp)
             st = os.stat(full_path)
             return_list.append({
-                "name": file_name,
+                "name": os.path.join(key.strip("/"), file_name),
                 "size": st.st_size,
                 "last_modified": datetime.datetime.fromtimestamp(st.st_mtime, tz=dateutil.tz.tzutc()),
                 "metadata": metadata,

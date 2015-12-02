@@ -53,7 +53,7 @@ class TestWebServer(object):
         backups = http_restore.list_basebackups()
         assert len(backups) == 1
         assert backups[0]["size"] > 0
-        assert backups[0]["name"] == os.path.basename(final_location)
+        assert backups[0]["name"] == os.path.join("default", "basebackup", os.path.basename(final_location))
         # make sure they show up on the printable listing, too
         http_restore.show_basebackup_list()
         out, _ = capsys.readouterr()
@@ -63,12 +63,13 @@ class TestWebServer(object):
         # NOTE: get_archive_file isn't currently really compatible with
         # basebackups as it's not possible to request a basebackup to be
         # written to a file and get_archive_file returns a boolean status
-        aresult = http_restore.get_archive_file("basebackup/" + backups[0]["name"],
+        backup_base_name = os.path.basename(backups[0]["name"])
+        aresult = http_restore.get_archive_file("basebackup/" + backup_base_name,
                                                 target_path="dltest", target_path_prefix=tmpdir)
         assert aresult is True
         # test restoring using get_basebackup_file_to_fileobj
         with open(os.path.join(tmpdir, "b.tar"), "wb") as fp:
-            metadata = http_restore.get_basebackup_file_to_fileobj(backups[0]["name"], fp)
+            metadata = http_restore.get_basebackup_file_to_fileobj(backup_base_name, fp)
         assert set(metadata) == {"compression-algorithm", "original-file-size", "start-time", "start-wal-segment"}
         assert metadata["compression-algorithm"] == pghoard.config["compression"]["algorithm"]
         # TODO: check that we can restore the backup

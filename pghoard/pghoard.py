@@ -229,7 +229,6 @@ class PGHoard(object):
             self.log.exception("Problem deleting: %r", obj_key)
 
     def get_remote_basebackups_info(self, site):
-        basebackup_list = []
         storage = self.site_transfers.get(site)
         if not storage:
             storage = get_object_storage_transfer(self.config, site)
@@ -238,14 +237,13 @@ class PGHoard(object):
         results = storage.list_path(os.path.join(self.config.get("path_prefix", ""),
                                                  site,
                                                  "basebackup"))
-        if results:
-            basebackups_dict = dict((basebackup['name'], basebackup) for basebackup in results)
-            basebackups = sorted(basebackups_dict.keys())
-            for basebackup_name in basebackups:
-                b_dict = basebackups_dict[basebackup_name]
-                b_dict["last_modified"] = datetime_to_timestamp(b_dict["last_modified"])
-                basebackup_list.append(b_dict)
-        return basebackup_list
+        for entry in results:
+            # drop path from resulting list and convert timestamps
+            entry["name"] = os.path.basename(entry["name"])
+            entry["last_modified"] = datetime_to_timestamp(entry["last_modified"])
+
+        results.sort(key=lambda entry: entry["name"])
+        return results
 
     def check_backup_count_and_state(self, site):
         allowed_basebackup_count = self.config['backup_sites'][site]['basebackup_count']
