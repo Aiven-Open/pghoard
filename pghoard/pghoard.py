@@ -186,11 +186,10 @@ class PGHoard(object):
 
     def delete_remote_wal_before(self, wal_segment, site):
         self.log.debug("Starting WAL deletion from: %r before: %r", site, wal_segment)
-        wal_segment_no = int(wal_segment, 16)
+        wal_segment_no = int(wal_segment, 16) - 1
         storage = self.site_transfers.get(site)
+        valid_timeline = True
         while True:
-            # Note this does not take care of timelines/older PGs
-            wal_segment_no -= 1
             wal_path = os.path.join(self.config.get("path_prefix", ""),
                                     site,
                                     "xlog",
@@ -198,9 +197,21 @@ class PGHoard(object):
             self.log.debug("Deleting wal_file: %r", wal_path)
             try:
                 storage.delete_key(wal_path)
+                wal_segment_no -= 1
+                valid_timeline = True
             except FileNotFoundFromStorageError:
-                self.log.debug("Could not delete wal_file: %r, returning", wal_path)
-                break
+                timeline = wal_segment_no >> 64
+                if not valid_timeline or timeline <= 1:
+                    # if we didn't find any WALs to delete on this timeline or we're already at
+                    # timeline 1 there's no need or possibility to try older timelines, break.
+                    self.log.info("Could not delete wal_file: %r, returning", wal_path)
+                    break
+                # let's try the same segment number on a previous timeline, but flag that timeline
+                # as "invalid" until we're able to delete at least one segment on it.
+                valid_timeline = False
+                wal_segment_no -= (1 << 64)
+                self.log.info("Could not delete wal_file: %r, trying the same segment on a previous "
+                              "timeline (%024X)", wal_path, wal_segment_no)
             except:  # FIXME: don't catch all exceptions; pylint: disable=bare-except
                 self.log.exception("Problem deleting: %r", wal_path)
 
