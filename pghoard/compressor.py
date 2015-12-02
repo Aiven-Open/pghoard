@@ -135,8 +135,12 @@ class Compressor(Thread):
                     else:
                         self.handle_event(event, filetype)
             except Exception as ex:
-                self.log.exception("Problem handling: %r: %s: %s", event,
-                                   ex.__class__.__name__, ex)
+                if "blob" in event:
+                    log_event = dict(event, blob="<{} bytes>".format(len(event["blob"])))
+                else:
+                    log_event = event
+                self.log.exception("Problem handling: %r: %s: %s",
+                                   log_event, ex.__class__.__name__, ex)
                 raise
         self.log.info("Quitting Compressor")
 

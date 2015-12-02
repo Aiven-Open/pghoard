@@ -101,8 +101,12 @@ class GoogleTransfer(BaseTransfer):
         key = self.format_key_for_backend(key)
         self.log.debug("Deleting key: %r", key)
         request = self.gs_objects.delete(bucket=self.bucket_name, object=key)
-        request.execute()
-        return True
+        try:
+            request.execute()
+        except HttpError as ex:
+            if ex.resp["status"] == "404":
+                raise FileNotFoundFromStorageError(key)
+            raise
 
     def get_contents_to_file(self, key, filepath_to_store_to):
         key = self.format_key_for_backend(key)

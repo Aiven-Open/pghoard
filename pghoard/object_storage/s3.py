@@ -61,11 +61,10 @@ class S3Transfer(BaseTransfer):
     def delete_key(self, key):
         key = self.format_key_for_backend(key)
         self.log.debug("Deleting key: %r", key)
-        key = self.bucket.get_key(key)
-        if key:
-            key.delete()
-            return True
-        return False
+        item = self.bucket.get_key(key)
+        if item is None:
+            raise FileNotFoundFromStorageError(key)
+        item.delete()
 
     def list_path(self, key):
         path = self.format_key_for_backend(key, trailing_slash=True)

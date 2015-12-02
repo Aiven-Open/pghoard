@@ -87,18 +87,73 @@ class TestPGHoard(PGHoardTestCase):
     def test_local_check_backup_count_and_state(self):
         self.pghoard.set_state_defaults("default")
         assert self.pghoard.get_remote_basebackups_info("default") == []
-        for bb, wal in [("2015-08-25_0", "000000010000000000000001"),
-                        ("2015-08-25_1", "000000010000000000000002"),
-                        ("2015-08-25_2", "000000010000000000000003")]:
-            bb_path = os.path.join(self.basebackup_path, bb)
-            with open(bb_path, "wb") as fp:
-                fp.write(b"something")
-            with open(bb_path + ".metadata", "w") as fp:
-                json.dump({"start-wal-segment": wal}, fp)
-            with open(os.path.join(self.compressed_xlog_path, wal), "wb") as fp:
-                fp.write(b"something")
+
+        def write_backup_and_wal_files(what):
+            for bb, wals in what.items():
+                if bb:
+                    bb_path = os.path.join(self.basebackup_path, bb)
+                    with open(bb_path, "wb") as fp:
+                        fp.write(b"something")
+                    with open(bb_path + ".metadata", "w") as fp:
+                        json.dump({"start-wal-segment": wals[0]}, fp)
+                for wal in wals:
+                    with open(os.path.join(self.compressed_xlog_path, wal), "wb") as fp:
+                        fp.write(b"something")
+
+        backups_and_wals = {
+            "2015-08-25_0": [
+                # NOTE: gap between this and next segment means that cleanup shouldn't find this
+                "000000010000000000000001",
+            ],
+            "2015-08-25_1": [
+                "000000020000000000000003",
+                "000000020000000000000004",
+            ],
+            "2015-08-25_2": [
+                "000000030000000000000005",
+                "000000030000000000000006",
+                "000000030000000000000007",
+                "000000040000000000000008",
+            ],
+            "2015-08-25_3": [
+                # Both of these should be saved
+                "000000040000000000000009",
+                "00000004000000000000000A",
+            ],
+        }
+        write_backup_and_wal_files(backups_and_wals)
         basebackups = self.pghoard.get_remote_basebackups_info("default")
-        assert len(basebackups) == 3
+        assert len(basebackups) == 4
+        self.pghoard.check_backup_count_and_state("default")
+        basebackups = self.pghoard.get_remote_basebackups_info("default")
+        assert len(basebackups) == 1
+        assert len(os.listdir(self.compressed_xlog_path)) == 3
+        # Put all WAL segments between 1 and 9 in place to see that they're deleted and we don't try to go back
+        # any further from TLI 1.  Note that timeline 3 is now "empty" so deletion shouldn't touch timelines 2
+        # or 1.
+        new_backups_and_wals = {
+            "": ["{:024X}".format((2 << 64) | seg) for seg in [2, 3, 4, 5, 6, 7, 8]],
+            "2015-08-25_4": ["00000004000000000000000B"],
+        }
+        write_backup_and_wal_files(new_backups_and_wals)
+        assert len(os.listdir(self.compressed_xlog_path)) == 11
+        self.pghoard.check_backup_count_and_state("default")
+        basebackups = self.pghoard.get_remote_basebackups_info("default")
+        assert len(basebackups) == 1
+        expected_wal_count = len(backups_and_wals["2015-08-25_0"])
+        expected_wal_count += len(new_backups_and_wals[""])
+        expected_wal_count += len(new_backups_and_wals["2015-08-25_4"])
+        assert len(os.listdir(self.compressed_xlog_path)) == expected_wal_count
+        # Now put WAL files in place with no gaps anywhere
+        gapless_backups_and_wals = {
+            "2015-08-25_3": [
+                "000000030000000000000009",
+                "00000004000000000000000A",
+            ],
+            "2015-08-25_4": ["00000004000000000000000B"],
+        }
+        write_backup_and_wal_files(gapless_backups_and_wals)
+        assert len(os.listdir(self.compressed_xlog_path)) >= 10
         self.pghoard.check_backup_count_and_state("default")
         basebackups = self.pghoard.get_remote_basebackups_info("default")
         assert len(basebackups) == 1
