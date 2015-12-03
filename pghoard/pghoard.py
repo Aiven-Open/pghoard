@@ -98,10 +98,12 @@ class PGHoard(object):
             return False
         return True
 
-    def create_basebackup(self, cluster, connection_string, basebackup_path):
+    def create_basebackup(self, cluster, connection_string, basebackup_path, callback_queue=None):
         pg_version_server = self.check_pg_server_version(connection_string)
         if not self.check_pg_versions_ok(pg_version_server, "pg_basebackup"):
-            return None, None
+            if callback_queue:
+                callback_queue.put({"success": False})
+            return None
         i = 0
         while True:
             tsdir = datetime.datetime.utcnow().strftime("%Y-%m-%d") + "_" + str(i)
@@ -124,10 +126,10 @@ class PGHoard(object):
             "--label", "initial_base_backup",
             "--verbose",
             ]
-        thread = PGBaseBackup(command, raw_basebackup_path, self.compression_queue)
+        thread = PGBaseBackup(command, raw_basebackup_path, self.compression_queue, callback_queue)
         thread.start()
         self.basebackups[cluster] = thread
-        return thread, final_basebackup_path
+        return final_basebackup_path
 
     def check_pg_server_version(self, connection_string):
         pg_version = None

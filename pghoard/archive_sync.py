@@ -6,11 +6,11 @@ See LICENSE for details
 """
 from __future__ import print_function
 from .common import default_log_format_str, replication_connection_string_using_pgpass
+from .common import TIMELINE_RE, XLOG_RE
 import argparse
 import json
 import logging
 import os
-import re
 import requests
 import subprocess
 import sys
@@ -94,15 +94,13 @@ class ArchiveSync(object):
         # if sync is interrupted for some reason.
         xlog_dir = self.backup_site["pg_xlog_directory"]
         xlog_files = sorted(os.listdir(xlog_dir), reverse=True)
-        xlog_re = re.compile("^[A-F0-9]{24}$")
-        timeline_re = re.compile(r"^[A-F0-9]{8}\.history$")
         need_archival = []
         for xlog_file in xlog_files:
             archive_type = None
-            if timeline_re.match(xlog_file):
+            if TIMELINE_RE.match(xlog_file):
                 # We want all timeline files
                 archive_type = "TIMELINE"
-            elif not xlog_re.match(xlog_file):
+            elif not XLOG_RE.match(xlog_file):
                 pass   # not a WAL or timeline file
             elif xlog_file == current_wal_file:
                 self.log.info("Skipping currently open WAL file %r", xlog_file)
