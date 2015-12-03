@@ -48,8 +48,9 @@ class PGHoardTestCase(object):
     def setup_class(cls):
         cls.log = logging.getLogger(cls.__name__)
 
-    def setup_method(self, method):  # pylint: disable=unused-argument
+    def setup_method(self, method):
         self.temp_dir = mkdtemp(prefix=self.__class__.__name__)
+        self.test_site = "site_{}".format(method.__name__)
 
     def teardown_method(self, method):  # pylint: disable=unused-argument
         rmtree(self.temp_dir)

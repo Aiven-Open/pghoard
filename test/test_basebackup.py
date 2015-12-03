@@ -32,10 +32,10 @@ LABEL: pg_basebackup base backup
         assert start_time == "2015-02-12T14:07:19+00:00"
 
     def test_basebackups(self, db, pghoard):
-        pghoard.create_backup_site_paths("default")
+        pghoard.create_backup_site_paths(pghoard.test_site)
         conn_str = create_connection_string(db.user)
-        basebackup_path = os.path.join(pghoard.config["backup_location"], "default", "basebackup")
-        backup_thread, final_location = pghoard.create_basebackup("default", conn_str, basebackup_path)
+        basebackup_path = os.path.join(pghoard.config["backup_location"], pghoard.test_site, "basebackup")
+        backup_thread, final_location = pghoard.create_basebackup(pghoard.test_site, conn_str, basebackup_path)
         assert backup_thread is not None
         timeout = time.time() + 20
         while backup_thread.running and time.time() < timeout:

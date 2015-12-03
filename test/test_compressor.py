@@ -25,7 +25,7 @@ class Compression(PGHoardTestCase):
         super(Compression, self).setup_method(method)
         self.config = {
             "backup_sites": {
-                "default": {
+                self.test_site: {
                     "object_storage": {
                         "storage_type": "s3",
                     },
@@ -44,9 +44,9 @@ class Compression(PGHoardTestCase):
         }
         self.compression_queue = Queue()
         self.transfer_queue = Queue()
-        self.incoming_path = os.path.join(self.temp_dir, "default", "xlog")
+        self.incoming_path = os.path.join(self.temp_dir, self.test_site, "xlog")
         os.makedirs(self.incoming_path)
-        self.handled_path = os.path.join(self.config["backup_location"], "default", "xlog")
+        self.handled_path = os.path.join(self.config["backup_location"], self.test_site, "xlog")
         os.makedirs(self.handled_path)
         self.foo_path = os.path.join(self.incoming_path, "00000001000000000000000C")
         self.foo_path_partial = os.path.join(self.incoming_path, "00000001000000000000000C.partial")
@@ -99,7 +99,7 @@ class Compression(PGHoardTestCase):
                 "compression-algorithm": self.algorithm,
                 "original-file-size": self.foo_size,
             },
-            "site": "default",
+            "site": self.test_site,
         }
         for key, value in expected.items():
             assert transfer_event[key] == value
@@ -121,7 +121,7 @@ class Compression(PGHoardTestCase):
                 "compression-algorithm": self.algorithm,
                 "original-file-size": self.foo_size,
             },
-            "site": "default",
+            "site": self.test_site,
         }
         transfer_event = self.transfer_queue.get()
         for key, value in expected.items():
@@ -130,7 +130,7 @@ class Compression(PGHoardTestCase):
         assert self.decompress(transfer_event["blob"]) == self.foo_contents
 
     def test_compress_encrypt_to_memory(self):
-        self.compressor.config["backup_sites"]["default"]["encryption_key_id"] = "testkey"
+        self.compressor.config["backup_sites"][self.test_site]["encryption_key_id"] = "testkey"
         event = {
             "compress_to_memory": True,
             "delete_file_after_compression": False,
@@ -148,7 +148,7 @@ class Compression(PGHoardTestCase):
                 "encryption-key-id": "testkey",
                 "original-file-size": self.foo_size,
             },
-            "site": "default",
+            "site": self.test_site,
         }
         transfer_event = self.transfer_queue.get()
         for key, value in expected.items():
@@ -174,7 +174,7 @@ class Compression(PGHoardTestCase):
                 "compression-algorithm": self.algorithm,
                 "original-file-size": self.foo_size,
             },
-            "site": "default",
+            "site": self.test_site,
         }
         for key, value in expected.items():
             assert transfer_event[key] == value
@@ -193,7 +193,7 @@ class Compression(PGHoardTestCase):
                 "compression-algorithm": self.algorithm,
                 "original-file-size": self.foo_size,
             },
-            "site": "default",
+            "site": self.test_site,
             "type": "DECOMPRESSION",
         })
         callback_queue.get(timeout=1.0)
@@ -215,7 +215,7 @@ class Compression(PGHoardTestCase):
                 "encryption-key-id": "testkey",
                 "original-file-size": self.foo_size,
             },
-            "site": "default",
+            "site": self.test_site,
             "type": "DECOMPRESSION",
         })
         callback_queue.get(timeout=1.0)

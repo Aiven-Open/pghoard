@@ -12,13 +12,13 @@ import json
 import os
 
 
-def create_json_conf(filepath, temp_dir):
+def create_json_conf(filepath, temp_dir, test_site):
     conf = {
         "backup_sites": {
-            "default": {
-                "nodes": [{
-                    "host": "1.2.3.4",
-                }],
+            test_site: {
+                "nodes": [
+                    {"host": "1.2.3.4"},
+                ],
                 "basebackup_interval_hours": 1,
                 "basebackup_count": 1,
                 "object_storage": {},
@@ -37,8 +37,8 @@ class TestPGHoard(PGHoardTestCase):
     def setup_method(self, method):
         super(TestPGHoard, self).setup_method(method)
         config_path = os.path.join(self.temp_dir, "pghoard.json")
-        self.config = create_json_conf(config_path, self.temp_dir)
-        backup_site_path = os.path.join(self.config["backup_location"], "default")
+        self.config = create_json_conf(config_path, self.temp_dir, self.test_site)
+        backup_site_path = os.path.join(self.config["backup_location"], self.test_site)
         self.compressed_xlog_path = os.path.join(backup_site_path, "xlog")
         os.makedirs(self.compressed_xlog_path)
         self.basebackup_path = os.path.join(backup_site_path, "basebackup")
@@ -56,21 +56,21 @@ class TestPGHoard(PGHoardTestCase):
         super(TestPGHoard, self).teardown_method(method)
 
     def test_handle_site(self):
-        self.pghoard.handle_site("default", self.config["backup_sites"]["default"])
+        self.pghoard.handle_site(self.test_site, self.config["backup_sites"][self.test_site])
         assert self.pghoard.receivexlogs == {}
         assert len(self.pghoard.time_since_last_backup_check) == 1
 
     def test_get_local_basebackups_info(self):
-        assert self.pghoard.get_remote_basebackups_info("default") == []
+        assert self.pghoard.get_remote_basebackups_info(self.test_site) == []
         bb_path = os.path.join(self.basebackup_path, "2015-07-03_0")
         # Handle case where metadata file does not exist
-        assert self.pghoard.get_remote_basebackups_info("default") == []
+        assert self.pghoard.get_remote_basebackups_info(self.test_site) == []
         metadata_file_path = bb_path + ".metadata"
         with open(bb_path, "wb") as fp:
             fp.write(b"something")
         with open(metadata_file_path, "wb") as fp:
             fp.write(b"{\"a\":1}")
-        available_backup = self.pghoard.get_remote_basebackups_info("default")[0]
+        available_backup = self.pghoard.get_remote_basebackups_info(self.test_site)[0]
         assert available_backup["name"] == "2015-07-03_0"
         assert available_backup["metadata"] == {"a": 1}
 
@@ -80,13 +80,13 @@ class TestPGHoard(PGHoardTestCase):
             fp.write(b"something")
         with open(metadata_file_path, "wb") as fp:
             fp.write(b"{}")
-        basebackups = self.pghoard.get_remote_basebackups_info("default")
+        basebackups = self.pghoard.get_remote_basebackups_info(self.test_site)
         assert basebackups[0]["name"] == "2015-07-02_0"
         assert basebackups[1]["name"] == "2015-07-03_0"
 
     def test_local_check_backup_count_and_state(self):
-        self.pghoard.set_state_defaults("default")
-        assert self.pghoard.get_remote_basebackups_info("default") == []
+        self.pghoard.set_state_defaults(self.test_site)
+        assert self.pghoard.get_remote_basebackups_info(self.test_site) == []
 
         def write_backup_and_wal_files(what):
             for bb, wals in what.items():
@@ -122,10 +122,10 @@ class TestPGHoard(PGHoardTestCase):
             ],
         }
         write_backup_and_wal_files(backups_and_wals)
-        basebackups = self.pghoard.get_remote_basebackups_info("default")
+        basebackups = self.pghoard.get_remote_basebackups_info(self.test_site)
         assert len(basebackups) == 4
-        self.pghoard.check_backup_count_and_state("default")
-        basebackups = self.pghoard.get_remote_basebackups_info("default")
+        self.pghoard.check_backup_count_and_state(self.test_site)
+        basebackups = self.pghoard.get_remote_basebackups_info(self.test_site)
         assert len(basebackups) == 1
         assert len(os.listdir(self.compressed_xlog_path)) == 3
         # Put all WAL segments between 1 and 9 in place to see that they're deleted and we don't try to go back
@@ -137,8 +137,8 @@ class TestPGHoard(PGHoardTestCase):
         }
         write_backup_and_wal_files(new_backups_and_wals)
         assert len(os.listdir(self.compressed_xlog_path)) == 11
-        self.pghoard.check_backup_count_and_state("default")
-        basebackups = self.pghoard.get_remote_basebackups_info("default")
+        self.pghoard.check_backup_count_and_state(self.test_site)
+        basebackups = self.pghoard.get_remote_basebackups_info(self.test_site)
         assert len(basebackups) == 1
         expected_wal_count = len(backups_and_wals["2015-08-25_0"])
         expected_wal_count += len(new_backups_and_wals[""])
@@ -154,8 +154,8 @@ class TestPGHoard(PGHoardTestCase):
         }
         write_backup_and_wal_files(gapless_backups_and_wals)
         assert len(os.listdir(self.compressed_xlog_path)) >= 10
-        self.pghoard.check_backup_count_and_state("default")
-        basebackups = self.pghoard.get_remote_basebackups_info("default")
+        self.pghoard.check_backup_count_and_state(self.test_site)
+        basebackups = self.pghoard.get_remote_basebackups_info(self.test_site)
         assert len(basebackups) == 1
         assert len(os.listdir(self.compressed_xlog_path)) == 1
 

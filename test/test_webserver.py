@@ -22,22 +22,22 @@ import time
 
 @pytest.fixture
 def http_restore(pghoard):
-    pgdata = os.path.dirname(pghoard.config["backup_sites"]["default"]["pg_xlog_directory"])
-    return HTTPRestore("localhost", pghoard.config["http_port"], site="default", pgdata=pgdata)
+    pgdata = os.path.dirname(pghoard.config["backup_sites"][pghoard.test_site]["pg_xlog_directory"])
+    return HTTPRestore("localhost", pghoard.config["http_port"], site=pghoard.test_site, pgdata=pgdata)
 
 
 class TestWebServer(object):
-    def test_list_empty_basebackups(self, http_restore, capsys):  # pylint: disable=redefined-outer-name
+    def test_list_empty_basebackups(self, pghoard, http_restore, capsys):  # pylint: disable=redefined-outer-name
         assert http_restore.list_basebackups() == []
         http_restore.show_basebackup_list()
         out, _ = capsys.readouterr()
-        assert "default" in out
+        assert pghoard.test_site in out
 
     def _run_and_wait_basebackup(self, pghoard, db):
-        pghoard.create_backup_site_paths("default")
+        pghoard.create_backup_site_paths(pghoard.test_site)
         conn_str = create_connection_string(db.user)
-        basebackup_path = os.path.join(pghoard.config["backup_location"], "default", "basebackup")
-        backup_thread, final_location = pghoard.create_basebackup("default", conn_str, basebackup_path)
+        basebackup_path = os.path.join(pghoard.config["backup_location"], pghoard.test_site, "basebackup")
+        backup_thread, final_location = pghoard.create_basebackup(pghoard.test_site, conn_str, basebackup_path)
         assert backup_thread is not None
         # wait for backup to appear; metadata file is written once we're done so wait for it
         metadata_file = final_location + ".metadata"
@@ -53,7 +53,7 @@ class TestWebServer(object):
         backups = http_restore.list_basebackups()
         assert len(backups) == 1
         assert backups[0]["size"] > 0
-        assert backups[0]["name"] == os.path.join("default", "basebackup", os.path.basename(final_location))
+        assert backups[0]["name"] == os.path.join(pghoard.test_site, "basebackup", os.path.basename(final_location))
         # make sure they show up on the printable listing, too
         http_restore.show_basebackup_list()
         out, _ = capsys.readouterr()
@@ -77,11 +77,11 @@ class TestWebServer(object):
     def test_archiving(self, pghoard):
         # inject a fake WAL file for testing
         xlog_file = "0000000000000000000000CC"
-        foo_path = os.path.join(pghoard.config["backup_sites"]["default"]["pg_xlog_directory"], xlog_file)
+        foo_path = os.path.join(pghoard.config["backup_sites"][pghoard.test_site]["pg_xlog_directory"], xlog_file)
         with open(foo_path, "wb") as out_file:
             out_file.write(b"foo")
-        backup_xlog_path = os.path.join(pghoard.config["backup_location"], "default", "xlog", xlog_file)
-        assert archive(port=pghoard.config["http_port"], site="default", xlog_file=xlog_file) is True
+        backup_xlog_path = os.path.join(pghoard.config["backup_location"], pghoard.test_site, "xlog", xlog_file)
+        assert archive(port=pghoard.config["http_port"], site=pghoard.test_site, xlog_file=xlog_file) is True
         assert os.path.exists(backup_xlog_path)
         os.unlink(foo_path)
 
@@ -102,17 +102,17 @@ class TestWebServer(object):
         # we should have at least 4 xlog files now (there may be more in
         # case other tests created them -- we share a single postresql
         # cluster between all tests)
-        pg_xlog_dir = pghoard.config["backup_sites"]["default"]["pg_xlog_directory"]
+        pg_xlog_dir = pghoard.config["backup_sites"][pghoard.test_site]["pg_xlog_directory"]
         pg_xlogs = {f for f in os.listdir(pg_xlog_dir) if xlog_re.match(f)}
         assert len(pg_xlogs) >= 4
         # check what we have archived, there should be at least the three
         # above xlogs that are NOT there at the moment
-        archive_xlog_dir = os.path.join(pghoard.config["backup_location"], "default", "xlog")
+        archive_xlog_dir = os.path.join(pghoard.config["backup_location"], pghoard.test_site, "xlog")
         archived_xlogs = {f for f in os.listdir(archive_xlog_dir) if xlog_re.match(f)}
         assert len(pg_xlogs - archived_xlogs) >= 4
         # now perform an archive sync
         arsy = ArchiveSync()
-        arsy.run(["--site", "default", "--config", pghoard.config_path])
+        arsy.run(["--site", pghoard.test_site, "--config", pghoard.config_path])
         # and now archive should include all our xlogs
         archived_xlogs = {f for f in os.listdir(archive_xlog_dir) if xlog_re.match(f)}
         assert archived_xlogs.issuperset(pg_xlogs)
@@ -122,12 +122,12 @@ class TestWebServer(object):
         current_wal = arsy.get_current_wal_file()
         old_xlogs = sorted(wal for wal in pg_xlogs if wal < current_wal)
         os.unlink(os.path.join(archive_xlog_dir, old_xlogs[-2]))
-        arsy.run(["--site", "default", "--config", pghoard.config_path])
+        arsy.run(["--site", pghoard.test_site, "--config", pghoard.config_path])
         archived_xlogs = {f for f in os.listdir(archive_xlog_dir) if xlog_re.match(f)}
         assert archived_xlogs.issuperset(pg_xlogs)
         # delete the topmost wal file, this should cause resync too
         os.unlink(os.path.join(archive_xlog_dir, old_xlogs[-1]))
-        arsy.run(["--site", "default", "--config", pghoard.config_path])
+        arsy.run(["--site", pghoard.test_site, "--config", pghoard.config_path])
         archived_xlogs = {f for f in os.listdir(archive_xlog_dir) if xlog_re.match(f)}
         assert archived_xlogs.issuperset(pg_xlogs)
         # let's do a little dance to turn our DB into a standby and then
@@ -148,11 +148,11 @@ class TestWebServer(object):
         pg_xlog_timelines = {f for f in os.listdir(pg_xlog_dir) if timeline_re.match(f)}
         assert len(pg_xlog_timelines) > 0
         # but there should be nothing archived as archive_command wasn't setup
-        archive_tli_dir = os.path.join(pghoard.config["backup_location"], "default", "timeline")
+        archive_tli_dir = os.path.join(pghoard.config["backup_location"], pghoard.test_site, "timeline")
         archived_timelines = {f for f in os.listdir(archive_tli_dir) if timeline_re.match(f)}
         assert len(archived_timelines) == 0
         # let's hit archive sync
-        arsy.run(["--site", "default", "--config", pghoard.config_path])
+        arsy.run(["--site", pghoard.test_site, "--config", pghoard.config_path])
         # now we should have an archived timeline
         archived_timelines = {f for f in os.listdir(archive_tli_dir) if timeline_re.match(f)}
         assert archived_timelines.issuperset(pg_xlog_timelines)
@@ -164,7 +164,7 @@ class TestWebServer(object):
         shutil.rmtree(archive_xlog_dir)
         os.makedirs(archive_xlog_dir)
         self._switch_xlog(db, 1)
-        arsy.run(["--site", "default", "--config", pghoard.config_path])
+        arsy.run(["--site", pghoard.test_site, "--config", pghoard.config_path])
         # assume no timeline files and at one or more wal files (but not more than three)
         assert os.listdir(archive_tli_dir) == []
         archived_xlogs = {f for f in os.listdir(archive_xlog_dir) if xlog_re.match(f)}
@@ -173,18 +173,18 @@ class TestWebServer(object):
 
     def test_archiving_backup_label_from_archive_command(self, pghoard):
         bl_file = "000000010000000000000002.00000028.backup"
-        xlog_path = os.path.join(pghoard.config["backup_sites"]["default"]["pg_xlog_directory"], bl_file)
-        backup_xlog_path = os.path.join(pghoard.config["backup_location"], "default", "xlog", bl_file)
+        xlog_path = os.path.join(pghoard.config["backup_sites"][pghoard.test_site]["pg_xlog_directory"], bl_file)
+        backup_xlog_path = os.path.join(pghoard.config["backup_location"], pghoard.test_site, "xlog", bl_file)
         with open(xlog_path, "w") as fp:
             fp.write("jee")
-        assert archive(port=pghoard.config["http_port"], site="default", xlog_file=bl_file) is True
+        assert archive(port=pghoard.config["http_port"], site=pghoard.test_site, xlog_file=bl_file) is True
         assert not os.path.exists(backup_xlog_path)
 
     def test_get_archived_file(self, pghoard, http_restore):  # pylint: disable=redefined-outer-name
         content = b"testing123"
         xlog_file = "00000001000000000000000F"
-        pgdata = os.path.dirname(pghoard.config["backup_sites"]["default"]["pg_xlog_directory"])
-        backup_xlog_path = os.path.join(str(pghoard.config["backup_location"]), "default", "xlog", xlog_file)
+        pgdata = os.path.dirname(pghoard.config["backup_sites"][pghoard.test_site]["pg_xlog_directory"])
+        backup_xlog_path = os.path.join(str(pghoard.config["backup_location"]), pghoard.test_site, "xlog", xlog_file)
         compressor = pghoard.Compressor()
         with open(backup_xlog_path, mode="wb") as fp:
             fp.write(compressor.compress(content) + (compressor.flush() or b""))
@@ -205,15 +205,15 @@ class TestWebServer(object):
         encryptor = Encryptor(CONSTANT_TEST_RSA_PUBLIC_KEY)
         encrypted_content = encryptor.update(compressed_content) + encryptor.finalize()
         xlog_file = "000000010000000000000010"
-        pgdata = os.path.dirname(pghoard.config["backup_sites"]["default"]["pg_xlog_directory"])
-        backup_xlog_path = os.path.join(str(pghoard.config["backup_location"]), "default", "xlog", xlog_file)
+        pgdata = os.path.dirname(pghoard.config["backup_sites"][pghoard.test_site]["pg_xlog_directory"])
+        backup_xlog_path = os.path.join(str(pghoard.config["backup_location"]), pghoard.test_site, "xlog", xlog_file)
         with open(backup_xlog_path, mode="wb") as fp:
             fp.write(encrypted_content)
         with open(backup_xlog_path + ".metadata", "w") as fp:
             json.dump({"compression-algorithm": pghoard.config["compression"]["algorithm"],
                        "original-file-size": len(content),
                        "encryption-key-id": "testkey"}, fp)
-        pghoard.webserver.config["backup_sites"]["default"]["encryption_keys"] = {
+        pghoard.webserver.config["backup_sites"][pghoard.test_site]["encryption_keys"] = {
             "testkey": {
                 "public": CONSTANT_TEST_RSA_PUBLIC_KEY,
                 "private": CONSTANT_TEST_RSA_PRIVATE_KEY,
