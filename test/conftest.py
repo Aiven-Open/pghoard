@@ -4,10 +4,11 @@ pghoard: fixtures for tests
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
-from pghoard.common import lzma_compressor, snappy
+from pghoard.common import default_log_format_str, lzma_compressor, snappy
 from pghoard.pghoard import PGHoard
 from py import path as py_path  # pylint: disable=no-name-in-module
 import json
+import logging
 import os
 import pytest
 import random
@@ -15,6 +16,9 @@ import signal
 import subprocess
 import tempfile
 import time
+
+
+logging.basicConfig(level=logging.DEBUG, format=default_log_format_str)
 
 
 class TestPG(object):
