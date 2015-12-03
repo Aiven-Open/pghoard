@@ -31,7 +31,8 @@ specific keys are included in the backup in turn encrypted with a master
 RSA private/public key pair.
 
 pghoard also supports backing up and restoring from either a local machine
-or from various object stores (AWS S3, Azure, Ceph, Google Cloud.)
+or from various object stores (AWS S3, Azure (experimental), Ceph, Google
+Cloud.)
 
 In case you just have a single database machine, it is heavily recommended
 to let pghoard backup the files into an object storage service, so in case
