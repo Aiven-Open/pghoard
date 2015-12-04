@@ -78,7 +78,12 @@ class GoogleTransfer(BaseTransfer):
 
     def _metadata_for_key(self, key):
         req = self.gs_objects.get(bucket=self.bucket_name, object=key)
-        obj = req.execute()
+        try:
+            obj = req.execute()
+        except HttpError as ex:
+            if ex.resp["status"] == "404":
+                raise FileNotFoundFromStorageError(key)
+            raise
         return obj.get("metadata", {})
 
     def list_path(self, key):

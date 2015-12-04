@@ -98,10 +98,12 @@ class PGHoard(object):
             return False
         return True
 
-    def create_basebackup(self, cluster, connection_string, basebackup_path):
+    def create_basebackup(self, cluster, connection_string, basebackup_path, callback_queue=None):
         pg_version_server = self.check_pg_server_version(connection_string)
         if not self.check_pg_versions_ok(pg_version_server, "pg_basebackup"):
-            return None, None
+            if callback_queue:
+                callback_queue.put({"success": False})
+            return None
         i = 0
         while True:
             tsdir = datetime.datetime.utcnow().strftime("%Y-%m-%d") + "_" + str(i)
@@ -124,10 +126,10 @@ class PGHoard(object):
             "--label", "initial_base_backup",
             "--verbose",
             ]
-        thread = PGBaseBackup(command, raw_basebackup_path, self.compression_queue)
+        thread = PGBaseBackup(command, raw_basebackup_path, self.compression_queue, callback_queue)
         thread.start()
         self.basebackups[cluster] = thread
-        return thread, final_basebackup_path
+        return final_basebackup_path
 
     def check_pg_server_version(self, connection_string):
         pg_version = None
@@ -229,7 +231,6 @@ class PGHoard(object):
             self.log.exception("Problem deleting: %r", obj_key)
 
     def get_remote_basebackups_info(self, site):
-        basebackup_list = []
         storage = self.site_transfers.get(site)
         if not storage:
             storage = get_object_storage_transfer(self.config, site)
@@ -238,14 +239,13 @@ class PGHoard(object):
         results = storage.list_path(os.path.join(self.config.get("path_prefix", ""),
                                                  site,
                                                  "basebackup"))
-        if results:
-            basebackups_dict = dict((basebackup['name'], basebackup) for basebackup in results)
-            basebackups = sorted(basebackups_dict.keys())
-            for basebackup_name in basebackups:
-                b_dict = basebackups_dict[basebackup_name]
-                b_dict["last_modified"] = datetime_to_timestamp(b_dict["last_modified"])
-                basebackup_list.append(b_dict)
-        return basebackup_list
+        for entry in results:
+            # drop path from resulting list and convert timestamps
+            entry["name"] = os.path.basename(entry["name"])
+            entry["last_modified"] = datetime_to_timestamp(entry["last_modified"])
+
+        results.sort(key=lambda entry: entry["name"])
+        return results
 
     def check_backup_count_and_state(self, site):
         allowed_basebackup_count = self.config['backup_sites'][site]['basebackup_count']

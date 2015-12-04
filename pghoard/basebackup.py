@@ -17,11 +17,12 @@ import time
 
 
 class PGBaseBackup(Thread):
-    def __init__(self, command, basebackup_location, compression_queue):
+    def __init__(self, command, basebackup_location, compression_queue, callback_queue=None):
         Thread.__init__(self)
         self.log = logging.getLogger("PGBaseBackup")
         self.command = command
         self.basebackup_location = basebackup_location
+        self.callback_queue = callback_queue
         self.compression_queue = compression_queue
         self.running = True
         self.pid = None
@@ -63,8 +64,12 @@ class PGBaseBackup(Thread):
         if os.path.exists(basebackup_path):
             start_wal_segment, start_time = self.parse_backup_label(basebackup_path)
             self.compression_queue.put({
+                "callback_queue": self.callback_queue,
                 "full_path": basebackup_path,
                 "metadata": {"start-wal-segment": start_wal_segment, "start-time": start_time},
                 "type": "CLOSE_WRITE",
             })
+        elif self.callback_queue:
+            # post a failure event
+            self.callback_queue.put({"success": False})
         self.running = False

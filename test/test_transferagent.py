@@ -24,7 +24,7 @@ class TestTransferAgent(PGHoardTestCase):
         super(TestTransferAgent, self).setup_method(method)
         self.config = {
             "backup_sites": {
-                "default": {
+                self.test_site: {
                     "object_storage": {
                         "storage_type": "s3",
                     },
@@ -32,13 +32,13 @@ class TestTransferAgent(PGHoardTestCase):
             },
             "backup_location": self.temp_dir,
         }
-        self.foo_path = os.path.join(self.temp_dir, "default", "xlog", "00000001000000000000000C")
-        os.makedirs(os.path.join(self.temp_dir, "default", "xlog"))
+        self.foo_path = os.path.join(self.temp_dir, self.test_site, "xlog", "00000001000000000000000C")
+        os.makedirs(os.path.join(self.temp_dir, self.test_site, "xlog"))
         with open(self.foo_path, "w") as out:
             out.write("foo")
 
-        self.foo_basebackup_path = os.path.join(self.temp_dir, "default", "basebackup", "2015-04-15_0", "base.tar.xz")
-        os.makedirs(os.path.join(self.temp_dir, "default", "basebackup", "2015-04-15_0"))
+        self.foo_basebackup_path = os.path.join(self.temp_dir, self.test_site, "basebackup", "2015-04-15_0", "base.tar.xz")
+        os.makedirs(os.path.join(self.temp_dir, self.test_site, "basebackup", "2015-04-15_0"))
         with open(self.foo_basebackup_path, "w") as out:
             out.write("foo")
 
@@ -60,7 +60,7 @@ class TestTransferAgent(PGHoardTestCase):
             "callback_queue": callback_queue,
             "filetype": "xlog",
             "local_path": self.temp_dir,
-            "site": "default",
+            "site": self.test_site,
             "target_path": self.temp_dir,
             "type": "DOWNLOAD",
         })
@@ -69,7 +69,7 @@ class TestTransferAgent(PGHoardTestCase):
             "callback_queue": callback_queue,
             "local_path": self.temp_dir,
             "metadata": {"key": "value"},
-            "site": "default",
+            "site": self.test_site,
             "type": "DECOMPRESSION",
         }
         assert self.compression_queue.get(timeout=1.0) == expected_event
@@ -85,7 +85,7 @@ class TestTransferAgent(PGHoardTestCase):
             "filetype": "xlog",
             "local_path": self.foo_path,
             "metadata": {"start-wal-segment": "00000001000000000000000C"},
-            "site": "default",
+            "site": self.test_site,
             "type": "UPLOAD",
         })
         assert callback_queue.get(timeout=1.0) == {"success": True}
@@ -102,7 +102,7 @@ class TestTransferAgent(PGHoardTestCase):
             "filetype": "basebackup",
             "local_path": self.foo_basebackup_path,
             "metadata": {"start-wal-segment": "00000001000000000000000C"},
-            "site": "default",
+            "site": self.test_site,
             "type": "UPLOAD",
         })
         assert callback_queue.get(timeout=1.0) == {"success": True}

@@ -5,10 +5,9 @@ Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
 from pghoard.basebackup import PGBaseBackup
-from pghoard.common import create_connection_string
+from pghoard.common import create_connection_string, Queue
 import os
 import tarfile
-import time
 
 
 class TestPGBaseBackup(object):
@@ -32,16 +31,12 @@ LABEL: pg_basebackup base backup
         assert start_time == "2015-02-12T14:07:19+00:00"
 
     def test_basebackups(self, db, pghoard):
-        pghoard.create_backup_site_paths("default")
+        pghoard.create_backup_site_paths(pghoard.test_site)
         conn_str = create_connection_string(db.user)
-        basebackup_path = os.path.join(pghoard.config["backup_location"], "default", "basebackup")
-        backup_thread, final_location = pghoard.create_basebackup("default", conn_str, basebackup_path)
-        assert backup_thread is not None
-        timeout = time.time() + 20
-        while backup_thread.running and time.time() < timeout:
-            time.sleep(0.1)
-        assert not backup_thread.running
-        # wait for compression
-        while not os.path.exists(final_location) and (time.time() < timeout):
-            time.sleep(0.1)
-        assert os.path.exists(final_location)
+        basebackup_path = os.path.join(pghoard.config["backup_location"], pghoard.test_site, "basebackup")
+        q = Queue()
+        final_location = pghoard.create_basebackup(pghoard.test_site, conn_str, basebackup_path, q)
+        result = q.get(timeout=60)
+        assert result["success"]
+        if not pghoard.config["backup_sites"][pghoard.test_site]["object_storage"]:
+            assert os.path.exists(final_location)

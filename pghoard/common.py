@@ -33,6 +33,8 @@ except ImportError:
 
 IO_BLOCK_SIZE = 2 ** 20  # 1 MiB
 LOG = logging.getLogger("pghoard.common")
+TIMELINE_RE = re.compile(r"^[A-F0-9]{8}\.history$")
+XLOG_RE = re.compile("^[A-F0-9]{24}$")
 
 
 if hasattr(lzma, "open"):

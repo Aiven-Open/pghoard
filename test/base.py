@@ -5,7 +5,6 @@ Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
 # pylint: disable=attribute-defined-outside-init
-from pghoard.common import default_log_format_str
 from shutil import rmtree
 from tempfile import mkdtemp
 import logging
@@ -48,11 +47,9 @@ class PGHoardTestCase(object):
     def setup_class(cls):
         cls.log = logging.getLogger(cls.__name__)
 
-    def setup_method(self, method):  # pylint: disable=unused-argument
+    def setup_method(self, method):
         self.temp_dir = mkdtemp(prefix=self.__class__.__name__)
+        self.test_site = "site_{}".format(method.__name__)
 
     def teardown_method(self, method):  # pylint: disable=unused-argument
         rmtree(self.temp_dir)
-
-
-logging.basicConfig(level=logging.DEBUG, format=default_log_format_str)

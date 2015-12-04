@@ -4,10 +4,11 @@ pghoard: fixtures for tests
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
-from pghoard.common import lzma_compressor, snappy
+from pghoard.common import default_log_format_str, lzma_compressor, snappy
 from pghoard.pghoard import PGHoard
 from py import path as py_path  # pylint: disable=no-name-in-module
 import json
+import logging
 import os
 import pytest
 import random
@@ -15,6 +16,9 @@ import signal
 import subprocess
 import tempfile
 import time
+
+
+logging.basicConfig(level=logging.DEBUG, format=default_log_format_str)
 
 
 class TestPG(object):
@@ -105,12 +109,13 @@ def db():
 
 
 @pytest.yield_fixture
-def pghoard(db, tmpdir):  # pylint: disable=redefined-outer-name
+def pghoard(db, tmpdir, request):  # pylint: disable=redefined-outer-name
+    test_site = request.function.__name__
     config = {
         "alert_file_dir": os.path.join(str(tmpdir), "alerts"),
         "backup_location": os.path.join(str(tmpdir), "backups"),
         "backup_sites": {
-            "default": {
+            test_site: {
                 "pg_xlog_directory": os.path.join(db.pgdata, "pg_xlog"),
                 "nodes": [db.user],
                 "object_storage": {},
@@ -128,7 +133,7 @@ def pghoard(db, tmpdir):  # pylint: disable=redefined-outer-name
     with open(confpath, "w") as fp:
         json.dump(config, fp)
 
-    backup_site_path = os.path.join(config["backup_location"], "default")
+    backup_site_path = os.path.join(config["backup_location"], test_site)
     basebackup_path = os.path.join(backup_site_path, "basebackup")
     backup_xlog_path = os.path.join(backup_site_path, "xlog")
     backup_timeline_path = os.path.join(backup_site_path, "timeline")
@@ -139,6 +144,7 @@ def pghoard(db, tmpdir):  # pylint: disable=redefined-outer-name
     os.makedirs(backup_timeline_path)
 
     pgh = PGHoard(confpath)
+    pgh.test_site = test_site
     pgh.start_threads_on_startup()
     if snappy:
         pgh.Compressor = snappy.StreamCompressor
