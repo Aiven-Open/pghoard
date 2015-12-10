@@ -5,7 +5,7 @@ Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
 from __future__ import print_function
-from .common import default_log_format_str, IO_BLOCK_SIZE, lzma_open_read, SnappyFile
+from .common import default_log_format_str, lzma_open_read, SnappyFile
 from .encryptor import DecryptorFile
 from .errors import Error
 from .object_storage import get_object_storage_transfer
@@ -45,7 +45,7 @@ def create_recovery_conf(dirpath, site,
         "standby_mode = 'on'",
         "recovery_target_timeline = 'latest'",
         "trigger_file = {}".format(adapt(os.path.join(dirpath, "trigger_file"))),
-        "restore_command = 'pghoard_restore get %f %p --site {}'".format(site),
+        "restore_command = 'pghoard_restore get-wal-file --site {} --output %p %f'".format(site),
     ]
     if primary_conninfo:
         lines.append("primary_conninfo = {}".format(adapt(primary_conninfo)))
@@ -109,17 +109,11 @@ class Restore(object):
             cmd.add_argument("--recovery-target-time", help="PostgreSQL recovery_target_time", metavar="ISO_TIMESTAMP")
             cmd.add_argument("--recovery-target-xid", help="PostgreSQL recovery_target_xid", metavar="XID")
 
-        cmd = self.add_cmd(sub, self.get)
-        cmd.add_argument("filename", help="filename to retrieve")
-        cmd.add_argument("target_path", help="local target filename")
+        cmd = self.add_cmd(sub, self.get_wal_file)
+        cmd.add_argument("--output", help="Output file name for WAL file contents")
+        cmd.add_argument("filename", help="WAL file to retrieve")
         host_port_args()
         generic_args(require_config=False)
-        cmd.add_argument("--target-path-prefix", help="target_path_prefix (useful for testing)")
-
-        cmd = self.add_cmd(sub, self.get_basebackup_http)
-        target_args()
-        host_port_args()
-        generic_args()
 
         cmd = self.add_cmd(sub, self.list_basebackups_http)
         host_port_args()
@@ -132,10 +126,11 @@ class Restore(object):
         generic_args()
         return parser
 
-    def get(self, arg):
+    def get_wal_file(self, arg):
         """Download a WAL file through pghoard. Used in pghoard restore_command"""
         self.storage = HTTPRestore(arg.host, arg.port, arg.site)
-        if not self.storage.get_archive_file(arg.filename, arg.target_path, arg.target_path_prefix):
+        path = "archive/{}".format(arg.filename)
+        if not self.storage.get_archive_file(path, arg.output):
             return 1
 
     def _load_config(self, configfile):
@@ -143,22 +138,8 @@ class Restore(object):
             config = json.load(fp)
         return config
 
-    def get_basebackup_http(self, arg):
-        """Download a basebackup from a HTTP source"""
-        self.config = self._load_config(arg.config)
-        self.storage = HTTPRestore(arg.host, arg.port, arg.site, arg.target_dir)
-        self._get_basebackup(arg.target_dir, arg.basebackup, arg.site,
-                             primary_conninfo=arg.primary_conninfo,
-                             recovery_end_command=arg.recovery_end_command,
-                             recovery_target_action=arg.recovery_target_action,
-                             recovery_target_name=arg.recovery_target_name,
-                             recovery_target_time=arg.recovery_target_time,
-                             recovery_target_xid=arg.recovery_target_xid,
-                             overwrite=arg.overwrite)
-
     def list_basebackups_http(self, arg):
         """List available basebackups from a HTTP source"""
-        self.config = self._load_config(arg.config)
         self.storage = HTTPRestore(arg.host, arg.port, arg.site)
         self.storage.show_basebackup_list()
 
@@ -318,39 +299,24 @@ class HTTPRestore(ObjectStore):
         self.port = port
         self.session = Session()
 
-    def _url(self, filetype, name=None):
-        return "http://{host}:{port}/{site}/{type}{sep}{name}".format(
+    def _url(self, path):
+        return "http://{host}:{port}/{site}/{path}".format(
             host=self.host,
             port=self.port,
             site=self.site,
-            type=filetype,
-            sep="" if name is None else "/",
-            name=name or "")
+            path=path)
 
     def list_basebackups(self):
         response = self.session.get(self._url("basebackup"))
         return response.json()["basebackups"]
-
-    def get_basebackup_file_to_fileobj(self, basebackup, fileobj):
-        response = self.session.get(self._url("basebackup", basebackup), stream=True)
-        if response.status_code != 200:
-            raise Error("Incorrect basebackup: %{!r} or site: {!r} defined".format(basebackup, self.site))
-        for chunk in response.iter_content(chunk_size=IO_BLOCK_SIZE):
-            fileobj.write(chunk)
-        metadata = {}
-        for key, value in response.headers.items():
-            if key.startswith("x-pghoard-"):
-                metadata[key[len("x-pghoard-"):]] = value
-        return metadata
 
     def get_archive_file(self, filename, target_path, target_path_prefix=None):
         start_time = time.time()
         self.log.debug("Getting archived file: %r, target_path: %r, target_path_prefix: %r",
                        filename, target_path, target_path_prefix)
         if not target_path_prefix:
-            final_target_path = os.path.join(os.getcwd(), target_path)
-        else:
-            final_target_path = os.path.join(target_path_prefix, target_path)
+            target_path_prefix = os.getcwd()
+        final_target_path = os.path.join(target_path_prefix, target_path)
         headers = {"x-pghoard-target-path": final_target_path}
         response = self.session.get(self._url(filename), headers=headers, stream=True)
         self.log.debug("Got archived file: %r, %r status_code: %r took: %.2fs",
