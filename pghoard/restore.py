@@ -27,12 +27,6 @@ class RestoreError(Error):
     """Restore error"""
 
 
-def create_pgdata_dir(pgdata):
-    if not os.path.exists(pgdata):
-        os.makedirs(pgdata)
-    os.chmod(pgdata, 0o700)
-
-
 def create_recovery_conf(dirpath, site,
                          primary_conninfo=None,
                          recovery_end_command=None,
@@ -74,20 +68,14 @@ class Restore(object):
         self.log = logging.getLogger("PGHoardRestore")
         self.storage = None
 
-    def missing_libs(self, arg):
-        raise RestoreError("Command not available: {}: {}".format(arg.ex.__class__.__name__, arg.ex))
-
-    def add_cmd(self, sub, method, precondition=None):
-        cmd = sub.add_parser(method.__name__.replace("_", "-"), help=method.__doc__)
-        if isinstance(precondition, Exception):
-            cmd.set_defaults(func=self.missing_libs, ex=precondition)
-        else:
-            cmd.set_defaults(func=method)
-        return cmd
-
     def create_parser(self):
         parser = argparse.ArgumentParser()
         sub = parser.add_subparsers(help="sub-command help")
+
+        def add_cmd(method):
+            cp = sub.add_parser(method.__name__.replace("_", "-"), help=method.__doc__)
+            cp.set_defaults(func=method)
+            return cp
 
         def generic_args(require_config=True):
             cmd.add_argument("--site", help="pghoard site", required=True)
@@ -109,21 +97,23 @@ class Restore(object):
             cmd.add_argument("--recovery-target-time", help="PostgreSQL recovery_target_time", metavar="ISO_TIMESTAMP")
             cmd.add_argument("--recovery-target-xid", help="PostgreSQL recovery_target_xid", metavar="XID")
 
-        cmd = self.add_cmd(sub, self.get_wal_file)
+        cmd = add_cmd(self.get_wal_file)
         cmd.add_argument("--output", help="Output file name for WAL file contents")
         cmd.add_argument("filename", help="WAL file to retrieve")
         host_port_args()
         generic_args(require_config=False)
 
-        cmd = self.add_cmd(sub, self.list_basebackups_http)
+        cmd = add_cmd(self.list_basebackups_http)
         host_port_args()
+        generic_args(require_config=False)
+
+        cmd = add_cmd(self.list_basebackups)
         generic_args()
 
-        cmd = self.add_cmd(sub, self.list_basebackups)
-        generic_args()
-        cmd = self.add_cmd(sub, self.get_basebackup)
+        cmd = add_cmd(self.get_basebackup)
         target_args()
         generic_args()
+
         return parser
 
     def get_wal_file(self, arg):
@@ -218,7 +208,8 @@ class Restore(object):
             else:
                 raise RestoreError("Target directory '{}' exists and --overwrite not specified, aborting.".format(pgdata))
 
-        create_pgdata_dir(pgdata)
+        os.makedirs(pgdata)
+        os.chmod(pgdata, 0o700)
         tmp = tempfile.TemporaryFile()
         metadata = self.storage.get_basebackup_file_to_fileobj(basebackup, tmp)
         tmp.seek(0)

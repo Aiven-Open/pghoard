@@ -10,7 +10,7 @@ from pghoard.archive_command import archive
 from pghoard.archive_sync import ArchiveSync
 from pghoard.common import create_connection_string, Queue, TIMELINE_RE, XLOG_RE
 from pghoard.encryptor import Encryptor
-from pghoard.restore import HTTPRestore
+from pghoard.restore import HTTPRestore, Restore
 import os
 import psycopg2
 import pytest
@@ -25,8 +25,26 @@ def http_restore(pghoard):
 
 class TestWebServer(object):
     def test_list_empty_basebackups(self, pghoard, http_restore, capsys):  # pylint: disable=redefined-outer-name
+        # List with direct HttpRestore access
         assert http_restore.list_basebackups() == []
         http_restore.show_basebackup_list()
+        out, _ = capsys.readouterr()
+        assert pghoard.test_site in out
+        # list using restore command over http
+        Restore().run([
+            "list-basebackups-http",
+            "--host", "localhost",
+            "--port", str(pghoard.config["http_port"]),
+            "--site", pghoard.test_site,
+        ])
+        out, _ = capsys.readouterr()
+        assert pghoard.test_site in out
+        # list using restore command with direct object storage access
+        Restore().run([
+            "list-basebackups",
+            "--config", pghoard.config_path,
+            "--site", pghoard.test_site,
+        ])
         out, _ = capsys.readouterr()
         assert pghoard.test_site in out
 
@@ -199,6 +217,20 @@ class TestWebServer(object):
         http_restore.get_archive_file(xlog_file, restore_target, target_path_prefix=pgdata)
         assert os.path.exists(os.path.join(pgdata, restore_target)) is True
         with open(os.path.join(pgdata, restore_target), "rb") as fp:
+            restored_data = fp.read()
+        assert content == restored_data
+
+        # test the same thing using restore as 'restore_command'
+        tmp_out = os.path.join(pgdata, restore_target + ".cmd")
+        Restore().run([
+            "get-wal-file",
+            "--host", "localhost",
+            "--port", str(pghoard.config["http_port"]),
+            "--site", pghoard.test_site,
+            "--output", tmp_out,
+            xlog_seg,
+        ])
+        with open(tmp_out, "rb") as fp:
             restored_data = fp.read()
         assert content == restored_data
 

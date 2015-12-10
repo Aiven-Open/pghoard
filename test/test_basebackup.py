@@ -6,7 +6,9 @@ See LICENSE for details
 """
 from pghoard.basebackup import PGBaseBackup
 from pghoard.common import create_connection_string, Queue
+from pghoard.restore import Restore, RestoreError
 import os
+import pytest
 import tarfile
 
 
@@ -30,7 +32,7 @@ LABEL: pg_basebackup base backup
         assert start_wal_segment == "000000010000000000000004"
         assert start_time == "2015-02-12T14:07:19+00:00"
 
-    def test_basebackups(self, db, pghoard):
+    def test_basebackups(self, capsys, db, pghoard, tmpdir):
         pghoard.create_backup_site_paths(pghoard.test_site)
         conn_str = create_connection_string(db.user)
         basebackup_path = os.path.join(pghoard.config["backup_location"], pghoard.test_site, "basebackup")
@@ -40,3 +42,30 @@ LABEL: pg_basebackup base backup
         assert result["success"]
         if not pghoard.config["backup_sites"][pghoard.test_site]["object_storage"]:
             assert os.path.exists(final_location)
+        # make sure it shows on the list
+        Restore().run([
+            "list-basebackups",
+            "--config", pghoard.config_path,
+            "--site", pghoard.test_site,
+        ])
+        out, _ = capsys.readouterr()
+        assert pghoard.test_site in out
+        # try downloading it
+        backup_out = str(tmpdir.join("test-restore"))
+        os.makedirs(backup_out)
+        with pytest.raises(RestoreError) as excinfo:
+            Restore().run([
+                "get-basebackup",
+                "--config", pghoard.config_path,
+                "--site", pghoard.test_site,
+                "--target-dir", backup_out,
+            ])
+        assert "--overwrite not specified" in str(excinfo.value)
+        Restore().run([
+            "get-basebackup",
+            "--config", pghoard.config_path,
+            "--site", pghoard.test_site,
+            "--target-dir", backup_out,
+            "--overwrite",
+        ])
+        # TODO: check that the backup is valid
