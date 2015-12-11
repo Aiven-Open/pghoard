@@ -14,7 +14,7 @@ replayed to get to the desired replication point.
 pghoard supports multiple operating models. The basic mode where you have a
 separate backup machine, pghoard can simply connect with pg_receivexlog to
 receive WAL files from the database as they're written.  Another model is to
-use pghoard_archive_command as a PostgreSQL archive_command.
+use pghoard_postgres_command as a PostgreSQL archive_command.
 
 With both modes of operations pghoard creates basebackups using
 pg_basebackup that is run against the database in question.
@@ -180,12 +180,22 @@ supervisord.  It handles the backup of the configured sites.
 
 ``pghoard_restore`` is a command line tool that can be used to restore a
 previous database backup from either pghoard itself or from one of the
-supported object stores.
+supported object stores.  ``pghoard_restore`` can also configure
+recovery.conf to use ``pghoard_postgres_command`` as the WAL restore_command
+in ``recovery.conf``.
 
-``pghoard_archivecommand`` is a command line tool that can be used to
-restore a previous database backup.  In essence, it just calls pghoard's
-webserver to let it know there's a new file.  It must also be configured on
-the ``postgresql.conf`` side to be the ``archive_command``.
+``pghoard_postgres_command`` is a command line tool that can be used as
+PostgreSQL's archive_command or recovery_command.  It communicates with
+pghoard's locally running webserver to let it know there's a new file that
+needs to be compressed, encrypted and stored in an object store (in archive
+mode) or it's inverse (in restore mode.)
+
+To enable PostgreSQL's archiving with pghoard you must set up pghoard
+properly and enter the following configuration keys in ``postgresql.conf``::
+
+    wal_level = archive
+    archive_mode = on
+    archive_command = pghoard_postgres_command --mode archive --site yoursite --xlog %f
 
 While pghoard is running it may be useful to read the JSON state file
 ``pghoard_state.json`` that exists where ``json_state_file_path`` points.

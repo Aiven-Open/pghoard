@@ -20,7 +20,6 @@ import shutil
 import sys
 import tarfile
 import tempfile
-import time
 
 
 class RestoreError(Error):
@@ -34,12 +33,13 @@ def create_recovery_conf(dirpath, site,
                          recovery_target_name=None,
                          recovery_target_time=None,
                          recovery_target_xid=None):
+    restore_command = "pghoard_postgres_command --mode restore --site {} --output %p --xlog %f".format(site)
     lines = [
         "# pghoard created recovery.conf",
         "standby_mode = 'on'",
         "recovery_target_timeline = 'latest'",
         "trigger_file = {}".format(adapt(os.path.join(dirpath, "trigger_file"))),
-        "restore_command = 'pghoard_restore get-wal-file --site {} --output %p %f'".format(site),
+        "restore_command = '{}'".format(restore_command),
     ]
     if primary_conninfo:
         lines.append("primary_conninfo = {}".format(adapt(primary_conninfo)))
@@ -97,12 +97,6 @@ class Restore(object):
             cmd.add_argument("--recovery-target-time", help="PostgreSQL recovery_target_time", metavar="ISO_TIMESTAMP")
             cmd.add_argument("--recovery-target-xid", help="PostgreSQL recovery_target_xid", metavar="XID")
 
-        cmd = add_cmd(self.get_wal_file)
-        cmd.add_argument("--output", help="Output file name for WAL file contents")
-        cmd.add_argument("filename", help="WAL file to retrieve")
-        host_port_args()
-        generic_args(require_config=False)
-
         cmd = add_cmd(self.list_basebackups_http)
         host_port_args()
         generic_args(require_config=False)
@@ -115,13 +109,6 @@ class Restore(object):
         generic_args()
 
         return parser
-
-    def get_wal_file(self, arg):
-        """Download a WAL file through pghoard. Used in pghoard restore_command"""
-        self.storage = HTTPRestore(arg.host, arg.port, arg.site)
-        path = "archive/{}".format(arg.filename)
-        if not self.storage.get_archive_file(path, arg.output):
-            return 1
 
     def _load_config(self, configfile):
         with open(configfile) as fp:
@@ -300,27 +287,6 @@ class HTTPRestore(ObjectStore):
     def list_basebackups(self):
         response = self.session.get(self._url("basebackup"))
         return response.json()["basebackups"]
-
-    def get_archive_file(self, filename, target_path, target_path_prefix=None):
-        start_time = time.time()
-        self.log.debug("Getting archived file: %r, target_path: %r, target_path_prefix: %r",
-                       filename, target_path, target_path_prefix)
-        if not target_path_prefix:
-            target_path_prefix = os.getcwd()
-        final_target_path = os.path.join(target_path_prefix, target_path)
-        headers = {"x-pghoard-target-path": final_target_path}
-        response = self.session.get(self._url(filename), headers=headers, stream=True)
-        self.log.debug("Got archived file: %r, %r status_code: %r took: %.2fs",
-                       filename, target_path, response.status_code, time.time() - start_time)
-        return response.status_code in (200, 201)
-
-    def query_archive_file(self, filename):
-        start_time = time.time()
-        self.log.debug("Querying archived file: %r", filename)
-        response = self.session.head(self._url(filename), stream=True)
-        self.log.debug("Queried archived file: %r, status_code: %r took: %.2fs",
-                       filename, response.status_code, time.time() - start_time)
-        return response.status_code == 200
 
 
 def main():
