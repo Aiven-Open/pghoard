@@ -13,6 +13,7 @@ from threading import Thread
 import logging
 import os
 import sys
+import tempfile
 import time
 
 
@@ -165,10 +166,17 @@ class RequestHandler(BaseHTTPRequestHandler):
         start_time = time.time()
 
         target_path = self.headers.get("x-pghoard-target-path")
-        if method == "DOWNLOAD" and not target_path:
-            raise HttpResponse("x-pghoard-target-path header missing from download", status=400)
-        elif method != "DOWNLOAD" and target_path:
-            raise HttpResponse("x-pghoard-target-path header is only valid for downloads", status=400)
+        if method == "DOWNLOAD":
+            if not target_path:
+                raise HttpResponse("x-pghoard-target-path header missing from download", status=400)
+            # NOTE: we request download on a temporary download path so we can atomically overwrite the file if /
+            # when we successfully receive it.
+            fd, tmp_target_path = tempfile.mkstemp(prefix="{}.".format(target_path), suffix=".pghoard.tmp")
+            os.close(fd)
+        else:
+            if target_path:
+                raise HttpResponse("x-pghoard-target-path header is only valid for downloads", status=400)
+            tmp_target_path = None
 
         self.server.log.debug("Requesting site: %r, filename: %r, filetype: %r, target_path: %r",
                               site, filename, filetype, target_path)
@@ -179,22 +187,34 @@ class RequestHandler(BaseHTTPRequestHandler):
             "filetype": filetype,
             "local_path": filename,
             "site": site,
-            "target_path": target_path,
+            "target_path": tmp_target_path,
             "type": method,
         })
-        try:
-            response = callback_queue.get(timeout=30.0)
-            self.server.log.debug("Handled a %s request for: %r %r, took: %.3fs",
-                                  method, site, target_path, time.time() - start_time)
-        except Empty:
-            self.server.log.exception("Timeout on a %s request for: %r %r, took: %.3fs",
-                                      method, site, target_path, time.time() - start_time)
-            raise HttpResponse("TIMEOUT", status=500)
 
-        if not response["success"]:
-            if isinstance(response.get("exception"), FileNotFoundFromStorageError):
-                raise HttpResponse("{0.__class__.__name__}: {0}".format(response["exception"]), status=404)
-            raise HttpResponse(status=500)
+        try:
+            try:
+                response = callback_queue.get(timeout=30.0)
+                self.server.log.debug("Handled a %s request for: %r %r, took: %.3fs",
+                                      method, site, target_path, time.time() - start_time)
+            except Empty:
+                self.server.log.exception("Timeout on a %s request for: %r %r, took: %.3fs",
+                                          method, site, target_path, time.time() - start_time)
+                raise HttpResponse("TIMEOUT", status=500)
+
+            if not response["success"]:
+                if isinstance(response.get("exception"), FileNotFoundFromStorageError):
+                    raise HttpResponse("{0.__class__.__name__}: {0}".format(response["exception"]), status=404)
+                raise HttpResponse(status=500)
+        except HttpResponse:
+            if tmp_target_path:
+                try:
+                    os.unlink(tmp_target_path)
+                except:  # pylint: disable=bare-except
+                    pass
+            raise
+
+        if tmp_target_path:
+            os.rename(tmp_target_path, target_path)
         return response
 
     def get_wal_or_timeline_file(self, site, filename, filetype):
