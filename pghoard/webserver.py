@@ -6,36 +6,28 @@ See LICENSE for details
 """
 
 from . import __version__
-from .common import Empty, Queue, json_encode, TIMELINE_RE, XLOG_RE
-from .errors import FileNotFoundFromStorageError
-from contextlib import contextmanager
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager, suppress
+from http.server import HTTPServer, BaseHTTPRequestHandler
+from pghoard.common import json_encode, TIMELINE_RE, XLOG_RE
+from pghoard.errors import FileNotFoundFromStorageError
+from queue import Empty, Queue
+from socketserver import ThreadingMixIn
 from threading import Thread
 import logging
 import os
-import sys
 import tempfile
 import time
 
 
-if sys.version_info.major >= 3:
-    from concurrent.futures import ThreadPoolExecutor  # pylint: disable=import-error
-    from http.server import HTTPServer, BaseHTTPRequestHandler  # pylint: disable=import-error
-    from socketserver import ThreadingMixIn  # pylint: disable=import-error
+class PoolMixIn(ThreadingMixIn):
+    def process_request(self, request, client_address):
+        self.pool.submit(self.process_request_thread, request, client_address)
 
-    class PoolMixIn(ThreadingMixIn):  # pylint: disable=no-init
-        def process_request(self, request, client_address):
-            self.pool.submit(self.process_request_thread, request, client_address)
 
-    class OwnHTTPServer(PoolMixIn, HTTPServer):  # pylint: disable=no-init
-        """httpserver with 10 thread pool"""
-        pool = ThreadPoolExecutor(max_workers=10)
-
-else:
-    from BaseHTTPServer import HTTPServer, BaseHTTPRequestHandler  # pylint: disable=import-error
-    from SocketServer import ThreadingMixIn  # pylint: disable=import-error
-
-    class OwnHTTPServer(ThreadingMixIn, HTTPServer):  # pylint: disable=no-init
-        """httpserver with threadingmixin"""
+class OwnHTTPServer(PoolMixIn, HTTPServer):
+    """httpserver with 10 thread pool"""
+    pool = ThreadPoolExecutor(max_workers=10)
 
 
 class HttpResponse(Exception):
@@ -45,14 +37,14 @@ class HttpResponse(Exception):
         self.msg = msg
         self.status = status
         if self.error:
-            super(HttpResponse, self).__init__("{} {}: {}".format(self.__class__.__name__, status, msg))
+            super().__init__("{} {}: {}".format(self.__class__.__name__, status, msg))
         else:
-            super(HttpResponse, self).__init__("{} {}".format(self.__class__.__name__, status))
+            super().__init__("{} {}".format(self.__class__.__name__, status))
 
 
 class WebServer(Thread):
     def __init__(self, config, compression_queue, transfer_queue):
-        Thread.__init__(self)
+        super().__init__()
         self.log = logging.getLogger("WebServer")
         self.config = config
         self.compression_queue = compression_queue
@@ -215,10 +207,8 @@ class RequestHandler(BaseHTTPRequestHandler):
                 raise HttpResponse(status=500)
         except HttpResponse as ex:
             if tmp_target_path:
-                try:
+                with suppress(Exception):
                     os.unlink(tmp_target_path)
-                except:  # pylint: disable=bare-except
-                    pass
             if ex.status == 500 and retries:
                 self.server.log.warning("Transfer operation failed, retrying (%r retries left)", retries)
                 return self._transfer_agent_op(site, filename, filetype, method, retries=retries - 1)

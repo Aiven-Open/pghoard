@@ -18,7 +18,7 @@ import time
 
 class PGBaseBackup(Thread):
     def __init__(self, command, basebackup_location, compression_queue, callback_queue=None):
-        Thread.__init__(self)
+        super().__init__()
         self.log = logging.getLogger("PGBaseBackup")
         self.command = command
         self.basebackup_location = basebackup_location

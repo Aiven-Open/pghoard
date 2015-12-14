@@ -7,10 +7,11 @@ See LICENSE for details
 # pylint: disable=attribute-defined-outside-init
 from .base import CONSTANT_TEST_RSA_PUBLIC_KEY, CONSTANT_TEST_RSA_PRIVATE_KEY
 from pghoard.archive_sync import ArchiveSync
-from pghoard.common import create_connection_string, Queue, TIMELINE_RE, XLOG_RE
+from pghoard.common import create_connection_string, TIMELINE_RE, XLOG_RE
 from pghoard.encryptor import Encryptor
 from pghoard.postgres_command import archive_command, restore_command, HTTPConnection, PGCError, main as pgc_main
 from pghoard.restore import HTTPRestore, Restore
+from queue import Queue
 import os
 import psycopg2
 import pytest

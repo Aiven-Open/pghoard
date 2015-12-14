@@ -4,7 +4,6 @@ pghoard: sync local WAL files to remote archive
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
-from __future__ import print_function
 from .common import default_log_format_str, replication_connection_string_using_pgpass
 from .common import TIMELINE_RE, XLOG_RE
 import argparse

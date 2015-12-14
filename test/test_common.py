@@ -11,9 +11,8 @@ from pghoard.common import (
     default_json_serialization,
     get_connection_info,
     json_encode,
-    snappy,
-    SnappyFile,
     )
+from pghoard.compressor import snappy, SnappyFile
 from pghoard.errors import Error
 import datetime
 import json

@@ -4,12 +4,13 @@ pghoard
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
-from pghoard.common import Empty
+from contextlib import suppress
 from pghoard.errors import (
     FileNotFoundFromStorageError,
     InvalidConfigurationError,
     LocalFileIsRemoteFileError,
 )
+from queue import Empty
 from threading import Thread
 import logging
 import os
@@ -66,7 +67,7 @@ def get_object_storage_transfer(config, site):
 
 class TransferAgent(Thread):
     def __init__(self, config, compression_queue, transfer_queue):
-        Thread.__init__(self)
+        super().__init__()
         self.log = logging.getLogger("TransferAgent")
         self.config = config
         self.compression_queue = compression_queue
@@ -215,7 +216,7 @@ class TransferAgent(Thread):
                     self.log.debug("Deleting file: %r since it has been uploaded", file_to_transfer["local_path"])
                     os.unlink(file_to_transfer["local_path"])
                     metadata_path = file_to_transfer["local_path"] + ".metadata"
-                    if os.path.exists(metadata_path):
+                    with suppress(FileNotFoundError):
                         os.unlink(metadata_path)
                 except:  # pylint: disable=bare-except
                     self.log.exception("Problem in deleting file: %r", file_to_transfer["local_path"])

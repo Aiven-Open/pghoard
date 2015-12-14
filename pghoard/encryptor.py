@@ -120,7 +120,7 @@ class Decryptor(object):
 
 class DecryptorFile(io.BufferedIOBase):
     def __init__(self, source_fp, rsa_private_key_pem):
-        super(DecryptorFile, self).__init__()
+        super().__init__()
         self.buffer = b""
         self.buffer_offset = 0
         self.decryptor = None

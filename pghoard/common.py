@@ -4,7 +4,8 @@ pghoard - common utility functions
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
-
+from pghoard.errors import Error
+from urllib.parse import urlparse, parse_qs
 import datetime
 import fcntl
 import json
@@ -12,23 +13,6 @@ import logging
 import os
 import re
 import time
-from . errors import Error
-
-try:
-    from backports import lzma  # pylint: disable=import-error, unused-import
-except ImportError:
-    import lzma  # pylint: disable=import-error, unused-import
-
-
-try:
-    from urllib.parse import urlparse, parse_qs  # pylint: disable=no-name-in-module, import-error
-except ImportError:
-    from urlparse import urlparse, parse_qs  # pylint: disable=no-name-in-module, import-error
-
-try:
-    import snappy
-except ImportError:
-    snappy = None
 
 
 IO_BLOCK_SIZE = 2 ** 20  # 1 MiB
@@ -37,82 +21,8 @@ TIMELINE_RE = re.compile(r"^[A-F0-9]{8}\.history$")
 XLOG_RE = re.compile("^[A-F0-9]{24}$")
 
 
-if hasattr(lzma, "open"):
-    lzma_open = lzma.open  # pylint: disable=no-member, maybe-no-member
-    lzma_open_read = lzma.open  # pylint: disable=no-member, maybe-no-member
-    lzma_compressor = lzma.LZMACompressor  # pylint: disable=no-member
-    lzma_decompressor = lzma.LZMADecompressor  # pylint: disable=no-member
-elif not hasattr(lzma, "options"):
-    def lzma_open(filepath, mode, preset):
-        return lzma.LZMAFile(filepath, mode=mode, preset=preset)
-
-    def lzma_open_read(filepath, mode):
-        return lzma.LZMAFile(filepath, mode=mode)
-
-    def lzma_compressor(preset):
-        return lzma.LZMACompressor(preset=preset)  # pylint: disable=no-member
-
-    def lzma_decompressor():
-        return lzma.LZMADecompressor()  # pylint: disable=no-member
-else:
-    def lzma_open(filepath, mode, preset):
-        return lzma.LZMAFile(filepath, mode=mode, options={"level": preset})  # pylint: disable=unexpected-keyword-arg
-
-    def lzma_open_read(filepath, mode):
-        return lzma.LZMAFile(filepath, mode=mode)
-
-    def lzma_compressor(preset):
-        return lzma.LZMACompressor(options={"level": preset})  # pylint: disable=no-member
-
-    def lzma_decompressor():
-        return lzma.LZMADecompressor()  # pylint: disable=no-member
-
-try:
-    from Queue import Queue, Empty  # pylint: disable=import-error, unused-import
-except ImportError:
-    from queue import Queue, Empty  # pylint: disable=import-error, unused-import
-
-
 default_log_format_str = "%(asctime)s\t%(name)s\t%(threadName)s\t%(levelname)s\t%(message)s"
 syslog_format_str = '%(name)s %(levelname)s: %(message)s'
-
-
-class SnappyFile(object):
-    def __init__(self, fp):
-        self._comp = snappy.StreamDecompressor()
-        self._fp = fp
-        self._done = False
-        self._pos = 0
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, a, b, c):
-        pass
-
-    def tell(self):
-        return self._pos
-
-    def close(self):
-        pass
-
-    def read(self, byte_count=None):  # pylint: disable=unused-argument
-        # NOTE: byte_count arg is ignored, random size output is returned
-        if self._done:
-            return b""
-
-        while True:
-            compressed = self._fp.read(2 ** 20)
-            if not compressed:
-                self._done = True
-                output = self._comp.flush()
-                self._pos += len(output)
-                return output
-
-            output = self._comp.decompress(compressed)
-            if output:
-                self._pos += len(output)
-                return output
 
 
 def create_connection_string(connection_info):
@@ -280,15 +190,6 @@ def convert_pg_command_version_to_number(command_version_string):
     vernum = match.group(1) + ".0"  # padding for development versions
     parts = vernum.split(".")
     return int(parts[0]) * 10000 + int(parts[1]) * 100 + int(parts[2])
-
-
-def datetime_to_timestamp(td):
-    """mimic datetime.timestamp() as available on python 3.0+
-    NOTE: drop this function once we drop python 2 support"""
-    if hasattr(td, "timestamp"):
-        return td.timestamp()
-    delta = td - datetime.datetime(1970, 1, 1, tzinfo=td.tzinfo)
-    return delta.total_seconds()
 
 
 def default_json_serialization(obj):

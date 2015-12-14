@@ -6,8 +6,8 @@ See LICENSE for details
 """
 # pylint: disable=attribute-defined-outside-init
 from .base import PGHoardTestCase
-from pghoard.common import Queue
 from pghoard.inotify import InotifyWatcher
+from queue import Queue
 from unittest import SkipTest
 import os
 import platform
@@ -18,7 +18,7 @@ class TestInotify(PGHoardTestCase):
         if platform.system() == "Darwin":
             raise SkipTest()
 
-        super(TestInotify, self).setup_method(method)
+        super().setup_method(method)
 
         self.queue = Queue()
         self.foo_path = os.path.join(self.temp_dir, "foo")
@@ -31,7 +31,7 @@ class TestInotify(PGHoardTestCase):
     def teardown_method(self, method):
         self.inotify.running = False
         # NOTE: teardown_method() removes the watched dir which terminates inotify immediately
-        super(TestInotify, self).teardown_method(method)
+        super().teardown_method(method)
         self.inotify.join()
 
     def test_create_file(self):

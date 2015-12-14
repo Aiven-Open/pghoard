@@ -4,9 +4,10 @@ pghoard
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
-from .base import Mock, PGHoardTestCase
+from .base import PGHoardTestCase
 from dateutil import tz
 from pghoard.restore import create_recovery_conf, Restore, RestoreError
+from unittest.mock import Mock
 import datetime
 import os
 import pytest
