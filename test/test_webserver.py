@@ -223,6 +223,58 @@ class TestWebServer(object):
         status = conn.getresponse().status
         assert status == 404
 
+        # write failures, this should be retried a couple of times
+        # start by making sure we can access the file normally
+        valid_xlog = "/{}/xlog/{}".format(pghoard.test_site, "E" * 24)
+        store = pghoard.transfer_agents[0].get_object_storage(pghoard.test_site)
+        store.store_file_from_memory(valid_xlog, b"TEST", metadata={"a": "b"})
+        conn.request("HEAD", valid_xlog)
+        status = conn.getresponse().status
+        assert status == 200
+        # write to non-existent directory
+        headers = {"x-pghoard-target-path": str(tmpdir.join("NA", "test_get_invalid"))}
+        conn.request("GET", valid_xlog, headers=headers)
+        status = conn.getresponse().status
+        assert status == 400
+
+        # inject a failure by making a static function fail
+        failures = [0, ""]
+
+        def get_failing_func(orig_func):
+            def failing_func(*args):
+                if failures[0] > 0:
+                    failures[0] -= 1
+                    raise Exception("test_get_invalid failure: {}".format(failures[1]))
+                return orig_func(*args)
+            return failing_func
+
+        for ta in pghoard.transfer_agents:
+            store = ta.get_object_storage(pghoard.test_site)
+            store.get_contents_to_string = get_failing_func(store.get_contents_to_string)
+
+        try:
+            # we should have two retries
+            failures[0] = 2
+            failures[1] = "test_two_fails_success"
+            headers = {"x-pghoard-target-path": str(tmpdir.join("test_get_invalid_2"))}
+            conn.request("GET", valid_xlog, headers=headers)
+            status = conn.getresponse().status
+            assert status == 201
+            assert failures[0] == 0
+
+            # so we should have a hard failure after three attempts
+            failures[0] = 4
+            failures[1] = "test_three_fails_error"
+            headers = {"x-pghoard-target-path": str(tmpdir.join("test_get_invalid_3"))}
+            conn.request("GET", valid_xlog, headers=headers)
+            status = conn.getresponse().status
+            assert status == 500
+            assert failures[0] == 1
+        finally:
+            # clear transfer cache to avoid using our failing versions
+            for ta in pghoard.transfer_agents:
+                ta.site_transfers = {}
+
     def test_get_archived_file(self, pghoard):
         xlog_seg = "00000001000000000000000F"
         xlog_file = "xlog/{}".format(xlog_seg)

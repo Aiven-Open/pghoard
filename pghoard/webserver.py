@@ -108,6 +108,10 @@ class RequestHandler(BaseHTTPRequestHandler):
             yield path
         except HttpResponse as ex:
             resp = ex
+        except Exception as ex:  # pylint: disable=broad-except
+            msg = "server failure: {0.__class__.__name__}: {0}".format(ex)
+            self.server.log.exception(msg)
+            resp = HttpResponse(msg, status=503)
         else:
             resp = HttpResponse("no response generated", status=500)
 
@@ -162,7 +166,7 @@ class RequestHandler(BaseHTTPRequestHandler):
 
         raise HttpResponse("Invalid path {!r}".format(path), status=400)
 
-    def _transfer_agent_op(self, site, filename, filetype, method):
+    def _transfer_agent_op(self, site, filename, filetype, method, retries=2):
         start_time = time.time()
 
         target_path = self.headers.get("x-pghoard-target-path")
@@ -171,8 +175,12 @@ class RequestHandler(BaseHTTPRequestHandler):
                 raise HttpResponse("x-pghoard-target-path header missing from download", status=400)
             # NOTE: we request download on a temporary download path so we can atomically overwrite the file if /
             # when we successfully receive it.
-            fd, tmp_target_path = tempfile.mkstemp(prefix="{}.".format(target_path), suffix=".pghoard.tmp")
-            os.close(fd)
+            try:
+                fd, tmp_target_path = tempfile.mkstemp(prefix="{}.".format(target_path), suffix=".pghoard.tmp")
+                os.close(fd)
+            except OSError as ex:
+                raise HttpResponse("Unable to create temporary file for {0!r}: {1.__class__.__name__}: {1}"
+                                   .format(target_path, ex), status=400)
         else:
             if target_path:
                 raise HttpResponse("x-pghoard-target-path header is only valid for downloads", status=400)
@@ -205,16 +213,23 @@ class RequestHandler(BaseHTTPRequestHandler):
                 if isinstance(response.get("exception"), FileNotFoundFromStorageError):
                     raise HttpResponse("{0.__class__.__name__}: {0}".format(response["exception"]), status=404)
                 raise HttpResponse(status=500)
-        except HttpResponse:
+        except HttpResponse as ex:
             if tmp_target_path:
                 try:
                     os.unlink(tmp_target_path)
                 except:  # pylint: disable=bare-except
                     pass
+            if ex.status == 500 and retries:
+                self.server.log.warning("Transfer operation failed, retrying (%r retries left)", retries)
+                return self._transfer_agent_op(site, filename, filetype, method, retries=retries - 1)
             raise
 
         if tmp_target_path:
-            os.rename(tmp_target_path, target_path)
+            try:
+                os.rename(tmp_target_path, target_path)
+            except OSError as ex:
+                fmt = "Unable to write final file to requested location {path!r}: {ex.__class__.__name__}: {ex}"
+                raise HttpResponse(fmt.format(path=target_path, ex=ex), status=402)
         return response
 
     def get_wal_or_timeline_file(self, site, filename, filetype):
