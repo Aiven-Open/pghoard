@@ -5,6 +5,7 @@ Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
 
+from __future__ import print_function
 import argparse
 import os
 import sys
@@ -52,7 +53,12 @@ def restore_command(site, xlog, output, host=PGHOARD_HOST, port=PGHOARD_PORT):
         return
     if status == 200 and method == "HEAD":
         return
-    raise PGCError("Restore failed with HTTP status {}".format(status))
+    # NOTE: PostgreSQL interprets exit codes 1..125 as "file not found errors" signaling that there's no
+    # such wal file from which PostgreSQL assumes that we've completed recovery so we never want to return
+    # such an error code unless we actually got confirmation that the file isn't in the backend.
+    if status == 404:
+        raise PGCError("{!r} not found from archive".format(xlog), exit_code=1)
+    raise PGCError("Restore failed with HTTP status {}".format(status), exit_code=255)
 
 
 def main(args=None):
@@ -70,8 +76,11 @@ def main(args=None):
     parser.add_argument("--mode", type=str, required=True,
                         choices=["archive", "restore"],
                         help="operation mode")
-    pa = parser.parse_args(args)
+
+    # Note that we try to catch as many exception as possible and to exit with return code 255 unless we get a
+    # custom exception stating otherwise.  This is to avoid signalling "end of recovery" to PostgreSQL.
     try:
+        pa = parser.parse_args(args)
         if pa.mode == "archive":
             archive_command(pa.site, pa.xlog, pa.host, pa.port)
         elif pa.mode == "restore":
@@ -82,6 +91,12 @@ def main(args=None):
     except PGCError as ex:
         print("{}: ERROR: {}".format(sys.argv[0], ex))
         return ex.exit_code
+    except SystemExit:
+        return 255
+    except:  # pylint: disable=bare-except
+        import traceback
+        traceback.print_exc()
+        return 255
 
 
 if __name__ == "__main__":

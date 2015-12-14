@@ -158,7 +158,7 @@ class TransferAgent(Thread):
                 self.log.warning("%r not found from storage", key)
             else:
                 self.log.exception("Problem happened when retrieving metadata: %r, %r", key, file_to_transfer)
-            return {"success": False}
+            return {"success": False, "exception": ex}
 
     def handle_metadata(self, site, key, file_to_transfer):
         try:
@@ -171,7 +171,7 @@ class TransferAgent(Thread):
                 self.log.warning("%r not found from storage", key)
             else:
                 self.log.exception("Problem happened when retrieving metadata: %r, %r", key, file_to_transfer)
-            return {"success": False}
+            return {"success": False, "exception": ex}
 
     def handle_download(self, site, key, file_to_transfer):
         try:
@@ -194,7 +194,7 @@ class TransferAgent(Thread):
                 self.log.warning("%r not found from storage", key)
             else:
                 self.log.exception("Problem happened when downloading: %r, %r", key, file_to_transfer)
-            return {"success": False}
+            return {"success": False, "exception": ex}
 
     def handle_upload(self, site, key, file_to_transfer):
         try:
@@ -220,9 +220,9 @@ class TransferAgent(Thread):
                 except:  # pylint: disable=bare-except
                     self.log.exception("Problem in deleting file: %r", file_to_transfer["local_path"])
             return {"success": True}
-        except Exception:  # pylint: disable=broad-except
+        except Exception as ex:  # pylint: disable=broad-except
             self.log.exception("Problem in moving file: %r, need to retry", file_to_transfer["local_path"])
             # TODO come up with something so we don't busy loop
             time.sleep(0.5)
             self.transfer_queue.put(file_to_transfer)
-            return {"success": False, "call_callback": False}
+            return {"success": False, "call_callback": False, "exception": ex}

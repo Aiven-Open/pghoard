@@ -9,7 +9,7 @@ from .base import CONSTANT_TEST_RSA_PUBLIC_KEY, CONSTANT_TEST_RSA_PRIVATE_KEY
 from pghoard.archive_sync import ArchiveSync
 from pghoard.common import create_connection_string, Queue, TIMELINE_RE, XLOG_RE
 from pghoard.encryptor import Encryptor
-from pghoard.postgres_command import archive_command, restore_command, PGCError, main as pgc_main
+from pghoard.postgres_command import archive_command, restore_command, HTTPConnection, PGCError, main as pgc_main
 from pghoard.restore import HTTPRestore, Restore
 import os
 import psycopg2
@@ -199,6 +199,29 @@ class TestWebServer(object):
             archive_command(host="127.0.0.1", port=pghoard.config["http_port"],
                             site=pghoard.test_site, xlog=bl_label)
         assert not os.path.exists(backup_xlog_path)
+
+    def test_get_invalid(self, pghoard, tmpdir):
+        nonexistent_xlog = "/{}/archive/{}".format(pghoard.test_site, "F" * 24)
+        # x-pghoard-target-path missing
+        conn = HTTPConnection(host="127.0.0.1", port=pghoard.config["http_port"])
+        conn.request("GET", nonexistent_xlog)
+        status = conn.getresponse().status
+        assert status == 400
+        # missing xlog file
+        headers = {"x-pghoard-target-path": str(tmpdir.join("test_get_invalid"))}
+        conn.request("GET", nonexistent_xlog, headers=headers)
+        status = conn.getresponse().status
+        assert status == 404
+        # no x-pghoard-target-path for head
+        headers = {"x-pghoard-target-path": str(tmpdir.join("test_get_invalid"))}
+        conn.request("HEAD", nonexistent_xlog, headers=headers)
+        status = conn.getresponse().status
+        assert status == 400
+        # missing xlog file
+        headers = {"x-pghoard-target-path": str(tmpdir.join("test_get_invalid"))}
+        conn.request("HEAD", nonexistent_xlog)
+        status = conn.getresponse().status
+        assert status == 404
 
     def test_get_archived_file(self, pghoard):
         xlog_seg = "00000001000000000000000F"

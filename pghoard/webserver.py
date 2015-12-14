@@ -6,7 +6,8 @@ See LICENSE for details
 """
 
 from . import __version__
-from . common import Empty, Queue, json_encode, TIMELINE_RE, XLOG_RE
+from .common import Empty, Queue, json_encode, TIMELINE_RE, XLOG_RE
+from .errors import FileNotFoundFromStorageError
 from contextlib import contextmanager
 from threading import Thread
 import logging
@@ -97,8 +98,8 @@ class RequestHandler(BaseHTTPRequestHandler):
     server_version = "pghoard/" + __version__
 
     @contextmanager
-    def _response_handler(self):
-        self.server.log.debug("Got request: %r", self.path)
+    def _response_handler(self, method):
+        self.server.log.debug("Request: %s %r", method, self.path)
         path = self.path.lstrip("/").split("/")
 
         resp = None
@@ -160,10 +161,15 @@ class RequestHandler(BaseHTTPRequestHandler):
 
         raise HttpResponse("Invalid path {!r}".format(path), status=400)
 
-    def _transfer_agent_op(self, site, filename, filetype, method, fail=500):
+    def _transfer_agent_op(self, site, filename, filetype, method):
         start_time = time.time()
 
         target_path = self.headers.get("x-pghoard-target-path")
+        if method == "DOWNLOAD" and not target_path:
+            raise HttpResponse("x-pghoard-target-path header missing from download", status=400)
+        elif method != "DOWNLOAD" and target_path:
+            raise HttpResponse("x-pghoard-target-path header is only valid for downloads", status=400)
+
         self.server.log.debug("Requesting site: %r, filename: %r, filetype: %r, target_path: %r",
                               site, filename, filetype, target_path)
 
@@ -186,7 +192,9 @@ class RequestHandler(BaseHTTPRequestHandler):
             raise HttpResponse("TIMEOUT", status=500)
 
         if not response["success"]:
-            raise HttpResponse(status=fail)
+            if isinstance(response.get("exception"), FileNotFoundFromStorageError):
+                raise HttpResponse("{0.__class__.__name__}: {0}".format(response["exception"]), status=404)
+            raise HttpResponse(status=500)
         return response
 
     def get_wal_or_timeline_file(self, site, filename, filetype):
@@ -235,19 +243,19 @@ class RequestHandler(BaseHTTPRequestHandler):
         raise HttpResponse(status=201)
 
     def do_PUT(self):
-        with self._response_handler() as path:
+        with self._response_handler("PUT") as path:
             site, obtype, obname = self._parse_request(path)
             assert obtype in ("xlog", "timeline")
             self.handle_archival_request(site, obname)
 
     def do_HEAD(self):
-        with self._response_handler() as path:
+        with self._response_handler("HEAD") as path:
             site, obtype, obname = self._parse_request(path)
             self._transfer_agent_op(site, obname, obtype, "METADATA")
             raise HttpResponse(status=200)
 
     def do_GET(self):
-        with self._response_handler() as path:
+        with self._response_handler("GET") as path:
             site, obtype, obname = self._parse_request(path)
             if obtype == "basebackup":
                 self.list_basebackups(site)
