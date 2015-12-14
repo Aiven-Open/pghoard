@@ -6,11 +6,11 @@ See LICENSE for details
 """
 # pylint: disable=attribute-defined-outside-init
 from .base import CONSTANT_TEST_RSA_PUBLIC_KEY, CONSTANT_TEST_RSA_PRIVATE_KEY
-from pghoard.archive_command import archive
 from pghoard.archive_sync import ArchiveSync
 from pghoard.common import create_connection_string, Queue, TIMELINE_RE, XLOG_RE
 from pghoard.encryptor import Encryptor
-from pghoard.restore import HTTPRestore
+from pghoard.postgres_command import archive_command, restore_command, HTTPConnection, PGCError, main as pgc_main
+from pghoard.restore import HTTPRestore, Restore
 import os
 import psycopg2
 import pytest
@@ -25,8 +25,26 @@ def http_restore(pghoard):
 
 class TestWebServer(object):
     def test_list_empty_basebackups(self, pghoard, http_restore, capsys):  # pylint: disable=redefined-outer-name
+        # List with direct HttpRestore access
         assert http_restore.list_basebackups() == []
         http_restore.show_basebackup_list()
+        out, _ = capsys.readouterr()
+        assert pghoard.test_site in out
+        # list using restore command over http
+        Restore().run([
+            "list-basebackups-http",
+            "--host", "localhost",
+            "--port", str(pghoard.config["http_port"]),
+            "--site", pghoard.test_site,
+        ])
+        out, _ = capsys.readouterr()
+        assert pghoard.test_site in out
+        # list using restore command with direct object storage access
+        Restore().run([
+            "list-basebackups",
+            "--config", pghoard.config_path,
+            "--site", pghoard.test_site,
+        ])
         out, _ = capsys.readouterr()
         assert pghoard.test_site in out
 
@@ -52,35 +70,27 @@ class TestWebServer(object):
         out, _ = capsys.readouterr()
         assert str(backups[0]["size"]) in out
         assert backups[0]["name"] in out
-        # test file access
-        if pghoard.config["backup_sites"][pghoard.test_site]["object_storage"]:
-            # FIXME: basebackup retrieval only works for local files
-            return
-        # NOTE: get_archive_file isn't currently really compatible with
-        # basebackups as it's not possible to request a basebackup to be
-        # written to a file and get_archive_file returns a boolean status
-        backup_base_name = os.path.basename(backups[0]["name"])
-        aresult = http_restore.get_archive_file("basebackup/" + backup_base_name,
-                                                target_path="dltest", target_path_prefix=tmpdir)
-        assert aresult is True
-        # test restoring using get_basebackup_file_to_fileobj
-        with open(os.path.join(tmpdir, "b.tar"), "wb") as fp:
-            metadata = http_restore.get_basebackup_file_to_fileobj(backup_base_name, fp)
-        assert set(metadata) == {"compression-algorithm", "original-file-size", "start-time", "start-wal-segment"}
-        assert metadata["compression-algorithm"] == pghoard.config["compression"]["algorithm"]
+        # TODO: add support for downloading basebackups through the webserver
+        # http_restore.get_archive_file(backups[0]["name"], target_path="dltest", target_path_prefix=tmpdir)
+        # assert set(metadata) == {"compression-algorithm", "original-file-size", "start-time", "start-wal-segment"}
+        # assert metadata["compression-algorithm"] == pghoard.config["compression"]["algorithm"]
         # TODO: check that we can restore the backup
 
     def test_archiving(self, pghoard):
         store = pghoard.transfer_agents[0].get_object_storage(pghoard.test_site)
-        # inject a fake WAL file for testing
-        xlog_file = "0000000000000000000000CC"
-        foo_path = os.path.join(pghoard.config["backup_sites"][pghoard.test_site]["pg_xlog_directory"], xlog_file)
-        with open(foo_path, "wb") as out_file:
-            out_file.write(b"foo")
-        assert archive(port=pghoard.config["http_port"], site=pghoard.test_site, xlog_file=xlog_file) is True
-        archive_path = os.path.join(pghoard.test_site, "xlog", xlog_file)
-        store.get_metadata_for_key(archive_path)
-        store.delete_key(archive_path)
+        # inject fake WAL and timeline files for testing
+        for xlog_type, xlog_name in [
+                ("xlog", "0000000000000000000000CC"),
+                ("timeline", "0000000F.history")]:
+            foo_path = os.path.join(pghoard.config["backup_sites"][pghoard.test_site]["pg_xlog_directory"], xlog_name)
+            with open(foo_path, "wb") as out_file:
+                out_file.write(b"foo")
+            archive_command(host="localhost", port=pghoard.config["http_port"],
+                            site=pghoard.test_site, xlog=xlog_name)
+            archive_path = os.path.join(pghoard.test_site, xlog_type, xlog_name)
+            store.get_metadata_for_key(archive_path)
+            store.delete_key(archive_path)
+            os.unlink(foo_path)
 
     def _switch_xlog(self, db, count):
         conn = psycopg2.connect(create_connection_string(db.user))
@@ -177,20 +187,100 @@ class TestWebServer(object):
         assert len(archived_xlogs) >= 1
         assert len(archived_xlogs) <= 3
 
-    def test_archiving_backup_label_from_archive_command(self, pghoard):
-        bl_file = "000000010000000000000002.00000028.backup"
-        xlog_path = os.path.join(pghoard.config["backup_sites"][pghoard.test_site]["pg_xlog_directory"], bl_file)
-        backup_xlog_path = os.path.join(pghoard.config["backup_location"], pghoard.test_site, "xlog", bl_file)
+    def test_archive_command_with_invalid_file(self, pghoard):
+        # only xlog and timeline (.history) files can be archived
+        bl_label = "000000010000000000000002.00000028.backup"
+        bl_file = "xlog/{}".format(bl_label)
+        xlog_path = os.path.join(pghoard.config["backup_sites"][pghoard.test_site]["pg_xlog_directory"], bl_label)
+        backup_xlog_path = os.path.join(pghoard.config["backup_location"], pghoard.test_site, bl_file)
         with open(xlog_path, "w") as fp:
             fp.write("jee")
-        assert archive(port=pghoard.config["http_port"], site=pghoard.test_site, xlog_file=bl_file) is True
+        with pytest.raises(PGCError):
+            archive_command(host="127.0.0.1", port=pghoard.config["http_port"],
+                            site=pghoard.test_site, xlog=bl_label)
         assert not os.path.exists(backup_xlog_path)
 
-    def test_get_archived_file(self, pghoard, http_restore):  # pylint: disable=redefined-outer-name
+    def test_get_invalid(self, pghoard, tmpdir):
+        nonexistent_xlog = "/{}/archive/{}".format(pghoard.test_site, "F" * 24)
+        # x-pghoard-target-path missing
+        conn = HTTPConnection(host="127.0.0.1", port=pghoard.config["http_port"])
+        conn.request("GET", nonexistent_xlog)
+        status = conn.getresponse().status
+        assert status == 400
+        # missing xlog file
+        headers = {"x-pghoard-target-path": str(tmpdir.join("test_get_invalid"))}
+        conn.request("GET", nonexistent_xlog, headers=headers)
+        status = conn.getresponse().status
+        assert status == 404
+        # no x-pghoard-target-path for head
+        headers = {"x-pghoard-target-path": str(tmpdir.join("test_get_invalid"))}
+        conn.request("HEAD", nonexistent_xlog, headers=headers)
+        status = conn.getresponse().status
+        assert status == 400
+        # missing xlog file
+        headers = {"x-pghoard-target-path": str(tmpdir.join("test_get_invalid"))}
+        conn.request("HEAD", nonexistent_xlog)
+        status = conn.getresponse().status
+        assert status == 404
+
+        # write failures, this should be retried a couple of times
+        # start by making sure we can access the file normally
+        valid_xlog = "/{}/xlog/{}".format(pghoard.test_site, "E" * 24)
+        store = pghoard.transfer_agents[0].get_object_storage(pghoard.test_site)
+        store.store_file_from_memory(valid_xlog, b"TEST", metadata={"a": "b"})
+        conn.request("HEAD", valid_xlog)
+        status = conn.getresponse().status
+        assert status == 200
+        # write to non-existent directory
+        headers = {"x-pghoard-target-path": str(tmpdir.join("NA", "test_get_invalid"))}
+        conn.request("GET", valid_xlog, headers=headers)
+        status = conn.getresponse().status
+        assert status == 400
+
+        # inject a failure by making a static function fail
+        failures = [0, ""]
+
+        def get_failing_func(orig_func):
+            def failing_func(*args):
+                if failures[0] > 0:
+                    failures[0] -= 1
+                    raise Exception("test_get_invalid failure: {}".format(failures[1]))
+                return orig_func(*args)
+            return failing_func
+
+        for ta in pghoard.transfer_agents:
+            store = ta.get_object_storage(pghoard.test_site)
+            store.get_contents_to_string = get_failing_func(store.get_contents_to_string)
+
+        try:
+            # we should have two retries
+            failures[0] = 2
+            failures[1] = "test_two_fails_success"
+            headers = {"x-pghoard-target-path": str(tmpdir.join("test_get_invalid_2"))}
+            conn.request("GET", valid_xlog, headers=headers)
+            status = conn.getresponse().status
+            assert status == 201
+            assert failures[0] == 0
+
+            # so we should have a hard failure after three attempts
+            failures[0] = 4
+            failures[1] = "test_three_fails_error"
+            headers = {"x-pghoard-target-path": str(tmpdir.join("test_get_invalid_3"))}
+            conn.request("GET", valid_xlog, headers=headers)
+            status = conn.getresponse().status
+            assert status == 500
+            assert failures[0] == 1
+        finally:
+            # clear transfer cache to avoid using our failing versions
+            for ta in pghoard.transfer_agents:
+                ta.site_transfers = {}
+
+    def test_get_archived_file(self, pghoard):
+        xlog_seg = "00000001000000000000000F"
+        xlog_file = "xlog/{}".format(xlog_seg)
         content = b"testing123"
-        xlog_file = "00000001000000000000000F"
         pgdata = os.path.dirname(pghoard.config["backup_sites"][pghoard.test_site]["pg_xlog_directory"])
-        archive_path = os.path.join(pghoard.test_site, "xlog", xlog_file)
+        archive_path = os.path.join(pghoard.test_site, xlog_file)
         compressor = pghoard.Compressor()
         compressed_content = compressor.compress(content) + (compressor.flush() or b"")
         metadata = {
@@ -200,22 +290,39 @@ class TestWebServer(object):
         store = pghoard.transfer_agents[0].get_object_storage(pghoard.test_site)
         store.store_file_from_memory(archive_path, compressed_content, metadata=metadata)
 
-        assert http_restore.query_archive_file(xlog_file) is True
-        http_restore.get_archive_file(xlog_file, "pg_xlog/" + xlog_file, target_path_prefix=pgdata)
-        assert os.path.exists(os.path.join(pgdata, "pg_xlog", xlog_file)) is True
-        with open(os.path.join(pgdata, "pg_xlog", xlog_file), "rb") as fp:
+        restore_command(site=pghoard.test_site, xlog=xlog_seg, output=None,
+                        host="127.0.0.1", port=pghoard.config["http_port"])
+        restore_target = os.path.join(pgdata, "pg_xlog", xlog_seg)
+        restore_command(site=pghoard.test_site, xlog=xlog_seg, output=restore_target,
+                        host="127.0.0.1", port=pghoard.config["http_port"])
+        assert os.path.exists(restore_target) is True
+        with open(restore_target, "rb") as fp:
             restored_data = fp.read()
         assert content == restored_data
 
-    def test_get_encrypted_archived_file(self, pghoard, http_restore):  # pylint: disable=redefined-outer-name
+        # test the same thing using restore as 'pghoard_postgres_command'
+        tmp_out = os.path.join(pgdata, restore_target + ".cmd")
+        pgc_main([
+            "--host", "localhost",
+            "--port", str(pghoard.config["http_port"]),
+            "--site", pghoard.test_site,
+            "--mode", "restore",
+            "--output", tmp_out,
+            "--xlog", xlog_seg,
+        ])
+        with open(tmp_out, "rb") as fp:
+            restored_data = fp.read()
+        assert content == restored_data
+
+    def test_get_encrypted_archived_file(self, pghoard):
+        xlog_seg = "000000010000000000000010"
         content = b"testing123"
         compressor = pghoard.Compressor()
         compressed_content = compressor.compress(content) + (compressor.flush() or b"")
         encryptor = Encryptor(CONSTANT_TEST_RSA_PUBLIC_KEY)
         encrypted_content = encryptor.update(compressed_content) + encryptor.finalize()
-        xlog_file = "000000010000000000000010"
         pgdata = os.path.dirname(pghoard.config["backup_sites"][pghoard.test_site]["pg_xlog_directory"])
-        archive_path = os.path.join(pghoard.test_site, "xlog", xlog_file)
+        archive_path = os.path.join(pghoard.test_site, "xlog", xlog_seg)
         metadata = {
             "compression-algorithm": pghoard.config["compression"]["algorithm"],
             "original-file-size": len(content),
@@ -229,8 +336,10 @@ class TestWebServer(object):
                 "private": CONSTANT_TEST_RSA_PRIVATE_KEY,
             },
         }
-        http_restore.get_archive_file(xlog_file, "pg_xlog/" + xlog_file, target_path_prefix=pgdata)
-        assert os.path.exists(os.path.join(pgdata, "pg_xlog", xlog_file))
-        with open(os.path.join(pgdata, "pg_xlog", xlog_file), "rb") as fp:
+        restore_target = os.path.join(pgdata, "pg_xlog", xlog_seg)
+        restore_command(site=pghoard.test_site, xlog=xlog_seg, output=restore_target,
+                        host="127.0.0.1", port=pghoard.config["http_port"])
+        assert os.path.exists(restore_target)
+        with open(restore_target, "rb") as fp:
             restored_data = fp.read()
         assert content == restored_data

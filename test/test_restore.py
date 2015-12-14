@@ -19,19 +19,6 @@ class TestRecoveryConf(PGHoardTestCase):
         r._get_object_storage = Mock()  # pylint: disable=protected-access
         with pytest.raises(RestoreError) as excinfo:
             r.run(args=[
-                "get-basebackup-http",
-                "--config=" + str(tmpdir),
-                "--target-dir=" + str(tmpdir),
-                "--host=localhost",
-                "--port=1",
-                "--site=test",
-                "--recovery-target-action=promote",
-                "--recovery-target-name=foobar",
-                "--recovery-target-xid=42",
-            ])
-        assert "at most one" in str(excinfo.value)
-        with pytest.raises(RestoreError) as excinfo:
-            r.run(args=[
                 "get-basebackup",
                 "--config=" + str(tmpdir),
                 "--target-dir=" + str(tmpdir),

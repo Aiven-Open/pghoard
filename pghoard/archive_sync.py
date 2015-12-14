@@ -114,7 +114,7 @@ class ArchiveSync(object):
                 archive_type = "WAL"
 
             if archive_type:
-                resp = requests.head("{base}/{file}".format(base=self.base_url, file=xlog_file))
+                resp = requests.head("{base}/archive/{file}".format(base=self.base_url, file=xlog_file))
                 if resp.status_code == 200:
                     self.log.info("%s file %r already archived", archive_type, xlog_file)
                     continue

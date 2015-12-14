@@ -6,13 +6,14 @@ See LICENSE for details
 """
 
 from . import __version__
-from . common import Empty, Queue, json_encode
+from .common import Empty, Queue, json_encode, TIMELINE_RE, XLOG_RE
+from .errors import FileNotFoundFromStorageError
+from contextlib import contextmanager
 from threading import Thread
-import json
 import logging
 import os
-import shutil
 import sys
+import tempfile
 import time
 
 
@@ -35,6 +36,18 @@ else:
 
     class OwnHTTPServer(ThreadingMixIn, HTTPServer):  # pylint: disable=no-init
         """httpserver with threadingmixin"""
+
+
+class HttpResponse(Exception):
+    def __init__(self, msg=None, headers=None, status=500):
+        self.error = not (status >= 200 and status <= 299)
+        self.headers = headers or {}
+        self.msg = msg
+        self.status = status
+        if self.error:
+            super(HttpResponse, self).__init__("{} {}: {}".format(self.__class__.__name__, status, msg))
+        else:
+            super(HttpResponse, self).__init__("{} {}".format(self.__class__.__name__, status))
 
 
 class WebServer(Thread):
@@ -85,10 +98,94 @@ class RequestHandler(BaseHTTPRequestHandler):
     disable_nagle_algorithm = True
     server_version = "pghoard/" + __version__
 
-    def _transfer_agent_op(self, site, filename, filetype, method):
+    @contextmanager
+    def _response_handler(self, method):
+        self.server.log.debug("Request: %s %r", method, self.path)
+        path = self.path.lstrip("/").split("/")
+
+        resp = None
+        try:
+            yield path
+        except HttpResponse as ex:
+            resp = ex
+        except Exception as ex:  # pylint: disable=broad-except
+            msg = "server failure: {0.__class__.__name__}: {0}".format(ex)
+            self.server.log.exception(msg)
+            resp = HttpResponse(msg, status=503)
+        else:
+            resp = HttpResponse("no response generated", status=500)
+
+        if resp.error:
+            self.server.log.warning(str(resp))
+            resp.headers.setdefault("content-type", "text/plain")
+        else:
+            self.server.log.debug(str(resp))
+            resp.headers.setdefault("content-type", "application/octet-stream")
+        if isinstance(resp.msg, dict):
+            bmsg = json_encode(resp.msg, compact=False, binary=True)
+            resp.headers["content-type"] = "application/json"
+        elif resp.msg:
+            bmsg = resp.msg.encode("utf-8")
+        else:
+            bmsg = b""
+        resp.headers["content-length"] = str(len(bmsg))
+        self.send_response(resp.status)
+        for k, v in resp.headers.items():
+            self.send_header(k, v)
+        self.end_headers()
+        self.wfile.write(bmsg)
+
+    def _parse_request(self, path):
+        if len(path) < 2:
+            raise HttpResponse("Invalid path {!r}".format(path), status=400)
+
+        site = path[0]
+        if site not in self.server.config["backup_sites"]:
+            raise HttpResponse("Site: {!r} not found for path {!r}".format(site, path), status=404)
+
+        obtype = path[1]
+        if obtype == "basebackup":
+            if len(path) != 2:
+                raise HttpResponse("Invalid basebackup request, only listing is supported for now", status=400)
+            return site, obtype, None
+
+        if obtype in ("archive", "timeline", "xlog"):
+            if len(path) != 3:
+                raise HttpResponse("Invalid {!r} request, only single file retrieval is supported for now"
+                                   .format(obtype), status=400)
+            # allow postgresql's archive_command and restore_command to just feed in files without providing
+            # their types which isn't possible without a wrapper to add it.
+            if obtype == "archive":
+                if XLOG_RE.match(path[2]):
+                    obtype = "xlog"
+                elif TIMELINE_RE.match(path[2]):
+                    obtype = "timeline"
+                else:
+                    raise HttpResponse("Unrecognized file {!r} for archiving".format(path[2]), status=400)
+            return site, obtype, path[2]
+
+        raise HttpResponse("Invalid path {!r}".format(path), status=400)
+
+    def _transfer_agent_op(self, site, filename, filetype, method, retries=2):
         start_time = time.time()
 
         target_path = self.headers.get("x-pghoard-target-path")
+        if method == "DOWNLOAD":
+            if not target_path:
+                raise HttpResponse("x-pghoard-target-path header missing from download", status=400)
+            # NOTE: we request download on a temporary download path so we can atomically overwrite the file if /
+            # when we successfully receive it.
+            try:
+                fd, tmp_target_path = tempfile.mkstemp(prefix="{}.".format(target_path), suffix=".pghoard.tmp")
+                os.close(fd)
+            except OSError as ex:
+                raise HttpResponse("Unable to create temporary file for {0!r}: {1.__class__.__name__}: {1}"
+                                   .format(target_path, ex), status=400)
+        else:
+            if target_path:
+                raise HttpResponse("x-pghoard-target-path header is only valid for downloads", status=400)
+            tmp_target_path = None
+
         self.server.log.debug("Requesting site: %r, filename: %r, filetype: %r, target_path: %r",
                               site, filename, filetype, target_path)
 
@@ -98,54 +195,66 @@ class RequestHandler(BaseHTTPRequestHandler):
             "filetype": filetype,
             "local_path": filename,
             "site": site,
-            "target_path": target_path,
+            "target_path": tmp_target_path,
             "type": method,
         })
-        response = callback_queue.get(timeout=30.0)
-        self.server.log.debug("Handled a %s request for: %r %r, took: %.3fs",
-                              method, site, target_path, time.time() - start_time)
+
+        try:
+            try:
+                response = callback_queue.get(timeout=30.0)
+                self.server.log.debug("Handled a %s request for: %r %r, took: %.3fs",
+                                      method, site, target_path, time.time() - start_time)
+            except Empty:
+                self.server.log.exception("Timeout on a %s request for: %r %r, took: %.3fs",
+                                          method, site, target_path, time.time() - start_time)
+                raise HttpResponse("TIMEOUT", status=500)
+
+            if not response["success"]:
+                if isinstance(response.get("exception"), FileNotFoundFromStorageError):
+                    raise HttpResponse("{0.__class__.__name__}: {0}".format(response["exception"]), status=404)
+                raise HttpResponse(status=500)
+        except HttpResponse as ex:
+            if tmp_target_path:
+                try:
+                    os.unlink(tmp_target_path)
+                except:  # pylint: disable=bare-except
+                    pass
+            if ex.status == 500 and retries:
+                self.server.log.warning("Transfer operation failed, retrying (%r retries left)", retries)
+                return self._transfer_agent_op(site, filename, filetype, method, retries=retries - 1)
+            raise
+
+        if tmp_target_path:
+            try:
+                os.rename(tmp_target_path, target_path)
+            except OSError as ex:
+                fmt = "Unable to write final file to requested location {path!r}: {ex.__class__.__name__}: {ex}"
+                raise HttpResponse(fmt.format(path=target_path, ex=ex), status=402)
         return response
 
     def get_wal_or_timeline_file(self, site, filename, filetype):
-        response = self._transfer_agent_op(site, filename, filetype, "DOWNLOAD")
-        http_status = 201 if response["success"] else 404
-        return None, {}, http_status
+        self._transfer_agent_op(site, filename, filetype, "DOWNLOAD")
+        raise HttpResponse(status=201)
 
     def list_basebackups(self, site):
         response = self._transfer_agent_op(site, "", "basebackup", "LIST")
-        if not response["success"]:
-            return None, {}, 500
-        result = {"basebackups": response["items"]}
-        return result, {}, 200
-
-    def get_basebackup(self, site, which_one):
-        backup_path = os.path.join(self.server.config["backup_location"], site, "basebackup", which_one)
-        backup_metadata = os.path.join(self.server.config["backup_location"], site, "basebackup", which_one + ".metadata")
-        with open(backup_metadata, "r") as fp:
-            metadata = json.load(fp)
-        headers = {}
-        for key, value in metadata.items():
-            headers["x-pghoard-" + key] = value
-        return open(backup_path, "rb"), headers, 200
-
-    def log_and_parse_request(self):
-        self.server.log.debug("Got request: %r", self.path)
-        path = self.path.lstrip("/").split("/")
-        site = path[0]
-        return site, path
+        raise HttpResponse({"basebackups": response["items"]}, status=200)
 
     def handle_archival_request(self, site, filename):
-        start_time, compress_to_memory = time.time(), True
-        xlog_dir = self.server.config["backup_sites"][site].get("pg_xlog_directory", "/var/lib/pgsql/data/pg_xlog/")
+        start_time = time.time()
+        site_config = self.server.config["backup_sites"][site]
+        xlog_dir = site_config.get("pg_xlog_directory", "/var/lib/pgsql/data/pg_xlog")
         xlog_path = os.path.join(xlog_dir, filename)
         self.server.log.debug("Got request to archive: %r %r, %r", site, filename, xlog_path)
         if not os.path.exists(xlog_path):
             self.server.log.debug("xlog_path: %r did not exist, cannot archive, returning 404", xlog_path)
-            self.send_response(404)
+            raise HttpResponse("N/A", status=404)
 
         callback_queue = Queue()
         if not self.server.config["backup_sites"][site].get("object_storage"):
             compress_to_memory = False
+        else:
+            compress_to_memory = True
         compression_event = {
             "type": "CLOSE_WRITE",
             "callback_queue": callback_queue,
@@ -157,106 +266,33 @@ class RequestHandler(BaseHTTPRequestHandler):
         self.server.compression_queue.put(compression_event)
         try:
             response = callback_queue.get(timeout=30)
-            if response["success"]:
-                self.send_response(201)  # resource created
-                self.send_header("content-length", "0")
-                self.end_headers()
             self.server.log.debug("Handled an archival request for: %r %r, took: %.3fs",
                                   site, xlog_path, time.time() - start_time)
-            return
         except Empty:
             self.server.log.exception("Problem in getting a response in time, returning 404, took: %.2fs",
                                       time.time() - start_time)
+            raise HttpResponse("TIMEOUT", status=500)
+
+        if not response["success"]:
+            raise HttpResponse(status=500)
+        raise HttpResponse(status=201)
 
     def do_PUT(self):
-        site, path = self.log_and_parse_request()
-        if site in self.server.config["backup_sites"]:
-            if path[1] == "archive":
-                self.handle_archival_request(site, path[2])
-                return
-        self.send_response(404)
-
-    def _oper_type_from_path(self, path):
-        # TODO use something nicer to map URIs
-        site = path[0]
-        if site not in self.server.config["backup_sites"]:
-            self.server.log.warning("Site: %r not found, path was: %r", site, path)
-            self.send_response(404)
-            return None, None
-
-        if len(path) >= 2 and path[1] == "basebackup":
-            if len(path) == 2:
-                return "basebackup", None
-            elif len(path) == 3:
-                return "basebackup", path[2]
-        elif len(path) == 2 and len(path[1]) == 24:
-            return "xlog", path[1]
-        elif path[1].endswith(".history"):
-            return "timeline", path[1]
-
-        self.server.log.warning("Invalid operation path %r", path)
-        self.send_response(404)
-        self.send_header("content-length", "0")
-        self.end_headers()
-        return None, None
+        with self._response_handler("PUT") as path:
+            site, obtype, obname = self._parse_request(path)
+            assert obtype in ("xlog", "timeline")
+            self.handle_archival_request(site, obname)
 
     def do_HEAD(self):
-        site, path = self.log_and_parse_request()
-        op_type, op_target = self._oper_type_from_path(path)
-        if not op_type:
-            return
-        response = self._transfer_agent_op(site, op_target, op_type, "METADATA")
-        http_status = 200 if response["success"] else 404
-        self.send_response(http_status)
-        self.send_header("content-length", "0")
-        self.end_headers()
+        with self._response_handler("HEAD") as path:
+            site, obtype, obname = self._parse_request(path)
+            self._transfer_agent_op(site, obname, obtype, "METADATA")
+            raise HttpResponse(status=200)
 
     def do_GET(self):
-        site, path = self.log_and_parse_request()
-        op_type, op_target = self._oper_type_from_path(path)
-        if not op_type:
-            return
-
-        try:
-            if op_type == "basebackup" and op_target is None:
-                response, headers, status = self.list_basebackups(site)
-            elif op_type == "basebackup":
-                response, headers, status = self.get_basebackup(site, op_target)
-            elif op_type in ("timeline", "xlog"):
-                response, headers, status = self.get_wal_or_timeline_file(site, op_target, op_type)
-        except:  # pylint: disable=bare-except
-            self.server.log.exception("Exception occured when processing: %r", path)
-            self.send_response(404)
-            return
-
-        if isinstance(response, dict):
-            headers["content-type"] = "application/json"
-            response = json_encode(response, compact=False, binary=True)
-
-        if "content-type" not in headers:
-            headers["content-type"] = "application/octet-stream"
-        if "content-length" not in headers:
-            size = None
-            if hasattr(response, "read"):
-                size = os.fstat(response.fileno()).st_size  # pylint: disable=maybe-no-member
-            elif isinstance(response, bytes):
-                size = len(response)
-            elif not response:
-                size = 0
-            if size is not None:
-                headers["content-length"] = str(size)
-
-        self.send_response(status)
-        for header_key, header_value in headers.items():
-            self.send_header(header_key, header_value)
-        self.end_headers()
-
-        if not response:
-            pass
-        elif isinstance(response, bytes):
-            self.wfile.write(response)
-        elif hasattr(response, "read"):
-            if hasattr(os, "sendfile"):
-                os.sendfile(self.wfile.fileno(), response.fileno(), 0, size)  # pylint: disable=maybe-no-member
+        with self._response_handler("GET") as path:
+            site, obtype, obname = self._parse_request(path)
+            if obtype == "basebackup":
+                self.list_basebackups(site)
             else:
-                shutil.copyfileobj(response, self.wfile)
+                self.get_wal_or_timeline_file(site, obname, obtype)
