@@ -2,10 +2,10 @@ language: python
 
 python:
   - "3.4"
+  - "3.5"
 
 install:
-  - "pip install boto cryptography mock pep8 psycopg2 pylint pytest python-dateutil python-systemd requests"
-  - "(python -V 2>&1 | grep -qF 'Python 3') || pip install backports.lzma"
+  - "pip install boto cryptography mock pep8 psycopg2 pylint pytest python-dateutil python-snappy python-systemd requests"
 
 script:
   - "make pylint"
@@ -15,4 +15,5 @@ script:
 addons:
   apt:
     packages:
+      - libsnappy-dev
       - postgresql-9.4
