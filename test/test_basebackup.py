@@ -5,8 +5,9 @@ Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
 from pghoard.basebackup import PGBaseBackup
-from pghoard.common import create_connection_string, Queue
+from pghoard.common import create_connection_string
 from pghoard.restore import Restore, RestoreError
+from queue import Queue
 import os
 import pytest
 import tarfile

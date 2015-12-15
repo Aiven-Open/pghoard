@@ -5,19 +5,64 @@ Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
 
-from . import errors
-from .common import Empty, lzma_compressor, lzma_decompressor, IO_BLOCK_SIZE, snappy
-from .encryptor import Encryptor, Decryptor
+from pghoard import errors
+from pghoard.common import IO_BLOCK_SIZE
+from pghoard.encryptor import Encryptor, Decryptor
+from queue import Empty
 from threading import Thread
 import json
 import logging
+import lzma
 import os
 import time
+
+try:
+    import snappy
+except ImportError:
+    snappy = None
+
+
+class SnappyFile(object):
+    def __init__(self, fp):
+        self._comp = snappy.StreamDecompressor()
+        self._fp = fp
+        self._done = False
+        self._pos = 0
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, a, b, c):
+        pass
+
+    def tell(self):
+        return self._pos
+
+    def close(self):
+        pass
+
+    def read(self, byte_count=None):  # pylint: disable=unused-argument
+        # NOTE: byte_count arg is ignored, random size output is returned
+        if self._done:
+            return b""
+
+        while True:
+            compressed = self._fp.read(2 ** 20)
+            if not compressed:
+                self._done = True
+                output = self._comp.flush()
+                self._pos += len(output)
+                return output
+
+            output = self._comp.decompress(compressed)
+            if output:
+                self._pos += len(output)
+                return output
 
 
 class Compressor(Thread):
     def __init__(self, config, compression_queue, transfer_queue):
-        Thread.__init__(self)
+        super().__init__()
         self.log = logging.getLogger("Compressor")
         self.config = config
         self.state = {}
@@ -50,7 +95,7 @@ class Compressor(Thread):
 
     def compressor(self):
         if self.compression_algorithm() == "lzma":
-            return lzma_compressor(preset=0)
+            return lzma.LZMACompressor(preset=0)
         elif self.compression_algorithm() == "snappy":
             if not snappy:
                 raise errors.MissingLibraryError("python-snappy is required when using snappy compression")
@@ -63,7 +108,7 @@ class Compressor(Thread):
         if algorithm is None:
             return None
         if algorithm == "lzma":
-            return lzma_decompressor()
+            return lzma.LZMADecompressor()
         elif algorithm == "snappy":
             if not snappy:
                 raise errors.MissingLibraryError("python-snappy is required when using snappy compression")

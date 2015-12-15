@@ -5,9 +5,10 @@ Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
 # pylint: disable=attribute-defined-outside-init
-from .base import Mock, PGHoardTestCase
-from pghoard.common import Queue
+from .base import PGHoardTestCase
 from pghoard.object_storage import TransferAgent
+from queue import Queue
+from unittest.mock import Mock
 import os
 
 
@@ -21,7 +22,7 @@ class MockStorage(Mock):
 
 class TestTransferAgent(PGHoardTestCase):
     def setup_method(self, method):
-        super(TestTransferAgent, self).setup_method(method)
+        super().setup_method(method)
         self.config = {
             "backup_sites": {
                 self.test_site: {
@@ -51,7 +52,7 @@ class TestTransferAgent(PGHoardTestCase):
         self.transfer_agent.running = False
         self.transfer_queue.put({"type": "QUIT"})
         self.transfer_agent.join()
-        super(TestTransferAgent, self).teardown_method(method)
+        super().teardown_method(method)
 
     def test_handle_download(self):
         callback_queue = Queue()

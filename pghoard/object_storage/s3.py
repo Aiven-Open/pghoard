@@ -32,7 +32,7 @@ class S3Transfer(BaseTransfer):
                  host=None,
                  port=None,
                  is_secure=False):
-        BaseTransfer.__init__(self, prefix=prefix)
+        super().__init__(prefix=prefix)
         self.region = region
         self.location = _location_for_region(region)
         self.bucket_name = bucket_name

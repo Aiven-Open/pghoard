@@ -4,6 +4,7 @@ pghoard - local filesystem interface
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
+from contextlib import suppress
 from io import BytesIO
 from pghoard.errors import FileNotFoundFromStorageError, LocalFileIsRemoteFileError
 from pghoard.object_storage.base import BaseTransfer
@@ -17,7 +18,7 @@ import shutil
 class LocalTransfer(BaseTransfer):
     def __init__(self, backup_location, prefix=None):
         prefix = os.path.join(backup_location, (prefix or "").strip("/"))
-        BaseTransfer.__init__(self, prefix=prefix)
+        super().__init__(prefix=prefix)
         self.log.debug("LocalTransfer initialized")
 
     def get_metadata_for_key(self, key):
@@ -28,7 +29,7 @@ class LocalTransfer(BaseTransfer):
         try:
             with open(metadata_path, "r") as fp:
                 return json.load(fp)
-        except IOError:
+        except FileNotFoundError:
             return {}
 
     def delete_key(self, key):
@@ -38,7 +39,7 @@ class LocalTransfer(BaseTransfer):
             raise FileNotFoundFromStorageError(key)
         os.unlink(target_path)
         metadata_path = target_path + ".metadata"
-        if os.path.exists(metadata_path):
+        with suppress(FileNotFoundError):
             os.unlink(metadata_path)
 
     def list_path(self, key):

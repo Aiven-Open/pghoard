@@ -12,12 +12,6 @@ import tempfile
 
 
 class TestEncryptor(PGHoardTestCase):
-    def setup_method(self, method):
-        super(TestEncryptor, self).setup_method(method)
-
-    def teardown_method(self, method):
-        super(TestEncryptor, self).teardown_method(method)
-
     def test_encryptor_decryptor(self):
         plaintext = b"test"
         encryptor = Encryptor(CONSTANT_TEST_RSA_PUBLIC_KEY)

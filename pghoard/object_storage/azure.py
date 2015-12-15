@@ -14,7 +14,7 @@ class AzureTransfer(BaseTransfer):
     def __init__(self, account_name, account_key, container_name, prefix=None):
         # NOTE: Azure wants all paths to start with a slash
         prefix = "/{}".format(prefix.lstrip("/") if prefix else "")
-        BaseTransfer.__init__(self, prefix=prefix)
+        super().__init__(prefix=prefix)
         self.account_name = account_name
         self.account_key = account_key
         self.container_name = container_name

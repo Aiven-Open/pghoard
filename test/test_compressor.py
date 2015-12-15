@@ -6,8 +6,10 @@ See LICENSE for details
 """
 # pylint: disable=attribute-defined-outside-init
 from .base import PGHoardTestCase, CONSTANT_TEST_RSA_PUBLIC_KEY, CONSTANT_TEST_RSA_PRIVATE_KEY
-from pghoard.common import IO_BLOCK_SIZE, Queue, lzma, snappy
-from pghoard.compressor import Compressor
+from pghoard.common import IO_BLOCK_SIZE
+from pghoard.compressor import Compressor, snappy
+from queue import Queue
+import lzma
 import os
 import pytest
 
@@ -22,7 +24,7 @@ class Compression(PGHoardTestCase):
         raise NotImplementedError
 
     def setup_method(self, method):
-        super(Compression, self).setup_method(method)
+        super().setup_method(method)
         self.config = {
             "backup_sites": {
                 self.test_site: {
@@ -66,7 +68,7 @@ class Compression(PGHoardTestCase):
         self.compressor.running = False
         self.compression_queue.put({"type": "QUIT"})
         self.compressor.join()
-        super(Compression, self).teardown_method(method)
+        super().teardown_method(method)
 
     def test_get_event_type(self):
         filetype = self.compressor.get_event_filetype({

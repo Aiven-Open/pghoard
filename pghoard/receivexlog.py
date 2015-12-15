@@ -17,7 +17,7 @@ from threading import Thread
 
 class PGReceiveXLog(Thread):
     def __init__(self, command):
-        Thread.__init__(self)
+        super().__init__()
         self.log = logging.getLogger("PGReceiveXLog")
         self.command = command
         self.pid = None

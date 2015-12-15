@@ -4,9 +4,17 @@ pghoard - main pghoard daemon
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
-
-from __future__ import print_function
 from contextlib import closing
+from pghoard.basebackup import PGBaseBackup
+from pghoard.common import convert_pg_command_version_to_number, replication_connection_string_using_pgpass
+from pghoard.common import default_log_format_str, set_syslog_handler
+from pghoard.compressor import Compressor
+from pghoard.errors import FileNotFoundFromStorageError, InvalidConfigurationError
+from pghoard.inotify import InotifyWatcher
+from pghoard.object_storage import TransferAgent, get_object_storage_transfer
+from pghoard.receivexlog import PGReceiveXLog
+from pghoard.webserver import WebServer
+from queue import Queue
 import datetime
 import json
 import logging
@@ -18,18 +26,7 @@ import signal
 import socket
 import sys
 import time
-from . basebackup import PGBaseBackup
-from . common import (
-    datetime_to_timestamp,
-    replication_connection_string_using_pgpass,
-    convert_pg_command_version_to_number,
-    default_log_format_str, set_syslog_handler, Queue)
-from . compressor import Compressor
-from . errors import FileNotFoundFromStorageError, InvalidConfigurationError
-from . inotify import InotifyWatcher
-from . object_storage import TransferAgent, get_object_storage_transfer
-from . receivexlog import PGReceiveXLog
-from . webserver import WebServer
+
 
 try:
     from systemd import daemon  # pylint: disable=no-name-in-module
@@ -242,7 +239,7 @@ class PGHoard(object):
         for entry in results:
             # drop path from resulting list and convert timestamps
             entry["name"] = os.path.basename(entry["name"])
-            entry["last_modified"] = datetime_to_timestamp(entry["last_modified"])
+            entry["last_modified"] = entry["last_modified"].timestamp()
 
         results.sort(key=lambda entry: entry["name"])
         return results
@@ -386,11 +383,7 @@ class PGHoard(object):
             self.syslog_handler = set_syslog_handler(self.config.get("syslog_address", "/dev/log"),
                                                      self.config.get("syslog_facility", "local2"),
                                                      self.log)
-        # the levelNames hack is needed for Python2.6
-        if sys.version_info[0] >= 3:
-            self.log_level = getattr(logging, self.config.get("log_level", "DEBUG"))
-        else:
-            self.log_level = logging._levelNames[self.config.get("log_level", "DEBUG")]  # pylint: disable=no-member,protected-access
+        self.log_level = getattr(logging, self.config.get("log_level", "DEBUG"))
         try:
             logging.getLogger().setLevel(self.log_level)
         except ValueError:

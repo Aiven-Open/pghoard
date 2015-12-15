@@ -4,17 +4,18 @@ pghoard
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
-from __future__ import print_function
-from .common import default_log_format_str, lzma_open_read, SnappyFile
-from .encryptor import DecryptorFile
-from .errors import Error
-from .object_storage import get_object_storage_transfer
+from pghoard.common import default_log_format_str
+from pghoard.compressor import SnappyFile
+from pghoard.encryptor import DecryptorFile
+from pghoard.errors import Error
+from pghoard.object_storage import get_object_storage_transfer
 from psycopg2.extensions import adapt
 from requests import Session
 import argparse
 import dateutil.parser
 import json
 import logging
+import lzma
 import os
 import shutil
 import sys
@@ -211,7 +212,7 @@ class Restore(object):
 
         if metadata.get("compression-algorithm") == "lzma":
             # Wrap stream into LZMAFile object
-            tmp = lzma_open_read(tmp, "r")  # pylint: disable=redefined-variable-type
+            tmp = lzma.open(tmp, "r")  # pylint: disable=redefined-variable-type
         elif metadata.get("compression-algorithm") == "snappy":
             tmp = SnappyFile(tmp)  # pylint: disable=redefined-variable-type
 
@@ -278,7 +279,7 @@ class ObjectStore(object):
 
 class HTTPRestore(ObjectStore):
     def __init__(self, host, port, site, pgdata=None):
-        super(HTTPRestore, self).__init__(storage=None, path_prefix=None, site=site, pgdata=pgdata)
+        super().__init__(storage=None, path_prefix=None, site=site, pgdata=pgdata)
         self.host = host
         self.port = port
         self.session = Session()

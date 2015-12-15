@@ -63,7 +63,7 @@ def get_credentials(credential_file=None, credentials=None):
 
 class GoogleTransfer(BaseTransfer):
     def __init__(self, project_id, bucket_name, credential_file=None, credentials=None, prefix=None):
-        BaseTransfer.__init__(self, prefix=prefix)
+        super().__init__(prefix=prefix)
         self.project_id = project_id
         creds = get_credentials(credential_file=credential_file, credentials=credentials)
         gs = build("storage", "v1", credentials=creds)

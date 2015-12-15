@@ -9,11 +9,6 @@ from shutil import rmtree
 from tempfile import mkdtemp
 import logging
 
-try:
-    from unittest.mock import Mock  # pylint: disable=no-name-in-module, unused-import
-except ImportError:
-    from mock import Mock  # pylint: disable=import-error, no-name-in-module, unused-import
-
 
 CONSTANT_TEST_RSA_PUBLIC_KEY = """\
 -----BEGIN PUBLIC KEY-----

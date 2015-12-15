@@ -4,11 +4,10 @@ pghoard - inotify wrapper
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
-
+from contextlib import suppress
 from ctypes import c_int, c_uint32, c_char_p
 from threading import Thread
 import ctypes
-import errno
 import logging
 import os
 import select
@@ -51,7 +50,7 @@ def parse_inotify_buffer(event_buffer):
 
 class InotifyWatcher(Thread):
     def __init__(self, compression_queue, ignore_modified=True):
-        Thread.__init__(self)
+        super().__init__()
         # use the newer form for future-proofness
         self.log = logging.getLogger("PGHoardInotify")
         self.ignore_modified = ignore_modified
@@ -77,15 +76,12 @@ class InotifyWatcher(Thread):
     def read_events(self):
         event_buffer = None
         while self.running:
-            try:
+            with suppress(InterruptedError):
                 rlist, _, _ = select.select([self.fd], [], [], self.timeout)
                 if rlist:
                     for fd in rlist:
                         event_buffer = os.read(fd, INOTIFY_EVENT_BUFFER_SIZE)
-            except OSError as e:
-                if e.errno == errno.EINTR:
-                    continue
-            break
+                break
         if not event_buffer:
             return
         for wd, mask, cookie, name in parse_inotify_buffer(event_buffer):

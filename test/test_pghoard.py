@@ -5,9 +5,10 @@ Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
 # pylint: disable=attribute-defined-outside-init
-from .base import Mock, PGHoardTestCase
+from .base import PGHoardTestCase
 from pghoard.common import create_connection_string
 from pghoard.pghoard import PGHoard
+from unittest.mock import Mock
 import json
 import os
 
@@ -35,7 +36,7 @@ def create_json_conf(filepath, temp_dir, test_site):
 
 class TestPGHoard(PGHoardTestCase):
     def setup_method(self, method):
-        super(TestPGHoard, self).setup_method(method)
+        super().setup_method(method)
         config_path = os.path.join(self.temp_dir, "pghoard.json")
         self.config = create_json_conf(config_path, self.temp_dir, self.test_site)
         backup_site_path = os.path.join(self.config["backup_location"], self.test_site)
@@ -53,7 +54,7 @@ class TestPGHoard(PGHoardTestCase):
         self.pghoard.quit()
         self.pghoard.check_pg_server_version = self.real_check_pg_server_version
         self.pghoard.check_pg_versions_ok = self.real_check_pg_versions_ok
-        super(TestPGHoard, self).teardown_method(method)
+        super().teardown_method(method)
 
     def test_handle_site(self):
         self.pghoard.handle_site(self.test_site, self.config["backup_sites"][self.test_site])
