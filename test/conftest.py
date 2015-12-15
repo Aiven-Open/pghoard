@@ -151,7 +151,7 @@ def pghoard(db, tmpdir, request):  # pylint: disable=redefined-outer-name
     if snappy:
         pgh.Compressor = snappy.StreamCompressor
     else:
-        pgh.Compressor = lambda: lzma.LZMACompressor(preset=0)
+        pgh.Compressor = lambda: lzma.LZMACompressor(preset=0)  # pylint: disable=redefined-variable-type
 
     time.sleep(0.05)  # Hack to give the server time to start up
     yield pgh

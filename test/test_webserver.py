@@ -6,15 +6,18 @@ See LICENSE for details
 """
 # pylint: disable=attribute-defined-outside-init
 from .base import CONSTANT_TEST_RSA_PUBLIC_KEY, CONSTANT_TEST_RSA_PRIVATE_KEY
+from http.client import HTTPConnection
+from pghoard import postgres_command
 from pghoard.archive_sync import ArchiveSync
 from pghoard.common import create_connection_string, TIMELINE_RE, XLOG_RE
 from pghoard.encryptor import Encryptor
-from pghoard.postgres_command import archive_command, restore_command, HTTPConnection, PGCError, main as pgc_main
+from pghoard.postgres_command import archive_command, restore_command
 from pghoard.restore import HTTPRestore, Restore
 from queue import Queue
 import os
 import psycopg2
 import pytest
+import socket
 import time
 
 
@@ -196,9 +199,10 @@ class TestWebServer(object):
         backup_xlog_path = os.path.join(pghoard.config["backup_location"], pghoard.test_site, bl_file)
         with open(xlog_path, "w") as fp:
             fp.write("jee")
-        with pytest.raises(PGCError):
+        with pytest.raises(postgres_command.PGCError) as excinfo:
             archive_command(host="127.0.0.1", port=pghoard.config["http_port"],
                             site=pghoard.test_site, xlog=bl_label)
+        assert excinfo.value.exit_code == postgres_command.EXIT_ARCHIVE_FAIL
         assert not os.path.exists(backup_xlog_path)
 
     def test_get_invalid(self, pghoard, tmpdir):
@@ -223,6 +227,12 @@ class TestWebServer(object):
         conn.request("HEAD", nonexistent_xlog)
         status = conn.getresponse().status
         assert status == 404
+        # missing xlog file using restore_command
+        with pytest.raises(postgres_command.PGCError) as excinfo:
+            restore_command(site=pghoard.test_site, xlog=os.path.basename(nonexistent_xlog),
+                            host="127.0.0.1", port=pghoard.config["http_port"],
+                            output=None, retry_interval=0.1)
+        assert excinfo.value.exit_code == postgres_command.EXIT_NOT_FOUND
 
         # write failures, this should be retried a couple of times
         # start by making sure we can access the file normally
@@ -232,6 +242,10 @@ class TestWebServer(object):
         conn.request("HEAD", valid_xlog)
         status = conn.getresponse().status
         assert status == 200
+        restore_command(site=pghoard.test_site, xlog=os.path.basename(valid_xlog),
+                        host="127.0.0.1", port=pghoard.config["http_port"],
+                        output=None, retry_interval=0.1)
+
         # write to non-existent directory
         headers = {"x-pghoard-target-path": str(tmpdir.join("NA", "test_get_invalid"))}
         conn.request("GET", valid_xlog, headers=headers)
@@ -276,6 +290,48 @@ class TestWebServer(object):
             for ta in pghoard.transfer_agents:
                 ta.site_transfers = {}
 
+    def test_restore_command_retry(self, pghoard):
+        failures = [0, ""]
+        orig_http_request = postgres_command.http_request
+
+        def fail_http_request(*args):
+            if failures[0] > 0:
+                failures[0] -= 1
+                raise socket.error("test_restore_command_retry failure: {}".format(failures[1]))
+            return orig_http_request(*args)
+
+        postgres_command.http_request = fail_http_request
+
+        # create a valid xlog file and make sure we can restore it normally
+        xlog_seg = "E" * 24
+        xlog_path = "/{}/xlog/{}".format(pghoard.test_site, xlog_seg)
+        store = pghoard.transfer_agents[0].get_object_storage(pghoard.test_site)
+        store.store_file_from_memory(xlog_path, b"TEST", metadata={"a": "b"})
+        restore_command(site=pghoard.test_site, xlog=xlog_seg, output=None,
+                        host="127.0.0.1", port=pghoard.config["http_port"],
+                        retry_interval=0.1)
+
+        # now make the webserver fail all attempts
+        failures[0] = 4
+        failures[1] = "four fails"
+        # restore should fail
+        with pytest.raises(postgres_command.PGCError) as excinfo:
+            restore_command(site=pghoard.test_site, xlog=xlog_seg, output=None,
+                            host="127.0.0.1", port=pghoard.config["http_port"],
+                            retry_interval=0.1)
+        assert excinfo.value.exit_code == postgres_command.EXIT_ABORT
+        assert failures[0] == 1  # fail_http_request should've have 1 failure left
+
+        # try with two failures, this should work on the third try
+        failures[0] = 2
+        failures[1] = "two fails"
+        restore_command(site=pghoard.test_site, xlog=xlog_seg, output=None,
+                        host="127.0.0.1", port=pghoard.config["http_port"],
+                        retry_interval=0.1)
+        assert failures[0] == 0
+
+        postgres_command.http_request = orig_http_request
+
     def test_get_archived_file(self, pghoard):
         xlog_seg = "00000001000000000000000F"
         xlog_file = "xlog/{}".format(xlog_seg)
@@ -303,7 +359,7 @@ class TestWebServer(object):
 
         # test the same thing using restore as 'pghoard_postgres_command'
         tmp_out = os.path.join(pgdata, restore_target + ".cmd")
-        pgc_main([
+        postgres_command.main([
             "--host", "localhost",
             "--port", str(pghoard.config["http_port"]),
             "--site", pghoard.test_site,
