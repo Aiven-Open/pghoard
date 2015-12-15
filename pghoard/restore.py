@@ -32,15 +32,17 @@ def create_recovery_conf(dirpath, site,
                          recovery_target_action=None,
                          recovery_target_name=None,
                          recovery_target_time=None,
-                         recovery_target_xid=None):
+                         recovery_target_xid=None,
+                         restore_to_master=None):
     restore_command = "pghoard_postgres_command --mode restore --site {} --output %p --xlog %f".format(site)
     lines = [
         "# pghoard created recovery.conf",
-        "standby_mode = 'on'",
         "recovery_target_timeline = 'latest'",
         "trigger_file = {}".format(adapt(os.path.join(dirpath, "trigger_file"))),
         "restore_command = '{}'".format(restore_command),
     ]
+    if not restore_to_master:
+        lines.append("standby_mode = 'on'")
     if primary_conninfo:
         lines.append("primary_conninfo = {}".format(adapt(primary_conninfo)))
     if recovery_end_command:
@@ -96,6 +98,7 @@ class Restore(object):
             cmd.add_argument("--recovery-target-name", help="PostgreSQL recovery_target_name", metavar="RESTOREPOINT")
             cmd.add_argument("--recovery-target-time", help="PostgreSQL recovery_target_time", metavar="ISO_TIMESTAMP")
             cmd.add_argument("--recovery-target-xid", help="PostgreSQL recovery_target_xid", metavar="XID")
+            cmd.add_argument("--restore-to-master", help="Restore the database to a PG master", action="store_true")
 
         cmd = add_cmd(self.list_basebackups_http)
         host_port_args()
@@ -142,6 +145,7 @@ class Restore(object):
                                  recovery_target_name=arg.recovery_target_name,
                                  recovery_target_time=arg.recovery_target_time,
                                  recovery_target_xid=arg.recovery_target_xid,
+                                 restore_to_master=arg.restore_to_master,
                                  overwrite=arg.overwrite)
         except RestoreError:
             raise
@@ -173,6 +177,7 @@ class Restore(object):
                         recovery_target_name=None,
                         recovery_target_time=None,
                         recovery_target_xid=None,
+                        restore_to_master=None,
                         overwrite=False):
         targets = [recovery_target_name, recovery_target_time, recovery_target_xid]
         if sum(0 if flag is None else 1 for flag in targets) > 1:
@@ -223,6 +228,7 @@ class Restore(object):
             recovery_target_name=recovery_target_name,
             recovery_target_time=recovery_target_time,
             recovery_target_xid=recovery_target_xid,
+            restore_to_master=restore_to_master,
         )
 
         print("Basebackup complete.")
