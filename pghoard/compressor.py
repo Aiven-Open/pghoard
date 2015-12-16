@@ -175,7 +175,7 @@ class Compressor(Thread):
                     if not filetype:
                         if 'callback_queue' in event and event['callback_queue']:
                             self.log.debug("Returning success for event: %r, even though we did nothing for it", event)
-                            event['callback_queue'].put({"success": True})
+                            event['callback_queue'].put({"success": True, "opaque": event.get("opaque")})
                         continue
                     else:
                         self.handle_event(event, filetype)
@@ -228,7 +228,7 @@ class Compressor(Thread):
                        time.time() - start_time)
 
         if 'callback_queue' in event:
-            event['callback_queue'].put({"success": True})
+            event['callback_queue'].put({"success": True, "opaque": event.get("opaque")})
 
     def handle_event(self, event, filetype):
         start_time, compressed_blob = time.time(), None
@@ -274,6 +274,7 @@ class Compressor(Thread):
             "file_size": compressed_file_size,
             "filetype": filetype,
             "metadata": metadata,
+            "opaque": event.get("opaque"),
             "site": site,
             "type": "UPLOAD",
         }

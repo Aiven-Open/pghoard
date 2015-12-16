@@ -6,11 +6,12 @@ See LICENSE for details
 """
 
 from . import __version__
+from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager, suppress
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pghoard.common import json_encode, TIMELINE_RE, XLOG_RE
-from pghoard.errors import FileNotFoundFromStorageError
+from pghoard.errors import Error, FileNotFoundFromStorageError
 from queue import Empty, Queue
 from socketserver import ThreadingMixIn
 from threading import Thread
@@ -63,6 +64,10 @@ class WebServer(Thread):
         self.server.log = self.log  # pylint: disable=attribute-defined-outside-init
         self.server.compression_queue = self.compression_queue  # pylint: disable=attribute-defined-outside-init
         self.server.transfer_queue = self.transfer_queue  # pylint: disable=attribute-defined-outside-init
+        # Bounded negative cache for failed prefetch operations - we don't want to try prefetching files that
+        # aren't there.  This isn't used for explicit download requests as it's possible that a file appears
+        # later on in the object store.
+        self.server.prefetch_404 = deque(maxlen=32)  # pylint: disable=attribute-defined-outside-init
         self.server.serve_forever()
 
     def close(self):
@@ -158,13 +163,11 @@ class RequestHandler(BaseHTTPRequestHandler):
 
         raise HttpResponse("Invalid path {!r}".format(path), status=400)
 
-    def _transfer_agent_op(self, site, filename, filetype, method, retries=2):
+    def _transfer_agent_op(self, site, filename, filetype, method, *, retries=2, target_path=None):
         start_time = time.time()
+        tmp_target_path = None
 
-        target_path = self.headers.get("x-pghoard-target-path")
         if method == "DOWNLOAD":
-            if not target_path:
-                raise HttpResponse("x-pghoard-target-path header missing from download", status=400)
             # NOTE: we request download on a temporary download path so we can atomically overwrite the file if /
             # when we successfully receive it.
             try:
@@ -173,10 +176,6 @@ class RequestHandler(BaseHTTPRequestHandler):
             except OSError as ex:
                 raise HttpResponse("Unable to create temporary file for {0!r}: {1.__class__.__name__}: {1}"
                                    .format(target_path, ex), status=400)
-        else:
-            if target_path:
-                raise HttpResponse("x-pghoard-target-path header is only valid for downloads", status=400)
-            tmp_target_path = None
 
         self.server.log.debug("Requesting site: %r, filename: %r, filetype: %r, target_path: %r",
                               site, filename, filetype, target_path)
@@ -211,7 +210,8 @@ class RequestHandler(BaseHTTPRequestHandler):
                     os.unlink(tmp_target_path)
             if ex.status == 500 and retries:
                 self.server.log.warning("Transfer operation failed, retrying (%r retries left)", retries)
-                return self._transfer_agent_op(site, filename, filetype, method, retries=retries - 1)
+                return self._transfer_agent_op(site, filename, filetype, method,
+                                               retries=retries - 1, target_path=target_path)
             raise
 
         if tmp_target_path:
@@ -222,8 +222,111 @@ class RequestHandler(BaseHTTPRequestHandler):
                 raise HttpResponse(fmt.format(path=target_path, ex=ex), status=402)
         return response
 
+    @contextmanager
+    def _prefetch(self, site, filetype, names):
+        if not names:
+            return
+
+        start_time = time.monotonic()
+        callback_queue = Queue()
+
+        site_config = self.server.config["backup_sites"][site]
+        xlog_dir = site_config.get("pg_xlog_directory", "/var/lib/pgsql/data/pg_xlog")
+        downloads = {}
+        for obname in names:
+            if obname in self.server.prefetch_404:
+                continue  # previously failed to prefetch this file, don't try again
+            prefetch_target_path = os.path.join(xlog_dir, "{}.pghoard.prefetch".format(obname))
+            if os.path.exists(prefetch_target_path):
+                continue  # already fetched this file
+            try:
+                fd, tmp_target_path = tempfile.mkstemp(prefix="{}/{}.".format(xlog_dir, obname), suffix=".pghoard.tmp")
+                os.close(fd)
+            except OSError as ex:
+                self.server.log.error("Unable to create temporary file to prefetch %r: %s: %s",
+                                      obname, ex.__class__.__name__, ex)
+                continue
+            self.server.log.debug("Prefetching site: %r, filename: %r, filetype: %r, tmp_target_path: %r",
+                                  site, obname, filetype, tmp_target_path)
+            downloads[obname] = tmp_target_path
+            self.server.transfer_queue.put({
+                "callback_queue": callback_queue,
+                "filetype": filetype,
+                "local_path": obname,
+                "opaque": obname,
+                "site": site,
+                "target_path": tmp_target_path,
+                "type": "DOWNLOAD",
+            })
+
+        # allow something else to happen
+        try:
+            yield
+        finally:
+            # process results (timeout is 30 seconds after start but at least 5 seconds)
+            timeout_at = max(start_time + 30, time.monotonic() + 5)
+            while downloads:
+                time_left = timeout_at - time.monotonic()
+                try:
+                    response = callback_queue.get(timeout=time_left)
+                except Empty:
+                    break  # timeout
+                obname = response["opaque"]
+                tmp_target_path = downloads.pop(response["opaque"])
+                if response["success"]:
+                    prefetch_target_path = os.path.join(xlog_dir, "{}.pghoard.prefetch".format(obname))
+                    os.rename(tmp_target_path, prefetch_target_path)
+                    self.server.log.debug("Prefetched %r %r to %r, took: %.3fs",
+                                          site, obname, prefetch_target_path, time.monotonic() - start_time)
+                else:
+                    ex = response.get("exception", Error)
+                    if isinstance(ex, FileNotFoundFromStorageError):
+                        # don't try prefetching this file again
+                        self.server.prefetch_404.append(obname)
+                    self.server.log.debug("Prefetching %r %r failed (%s), took: %.3fs",
+                                          site, obname, ex.__class__.__name__, time.monotonic() - start_time)
+                    with suppress(Exception):
+                        os.unlink(tmp_target_path)
+
+            # everything else timed out
+            while downloads:
+                obname, tmp_target_path = downloads.popitem()
+                self.server.log.debug("Prefetching %r %r timed out, took: %.3fs",
+                                      site, obname, time.monotonic() - start_time)
+                with suppress(Exception):
+                    os.unlink(tmp_target_path)
+
     def get_wal_or_timeline_file(self, site, filename, filetype):
-        self._transfer_agent_op(site, filename, filetype, "DOWNLOAD")
+        target_path = self.headers.get("x-pghoard-target-path")
+        if not target_path:
+            raise HttpResponse("x-pghoard-target-path header missing from download", status=400)
+
+        # See if we have already prefetched the file
+        site_config = self.server.config["backup_sites"][site]
+        xlog_dir = site_config.get("pg_xlog_directory", "/var/lib/pgsql/data/pg_xlog")
+        prefetch_target_path = os.path.join(xlog_dir, "{}.pghoard.prefetch".format(filename))
+        if os.path.exists(prefetch_target_path):
+            os.rename(prefetch_target_path, target_path)
+            raise HttpResponse(status=201)
+
+        prefetch_n = self.server.config["restore_prefetch"]
+        prefetch = []
+        if filetype == "timeline":
+            tli_num = int(filename.replace(".history", ""), 16)
+            for _ in range(prefetch_n):
+                tli_num += 1
+                prefetch.append("{:08X}.history".format(tli_num))
+        elif filetype == "xlog":
+            xlog_num = int(filename, 16)
+            for _ in range(prefetch_n):
+                if xlog_num & 0xFF == 0xFF:
+                    xlog_num += 0xFFFFFF00
+                xlog_num += 1
+                prefetch.append("{:024X}".format(xlog_num))
+
+        with self._prefetch(site, filetype, prefetch):
+            self._transfer_agent_op(site, filename, filetype, "DOWNLOAD", target_path=target_path)
+
         raise HttpResponse(status=201)
 
     def list_basebackups(self, site):
@@ -276,6 +379,8 @@ class RequestHandler(BaseHTTPRequestHandler):
     def do_HEAD(self):
         with self._response_handler("HEAD") as path:
             site, obtype, obname = self._parse_request(path)
+            if self.headers.get("x-pghoard-target-path"):
+                raise HttpResponse("x-pghoard-target-path header is only valid for downloads", status=400)
             self._transfer_agent_op(site, obname, obtype, "METADATA")
             raise HttpResponse(status=200)
 

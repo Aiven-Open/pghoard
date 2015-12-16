@@ -67,11 +67,11 @@ class PGHoard(object):
         self.inotify = InotifyWatcher(self.compression_queue)
         self.webserver = WebServer(self.config, self.compression_queue, self.transfer_queue)
 
-        for _ in range(self.config.get("compression", {}).get("thread_count", 5)):
+        for _ in range(self.config["compression"]["thread_count"]):
             compressor = Compressor(self.config, self.compression_queue, self.transfer_queue)
             self.compressors.append(compressor)
 
-        for _ in range(self.config.get("transfer", {}).get("thread_count", 5)):
+        for _ in range(self.config["transfer"]["thread_count"]):
             ta = TransferAgent(self.config, self.compression_queue, self.transfer_queue)
             self.transfer_agents.append(ta)
 
@@ -382,6 +382,15 @@ class PGHoard(object):
             if _signal is not None:
                 return
             raise InvalidConfigurationError(self.config_path)
+
+        # default to 5 compression and transfer threads
+        self.config.setdefault("compression", {}).setdefault("thread_count", 5)
+        self.config.setdefault("transfer", {}).setdefault("thread_count", 5)
+        # default to prefetching min(#compressors, #transferagents) - 1 objects so all
+        # operations where prefetching is used run fully in parallel without waiting to start
+        self.config.setdefault("restore_prefetch", min(
+            self.config["compression"]["thread_count"],
+            self.config["transfer"]["thread_count"]) - 1)
 
         if self.config.get("syslog") and not self.syslog_handler:
             self.syslog_handler = set_syslog_handler(self.config.get("syslog_address", "/dev/log"),

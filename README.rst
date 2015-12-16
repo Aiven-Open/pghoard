@@ -343,6 +343,13 @@ means the absolute path to the PostgreSQL pg_xlog directory.  Note that
 pghoard will need to be able to read files from the directory in order to
 back them up.
 
+``restore_prefetch`` (default ``min(compression.thread_count,
+transfer.thread_count) - 1``)
+
+Number of files to prefetch when performing archive recovery.  The default
+is the lower of Compression or Transfer Agent threads minus one to perform
+all operations in parallel when a single backup site is used.
+
 ``syslog`` (default ``false``)
 
 Determines whether syslog logging should be turned on or not.
