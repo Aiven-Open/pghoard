@@ -18,11 +18,16 @@ def create_keys(bits):
     rsa_private_key = rsa.generate_private_key(public_exponent=65537,
                                                key_size=bits,
                                                backend=default_backend())
-    rsa_private_key_pem = rsa_private_key.private_bytes(encoding=serialization.Encoding.PEM, format=serialization.PrivateFormat.PKCS8, encryption_algorithm=serialization.NoEncryption())
+    rsa_private_key_pem = rsa_private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption())
 
     rsa_public_key = rsa_private_key.public_key()
 
-    rsa_public_key_pem = rsa_public_key.public_bytes(encoding=serialization.Encoding.PEM, format=serialization.PublicFormat.SubjectPublicKeyInfo)
+    rsa_public_key_pem = rsa_public_key.public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo)
 
     return rsa_private_key_pem, rsa_public_key_pem
 

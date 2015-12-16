@@ -14,7 +14,6 @@ from queue import Empty
 from threading import Thread
 import logging
 import os
-import shutil
 import time
 
 

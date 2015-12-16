@@ -65,7 +65,10 @@ class Decryptor(object):
     def __init__(self, rsa_private_key_pem):
         if not isinstance(rsa_private_key_pem, bytes):
             rsa_private_key_pem = rsa_private_key_pem.encode("ascii")
-        self.rsa_private_key = serialization.load_pem_private_key(rsa_private_key_pem, password=None, backend=default_backend())
+        self.rsa_private_key = serialization.load_pem_private_key(
+            data=rsa_private_key_pem,
+            password=None,
+            backend=default_backend())
         self.cipher = None
         self.authenticator = None
         self.buf = b""
@@ -257,7 +260,7 @@ class DecryptorFile(io.BufferedIOBase):
             if self.offset == offset:
                 return self.offset
             elif self.offset < offset:
-                _ = self.read(offset - self.offset)
+                self.read(offset - self.offset)
                 return self.offset
             elif self.offset > offset:
                 # simulate backward seek by restarting from the beginning
@@ -267,10 +270,10 @@ class DecryptorFile(io.BufferedIOBase):
                 self.offset = 0
                 self.decryptor = None
                 self.state = "OPEN"
-                _ = self.read(offset)
+                self.read(offset)
                 return self.offset
             else:
-                _ = self.read(self.offset - offset)
+                self.read(self.offset - offset)
                 return self.offset
         elif whence == 1:
             if offset != 0:
@@ -279,7 +282,7 @@ class DecryptorFile(io.BufferedIOBase):
         elif whence == 2:
             if offset != 0:
                 raise io.UnsupportedOperation("can't do nonzero end-relative seeks")
-            _ = self.read()
+            self.read()
             return self.offset
         else:
             raise ValueError("Invalid whence value")

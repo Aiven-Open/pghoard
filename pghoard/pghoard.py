@@ -335,10 +335,14 @@ class PGHoard(object):
         """Periodically write a JSON state file to disk"""
         start_time = time.time()
         state_file_path = self.config.get("json_state_file_path", "/tmp/pghoard_state.json")
-        self.state["pg_receivexlogs"] = dict((key, {"latest_activity": value.latest_activity.isoformat(), "running": value.running})
-                                             for key, value in self.receivexlogs.items())
-        self.state["pg_basebackups"] = dict((key, {"latest_activity": value.latest_activity.isoformat(), "running": value.running})
-                                            for key, value in self.basebackups.items())
+        self.state["pg_receivexlogs"] = {
+            key: {"latest_activity": value.latest_activity.isoformat(), "running": value.running}
+            for key, value in self.receivexlogs.items()
+        }
+        self.state["pg_basebackups"] = {
+            key: {"latest_activity": value.latest_activity.isoformat(), "running": value.running}
+            for key, value in self.basebackups.items()
+        }
         self.state["compressors"] = [compressor.state for compressor in self.compressors]
         self.state["transfer_agents"] = [ta.state for ta in self.transfer_agents]
         self.state["queues"] = {

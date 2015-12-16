@@ -211,7 +211,8 @@ class Compressor(Thread):
         start_time = time.time()
         data = event["blob"]
         if "metadata" in event and "encryption-key-id" in event["metadata"]:
-            rsa_private_key = self.config["backup_sites"][event["site"]]["encryption_keys"][event["metadata"]["encryption-key-id"]]["private"]
+            key_id = event["metadata"]["encryption-key-id"]
+            rsa_private_key = self.config["backup_sites"][event["site"]]["encryption_keys"][key_id]["private"]
             decryptor = Decryptor(rsa_private_key)
             data = decryptor.update(data) + decryptor.finalize()
 

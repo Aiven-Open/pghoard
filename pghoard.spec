@@ -9,7 +9,7 @@ Requires(pre):  shadow-utils
 Requires:       postgresql-server, systemd
 Requires:       python3-boto, python3-cryptography python3-dateutil
 Requires:       python3-psycopg2, python3-requests, python3-snappy
-BuildRequires:  python3-pep8, python3-pytest, python3-pylint, python3-devel
+BuildRequires:  python3-flake8, python3-pytest, python3-pylint, python3-devel
 BuildArch:      noarch
 
 %description

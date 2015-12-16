@@ -5,11 +5,11 @@ python:
   - "3.5"
 
 install:
-  - "pip install boto cryptography mock pep8 psycopg2 pylint pytest python-dateutil python-snappy python-systemd requests"
+  - "pip install boto cryptography flake8 mock psycopg2 pylint pytest python-dateutil python-snappy python-systemd requests"
 
 script:
   - "make pylint"
-  - "make pep8"
+  - "make flake8"
   - "make unittest"
 
 addons:
