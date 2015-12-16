@@ -14,7 +14,6 @@ from queue import Empty
 from threading import Thread
 import logging
 import os
-import shutil
 import time
 
 
@@ -153,26 +152,26 @@ class TransferAgent(Thread):
             storage = self.get_object_storage(site)
             items = storage.list_path(key)
             file_to_transfer["file_size"] = len(repr(items))  # approx
-            return {"success": True, "items": items}
+            return {"success": True, "items": items, "opaque": file_to_transfer.get("opaque")}
         except Exception as ex:  # pylint: disable=broad-except
             if isinstance(ex, FileNotFoundFromStorageError):
                 self.log.warning("%r not found from storage", key)
             else:
                 self.log.exception("Problem happened when retrieving metadata: %r, %r", key, file_to_transfer)
-            return {"success": False, "exception": ex}
+            return {"success": False, "exception": ex, "opaque": file_to_transfer.get("opaque")}
 
     def handle_metadata(self, site, key, file_to_transfer):
         try:
             storage = self.get_object_storage(site)
             metadata = storage.get_metadata_for_key(key)
             file_to_transfer["file_size"] = len(repr(metadata))  # approx
-            return {"success": True, "metadata": metadata}
+            return {"success": True, "metadata": metadata, "opaque": file_to_transfer.get("opaque")}
         except Exception as ex:  # pylint: disable=broad-except
             if isinstance(ex, FileNotFoundFromStorageError):
                 self.log.warning("%r not found from storage", key)
             else:
                 self.log.exception("Problem happened when retrieving metadata: %r, %r", key, file_to_transfer)
-            return {"success": False, "exception": ex}
+            return {"success": False, "exception": ex, "opaque": file_to_transfer.get("opaque")}
 
     def handle_download(self, site, key, file_to_transfer):
         try:
@@ -186,6 +185,7 @@ class TransferAgent(Thread):
                 "callback_queue": file_to_transfer["callback_queue"],
                 "local_path": file_to_transfer["target_path"],
                 "metadata": metadata,
+                "opaque": file_to_transfer.get("opaque"),
                 "site": site,
                 "type": "DECOMPRESSION",
             })
@@ -195,7 +195,7 @@ class TransferAgent(Thread):
                 self.log.warning("%r not found from storage", key)
             else:
                 self.log.exception("Problem happened when downloading: %r, %r", key, file_to_transfer)
-            return {"success": False, "exception": ex}
+            return {"success": False, "exception": ex, "opaque": file_to_transfer.get("opaque")}
 
     def handle_upload(self, site, key, file_to_transfer):
         try:
@@ -220,7 +220,7 @@ class TransferAgent(Thread):
                         os.unlink(metadata_path)
                 except:  # pylint: disable=bare-except
                     self.log.exception("Problem in deleting file: %r", file_to_transfer["local_path"])
-            return {"success": True}
+            return {"success": True, "opaque": file_to_transfer.get("opaque")}
         except Exception as ex:  # pylint: disable=broad-except
             self.log.exception("Problem in moving file: %r, need to retry", file_to_transfer["local_path"])
             # TODO come up with something so we don't busy loop

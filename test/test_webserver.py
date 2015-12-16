@@ -206,7 +206,8 @@ class TestWebServer(object):
         assert not os.path.exists(backup_xlog_path)
 
     def test_get_invalid(self, pghoard, tmpdir):
-        nonexistent_xlog = "/{}/archive/{}".format(pghoard.test_site, "F" * 24)
+        ne_xlog_seg = "0000FFFF0000000C000000FE"
+        nonexistent_xlog = "/{}/archive/{}".format(pghoard.test_site, ne_xlog_seg)
         # x-pghoard-target-path missing
         conn = HTTPConnection(host="127.0.0.1", port=pghoard.config["http_port"])
         conn.request("GET", nonexistent_xlog)
@@ -236,7 +237,8 @@ class TestWebServer(object):
 
         # write failures, this should be retried a couple of times
         # start by making sure we can access the file normally
-        valid_xlog = "/{}/xlog/{}".format(pghoard.test_site, "E" * 24)
+        valid_xlog_seg = "0000DDDD0000000D000000FC"
+        valid_xlog = "/{}/xlog/{}".format(pghoard.test_site, valid_xlog_seg)
         store = pghoard.transfer_agents[0].get_object_storage(pghoard.test_site)
         store.store_file_from_memory(valid_xlog, b"TEST", metadata={"a": "b"})
         conn.request("HEAD", valid_xlog)
@@ -267,9 +269,11 @@ class TestWebServer(object):
             store = ta.get_object_storage(pghoard.test_site)
             store.get_contents_to_string = get_failing_func(store.get_contents_to_string)
 
+        prefetch_n = pghoard.config["restore_prefetch"]
         try:
-            # we should have two retries
-            failures[0] = 2
+            # we should have two retries + all prefetch operations
+            pghoard.webserver.server.prefetch_404.clear()
+            failures[0] = 2 + prefetch_n
             failures[1] = "test_two_fails_success"
             headers = {"x-pghoard-target-path": str(tmpdir.join("test_get_invalid_2"))}
             conn.request("GET", valid_xlog, headers=headers)
@@ -278,7 +282,8 @@ class TestWebServer(object):
             assert failures[0] == 0
 
             # so we should have a hard failure after three attempts
-            failures[0] = 4
+            pghoard.webserver.server.prefetch_404.clear()
+            failures[0] = 4 + prefetch_n
             failures[1] = "test_three_fails_error"
             headers = {"x-pghoard-target-path": str(tmpdir.join("test_get_invalid_3"))}
             conn.request("GET", valid_xlog, headers=headers)

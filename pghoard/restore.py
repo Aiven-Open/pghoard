@@ -95,7 +95,8 @@ class Restore(object):
             cmd.add_argument("--overwrite", help="overwrite existing target directory",
                              default=False, action="store_true")
             cmd.add_argument("--recovery-end-command", help="PostgreSQL recovery_end_command", metavar="COMMAND")
-            cmd.add_argument("--recovery-target-action", help="PostgreSQL recovery_target_action", choices=["pause", "promote", "shutdown"])
+            cmd.add_argument("--recovery-target-action", help="PostgreSQL recovery_target_action",
+                             choices=["pause", "promote", "shutdown"])
             cmd.add_argument("--recovery-target-name", help="PostgreSQL recovery_target_name", metavar="RESTOREPOINT")
             cmd.add_argument("--recovery-target-time", help="PostgreSQL recovery_target_time", metavar="ISO_TIMESTAMP")
             cmd.add_argument("--recovery-target-xid", help="PostgreSQL recovery_target_xid", metavar="XID")
@@ -208,7 +209,9 @@ class Restore(object):
         tmp.seek(0)
         if "encryption-key-id" in metadata:
             # Wrap stream into DecryptorFile object
-            tmp = DecryptorFile(tmp, self.config["backup_sites"][site]["encryption_keys"][metadata["encryption-key-id"]]["private"])  # pylint: disable=redefined-variable-type
+            key_id = metadata["encryption-key-id"]
+            site_keys = self.config["backup_sites"][site]["encryption_keys"]
+            tmp = DecryptorFile(tmp, site_keys[key_id]["private"])  # pylint: disable=redefined-variable-type
 
         if metadata.get("compression-algorithm") == "lzma":
             # Wrap stream into LZMAFile object

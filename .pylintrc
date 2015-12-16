@@ -1,10 +1,10 @@
 [MESSAGES CONTROL]
-disable=I,
+disable=
     bad-option-value,
     duplicate-code,
     fixme,
     invalid-name,
-    line-too-long,
+    locally-disabled,
     missing-docstring,
     no-self-use,
     too-few-public-methods,
@@ -18,6 +18,9 @@ disable=I,
     ungrouped-imports,
     wrong-import-order,
     wrong-import-position
+
+[FORMAT]
+max-line-length=125
 
 [REPORTS]
 output-format=text

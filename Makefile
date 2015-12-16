@@ -26,11 +26,11 @@ rpm:
 build-dep-fed:
 	sudo yum -y install postgresql-server \
 		python3-boto python3-cryptography python3-dateutil \
-		python3-pep8 python3-psycopg2 python3-pylint python3-pytest \
+		python3-flake8 python3-psycopg2 python3-pylint python3-pytest \
 		python3-pytest-cov python3-requests python3-snappy \
 		rpm-build
 
-test: pep8 pylint unittest
+test: flake8 pylint unittest
 
 unittest:
 	$(PYTHON) -m pytest $(PYTEST_ARG) test/
@@ -42,8 +42,5 @@ coverage:
 pylint:
 	$(PYTHON) -m pylint.lint --rcfile .pylintrc $(PYTHON_SOURCE_DIRS)
 
-pep8:
-	$(PYTHON) -m pep8 --ignore=E501,E123 $(PYTHON_SOURCE_DIRS)
-
-autopep8:
-	$(PYTHON) -m autopep8 --recursive --jobs=0 --in-place --max-line-length=100 --ignore E24,E265 $(PYTHON_SOURCE_DIRS)
+flake8:
+	$(PYTHON) -m flake8 --max-line-len=125 $(PYTHON_SOURCE_DIRS)

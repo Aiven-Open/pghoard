@@ -61,6 +61,7 @@ class TestTransferAgent(PGHoardTestCase):
             "callback_queue": callback_queue,
             "filetype": "xlog",
             "local_path": self.temp_dir,
+            "opaque": 42,
             "site": self.test_site,
             "target_path": self.temp_dir,
             "type": "DOWNLOAD",
@@ -70,6 +71,7 @@ class TestTransferAgent(PGHoardTestCase):
             "callback_queue": callback_queue,
             "local_path": self.temp_dir,
             "metadata": {"key": "value"},
+            "opaque": 42,
             "site": self.test_site,
             "type": "DECOMPRESSION",
         }
@@ -89,7 +91,7 @@ class TestTransferAgent(PGHoardTestCase):
             "site": self.test_site,
             "type": "UPLOAD",
         })
-        assert callback_queue.get(timeout=1.0) == {"success": True}
+        assert callback_queue.get(timeout=1.0) == {"success": True, "opaque": None}
         assert os.path.exists(self.foo_path) is False
 
     def test_handle_upload_basebackup(self):
@@ -106,5 +108,5 @@ class TestTransferAgent(PGHoardTestCase):
             "site": self.test_site,
             "type": "UPLOAD",
         })
-        assert callback_queue.get(timeout=1.0) == {"success": True}
+        assert callback_queue.get(timeout=1.0) == {"success": True, "opaque": None}
         assert os.path.exists(self.foo_basebackup_path) is False
