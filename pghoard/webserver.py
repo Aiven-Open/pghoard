@@ -10,6 +10,7 @@ from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager, suppress
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from pghoard import wal
 from pghoard.common import json_encode, TIMELINE_RE, XLOG_RE
 from pghoard.errors import Error, FileNotFoundFromStorageError
 from queue import Empty, Queue
@@ -163,6 +164,27 @@ class RequestHandler(BaseHTTPRequestHandler):
 
         raise HttpResponse("Invalid path {!r}".format(path), status=400)
 
+    def _verify_wal(self, filetype, filename, path):
+        if filetype != "xlog":
+            return
+        try:
+            with open(path, "rb") as fp:
+                hdr = wal.read_header(fp.read(wal.WAL_HEADER_LEN))
+        except (KeyError, OSError, ValueError) as ex:
+            fmt = "WAL file {path!r} verification failed: {ex.__class__.__name__}: {ex}"
+            raise HttpResponse(fmt.format(path=path, ex=ex), status=412)
+        if hdr.filename != filename:
+            fmt = "Expected WAL segment {seg!r} in restored WAL file {path!r}; found {found!r}"
+            raise HttpResponse(fmt.format(seg=filename, path=path, found=hdr.filename), status=412)
+
+    def _save_and_verify_restored_file(self, filetype, filename, tmp_target_path, target_path):
+        self._verify_wal(filetype, filename, tmp_target_path)
+        try:
+            os.rename(tmp_target_path, target_path)
+        except OSError as ex:
+            fmt = "Unable to write final file to requested location {path!r}: {ex.__class__.__name__}: {ex}"
+            raise HttpResponse(fmt.format(path=target_path, ex=ex), status=409)
+
     def _transfer_agent_op(self, site, filename, filetype, method, *, retries=2, target_path=None):
         start_time = time.time()
         tmp_target_path = None
@@ -215,11 +237,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             raise
 
         if tmp_target_path:
-            try:
-                os.rename(tmp_target_path, target_path)
-            except OSError as ex:
-                fmt = "Unable to write final file to requested location {path!r}: {ex.__class__.__name__}: {ex}"
-                raise HttpResponse(fmt.format(path=target_path, ex=ex), status=402)
+            self._save_and_verify_restored_file(filetype, filename, tmp_target_path, target_path)
         return response
 
     @contextmanager
@@ -306,7 +324,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         xlog_dir = site_config.get("pg_xlog_directory", "/var/lib/pgsql/data/pg_xlog")
         prefetch_target_path = os.path.join(xlog_dir, "{}.pghoard.prefetch".format(filename))
         if os.path.exists(prefetch_target_path):
-            os.rename(prefetch_target_path, target_path)
+            self._save_and_verify_restored_file(filetype, filename, prefetch_target_path, target_path)
             raise HttpResponse(status=201)
 
         prefetch_n = self.server.config["restore_prefetch"]
@@ -333,7 +351,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         response = self._transfer_agent_op(site, "", "basebackup", "LIST")
         raise HttpResponse({"basebackups": response["items"]}, status=200)
 
-    def handle_archival_request(self, site, filename):
+    def handle_archival_request(self, site, filename, filetype):
         start_time = time.time()
         site_config = self.server.config["backup_sites"][site]
         xlog_dir = site_config.get("pg_xlog_directory", "/var/lib/pgsql/data/pg_xlog")
@@ -342,6 +360,8 @@ class RequestHandler(BaseHTTPRequestHandler):
         if not os.path.exists(xlog_path):
             self.server.log.debug("xlog_path: %r did not exist, cannot archive, returning 404", xlog_path)
             raise HttpResponse("N/A", status=404)
+
+        self._verify_wal(filetype, filename, xlog_path)
 
         callback_queue = Queue()
         if not self.server.config["backup_sites"][site].get("object_storage"):
@@ -374,7 +394,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         with self._response_handler("PUT") as path:
             site, obtype, obname = self._parse_request(path)
             assert obtype in ("xlog", "timeline")
-            self.handle_archival_request(site, obname)
+            self.handle_archival_request(site, obname, obtype)
 
     def do_HEAD(self):
         with self._response_handler("HEAD") as path:
