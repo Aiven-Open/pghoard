@@ -173,9 +173,10 @@ class RequestHandler(BaseHTTPRequestHandler):
         except (KeyError, OSError, ValueError) as ex:
             fmt = "WAL file {path!r} verification failed: {ex.__class__.__name__}: {ex}"
             raise HttpResponse(fmt.format(path=path, ex=ex), status=412)
-        if hdr.filename != filename:
-            fmt = "Expected WAL segment {seg!r} in restored WAL file {path!r}; found {found!r}"
-            raise HttpResponse(fmt.format(seg=filename, path=path, found=hdr.filename), status=412)
+        expected_lsn = wal.lsn_from_name(filename)
+        if hdr.lsn != expected_lsn:
+            fmt = "Expected LSN {lsn!r} in restored WAL file {path!r}; found {found!r}"
+            raise HttpResponse(fmt.format(lsn=expected_lsn, path=path, found=hdr.lsn), status=412)
 
     def _save_and_verify_restored_file(self, filetype, filename, tmp_target_path, target_path):
         self._verify_wal(filetype, filename, tmp_target_path)

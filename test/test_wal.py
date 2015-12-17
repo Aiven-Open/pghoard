@@ -7,7 +7,7 @@ See LICENSE for details
 import codecs
 import pytest
 import struct
-from pghoard.wal import read_header, WalHeader, WAL_MAGIC, XLOG_SEG_SIZE
+from pghoard.wal import read_header, lsn_from_name, WalHeader, WAL_MAGIC, XLOG_SEG_SIZE
 
 WAL_HEADER_95 = codecs.decode(b"87d006002f0000000000009c1100000000000000", "hex")
 
@@ -35,3 +35,8 @@ def test_wal_header():
     blob9X = b"\x7F\xd0" + blob95[2:]
     with pytest.raises(KeyError):
         read_header(blob9X)
+
+
+def test_lsn_from_name():
+    assert "11/4000000" == lsn_from_name("0000002E0000001100000004")
+    assert "11/4000000" == lsn_from_name("000000FF0000001100000004")
