@@ -6,6 +6,7 @@ See LICENSE for details
 """
 # pylint: disable=attribute-defined-outside-init
 from .base import CONSTANT_TEST_RSA_PUBLIC_KEY, CONSTANT_TEST_RSA_PRIVATE_KEY
+from .test_wal import wal_header_for_file
 from http.client import HTTPConnection
 from pghoard import postgres_command
 from pghoard.archive_sync import ArchiveSync
@@ -88,7 +89,10 @@ class TestWebServer(object):
                 ("timeline", "0000000F.history")]:
             foo_path = os.path.join(pghoard.config["backup_sites"][pghoard.test_site]["pg_xlog_directory"], xlog_name)
             with open(foo_path, "wb") as out_file:
-                out_file.write(b"foo")
+                if xlog_type == "xlog":
+                    out_file.write(wal_header_for_file(xlog_name))
+                else:
+                    out_file.write(b"1 2 3\n")
             archive_command(host="localhost", port=pghoard.config["http_port"],
                             site=pghoard.test_site, xlog=xlog_name)
             archive_path = os.path.join(pghoard.test_site, xlog_type, xlog_name)
@@ -240,7 +244,7 @@ class TestWebServer(object):
         valid_xlog_seg = "0000DDDD0000000D000000FC"
         valid_xlog = "/{}/xlog/{}".format(pghoard.test_site, valid_xlog_seg)
         store = pghoard.transfer_agents[0].get_object_storage(pghoard.test_site)
-        store.store_file_from_memory(valid_xlog, b"TEST", metadata={"a": "b"})
+        store.store_file_from_memory(valid_xlog, wal_header_for_file(valid_xlog_seg), metadata={"a": "b"})
         conn.request("HEAD", valid_xlog)
         status = conn.getresponse().status
         assert status == 200
@@ -311,7 +315,7 @@ class TestWebServer(object):
         xlog_seg = "E" * 24
         xlog_path = "/{}/xlog/{}".format(pghoard.test_site, xlog_seg)
         store = pghoard.transfer_agents[0].get_object_storage(pghoard.test_site)
-        store.store_file_from_memory(xlog_path, b"TEST", metadata={"a": "b"})
+        store.store_file_from_memory(xlog_path, wal_header_for_file(xlog_seg), metadata={"a": "b"})
         restore_command(site=pghoard.test_site, xlog=xlog_seg, output=None,
                         host="127.0.0.1", port=pghoard.config["http_port"],
                         retry_interval=0.1)
@@ -340,7 +344,7 @@ class TestWebServer(object):
     def test_get_archived_file(self, pghoard):
         xlog_seg = "00000001000000000000000F"
         xlog_file = "xlog/{}".format(xlog_seg)
-        content = b"testing123"
+        content = wal_header_for_file(xlog_seg)
         pgdata = os.path.dirname(pghoard.config["backup_sites"][pghoard.test_site]["pg_xlog_directory"])
         archive_path = os.path.join(pghoard.test_site, xlog_file)
         compressor = pghoard.Compressor()
@@ -378,7 +382,7 @@ class TestWebServer(object):
 
     def test_get_encrypted_archived_file(self, pghoard):
         xlog_seg = "000000010000000000000010"
-        content = b"testing123"
+        content = wal_header_for_file(xlog_seg)
         compressor = pghoard.Compressor()
         compressed_content = compressor.compress(content) + (compressor.flush() or b"")
         encryptor = Encryptor(CONSTANT_TEST_RSA_PUBLIC_KEY)
