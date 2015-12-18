@@ -38,5 +38,5 @@ def test_wal_header():
 
 
 def test_lsn_from_name():
-    assert "11/4000000" == lsn_from_name("0000002E0000001100000004")
-    assert "11/4000000" == lsn_from_name("000000FF0000001100000004")
+    assert lsn_from_name("0000002E0000001100000004") == "11/4000000"
+    assert lsn_from_name("000000FF0000001100000004") == "11/4000000"
