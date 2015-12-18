@@ -32,3 +32,11 @@ def read_header(blob):
     lsn = "{:X}/{:X}".format(log, pos)
     filename = "{:08X}{:08X}{:08X}".format(tli, log, seg)
     return WalHeader(version=version, timeline=tli, lsn=lsn, filename=filename)
+
+
+def lsn_from_name(name):
+    n = int(name, 16)
+    log = (n >> 32) & 0xFFFFFFFF
+    seg = n & 0xFFFFFFFF
+    pos = seg * XLOG_SEG_SIZE
+    return "{:X}/{:X}".format(log, pos)

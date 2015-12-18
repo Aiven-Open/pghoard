@@ -342,9 +342,11 @@ class TestWebServer(object):
         postgres_command.http_request = orig_http_request
 
     def test_get_archived_file(self, pghoard):
-        xlog_seg = "00000001000000000000000F"
+        xlog_seg_prev_tli = "00000001000000000000000F"
+        xlog_seg = "00000002000000000000000F"
         xlog_file = "xlog/{}".format(xlog_seg)
-        content = wal_header_for_file(xlog_seg)
+        # NOTE: create WAL header for the "previous" timeline, this should be accepted
+        content = wal_header_for_file(xlog_seg_prev_tli)
         pgdata = os.path.dirname(pghoard.config["backup_sites"][pghoard.test_site]["pg_xlog_directory"])
         archive_path = os.path.join(pghoard.test_site, xlog_file)
         compressor = pghoard.Compressor()
