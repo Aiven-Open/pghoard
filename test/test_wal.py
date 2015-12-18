@@ -7,16 +7,13 @@ See LICENSE for details
 import codecs
 import pytest
 import struct
-from pghoard.wal import read_header, lsn_from_name, WalHeader, WAL_MAGIC, XLOG_SEG_SIZE
+from pghoard.wal import read_header, lsn_from_name, name_to_tli_log_seg, WalHeader, WAL_MAGIC, XLOG_SEG_SIZE
 
 WAL_HEADER_95 = codecs.decode(b"87d006002f0000000000009c1100000000000000", "hex")
 
 
 def wal_header_for_file(name):
-    n = int(name, 16)
-    tli = n >> 64
-    log = (n >> 32) & 0xFFFFFFFF
-    seg = n & 0xFFFFFFFF
+    tli, log, seg = name_to_tli_log_seg(name)
     pageaddr = (log << 32) | (seg * XLOG_SEG_SIZE)
     return struct.pack("=HHIQI", list(WAL_MAGIC).pop(0), 0, tli, pageaddr, 0)
 
