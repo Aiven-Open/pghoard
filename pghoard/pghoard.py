@@ -5,6 +5,7 @@ Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
 from contextlib import closing
+from pghoard import wal
 from pghoard.basebackup import PGBaseBackup
 from pghoard.common import convert_pg_command_version_to_number, replication_connection_string_using_pgpass
 from pghoard.common import default_log_format_str, set_syslog_handler
@@ -185,22 +186,28 @@ class PGHoard(object):
 
     def delete_remote_wal_before(self, wal_segment, site):
         self.log.debug("Starting WAL deletion from: %r before: %r", site, wal_segment)
-        wal_segment_no = int(wal_segment, 16) - 1
         storage = self.site_transfers.get(site)
         valid_timeline = True
+        tli, log, seg = wal.name_to_tli_log_seg(wal_segment)
         while True:
-            wal_path = os.path.join(self.config.get("path_prefix", ""),
-                                    site,
-                                    "xlog",
-                                    "{:024X}".format(wal_segment_no))
+            # Decrement one segment if we're on a valid timeline
+            if valid_timeline:
+                if seg == 0:
+                    if log == 0:
+                        break
+                    log -= 1
+                    seg = 0xFF
+                else:
+                    seg -= 1
+
+            wal_path = os.path.join(self.config.get("path_prefix", ""), site, "xlog",
+                                    wal.name_for_tli_log_seg(tli, log, seg))
             self.log.debug("Deleting wal_file: %r", wal_path)
             try:
                 storage.delete_key(wal_path)
-                wal_segment_no -= 1
                 valid_timeline = True
             except FileNotFoundFromStorageError:
-                timeline = wal_segment_no >> 64
-                if not valid_timeline or timeline <= 1:
+                if not valid_timeline or tli <= 1:
                     # if we didn't find any WALs to delete on this timeline or we're already at
                     # timeline 1 there's no need or possibility to try older timelines, break.
                     self.log.info("Could not delete wal_file: %r, returning", wal_path)
@@ -208,9 +215,9 @@ class PGHoard(object):
                 # let's try the same segment number on a previous timeline, but flag that timeline
                 # as "invalid" until we're able to delete at least one segment on it.
                 valid_timeline = False
-                wal_segment_no -= (1 << 64)
+                tli -= 1
                 self.log.info("Could not delete wal_file: %r, trying the same segment on a previous "
-                              "timeline (%024X)", wal_path, wal_segment_no)
+                              "timeline (%s)", wal_path, wal.name_for_tli_log_seg(tli, log, seg))
             except:  # FIXME: don't catch all exceptions; pylint: disable=bare-except
                 self.log.exception("Problem deleting: %r", wal_path)
 

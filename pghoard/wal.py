@@ -30,13 +30,23 @@ def read_header(blob):
     pos = pageaddr & 0xFFFFFFFF
     seg = pos // XLOG_SEG_SIZE
     lsn = "{:X}/{:X}".format(log, pos)
-    filename = "{:08X}{:08X}{:08X}".format(tli, log, seg)
+    filename = name_for_tli_log_seg(tli, log, seg)
     return WalHeader(version=version, timeline=tli, lsn=lsn, filename=filename)
 
 
-def lsn_from_name(name):
+def name_to_tli_log_seg(name):
     n = int(name, 16)
+    tli = n >> 64
     log = (n >> 32) & 0xFFFFFFFF
     seg = n & 0xFFFFFFFF
+    return (tli, log, seg)
+
+
+def name_for_tli_log_seg(tli, log, seg):
+    return "{:08X}{:08X}{:08X}".format(tli, log, seg)
+
+
+def lsn_from_name(name):
+    _, log, seg = name_to_tli_log_seg(name)
     pos = seg * XLOG_SEG_SIZE
     return "{:X}/{:X}".format(log, pos)

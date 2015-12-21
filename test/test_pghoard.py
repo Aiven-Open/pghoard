@@ -104,22 +104,22 @@ class TestPGHoard(PGHoardTestCase):
         backups_and_wals = {
             "2015-08-25_0": [
                 # NOTE: gap between this and next segment means that cleanup shouldn't find this
-                "000000010000000000000001",
+                "000000010000000A000000FB",
             ],
             "2015-08-25_1": [
-                "000000020000000000000003",
-                "000000020000000000000004",
+                "000000020000000A000000FD",
+                "000000020000000A000000FE",
             ],
             "2015-08-25_2": [
-                "000000030000000000000005",
-                "000000030000000000000006",
-                "000000030000000000000007",
-                "000000040000000000000008",
+                "000000030000000A000000FF",
+                "000000030000000B00000000",
+                "000000030000000B00000001",
+                "000000040000000B00000002",
             ],
             "2015-08-25_3": [
                 # Both of these should be saved
-                "000000040000000000000009",
-                "00000004000000000000000A",
+                "000000040000000B00000003",
+                "000000040000000B00000004",
             ],
         }
         write_backup_and_wal_files(backups_and_wals)
@@ -133,8 +133,18 @@ class TestPGHoard(PGHoardTestCase):
         # any further from TLI 1.  Note that timeline 3 is now "empty" so deletion shouldn't touch timelines 2
         # or 1.
         new_backups_and_wals = {
-            "": ["{:024X}".format((2 << 64) | seg) for seg in [2, 3, 4, 5, 6, 7, 8]],
-            "2015-08-25_4": ["00000004000000000000000B"],
+            "": [
+                "000000020000000A000000FC",
+                "000000020000000A000000FD",
+                "000000020000000A000000FE",
+                "000000020000000A000000FF",
+                "000000020000000B00000000",
+                "000000020000000B00000001",
+                "000000020000000B00000002",
+            ],
+            "2015-08-25_4": [
+                "000000040000000B00000005",
+            ],
         }
         write_backup_and_wal_files(new_backups_and_wals)
         assert len(os.listdir(self.compressed_xlog_path)) == 11
@@ -148,10 +158,12 @@ class TestPGHoard(PGHoardTestCase):
         # Now put WAL files in place with no gaps anywhere
         gapless_backups_and_wals = {
             "2015-08-25_3": [
-                "000000030000000000000009",
-                "00000004000000000000000A",
+                "000000030000000B00000003",
+                "000000040000000B00000004",
             ],
-            "2015-08-25_4": ["00000004000000000000000B"],
+            "2015-08-25_4": [
+                "000000040000000B00000005",
+            ],
         }
         write_backup_and_wal_files(gapless_backups_and_wals)
         assert len(os.listdir(self.compressed_xlog_path)) >= 10
