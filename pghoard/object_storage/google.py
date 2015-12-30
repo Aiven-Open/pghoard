@@ -156,23 +156,26 @@ class GoogleTransfer(BaseTransfer):
             raise
         return data, self._metadata_for_key(key)
 
-    def _upload(self, upload_type, local_object, key, metadata):
+    def _upload(self, upload_type, local_object, key, metadata, extra_props):
         key = self.format_key_for_backend(key)
         upload = upload_type(local_object, mimetype="application/octet-stream",
                              resumable=True, chunksize=CHUNK_SIZE)
+        body = {"metadata": metadata}
+        if extra_props:
+            body.update(extra_props)
         request = self.gs_objects.insert(bucket=self.bucket_name, name=key,
-                                         media_body=upload, body={"metadata": metadata})
+                                         media_body=upload, body=body)
         response = None
         while response is None:
             status, response = request.next_chunk()
             if status:
                 self.log.debug("Upload of %r to %r: %d%%", local_object, key, status.progress() * 100)
 
-    def store_file_from_memory(self, key, memstring, metadata=None):
-        return self._upload(MediaIoBaseUpload, BytesIO(memstring), key, metadata)
+    def store_file_from_memory(self, key, memstring, metadata=None, extra_props=None):  # pylint: disable=arguments-differ
+        return self._upload(MediaIoBaseUpload, BytesIO(memstring), key, metadata, extra_props)
 
-    def store_file_from_disk(self, key, filepath, metadata=None):
-        return self._upload(MediaFileUpload, filepath, key, metadata)
+    def store_file_from_disk(self, key, filepath, metadata=None, extra_props=None):  # pylint: disable=arguments-differ
+        return self._upload(MediaFileUpload, filepath, key, metadata, extra_props)
 
     def get_or_create_bucket(self, bucket_name):
         """Look up the bucket if it already exists and try to create the
