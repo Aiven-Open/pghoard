@@ -161,7 +161,7 @@ class Restore(object):
         for basebackup in basebackups:
             backup_start_time = dateutil.parser.parse(basebackup["metadata"]["start-time"])
             if recovery_target_time:
-                if backup_start_time <= recovery_target_time:
+                if backup_start_time < recovery_target_time:
                     applicable_basebackups[backup_start_time] = basebackup
             else:
                 applicable_basebackups[backup_start_time] = basebackup
