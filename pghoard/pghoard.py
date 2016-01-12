@@ -15,7 +15,7 @@ from pghoard.inotify import InotifyWatcher
 from pghoard.object_storage import TransferAgent, get_object_storage_transfer
 from pghoard.receivexlog import PGReceiveXLog
 from pghoard.webserver import WebServer
-from queue import Queue
+from queue import Empty, Queue
 import datetime
 import json
 import logging
@@ -58,9 +58,10 @@ class PGHoard(object):
         signal.signal(signal.SIGHUP, self.load_config)
         signal.signal(signal.SIGINT, self.quit)
         signal.signal(signal.SIGTERM, self.quit)
-        self.time_since_last_backup = {}
-        self.time_since_last_backup_check = {}
+        self.time_of_last_backup = {}
+        self.time_of_last_backup_check = {}
         self.basebackups = {}
+        self.basebackups_callbacks = {}
         self.receivexlogs = {}
         self.compressors = []
         self.transfer_agents = []
@@ -248,7 +249,7 @@ class PGHoard(object):
             entry["name"] = os.path.basename(entry["name"])
             entry["last_modified"] = entry["last_modified"].timestamp()
 
-        results.sort(key=lambda entry: entry["name"])
+        results.sort(key=lambda entry: entry["metadata"]["start-time"])
         return results
 
     def check_backup_count_and_state(self, site):
@@ -260,10 +261,9 @@ class PGHoard(object):
         m_time = basebackups[-1]["last_modified"] if basebackups else 0
 
         while len(basebackups) > allowed_basebackup_count:
-            self.log.warning("Too many basebackups: %d>%d, %r, starting to get rid of %r",
+            self.log.warning("Too many basebackups: %d > %d, %r, starting to get rid of %r",
                              len(basebackups), allowed_basebackup_count, basebackups, basebackups[0]["name"])
-            basebackup_to_be_deleted = basebackups[0]
-            basebackups = basebackups[1:]
+            basebackup_to_be_deleted = basebackups.pop(0)
 
             last_wal_segment_still_needed = 0
             if basebackups:
@@ -273,7 +273,7 @@ class PGHoard(object):
                 self.delete_remote_wal_before(last_wal_segment_still_needed, site)
             self.delete_remote_basebackup(site, basebackup_to_be_deleted["name"])
         self.state["backup_sites"][site]['basebackups'] = basebackups
-        return time.time() - m_time
+        return m_time
 
     def set_state_defaults(self, site):
         if site not in self.state["backup_sites"]:
@@ -310,10 +310,9 @@ class PGHoard(object):
             #  If a site has been marked inactive, don't bother checking anything
             return
 
-        if time.time() - self.time_since_last_backup_check.get(site, 0) > 60:
-            time_since_last_backup = self.check_backup_count_and_state(site)
-            self.time_since_last_backup[site] = time_since_last_backup
-            self.time_since_last_backup_check[site] = time.time()
+        if time.monotonic() - self.time_of_last_backup_check.get(site, 0) > 60:
+            self.time_of_last_backup[site] = self.check_backup_count_and_state(site)
+            self.time_of_last_backup_check[site] = time.monotonic()
 
         chosen_backup_node = random.choice(site_config["nodes"])
 
@@ -322,12 +321,28 @@ class PGHoard(object):
             connection_string, slot = replication_connection_string_using_pgpass(chosen_backup_node)
             self.receivexlog_listener(site, xlog_path + "_incoming", connection_string, slot)
 
-        if self.time_since_last_backup.get(site, 0) > self.config['backup_sites'][site]['basebackup_interval_hours'] * 3600 \
-           and site not in self.basebackups:
+        # check if a basebackup is running, or if a basebackup has just completed
+        if site in self.basebackups:
+            try:
+                result = self.basebackups_callbacks[site].get(block=False)
+            except Empty:
+                # previous basebackup (or its compression and upload) still in progress
+                return
+            if self.basebackups[site].is_alive():
+                self.basebackups[site].join()
+            del self.basebackups[site]
+            del self.basebackups_callbacks[site]
+            self.log.debug("Basebackup has finished for %r: %r", site, result)
+            self.time_of_last_backup[site] = self.check_backup_count_and_state(site)
+            self.time_of_last_backup_check[site] = time.monotonic()
+
+        time_since_last_backup = time.time() - self.time_of_last_backup[site]
+        if time_since_last_backup > site_config["basebackup_interval_hours"] * 3600:
             self.log.debug("Starting to create a new basebackup for: %r since time from previous: %r",
-                           site, self.time_since_last_backup.get(site, 0))
+                           site, time_since_last_backup)
             connection_string, slot = replication_connection_string_using_pgpass(chosen_backup_node)
-            self.create_basebackup(site, connection_string, basebackup_path)
+            self.basebackups_callbacks[site] = Queue()
+            self.create_basebackup(site, connection_string, basebackup_path, self.basebackups_callbacks[site])
 
     def run(self):
         self.start_threads_on_startup()
@@ -356,7 +371,7 @@ class PGHoard(object):
             "compression_queue": self.compression_queue.qsize(),
             "transfer_queue": self.transfer_queue.qsize(),
             }
-        json_to_dump = json.dumps(self.state, indent=4)
+        json_to_dump = json.dumps(self.state, indent=4, sort_keys=True)
         self.log.debug("Writing JSON state file to: %r, file_size: %r", state_file_path, len(json_to_dump))
         with open(state_file_path + ".tmp", "w") as fp:
             fp.write(json_to_dump)

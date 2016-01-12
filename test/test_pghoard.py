@@ -59,7 +59,7 @@ class TestPGHoard(PGHoardTestCase):
     def test_handle_site(self):
         self.pghoard.handle_site(self.test_site, self.config["backup_sites"][self.test_site])
         assert self.pghoard.receivexlogs == {}
-        assert len(self.pghoard.time_since_last_backup_check) == 1
+        assert len(self.pghoard.time_of_last_backup_check) == 1
 
     def test_get_local_basebackups_info(self):
         assert self.pghoard.get_remote_basebackups_info(self.test_site) == []
@@ -69,21 +69,32 @@ class TestPGHoard(PGHoardTestCase):
         metadata_file_path = bb_path + ".metadata"
         with open(bb_path, "wb") as fp:
             fp.write(b"something")
-        with open(metadata_file_path, "wb") as fp:
-            fp.write(b"{\"a\":1}")
+        with open(metadata_file_path, "w") as fp:
+            json.dump({"start-time": "2015-07-03 12:00:00"}, fp)
         available_backup = self.pghoard.get_remote_basebackups_info(self.test_site)[0]
         assert available_backup["name"] == "2015-07-03_0"
-        assert available_backup["metadata"] == {"a": 1}
+        assert available_backup["metadata"] == {"start-time": "2015-07-03 12:00:00"}
 
-        bb_path = os.path.join(self.basebackup_path, "2015-07-02_0")
+        bb_path = os.path.join(self.basebackup_path, "2015-07-02_9")
         metadata_file_path = bb_path + ".metadata"
         with open(bb_path, "wb") as fp:
             fp.write(b"something")
-        with open(metadata_file_path, "wb") as fp:
-            fp.write(b"{}")
+        with open(metadata_file_path, "w") as fp:
+            json.dump({"start-time": "2015-07-02 12:00:00"}, fp)
         basebackups = self.pghoard.get_remote_basebackups_info(self.test_site)
-        assert basebackups[0]["name"] == "2015-07-02_0"
+        assert basebackups[0]["name"] == "2015-07-02_9"
         assert basebackups[1]["name"] == "2015-07-03_0"
+
+        bb_path = os.path.join(self.basebackup_path, "2015-07-02_10")
+        metadata_file_path = bb_path + ".metadata"
+        with open(bb_path, "wb") as fp:
+            fp.write(b"something")
+        with open(metadata_file_path, "w") as fp:
+            json.dump({"start-time": "2015-07-02 22:00:00"}, fp)
+        basebackups = self.pghoard.get_remote_basebackups_info(self.test_site)
+        assert basebackups[0]["name"] == "2015-07-02_9"
+        assert basebackups[1]["name"] == "2015-07-02_10"
+        assert basebackups[2]["name"] == "2015-07-03_0"
 
     def test_local_check_backup_count_and_state(self):
         self.pghoard.set_state_defaults(self.test_site)
@@ -96,7 +107,10 @@ class TestPGHoard(PGHoardTestCase):
                     with open(bb_path, "wb") as fp:
                         fp.write(b"something")
                     with open(bb_path + ".metadata", "w") as fp:
-                        json.dump({"start-wal-segment": wals[0]}, fp)
+                        json.dump({
+                            "start-wal-segment": wals[0],
+                            "start-time": bb,
+                        }, fp)
                 for wal in wals:
                     with open(os.path.join(self.compressed_xlog_path, wal), "wb") as fp:
                         fp.write(b"something")
