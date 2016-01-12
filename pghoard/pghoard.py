@@ -302,7 +302,7 @@ class PGHoard(object):
         for ta in self.transfer_agents:
             ta.start()
 
-    def handle_site(self, site, site_config):
+    def handle_site(self, site, site_config, block=False):
         self.set_state_defaults(site)
         xlog_path, basebackup_path = self.create_backup_site_paths(site)
 
@@ -322,12 +322,20 @@ class PGHoard(object):
             connection_string, slot = replication_connection_string_using_pgpass(chosen_backup_node)
             self.receivexlog_listener(site, xlog_path + "_incoming", connection_string, slot)
 
-        if self.time_since_last_backup.get(site, 0) > self.config['backup_sites'][site]['basebackup_interval_hours'] * 3600 \
-           and site not in self.basebackups:
+        if site in self.basebackups and not self.basebackups[site].running:
+            if self.basebackups[site].is_alive():
+                self.basebackups[site].join()
+            del self.basebackups[site]
+
+        if site not in self.basebackups and \
+                self.time_since_last_backup.get(site, 0) > site_config["basebackup_interval_hours"] * 3600:
             self.log.debug("Starting to create a new basebackup for: %r since time from previous: %r",
                            site, self.time_since_last_backup.get(site, 0))
             connection_string, slot = replication_connection_string_using_pgpass(chosen_backup_node)
-            self.create_basebackup(site, connection_string, basebackup_path)
+            callback = Queue() if block else None
+            self.create_basebackup(site, connection_string, basebackup_path, callback)
+            if block:
+                callback.get()
 
     def run(self):
         self.start_threads_on_startup()
@@ -356,7 +364,7 @@ class PGHoard(object):
             "compression_queue": self.compression_queue.qsize(),
             "transfer_queue": self.transfer_queue.qsize(),
             }
-        json_to_dump = json.dumps(self.state, indent=4)
+        json_to_dump = json.dumps(self.state, indent=4, sort_keys=True)
         self.log.debug("Writing JSON state file to: %r, file_size: %r", state_file_path, len(json_to_dump))
         with open(state_file_path + ".tmp", "w") as fp:
             fp.write(json_to_dump)
