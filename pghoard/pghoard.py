@@ -248,7 +248,7 @@ class PGHoard(object):
             entry["name"] = os.path.basename(entry["name"])
             entry["last_modified"] = entry["last_modified"].timestamp()
 
-        results.sort(key=lambda entry: entry["name"])
+        results.sort(key=lambda entry: entry["metadata"]["start-time"])
         return results
 
     def check_backup_count_and_state(self, site):
@@ -260,10 +260,9 @@ class PGHoard(object):
         m_time = basebackups[-1]["last_modified"] if basebackups else 0
 
         while len(basebackups) > allowed_basebackup_count:
-            self.log.warning("Too many basebackups: %d>%d, %r, starting to get rid of %r",
+            self.log.warning("Too many basebackups: %d > %d, %r, starting to get rid of %r",
                              len(basebackups), allowed_basebackup_count, basebackups, basebackups[0]["name"])
-            basebackup_to_be_deleted = basebackups[0]
-            basebackups = basebackups[1:]
+            basebackup_to_be_deleted = basebackups.pop(0)
 
             last_wal_segment_still_needed = 0
             if basebackups:
