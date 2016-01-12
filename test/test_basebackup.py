@@ -4,6 +4,7 @@ pghoard
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
+from copy import deepcopy
 from pghoard.basebackup import PGBaseBackup
 from pghoard.common import create_connection_string
 from pghoard.restore import Restore, RestoreError
@@ -11,6 +12,7 @@ from queue import Queue
 import os
 import pytest
 import tarfile
+import time
 
 
 class TestPGBaseBackup(object):
@@ -70,3 +72,37 @@ LABEL: pg_basebackup base backup
             "--overwrite",
         ])
         # TODO: check that the backup is valid
+
+    def test_handle_site(self, pghoard):
+        site_config = deepcopy(pghoard.config["backup_sites"][pghoard.test_site])
+        site_config["basebackup_interval_hours"] = 1 / 36000
+        assert pghoard.basebackups == {}
+
+        pghoard.handle_site(pghoard.test_site, site_config, block=True)
+        assert pghoard.test_site in pghoard.basebackups
+        assert pghoard.basebackups[pghoard.test_site].running is False
+        first_last_activity = pghoard.basebackups[pghoard.test_site].latest_activity
+
+        time.sleep(1)
+
+        # first handle_site() call after a basebackup was taken should clear the timers, but not start a new one
+        pghoard.handle_site(pghoard.test_site, site_config, block=True)
+        assert pghoard.test_site not in pghoard.basebackups
+        # second handle_site() call starts a new basebackup
+        pghoard.handle_site(pghoard.test_site, site_config, block=True)
+        assert pghoard.test_site in pghoard.basebackups
+        assert pghoard.basebackups[pghoard.test_site].running is False
+        second_last_activity = pghoard.basebackups[pghoard.test_site].latest_activity
+
+        assert first_last_activity < second_last_activity
+
+        # reset the timer to something more sensible and make sure we don't trigger any new basebackups
+        site_config["basebackup_interval_hours"] = 1
+
+        time.sleep(1)
+        pghoard.handle_site(pghoard.test_site, site_config, block=True)
+        assert pghoard.test_site not in pghoard.basebackups
+
+        time.sleep(1)
+        pghoard.handle_site(pghoard.test_site, site_config, block=True)
+        assert pghoard.test_site not in pghoard.basebackups
