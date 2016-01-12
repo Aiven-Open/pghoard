@@ -118,6 +118,8 @@ def pghoard(db, tmpdir, request):  # pylint: disable=redefined-outer-name
         "backup_location": os.path.join(str(tmpdir), "backups"),
         "backup_sites": {
             test_site: {
+                "basebackup_count": 2,
+                "basebackup_interval_hours": 24,
                 "pg_xlog_directory": os.path.join(db.pgdata, "pg_xlog"),
                 "nodes": [db.user],
                 "object_storage": {},

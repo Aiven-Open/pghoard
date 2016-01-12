@@ -4,6 +4,7 @@ pghoard
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
+from copy import deepcopy
 from pghoard.basebackup import PGBaseBackup
 from pghoard.common import create_connection_string
 from pghoard.restore import Restore, RestoreError
@@ -11,6 +12,7 @@ from queue import Queue
 import os
 import pytest
 import tarfile
+import time
 
 
 class TestPGBaseBackup(object):
@@ -70,3 +72,63 @@ LABEL: pg_basebackup base backup
             "--overwrite",
         ])
         # TODO: check that the backup is valid
+
+    def test_handle_site(self, pghoard):
+        site_config = deepcopy(pghoard.config["backup_sites"][pghoard.test_site])
+        site_config["basebackup_interval_hours"] = 1 / 3600
+        assert pghoard.basebackups == {}
+
+        # initialize with a single backup
+        pghoard.handle_site(pghoard.test_site, site_config)
+        assert pghoard.test_site in pghoard.basebackups
+        # wait for backup to complete and put the event back in so pghoard finds it, too
+        pghoard.basebackups_callbacks[pghoard.test_site].put(pghoard.basebackups_callbacks[pghoard.test_site].get())
+        pghoard.handle_site(pghoard.test_site, site_config)
+        assert pghoard.test_site not in pghoard.basebackups
+
+        # create a new backup now that we have some state
+        time.sleep(1)
+        pghoard.handle_site(pghoard.test_site, site_config)
+        assert pghoard.test_site in pghoard.basebackups
+        # wait for backup to complete and put the event back in so pghoard finds it, too
+        pghoard.basebackups_callbacks[pghoard.test_site].put(pghoard.basebackups_callbacks[pghoard.test_site].get())
+        # now call handle_site so it notices the backup has finished (this must not start a new one)
+        pghoard.handle_site(pghoard.test_site, site_config)
+        assert pghoard.test_site not in pghoard.basebackups
+        first_time_of = pghoard.time_of_last_backup[pghoard.test_site]
+        first_time_of_check = pghoard.time_of_last_backup_check[pghoard.test_site]
+
+        # create another backup
+        time.sleep(1)
+        pghoard.handle_site(pghoard.test_site, site_config)
+        assert pghoard.test_site in pghoard.basebackups
+        pghoard.basebackups_callbacks[pghoard.test_site].put(pghoard.basebackups_callbacks[pghoard.test_site].get())
+        # again, let pghoard notice the backup is done
+        pghoard.handle_site(pghoard.test_site, site_config)
+        assert pghoard.test_site not in pghoard.basebackups
+
+        second_time_of = pghoard.time_of_last_backup[pghoard.test_site]
+        second_time_of_check = pghoard.time_of_last_backup_check[pghoard.test_site]
+        assert second_time_of > first_time_of
+        assert second_time_of_check > first_time_of_check
+
+        # reset the timer to something more sensible and make sure we don't trigger any new basebackups
+        site_config["basebackup_interval_hours"] = 1
+        pghoard.time_of_last_backup_check[pghoard.test_site] = 0
+        time.sleep(1)
+        pghoard.handle_site(pghoard.test_site, site_config)
+        assert pghoard.test_site not in pghoard.basebackups
+
+        third_time_of = pghoard.time_of_last_backup[pghoard.test_site]
+        third_time_of_check = pghoard.time_of_last_backup_check[pghoard.test_site]
+        assert third_time_of == second_time_of
+        assert third_time_of_check > second_time_of_check
+
+        time.sleep(1)
+        pghoard.handle_site(pghoard.test_site, site_config)
+        assert pghoard.test_site not in pghoard.basebackups
+
+        fourth_time_of = pghoard.time_of_last_backup[pghoard.test_site]
+        fourth_time_of_check = pghoard.time_of_last_backup_check[pghoard.test_site]
+        assert fourth_time_of == third_time_of
+        assert fourth_time_of_check == third_time_of_check
