@@ -310,7 +310,8 @@ class PGHoard(object):
             #  If a site has been marked inactive, don't bother checking anything
             return
 
-        if time.monotonic() - self.time_of_last_backup_check.get(site, 0) > 60:
+        if site not in self.time_of_last_backup_check or \
+                time.monotonic() - self.time_of_last_backup_check[site] > 60:
             self.time_of_last_backup[site] = self.check_backup_count_and_state(site)
             self.time_of_last_backup_check[site] = time.monotonic()
 
