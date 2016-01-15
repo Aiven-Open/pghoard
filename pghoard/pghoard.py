@@ -349,9 +349,12 @@ class PGHoard(object):
         self.start_threads_on_startup()
         self.startup_walk_for_missed_files()
         while self.running:
-            for site, site_config in self.config['backup_sites'].items():
-                self.handle_site(site, site_config)
-            self.write_backup_state_to_json_file()
+            try:
+                for site, site_config in self.config['backup_sites'].items():
+                    self.handle_site(site, site_config)
+                self.write_backup_state_to_json_file()
+            except:  # pylint: disable=bare-except
+                self.log.exception("Problem in PGHoard main loop")
             time.sleep(5.0)
 
     def write_backup_state_to_json_file(self):
