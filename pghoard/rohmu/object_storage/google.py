@@ -17,7 +17,7 @@ from googleapiclient.http import MediaFileUpload, MediaIoBaseUpload, MediaIoBase
 from oauth2client import GOOGLE_TOKEN_URI  # pylint: disable=import-error
 from oauth2client.client import GoogleCredentials  # pylint: disable=import-error
 from oauth2client.service_account import _ServiceAccountCredentials  # pylint: disable=import-error
-from pghoard.errors import FileNotFoundFromStorageError, InvalidConfigurationError
+from ..errors import FileNotFoundFromStorageError, InvalidConfigurationError
 from .base import BaseTransfer
 
 logging.getLogger("googleapiclient").setLevel(logging.WARNING)

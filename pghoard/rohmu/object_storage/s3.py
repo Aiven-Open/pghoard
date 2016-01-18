@@ -9,7 +9,7 @@ import boto.s3
 import dateutil.parser
 from boto.s3.connection import OrdinaryCallingFormat
 from boto.s3.key import Key
-from pghoard.errors import FileNotFoundFromStorageError, InvalidConfigurationError
+from .. errors import FileNotFoundFromStorageError, InvalidConfigurationError
 from .base import BaseTransfer
 
 

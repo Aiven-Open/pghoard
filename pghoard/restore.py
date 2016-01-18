@@ -7,8 +7,8 @@ See LICENSE for details
 from pghoard.common import default_log_format_str
 from pghoard.compressor import SnappyFile
 from pghoard.encryptor import DecryptorFile
-from pghoard.errors import Error
-from pghoard.object_storage import get_object_storage_transfer
+from pghoard.rohmu import get_object_storage_transfer
+from pghoard.rohmu.errors import Error
 from psycopg2.extensions import adapt
 from requests import Session
 import argparse

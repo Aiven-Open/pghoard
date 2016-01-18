@@ -13,7 +13,7 @@ from pghoard.common import (
     json_encode,
     )
 from pghoard.compressor import snappy, SnappyFile
-from pghoard.errors import Error
+from pghoard.rohmu.errors import Error
 import datetime
 import json
 import os

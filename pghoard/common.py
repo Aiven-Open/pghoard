@@ -4,7 +4,7 @@ pghoard - common utility functions
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
-from pghoard.errors import Error
+from pghoard.rohmu.errors import Error
 from urllib.parse import urlparse, parse_qs
 import datetime
 import fcntl

@@ -6,8 +6,8 @@ See LICENSE for details
 """
 from contextlib import suppress
 from io import BytesIO
-from pghoard.errors import FileNotFoundFromStorageError, LocalFileIsRemoteFileError
-from pghoard.object_storage.base import BaseTransfer
+from ..errors import FileNotFoundFromStorageError, LocalFileIsRemoteFileError
+from . base import BaseTransfer
 import datetime
 import dateutil.tz
 import json

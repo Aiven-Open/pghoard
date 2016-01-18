@@ -8,6 +8,7 @@ See LICENSE for details
 from pghoard import errors
 from pghoard.common import IO_BLOCK_SIZE
 from pghoard.encryptor import Encryptor, Decryptor
+from pghoard.rohmu.errors import InvalidConfigurationError
 from queue import Empty
 from threading import Thread
 import json
@@ -20,6 +21,10 @@ try:
     import snappy
 except ImportError:
     snappy = None
+
+
+class MissingLibraryError(Exception):
+    """Missing dependency library"""
 
 
 class SnappyFile(object):
@@ -101,7 +106,7 @@ class Compressor(Thread):
                 raise errors.MissingLibraryError("python-snappy is required when using snappy compression")
             return snappy.StreamCompressor()
         else:
-            raise errors.InvalidConfigurationError("invalid compression algorithm: {!r}".format(
+            raise InvalidConfigurationError("invalid compression algorithm: {!r}".format(
                 self.compression_algorithm()))
 
     def decompressor(self, algorithm):
@@ -114,7 +119,7 @@ class Compressor(Thread):
                 raise errors.MissingLibraryError("python-snappy is required when using snappy compression")
             return snappy.StreamDecompressor()
         else:
-            raise errors.InvalidConfigurationError("invalid compression algorithm: {!r}".format(algorithm))
+            raise InvalidConfigurationError("invalid compression algorithm: {!r}".format(algorithm))
 
     def compress_filepath(self, filepath, targetfilepath, rsa_public_key=None):
         compressor = self.compressor()

@@ -6,7 +6,7 @@ See LICENSE for details
 """
 # pylint: disable=attribute-defined-outside-init
 from .base import PGHoardTestCase
-from pghoard.object_storage import TransferAgent
+from pghoard.transfer import TransferAgent
 from queue import Queue
 from unittest.mock import Mock
 import os
