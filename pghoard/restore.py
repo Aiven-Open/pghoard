@@ -6,7 +6,7 @@ See LICENSE for details
 """
 from pghoard.common import default_log_format_str
 from pghoard.compressor import SnappyFile
-from pghoard.encryptor import DecryptorFile
+from pghoard.rohmu.encryptor import DecryptorFile
 from pghoard.rohmu import get_object_storage_transfer
 from pghoard.rohmu.errors import Error
 from psycopg2.extensions import adapt

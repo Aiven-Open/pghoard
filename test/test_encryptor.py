@@ -5,7 +5,7 @@ Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
 from .base import PGHoardTestCase, CONSTANT_TEST_RSA_PUBLIC_KEY, CONSTANT_TEST_RSA_PRIVATE_KEY
-from pghoard.encryptor import Decryptor, DecryptorFile, Encryptor
+from pghoard.rohmu.encryptor import Decryptor, DecryptorFile, Encryptor
 import json
 import tarfile
 import tempfile

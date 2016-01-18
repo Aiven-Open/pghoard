@@ -11,7 +11,7 @@ from http.client import HTTPConnection
 from pghoard import postgres_command
 from pghoard.archive_sync import ArchiveSync
 from pghoard.common import create_connection_string, TIMELINE_RE, XLOG_RE
-from pghoard.encryptor import Encryptor
+from pghoard.rohmu.encryptor import Encryptor
 from pghoard.postgres_command import archive_command, restore_command
 from pghoard.restore import HTTPRestore, Restore
 from queue import Queue

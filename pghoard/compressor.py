@@ -7,7 +7,7 @@ See LICENSE for details
 
 from pghoard import errors
 from pghoard.common import IO_BLOCK_SIZE
-from pghoard.encryptor import Encryptor, Decryptor
+from pghoard.rohmu.encryptor import Encryptor, Decryptor
 from pghoard.rohmu.errors import InvalidConfigurationError
 from queue import Empty
 from threading import Thread
