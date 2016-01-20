@@ -30,6 +30,7 @@ class PoolMixIn(ThreadingMixIn):
 class OwnHTTPServer(PoolMixIn, HTTPServer):
     """httpserver with 10 thread pool"""
     pool = ThreadPoolExecutor(max_workers=10)
+    requested_basebackup_sites = None
 
 
 class HttpResponse(Exception):
@@ -45,10 +46,11 @@ class HttpResponse(Exception):
 
 
 class WebServer(Thread):
-    def __init__(self, config, compression_queue, transfer_queue):
+    def __init__(self, config, requested_basebackup_sites, compression_queue, transfer_queue):
         super().__init__()
         self.log = logging.getLogger("WebServer")
         self.config = config
+        self.requested_basebackup_sites = requested_basebackup_sites
         self.compression_queue = compression_queue
         self.transfer_queue = transfer_queue
         self.address = self.config.get("http_address", "")
@@ -63,6 +65,7 @@ class WebServer(Thread):
         self.server = OwnHTTPServer((self.address, self.port), RequestHandler)
         self.server.config = self.config  # pylint: disable=attribute-defined-outside-init
         self.server.log = self.log  # pylint: disable=attribute-defined-outside-init
+        self.server.requested_basebackup_sites = self.requested_basebackup_sites
         self.server.compression_queue = self.compression_queue  # pylint: disable=attribute-defined-outside-init
         self.server.transfer_queue = self.transfer_queue  # pylint: disable=attribute-defined-outside-init
         # Bounded negative cache for failed prefetch operations - we don't want to try prefetching files that
@@ -143,8 +146,6 @@ class RequestHandler(BaseHTTPRequestHandler):
 
         obtype = path[1]
         if obtype == "basebackup":
-            if len(path) != 2:
-                raise HttpResponse("Invalid basebackup request, only listing is supported for now", status=400)
             return site, obtype, None
 
         if obtype in ("archive", "timeline", "xlog"):
@@ -158,6 +159,8 @@ class RequestHandler(BaseHTTPRequestHandler):
                     obtype = "xlog"
                 elif TIMELINE_RE.match(path[2]):
                     obtype = "timeline"
+                elif path[2] == "basebackup":
+                    obtype = "basebackup"
                 else:
                     raise HttpResponse("Unrecognized file {!r} for archiving".format(path[2]), status=400)
             return site, obtype, path[2]
@@ -353,11 +356,19 @@ class RequestHandler(BaseHTTPRequestHandler):
         raise HttpResponse({"basebackups": response["items"]}, status=200)
 
     def handle_archival_request(self, site, filename, filetype):
+        if filetype == "basebackup":
+            # Request a basebackup to be made for site
+            self.server.log.debug("Requesting a new basebackup for site: %r to be made", site)
+            self.server.requested_basebackup_sites[site] = True
+            raise HttpResponse(status=201)
+
         start_time = time.time()
+
         site_config = self.server.config["backup_sites"][site]
         xlog_dir = site_config.get("pg_xlog_directory", "/var/lib/pgsql/data/pg_xlog")
         xlog_path = os.path.join(xlog_dir, filename)
-        self.server.log.debug("Got request to archive: %r %r, %r", site, filename, xlog_path)
+        self.server.log.debug("Got request to archive: %r %r %r, %r", site, filetype,
+                              filename, xlog_path)
         if not os.path.exists(xlog_path):
             self.server.log.debug("xlog_path: %r did not exist, cannot archive, returning 404", xlog_path)
             raise HttpResponse("N/A", status=404)
@@ -393,8 +404,9 @@ class RequestHandler(BaseHTTPRequestHandler):
 
     def do_PUT(self):
         with self._response_handler("PUT") as path:
+            self.server.log.error(path)
             site, obtype, obname = self._parse_request(path)
-            assert obtype in ("xlog", "timeline")
+            assert obtype in ("basebackup", "xlog", "timeline")
             self.handle_archival_request(site, obname, obtype)
 
     def do_HEAD(self):
