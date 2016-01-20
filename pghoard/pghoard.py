@@ -65,9 +65,14 @@ class PGHoard(object):
         self.receivexlogs = {}
         self.compressors = []
         self.transfer_agents = []
+        self.requested_basebackup_sites = {}
 
         self.inotify = InotifyWatcher(self.compression_queue)
-        self.webserver = WebServer(self.config, self.compression_queue, self.transfer_queue)
+        self.webserver = WebServer(
+            self.config,
+            self.requested_basebackup_sites,
+            self.compression_queue,
+            self.transfer_queue)
 
         for _ in range(self.config["compression"]["thread_count"]):
             compressor = Compressor(self.config, self.compression_queue, self.transfer_queue)
@@ -310,17 +315,16 @@ class PGHoard(object):
             #  If a site has been marked inactive, don't bother checking anything
             return
 
+        chosen_backup_node = random.choice(site_config["nodes"])
+
+        if site not in self.receivexlogs and site_config.get("active_backup_mode") == "pg_receivexlog":
+            connection_string, slot = replication_connection_string_using_pgpass(chosen_backup_node)
+            self.receivexlog_listener(site, xlog_path + "_incoming", connection_string, slot)
+
         if site not in self.time_of_last_backup_check or \
                 time.monotonic() - self.time_of_last_backup_check[site] > 60:
             self.time_of_last_backup[site] = self.check_backup_count_and_state(site)
             self.time_of_last_backup_check[site] = time.monotonic()
-
-        chosen_backup_node = random.choice(site_config["nodes"])
-
-        if site not in self.receivexlogs and site_config.get("active_backup_mode") == "pg_receivexlog":
-            # Create a pg_receivexlog listener for all sites
-            connection_string, slot = replication_connection_string_using_pgpass(chosen_backup_node)
-            self.receivexlog_listener(site, xlog_path + "_incoming", connection_string, slot)
 
         # check if a basebackup is running, or if a basebackup has just completed
         if site in self.basebackups:
@@ -338,7 +342,8 @@ class PGHoard(object):
             self.time_of_last_backup_check[site] = time.monotonic()
 
         time_since_last_backup = time.time() - self.time_of_last_backup[site]
-        if time_since_last_backup > site_config["basebackup_interval_hours"] * 3600:
+        if time_since_last_backup > site_config["basebackup_interval_hours"] * 3600 or \
+           self.requested_basebackup_sites.pop(site, False):
             self.log.debug("Starting to create a new basebackup for: %r since time from previous: %r",
                            site, time_since_last_backup)
             connection_string, slot = replication_connection_string_using_pgpass(chosen_backup_node)
