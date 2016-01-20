@@ -196,15 +196,11 @@ class PGHoard(object):
         valid_timeline = True
         tli, log, seg = wal.name_to_tli_log_seg(wal_segment)
         while True:
-            # Decrement one segment if we're on a valid timeline
             if valid_timeline:
-                if seg == 0:
-                    if log == 0:
-                        break
-                    log -= 1
-                    seg = 0xFF
-                else:
-                    seg -= 1
+                # Decrement one segment if we're on a valid timeline
+                if seg == 0 and log == 0:
+                    break
+                seg, log = wal.get_previous_wal_on_same_timeline(seg, log)
 
             wal_path = os.path.join(self.config.get("path_prefix", ""), site, "xlog",
                                     wal.name_for_tli_log_seg(tli, log, seg))

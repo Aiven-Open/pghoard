@@ -42,6 +42,15 @@ def name_to_tli_log_seg(name):
     return (tli, log, seg)
 
 
+def get_previous_wal_on_same_timeline(seg, log):
+    if seg == 0:
+        log -= 1
+        seg = 0xFF
+    else:
+        seg -= 1
+    return seg, log
+
+
 def name_for_tli_log_seg(tli, log, seg):
     return "{:08X}{:08X}{:08X}".format(tli, log, seg)
 
