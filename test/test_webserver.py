@@ -411,3 +411,11 @@ class TestWebServer(object):
         with open(restore_target, "rb") as fp:
             restored_data = fp.read()
         assert content == restored_data
+
+    def test_requesting_basebackup(self, pghoard):
+        nonexistent_basebackup = "/{}/archive/basebackup".format(pghoard.test_site)
+        conn = HTTPConnection(host="127.0.0.1", port=pghoard.config["http_port"])
+        status = conn.request("PUT", nonexistent_basebackup)
+        status = conn.getresponse().status
+        assert status == 201
+        assert pghoard.requested_basebackup_sites == {'test_requesting_basebackup': True}

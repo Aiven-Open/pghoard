@@ -6,6 +6,7 @@ See LICENSE for details
 """
 from .common import default_log_format_str, replication_connection_string_using_pgpass
 from .common import TIMELINE_RE, XLOG_RE
+from . import wal
 import argparse
 import json
 import logging
@@ -81,6 +82,10 @@ class ArchiveSync(object):
         return latest_basebackup["metadata"]["start-wal-segment"]
 
     def archive_sync(self):
+        self.check_and_upload_missing_local_files()
+        return self.check_wal_archive_integrity()
+
+    def check_and_upload_missing_local_files(self):
         current_wal_file = self.get_current_wal_file()
         first_required_wal_file = self.get_first_required_wal_segment()
 
@@ -128,6 +133,54 @@ class ArchiveSync(object):
                                archive_type, xlog_file, resp.status_code)
             else:
                 self.log.info("%s file %r archived", archive_type, xlog_file)
+
+    def check_wal_archive_integrity(self):
+        current_wal_file = self.get_current_wal_file()
+        first_required_wal_file = self.get_first_required_wal_segment()
+        if not current_wal_file:
+            self.log.error("Could not figure out current WAL segment, returning failure")
+            return -1
+        if not first_required_wal_file:
+            self.log.error("No basebackups found, returning failure")
+            return -1
+
+        current_tli, current_log, current_seg = wal.name_to_tli_log_seg(current_wal_file)
+        target_tli, target_log, target_seg = wal.name_to_tli_log_seg(first_required_wal_file)
+
+        # TODO: Need to check .history files as well
+        archive_type = "xlog"
+        valid_timeline = True
+        file_count = 0
+        while True:
+            if valid_timeline:
+                # Decrement one segment if we're on a valid timeline
+                current_seg, current_log = wal.get_previous_wal_on_same_timeline(current_seg, current_log)
+
+            xlog_file = wal.name_for_tli_log_seg(current_tli, current_log, current_seg)
+            resp = requests.head("{base}/archive/{file}".format(base=self.base_url, file=xlog_file))
+            if resp.status_code == 200:
+                self.log.info("%s file %r correctly archived", archive_type, xlog_file)
+                file_count += 1
+                if current_seg == target_seg and current_log == target_log and current_tli == target_tli:
+                    self.log.info("Found all required WAL files: %r", file_count)
+                    return 0
+                valid_timeline = True
+                continue
+            else:
+                if not valid_timeline:
+                    self.log.error("%s file %r missing, we need a new basebackup", archive_type, xlog_file)
+                    self.request_basebackup()
+                    return -1
+
+                valid_timeline = False
+                current_tli -= 1
+
+    def request_basebackup(self):
+        resp = requests.put("{base}/archive/basebackup".format(base=self.base_url))
+        if resp.status_code != 201:
+            self.log.error("Request for a new backup for site: %r failed", self.site)
+        else:
+            self.log.info("Requested a new backup for site: %r successfully", self.site)
 
     def run(self, args=None):
         parser = argparse.ArgumentParser()
