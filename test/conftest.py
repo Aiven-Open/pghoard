@@ -5,7 +5,7 @@ Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
 from pghoard.common import default_log_format_str
-from pghoard.compressor import snappy
+from pghoard.rohmu.compressor import snappy
 from pghoard.pghoard import PGHoard
 from py import path as py_path  # pylint: disable=no-name-in-module
 import json

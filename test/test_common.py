@@ -12,7 +12,7 @@ from pghoard.common import (
     get_connection_info,
     json_encode,
     )
-from pghoard.compressor import snappy, SnappyFile
+from pghoard.rohmu.compressor import snappy, SnappyFile
 from pghoard.rohmu.errors import Error
 import datetime
 import json

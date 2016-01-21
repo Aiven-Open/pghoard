@@ -4,6 +4,8 @@ rohmu - exception classes
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
+
+
 class Error(Exception):
     """Generic pghoard exception"""
 
@@ -19,5 +21,10 @@ class FileNotFoundFromStorageError(StorageError):
 class InvalidConfigurationError(Error):
     """Invalid configuration"""
 
+
 class LocalFileIsRemoteFileError(StorageError):
     """File transfer operation source and destination point to the same file"""
+
+
+class MissingLibraryError(Exception):
+    """Missing dependency library"""

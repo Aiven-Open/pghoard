@@ -9,7 +9,7 @@ from pghoard import wal
 from pghoard.basebackup import PGBaseBackup
 from pghoard.common import convert_pg_command_version_to_number, replication_connection_string_using_pgpass
 from pghoard.common import default_log_format_str, set_syslog_handler
-from pghoard.compressor import Compressor
+from pghoard.compressor import CompressorThread
 from pghoard.inotify import InotifyWatcher
 from pghoard.transfer import TransferAgent
 from pghoard.receivexlog import PGReceiveXLog
@@ -76,7 +76,7 @@ class PGHoard(object):
             self.transfer_queue)
 
         for _ in range(self.config["compression"]["thread_count"]):
-            compressor = Compressor(self.config, self.compression_queue, self.transfer_queue)
+            compressor = CompressorThread(self.config, self.compression_queue, self.transfer_queue)
             self.compressors.append(compressor)
 
         for _ in range(self.config["transfer"]["thread_count"]):

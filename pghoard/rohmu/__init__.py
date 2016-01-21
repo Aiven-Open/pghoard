@@ -1,9 +1,3 @@
-"""
-rohmu - exception classes
-
-Copyright (c) 2016 Ohmu Ltd
-See LICENSE for details
-"""
 from . errors import InvalidConfigurationError
 
 
@@ -20,7 +14,7 @@ def get_object_storage_transfer(config, site):
 
     # TODO: consider just passing **storage_config to the various Transfers
     if storage_type == "azure":
-        from . object_storage.azure import AzureTransfer
+        from .object_storage.azure import AzureTransfer
         return AzureTransfer(
             account_name=storage_config["account_name"],
             account_key=storage_config["account_key"],
@@ -28,7 +22,7 @@ def get_object_storage_transfer(config, site):
             prefix=storage_config.get("prefix"),
         )
     elif storage_type == "google":
-        from . object_storage.google import GoogleTransfer
+        from .object_storage.google import GoogleTransfer
         return GoogleTransfer(
             project_id=storage_config["project_id"],
             bucket_name=storage_config.get("bucket_name", "pghoard"),
@@ -37,7 +31,7 @@ def get_object_storage_transfer(config, site):
             credentials=storage_config.get("credentials"),
         )
     elif storage_type == "s3":
-        from . object_storage.s3 import S3Transfer
+        from .object_storage.s3 import S3Transfer
         return S3Transfer(
             aws_access_key_id=storage_config["aws_access_key_id"],
             aws_secret_access_key=storage_config["aws_secret_access_key"],
@@ -49,6 +43,6 @@ def get_object_storage_transfer(config, site):
             is_secure=storage_config.get("is_secure", False),
         )
     elif storage_type == "local":
-        from .object_storage.local import LocalTransfer
+        from pghoard.rohmu.object_storage.local import LocalTransfer
         return LocalTransfer(backup_location=storage_config)
     raise InvalidConfigurationError("unsupported storage type {0!r}".format(storage_type))
