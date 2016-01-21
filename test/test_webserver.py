@@ -131,6 +131,20 @@ class TestWebServer(object):
         pg_xlog_dir = pghoard.config["backup_sites"][pghoard.test_site]["pg_xlog_directory"]
         pg_xlogs = {f for f in os.listdir(pg_xlog_dir) if XLOG_RE.match(f)}
         assert len(pg_xlogs) >= 4
+
+        # create a couple of "recycled" xlog files that we must ignore
+        last_xlog = sorted(pg_xlogs)[-1]
+        dummy_data = b"x" * (16 * 2 ** 20)
+
+        def write_dummy_xlog(inc):
+            filename = "{:024X}".format((int(last_xlog, 16) + inc))
+            print("writing dummy xlog file", filename)
+            open(os.path.join(pg_xlog_dir, filename), "wb").write(dummy_data)
+            return filename
+
+        recycled1 = write_dummy_xlog(1)
+        recycled2 = write_dummy_xlog(2)
+
         # check what we have archived, there should be at least the three
         # above xlogs that are NOT there at the moment
         archived_xlogs = set(list_archive("xlog"))
@@ -140,7 +154,14 @@ class TestWebServer(object):
         arsy.run(["--site", pghoard.test_site, "--config", pghoard.config_path])
         # and now archive should include all our xlogs
         archived_xlogs = set(list_archive("xlog"))
+
+        # the recycled files must not appear in archived files
+        assert recycled1 not in archived_xlogs
+        assert recycled2 not in archived_xlogs
+
+        # the regular wals must be archived
         assert archived_xlogs.issuperset(pg_xlogs)
+
         # if we delete a wal file that's not the latest archival it should
         # get synced to the archive as we don't have a basebackup newer than
         # it
