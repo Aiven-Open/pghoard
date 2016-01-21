@@ -1,7 +1,7 @@
 """
-pghoard - google cloud object store interface
+rohmu - google cloud object store interface
 
-Copyright (c) 2015 Ohmu Ltd
+Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
 from io import BytesIO, FileIO

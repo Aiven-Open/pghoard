@@ -1,3 +1,9 @@
+"""
+rohmu
+
+Copyright (c) 2016 Ohmu Ltd
+See LICENSE for details
+"""
 from . errors import InvalidConfigurationError
 
 

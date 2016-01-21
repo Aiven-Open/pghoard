@@ -7,7 +7,7 @@ See LICENSE for details
 
 
 class Error(Exception):
-    """Generic pghoard exception"""
+    """Generic exception"""
 
 
 class StorageError(Error):
