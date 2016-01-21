@@ -5,6 +5,7 @@ Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
 from contextlib import suppress
+from pghoard.common import get_object_storage_config
 from pghoard.rohmu.errors import (
     FileNotFoundFromStorageError,
     LocalFileIsRemoteFileError,
@@ -42,7 +43,8 @@ class TransferAgent(Thread):
     def get_object_storage(self, site_name):
         storage = self.site_transfers.get(site_name)
         if not storage:
-            storage = get_object_storage_transfer(self.config, site_name)
+            storage_type, storage_config = get_object_storage_config(self.config, site_name)
+            storage = get_object_storage_transfer(storage_type, storage_config)
             self.site_transfers[site_name] = storage
 
         return storage

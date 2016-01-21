@@ -7,17 +7,7 @@ See LICENSE for details
 from . errors import InvalidConfigurationError
 
 
-def get_object_storage_transfer(config, site):
-    try:
-        storage_config = config["backup_sites"][site]["object_storage"]
-        storage_type = storage_config["storage_type"]
-    except KeyError:
-        # fall back to `local` driver at `backup_location` if set
-        if not config.get("backup_location"):
-            return None
-        storage_type = "local"
-        storage_config = config["backup_location"]
-
+def get_object_storage_transfer(storage_type, storage_config):
     # TODO: consider just passing **storage_config to the various Transfers
     if storage_type == "azure":
         from .object_storage.azure import AzureTransfer

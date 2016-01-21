@@ -8,7 +8,7 @@ from contextlib import closing
 from pghoard import wal
 from pghoard.basebackup import PGBaseBackup
 from pghoard.common import convert_pg_command_version_to_number, replication_connection_string_using_pgpass
-from pghoard.common import default_log_format_str, set_syslog_handler
+from pghoard.common import default_log_format_str, get_object_storage_config, set_syslog_handler
 from pghoard.compressor import CompressorThread
 from pghoard.inotify import InotifyWatcher
 from pghoard.transfer import TransferAgent
@@ -240,7 +240,8 @@ class PGHoard(object):
     def get_remote_basebackups_info(self, site):
         storage = self.site_transfers.get(site)
         if not storage:
-            storage = get_object_storage_transfer(self.config, site)
+            storage_type, storage_config = get_object_storage_config(self.config, site)
+            storage = get_object_storage_transfer(storage_type, storage_config)
             self.site_transfers[site] = storage
 
         results = storage.list_path(os.path.join(self.config.get("path_prefix", ""),

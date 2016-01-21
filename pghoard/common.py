@@ -207,3 +207,16 @@ def json_encode(obj, compact=True, binary=False):
                      separators=(",", ":") if compact else None,
                      default=default_json_serialization)
     return res.encode("utf-8") if binary else res
+
+
+def get_object_storage_config(config, site):
+    try:
+        storage_config = config["backup_sites"][site]["object_storage"]
+        storage_type = storage_config["storage_type"]
+    except KeyError:
+        # fall back to `local` driver at `backup_location` if set
+        if not config.get("backup_location"):
+            return None, None
+        storage_config = config["backup_location"]
+        storage_type = "local"
+    return storage_type, storage_config

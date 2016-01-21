@@ -4,7 +4,7 @@ pghoard
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
-from pghoard.common import default_log_format_str
+from pghoard.common import default_log_format_str, get_object_storage_config
 from pghoard.rohmu.compressor import SnappyFile
 from pghoard.rohmu.encryptor import DecryptorFile
 from pghoard.rohmu import get_object_storage_transfer
@@ -126,7 +126,8 @@ class Restore(object):
         self.storage.show_basebackup_list()
 
     def _get_object_storage(self, site, pgdata):
-        storage = get_object_storage_transfer(self.config, site)
+        storage_type, storage_config = get_object_storage_config(self.config, site)
+        storage = get_object_storage_transfer(storage_type, storage_config)
         return ObjectStore(storage, self.config.get("path_prefix", ""), site, pgdata)
 
     def list_basebackups(self, arg):
