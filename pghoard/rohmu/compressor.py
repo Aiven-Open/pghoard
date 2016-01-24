@@ -6,7 +6,7 @@ See LICENSE for details
 """
 
 from pghoard.common import IO_BLOCK_SIZE
-from pghoard.rohmu.encryptor import Encryptor, Decryptor
+from .encryptor import Encryptor, Decryptor, DecryptorFile
 from pghoard.rohmu.errors import InvalidConfigurationError, MissingLibraryError
 import logging
 import lzma
@@ -101,6 +101,18 @@ class Compressor:
         self.log.debug("Decompressed %d byte file: %r to %d bytes, took: %.3fs",
                        len(event['blob']), event['local_path'], os.path.getsize(event['local_path']),
                        time.time() - start_time)
+
+    def decompress_from_fileobj_to_fileobj(self, fsrc, metadata, rsa_private_key=None):
+        fsrc.seek(0)
+        if rsa_private_key:
+            fsrc = DecryptorFile(fsrc, rsa_private_key)  # pylint: disable=redefined-variable-type
+
+        if metadata.get("compression-algorithm") == "lzma":
+            # Wrap stream into LZMAFile object
+            fsrc = lzma.open(fsrc, "r")  # pylint: disable=redefined-variable-type
+        elif metadata.get("compression-algorithm") == "snappy":
+            fsrc = SnappyFile(fsrc)  # pylint: disable=redefined-variable-type
+        return fsrc
 
     def compress_filepath(self, filepath, targetfilepath, compression_algorithm, rsa_public_key=None):
         compressor = self.compressor(compression_algorithm)
