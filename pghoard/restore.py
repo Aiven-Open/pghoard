@@ -5,7 +5,7 @@ Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
 from pghoard.common import default_log_format_str, get_object_storage_config
-from pghoard.rohmu import get_object_storage_transfer
+from pghoard.rohmu import get_transfer
 from pghoard.rohmu.compressor import Compressor
 from pghoard.rohmu.errors import Error
 from psycopg2.extensions import adapt
@@ -125,7 +125,7 @@ class Restore(object):
 
     def _get_object_storage(self, site, pgdata):
         storage_type, storage_config = get_object_storage_config(self.config, site)
-        storage = get_object_storage_transfer(storage_type, storage_config)
+        storage = get_transfer(storage_type, storage_config)
         return ObjectStore(storage, self.config.get("path_prefix", ""), site, pgdata)
 
     def list_basebackups(self, arg):

@@ -10,7 +10,7 @@ from pghoard.rohmu.errors import (
     FileNotFoundFromStorageError,
     LocalFileIsRemoteFileError,
 )
-from pghoard.rohmu import get_object_storage_transfer
+from pghoard.rohmu import get_transfer
 from queue import Empty
 from threading import Thread
 import logging
@@ -44,7 +44,7 @@ class TransferAgent(Thread):
         storage = self.site_transfers.get(site_name)
         if not storage:
             storage_type, storage_config = get_object_storage_config(self.config, site_name)
-            storage = get_object_storage_transfer(storage_type, storage_config)
+            storage = get_transfer(storage_type, storage_config)
             self.site_transfers[site_name] = storage
 
         return storage

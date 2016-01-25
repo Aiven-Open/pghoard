@@ -13,7 +13,7 @@ from pghoard.compressor import CompressorThread
 from pghoard.inotify import InotifyWatcher
 from pghoard.transfer import TransferAgent
 from pghoard.receivexlog import PGReceiveXLog
-from pghoard.rohmu import get_object_storage_transfer
+from pghoard.rohmu import get_transfer
 from pghoard.rohmu.errors import FileNotFoundFromStorageError, InvalidConfigurationError
 from pghoard.webserver import WebServer
 from queue import Empty, Queue
@@ -241,7 +241,7 @@ class PGHoard(object):
         storage = self.site_transfers.get(site)
         if not storage:
             storage_type, storage_config = get_object_storage_config(self.config, site)
-            storage = get_object_storage_transfer(storage_type, storage_config)
+            storage = get_transfer(storage_type, storage_config)
             self.site_transfers[site] = storage
 
         results = storage.list_path(os.path.join(self.config.get("path_prefix", ""),
