@@ -1,7 +1,7 @@
 """
 pghoard: inspect WAL files
 
-Copyright (c) 2015 Ohmu Ltd
+Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
 from collections import namedtuple

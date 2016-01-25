@@ -1,7 +1,7 @@
 """
 pghoard: sync local WAL files to remote archive
 
-Copyright (c) 2015 Ohmu Ltd
+Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
 from .common import default_log_format_str, replication_connection_string_using_pgpass

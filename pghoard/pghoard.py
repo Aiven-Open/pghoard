@@ -1,19 +1,20 @@
 """
 pghoard - main pghoard daemon
 
-Copyright (c) 2015 Ohmu Ltd
+Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
 from contextlib import closing
 from pghoard import wal
 from pghoard.basebackup import PGBaseBackup
 from pghoard.common import convert_pg_command_version_to_number, replication_connection_string_using_pgpass
-from pghoard.common import default_log_format_str, set_syslog_handler
-from pghoard.compressor import Compressor
-from pghoard.errors import FileNotFoundFromStorageError, InvalidConfigurationError
+from pghoard.common import default_log_format_str, get_object_storage_config, set_syslog_handler
+from pghoard.compressor import CompressorThread
 from pghoard.inotify import InotifyWatcher
-from pghoard.object_storage import TransferAgent, get_object_storage_transfer
+from pghoard.transfer import TransferAgent
 from pghoard.receivexlog import PGReceiveXLog
+from pghoard.rohmu import get_transfer
+from pghoard.rohmu.errors import FileNotFoundFromStorageError, InvalidConfigurationError
 from pghoard.webserver import WebServer
 from queue import Empty, Queue
 import datetime
@@ -75,7 +76,7 @@ class PGHoard(object):
             self.transfer_queue)
 
         for _ in range(self.config["compression"]["thread_count"]):
-            compressor = Compressor(self.config, self.compression_queue, self.transfer_queue)
+            compressor = CompressorThread(self.config, self.compression_queue, self.transfer_queue)
             self.compressors.append(compressor)
 
         for _ in range(self.config["transfer"]["thread_count"]):
@@ -239,7 +240,8 @@ class PGHoard(object):
     def get_remote_basebackups_info(self, site):
         storage = self.site_transfers.get(site)
         if not storage:
-            storage = get_object_storage_transfer(self.config, site)
+            storage_type, storage_config = get_object_storage_config(self.config, site)
+            storage = get_transfer(storage_type, storage_config)
             self.site_transfers[site] = storage
 
         results = storage.list_path(os.path.join(self.config.get("path_prefix", ""),

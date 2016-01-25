@@ -1,7 +1,7 @@
 """
 pghoard - pg_basebackup handler
 
-Copyright (c) 2015 Ohmu Ltd
+Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
 from . common import set_subprocess_stdout_and_stderr_nonblocking, terminate_subprocess

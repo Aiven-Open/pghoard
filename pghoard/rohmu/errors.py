@@ -1,17 +1,13 @@
 """
-pghoard - exception classes
+rohmu - exception classes
 
-Copyright (c) 2015 Ohmu Ltd
+Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
 
 
 class Error(Exception):
-    """Generic pghoard exception"""
-
-
-class InvalidConfigurationError(Error):
-    """Invalid configuration"""
+    """Generic exception"""
 
 
 class StorageError(Error):
@@ -20,6 +16,10 @@ class StorageError(Error):
 
 class FileNotFoundFromStorageError(StorageError):
     """File not found from remote storage"""
+
+
+class InvalidConfigurationError(Error):
+    """Invalid configuration"""
 
 
 class LocalFileIsRemoteFileError(StorageError):

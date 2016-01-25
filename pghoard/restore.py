@@ -1,21 +1,19 @@
 """
 pghoard
 
-Copyright (c) 2015 Ohmu Ltd
+Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
-from pghoard.common import default_log_format_str
-from pghoard.compressor import SnappyFile
-from pghoard.encryptor import DecryptorFile
-from pghoard.errors import Error
-from pghoard.object_storage import get_object_storage_transfer
+from pghoard.common import default_log_format_str, get_object_storage_config
+from pghoard.rohmu import get_transfer
+from pghoard.rohmu.compressor import Compressor
+from pghoard.rohmu.errors import Error
 from psycopg2.extensions import adapt
 from requests import Session
 import argparse
 import dateutil.parser
 import json
 import logging
-import lzma
 import os
 import shutil
 import sys
@@ -126,7 +124,8 @@ class Restore(object):
         self.storage.show_basebackup_list()
 
     def _get_object_storage(self, site, pgdata):
-        storage = get_object_storage_transfer(self.config, site)
+        storage_type, storage_config = get_object_storage_config(self.config, site)
+        storage = get_transfer(storage_type, storage_config)
         return ObjectStore(storage, self.config.get("path_prefix", ""), site, pgdata)
 
     def list_basebackups(self, arg):
@@ -206,18 +205,15 @@ class Restore(object):
         os.chmod(pgdata, 0o700)
         tmp = tempfile.TemporaryFile()
         metadata = self.storage.get_basebackup_file_to_fileobj(basebackup, tmp)
-        tmp.seek(0)
+
+        rsa_private_key = None
         if "encryption-key-id" in metadata:
-            # Wrap stream into DecryptorFile object
             key_id = metadata["encryption-key-id"]
             site_keys = self.config["backup_sites"][site]["encryption_keys"]
-            tmp = DecryptorFile(tmp, site_keys[key_id]["private"])  # pylint: disable=redefined-variable-type
+            rsa_private_key = site_keys[key_id]["private"]
 
-        if metadata.get("compression-algorithm") == "lzma":
-            # Wrap stream into LZMAFile object
-            tmp = lzma.open(tmp, "r")  # pylint: disable=redefined-variable-type
-        elif metadata.get("compression-algorithm") == "snappy":
-            tmp = SnappyFile(tmp)  # pylint: disable=redefined-variable-type
+        c = Compressor()
+        tmp = c.decompress_from_fileobj_to_fileobj(tmp, metadata, rsa_private_key)
 
         tar = tarfile.open(fileobj=tmp, mode="r|")  # "r|" prevents seek()ing
         tar.extractall(pgdata)

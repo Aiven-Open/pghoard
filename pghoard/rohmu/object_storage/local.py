@@ -1,13 +1,13 @@
 """
-pghoard - local filesystem interface
+rohmu - local filesystem interface
 
-Copyright (c) 2015 Ohmu Ltd
+Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
 from contextlib import suppress
 from io import BytesIO
-from pghoard.errors import FileNotFoundFromStorageError, LocalFileIsRemoteFileError
-from pghoard.object_storage.base import BaseTransfer
+from ..errors import FileNotFoundFromStorageError, LocalFileIsRemoteFileError
+from . base import BaseTransfer
 import datetime
 import dateutil.tz
 import json

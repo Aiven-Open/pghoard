@@ -7,7 +7,8 @@ See LICENSE for details
 # pylint: disable=attribute-defined-outside-init
 from .base import PGHoardTestCase, CONSTANT_TEST_RSA_PUBLIC_KEY, CONSTANT_TEST_RSA_PRIVATE_KEY
 from pghoard.common import IO_BLOCK_SIZE
-from pghoard.compressor import Compressor, snappy
+from pghoard.rohmu.compressor import snappy
+from pghoard.compressor import CompressorThread
 from queue import Queue
 import lzma
 import os
@@ -59,9 +60,9 @@ class Compression(PGHoardTestCase):
             out.write(self.foo_contents)
             self.foo_size = out.tell()
 
-        self.compressor = Compressor(config=self.config,
-                                     compression_queue=self.compression_queue,
-                                     transfer_queue=self.transfer_queue)
+        self.compressor = CompressorThread(config=self.config,
+                                           compression_queue=self.compression_queue,
+                                           transfer_queue=self.transfer_queue)
         self.compressor.start()
 
     def teardown_method(self, method):
@@ -204,7 +205,10 @@ class Compression(PGHoardTestCase):
             assert fp.read() == self.foo_contents
 
     def test_decompression_decrypt_event(self):
-        blob = self.compressor.compress_filepath_to_memory(self.foo_path, CONSTANT_TEST_RSA_PUBLIC_KEY)
+        blob = self.compressor.compress_filepath_to_memory(
+            self.foo_path,
+            compression_algorithm=self.compressor.compression_algorithm(),
+            rsa_public_key=CONSTANT_TEST_RSA_PUBLIC_KEY)
         callback_queue = Queue()
         local_filepath = os.path.join(self.temp_dir, "00000001000000000000000E")
         self.compression_queue.put({

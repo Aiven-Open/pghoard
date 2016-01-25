@@ -1,66 +1,19 @@
 """
 pghoard - compressor threads
 
-Copyright (c) 2015 Ohmu Ltd
+Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
-
-from pghoard import errors
-from pghoard.common import IO_BLOCK_SIZE
-from pghoard.encryptor import Encryptor, Decryptor
+from pghoard.rohmu.compressor import Compressor
 from queue import Empty
 from threading import Thread
 import json
 import logging
-import lzma
 import os
 import time
 
-try:
-    import snappy
-except ImportError:
-    snappy = None
 
-
-class SnappyFile(object):
-    def __init__(self, fp):
-        self._comp = snappy.StreamDecompressor()
-        self._fp = fp
-        self._done = False
-        self._pos = 0
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, a, b, c):
-        pass
-
-    def tell(self):
-        return self._pos
-
-    def close(self):
-        pass
-
-    def read(self, byte_count=None):  # pylint: disable=unused-argument
-        # NOTE: byte_count arg is ignored, random size output is returned
-        if self._done:
-            return b""
-
-        while True:
-            compressed = self._fp.read(2 ** 20)
-            if not compressed:
-                self._done = True
-                output = self._comp.flush()
-                self._pos += len(output)
-                return output
-
-            output = self._comp.decompress(compressed)
-            if output:
-                self._pos += len(output)
-                return output
-
-
-class Compressor(Thread):
+class CompressorThread(Thread, Compressor):
     def __init__(self, config, compression_queue, transfer_queue):
         super().__init__()
         self.log = logging.getLogger("Compressor")
@@ -92,72 +45,6 @@ class Compressor(Thread):
 
     def compression_algorithm(self):
         return self.config.get("compression", {}).get("algorithm", "snappy")
-
-    def compressor(self):
-        if self.compression_algorithm() == "lzma":
-            return lzma.LZMACompressor(preset=0)
-        elif self.compression_algorithm() == "snappy":
-            if not snappy:
-                raise errors.MissingLibraryError("python-snappy is required when using snappy compression")
-            return snappy.StreamCompressor()
-        else:
-            raise errors.InvalidConfigurationError("invalid compression algorithm: {!r}".format(
-                self.compression_algorithm()))
-
-    def decompressor(self, algorithm):
-        if algorithm is None:
-            return None
-        if algorithm == "lzma":
-            return lzma.LZMADecompressor()
-        elif algorithm == "snappy":
-            if not snappy:
-                raise errors.MissingLibraryError("python-snappy is required when using snappy compression")
-            return snappy.StreamDecompressor()
-        else:
-            raise errors.InvalidConfigurationError("invalid compression algorithm: {!r}".format(algorithm))
-
-    def compress_filepath(self, filepath, targetfilepath, rsa_public_key=None):
-        compressor = self.compressor()
-        encryptor = None
-        if rsa_public_key:
-            encryptor = Encryptor(rsa_public_key)
-        tmp_target_file_path = targetfilepath + ".tmp-compress"
-        with open(filepath, "rb") as input_file:
-            with open(tmp_target_file_path, "wb") as output_file:
-                while True:
-                    input_data = input_file.read(IO_BLOCK_SIZE)
-                    if not input_data:
-                        break
-                    compressed_data = compressor.compress(input_data)
-                    if encryptor and compressed_data:
-                        compressed_data = encryptor.update(compressed_data)
-                    if compressed_data:
-                        output_file.write(compressed_data)
-
-                compressed_data = (compressor.flush() or b"")
-                if encryptor:
-                    if compressed_data:
-                        compressed_data = encryptor.update(compressed_data)
-
-                    compressed_data += encryptor.finalize()
-
-                if compressed_data:
-                    output_file.write(compressed_data)
-
-        os.rename(tmp_target_file_path, targetfilepath)
-
-    def compress_filepath_to_memory(self, filepath, rsa_public_key=None):
-        # This is meant for WAL files compressed due to archive_command
-        with open(filepath, "rb") as input_file:
-            data = input_file.read()
-
-        compressor = self.compressor()
-        compressed_data = compressor.compress(data)
-        compressed_data += (compressor.flush() or b"")  # snappy flush() is a stub
-        if rsa_public_key:
-            encryptor = Encryptor(rsa_public_key)
-            compressed_data = encryptor.update(compressed_data) + encryptor.finalize()
-        return compressed_data
 
     def run(self):
         while self.running:
@@ -208,25 +95,12 @@ class Compressor(Thread):
         return filetype
 
     def handle_decompression_event(self, event):
-        start_time = time.time()
-        data = event["blob"]
+        rsa_private_key = None
         if "metadata" in event and "encryption-key-id" in event["metadata"]:
             key_id = event["metadata"]["encryption-key-id"]
             rsa_private_key = self.config["backup_sites"][event["site"]]["encryption_keys"][key_id]["private"]
-            decryptor = Decryptor(rsa_private_key)
-            data = decryptor.update(data) + decryptor.finalize()
 
-        decompressor = self.decompressor(algorithm=event.get("metadata", {}).get("compression-algorithm"))
-        if decompressor:
-            data = decompressor.decompress(data)
-
-        with open(event["local_path"], "wb") as fp:
-            fp.write(data)
-
-        self.log.debug("Decompressed %d byte file: %r to %d bytes, took: %.3fs",
-                       len(event['blob']), event['local_path'], os.path.getsize(event['local_path']),
-                       time.time() - start_time)
-
+        self.decompress_to_filepath(event, rsa_private_key)
         if 'callback_queue' in event:
             event['callback_queue'].put({"success": True, "opaque": event.get("opaque")})
 
@@ -242,12 +116,19 @@ class Compressor(Thread):
         self.log.debug("Starting to compress: %r, filetype: %r, original_size: %r",
                        event['full_path'], filetype, original_file_size)
         if event.get("compress_to_memory", False):
-            compressed_blob = self.compress_filepath_to_memory(event["full_path"], rsa_public_key)
+            compressed_blob = self.compress_filepath_to_memory(
+                event["full_path"],
+                compression_algorithm=self.compression_algorithm(),
+                rsa_public_key=rsa_public_key)
             compressed_file_size = len(compressed_blob)
             compressed_filepath = None
         else:
             compressed_filepath = self.get_compressed_file_path(site, filetype, event["full_path"])
-            self.compress_filepath(event["full_path"], compressed_filepath, rsa_public_key)
+            self.compress_filepath(
+                event["full_path"],
+                compressed_filepath,
+                compression_algorithm=self.compression_algorithm(),
+                rsa_public_key=rsa_public_key)
             compressed_file_size = os.stat(compressed_filepath).st_size
         self.log.info("Compressed %d byte file: %r to %d bytes, took: %.3fs",
                       original_file_size, event['full_path'], compressed_file_size,

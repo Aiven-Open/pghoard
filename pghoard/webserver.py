@@ -1,7 +1,7 @@
 """
 pghoard - internal http server for serving backup objects
 
-Copyright (c) 2015 Ohmu Ltd
+Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
 
@@ -12,7 +12,7 @@ from contextlib import contextmanager, suppress
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pghoard import wal
 from pghoard.common import json_encode, TIMELINE_RE, XLOG_RE
-from pghoard.errors import Error, FileNotFoundFromStorageError
+from pghoard.rohmu.errors import Error, FileNotFoundFromStorageError
 from queue import Empty, Queue
 from socketserver import ThreadingMixIn
 from threading import Thread
