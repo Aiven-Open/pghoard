@@ -49,8 +49,8 @@ def main():
                 "encryption_key_id": args.key_id,
                 "encryption_keys": {
                     args.key_id: {
-                        "private": rsa_private_key,
-                        "public": rsa_public_key
+                        "private": str(rsa_private_key),
+                        "public": str(rsa_public_key)
                     }
                 }
             }
