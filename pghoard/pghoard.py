@@ -10,7 +10,7 @@ from pghoard.basebackup import PGBaseBackup
 from pghoard.common import convert_pg_command_version_to_number, replication_connection_string_using_pgpass
 from pghoard.common import default_log_format_str, get_object_storage_config, set_syslog_handler
 from pghoard.compressor import CompressorThread
-from pghoard.inotify import InotifyWatcher
+from pghoard.rohmu.inotify import InotifyWatcher
 from pghoard.transfer import TransferAgent
 from pghoard.receivexlog import PGReceiveXLog
 from pghoard.rohmu import get_transfer

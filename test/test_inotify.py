@@ -6,7 +6,7 @@ See LICENSE for details
 """
 # pylint: disable=attribute-defined-outside-init
 from .base import PGHoardTestCase
-from pghoard.inotify import InotifyWatcher
+from pghoard.rohmu.inotify import InotifyWatcher
 from queue import Queue
 from unittest import SkipTest
 import os
