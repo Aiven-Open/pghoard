@@ -32,6 +32,27 @@ def create_keys(bits):
     return rsa_private_key_pem, rsa_public_key_pem
 
 
+def create_config_with_keys(site, key_id, bits):
+    rsa_private_key, rsa_public_key = create_keys(bits)
+    return create_config(key_id, site, rsa_private_key, rsa_public_key)
+
+
+def create_config(key_id, site, rsa_private_key, rsa_public_key):
+    return {
+        "backup_sites": {
+            site: {
+                "encryption_key_id": key_id,
+                "encryption_keys": {
+                    key_id: {
+                        "private": rsa_private_key.decode("utf8"),
+                        "public": rsa_public_key.decode("utf8")
+                    }
+                }
+            }
+        }
+    }
+
+
 def main():
     logging.basicConfig(level=logging.INFO, format=default_log_format_str)
     parser = argparse.ArgumentParser()
@@ -40,24 +61,9 @@ def main():
     parser.add_argument("--bits", help="length of the generated key in bits, default %(default)d", default=3072, type=int)
 
     args = parser.parse_args()
-
-    rsa_private_key, rsa_public_key = create_keys(args.bits)
-
-    config = {
-        "backup_sites": {
-            args.site: {
-                "encryption_key_id": args.key_id,
-                "encryption_keys": {
-                    args.key_id: {
-                        "private": rsa_private_key,
-                        "public": rsa_public_key
-                    }
-                }
-            }
-        }
-    }
-
+    config = create_config_with_keys(args.site, args.key_id, args.bits)
     print(json.dumps(config, indent=4))
+
 
 if __name__ == "__main__":
     sys.exit(main() or 0)
