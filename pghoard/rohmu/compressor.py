@@ -85,7 +85,7 @@ class Compressor:
             raise InvalidConfigurationError("invalid compression algorithm: {!r}".format(algorithm))
 
     def decompress_to_filepath(self, event, rsa_private_key=None):
-        start_time = time.time()
+        start_time = time.monotonic()
         data = event["blob"]
         if "metadata" in event and "encryption-key-id" in event["metadata"]:
             decryptor = Decryptor(rsa_private_key)
@@ -100,7 +100,7 @@ class Compressor:
 
         self.log.debug("Decompressed %d byte file: %r to %d bytes, took: %.3fs",
                        len(event['blob']), event['local_path'], os.path.getsize(event['local_path']),
-                       time.time() - start_time)
+                       time.monotonic() - start_time)
 
     def decompress_from_fileobj_to_fileobj(self, fsrc, metadata, rsa_private_key=None):
         fsrc.seek(0)
@@ -115,6 +115,7 @@ class Compressor:
         return fsrc
 
     def compress_filepath(self, filepath, targetfilepath, compression_algorithm, rsa_public_key=None):
+        start_time = time.monotonic()
         compressor = self.compressor(compression_algorithm)
         encryptor = None
         if rsa_public_key:
@@ -143,9 +144,12 @@ class Compressor:
                     output_file.write(compressed_data)
 
         os.rename(tmp_target_file_path, targetfilepath)
+        self.log.debug("Compression from %r to %r with: %r took: %.2fs",
+                       filepath, targetfilepath, compression_algorithm, time.monotonic() - start_time)
 
     def compress_filepath_to_memory(self, filepath, compression_algorithm, rsa_public_key=None):
         # This is meant for WAL files compressed due to archive_command
+        start_time = time.monotonic()
         with open(filepath, "rb") as input_file:
             data = input_file.read()
 
@@ -155,4 +159,7 @@ class Compressor:
         if rsa_public_key:
             encryptor = Encryptor(rsa_public_key)
             compressed_data = encryptor.update(compressed_data) + encryptor.finalize()
+
+        self.log.debug("Compressing %r with: %r took: %.2fs",
+                       filepath, compression_algorithm, time.monotonic() - start_time)
         return compressed_data
