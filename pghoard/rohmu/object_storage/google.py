@@ -6,6 +6,7 @@ See LICENSE for details
 """
 from io import BytesIO, FileIO
 import dateutil.parser
+import httplib2
 import json
 import logging
 import os
@@ -66,7 +67,19 @@ class GoogleTransfer(BaseTransfer):
         super().__init__(prefix=prefix)
         self.project_id = project_id
         creds = get_credentials(credential_file=credential_file, credentials=credentials)
-        gs = build("storage", "v1", credentials=creds)
+        gs = None
+        start_time = time.time()
+        while gs is None:
+            try:
+                # sometimes fails: httplib2.ServerNotFoundError: Unable to find the server at www.googleapis.com
+                gs = build("storage", "v1", credentials=creds)
+            except httplib2.ServerNotFoundError:
+                if time.time() - start_time > 40.0:
+                    raise
+
+                # retry on DNS issues
+                time.sleep(1.0)
+
         self.gs_buckets = gs.buckets()  # pylint: disable=no-member
         self.gs_objects = gs.objects()  # pylint: disable=no-member
         self.bucket_name = self.get_or_create_bucket(bucket_name)
