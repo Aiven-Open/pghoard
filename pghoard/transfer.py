@@ -85,9 +85,11 @@ class TransferAgent(Thread):
             self.set_state_defaults_for_site(site)
             oper_size = file_to_transfer.get("file_size", 0)
             if result["success"]:
+                filename = os.path.basename(file_to_transfer["local_path"])
                 self.state[site][oper][filetype]["count"] += 1
                 self.state[site][oper][filetype]["data"] += oper_size
                 self.state[site][oper][filetype]["time_taken"] += time.time() - start_time
+                self.state[site][oper][filetype]["latest_filename"] = filename
             else:
                 self.state[site][oper][filetype]["failures"] += 1
 
