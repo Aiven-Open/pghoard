@@ -18,13 +18,14 @@ deb:
 rpm:
 	git archive --output=pghoard-rpm-src.tar.gz --prefix=pghoard/ HEAD
 	rpmbuild -bb pghoard.spec \
-		--define '_sourcedir $(shell pwd)' \
+		--define '_topdir $(PWD)/rpm' \
+		--define '_sourcedir $(CURDIR)' \
 		--define 'major_version $(short_ver)' \
 		--define 'minor_version $(subst -,.,$(subst $(short_ver)-,,$(long_ver)))'
 	$(RM) pghoard-rpm-src.tar.gz
 
 build-dep-fed:
-	sudo yum -y install postgresql-server \
+	sudo dnf -y install postgresql-server \
 		python3-boto python3-cryptography python3-dateutil \
 		python3-flake8 python3-psycopg2 python3-pylint python3-pytest \
 		python3-pytest-cov python3-requests python3-snappy \
@@ -44,3 +45,5 @@ pylint:
 
 flake8:
 	$(PYTHON) -m flake8 --max-line-len=125 $(PYTHON_SOURCE_DIRS)
+
+.PHONY: rpm
