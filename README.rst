@@ -57,7 +57,7 @@ Fedora::
 
   make rpm
 
-This will produce a .rpm package usually into ~/rpmbuild/RPMS/noarch/ .
+This will produce a .rpm package usually into rpm/RPMS/noarch/.
 
 Python/Other::
 
@@ -78,7 +78,7 @@ Debian::
 
 Fedora::
 
-  rpm -Uvh ~/rpmbuild/RPMS/noarch/pghoard*
+  dnf install rpm/RPMS/noarch/*
 
 On Fedora it is recommended to simply run pghoard under systemd::
 
@@ -90,7 +90,7 @@ and eventually after the setup section, you can just run::
 
 Python/Other::
 
-  easy_install dist/pghoard-0.9.0-py2.7.egg
+  easy_install dist/pghoard-0.9.0-py3.4.egg
 
 On Debian/Other systems it is recommended that you run pghoard within a
 supervisord (http://supervisord.org) Process control system.  (see examples
