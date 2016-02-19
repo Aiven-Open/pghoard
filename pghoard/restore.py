@@ -203,7 +203,7 @@ class Restore(object):
 
         os.makedirs(pgdata)
         os.chmod(pgdata, 0o700)
-        tmp = tempfile.TemporaryFile()
+        tmp = tempfile.TemporaryFile(dir=self.config["backup_location"], prefix="basebackup.", suffix=".pghoard")
         metadata = self.storage.get_basebackup_file_to_fileobj(basebackup, tmp)
 
         rsa_private_key = None
