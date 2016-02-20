@@ -287,6 +287,18 @@ Determines log level of pghoard.
 
 If a file exists in this location, no new backup actions will be started.
 
+``stream_compression`` (default ``False``)
+
+If you set this to true pghoard will use an optimized way of taking
+a basebackup directly in a compressed and encrypted form saving
+diskspace. The downside is that you can't create have any tablespaces
+other than the default ones and you cannot take other basebackups at
+the same time as pghoard is taking its own. As guidance few
+installations use extra tablespaces and if you already use pghoard to
+take basebackups, you will not need to take other basebackups yourself
+meaning this option is probably safe to use but you need to opt in
+explicitly in order to benefit from it.
+
 ``object_storage`` (no default)
 
 Configured in ``backup_sites`` under a specific site.  If set, it must be an
@@ -294,7 +306,7 @@ object describing a remote object storage.  The object must contain a key
 ``storage_type`` describing the type of the store, other keys and values are
 specific to the storage type.
 
-The following object storage types are suppored:
+The following object storage types are supported:
 
 * ``google`` for Google Cloud Storage, required configuration keys:
 

@@ -7,6 +7,7 @@ See LICENSE for details
 # pylint: disable=attribute-defined-outside-init
 from .base import CONSTANT_TEST_RSA_PUBLIC_KEY, CONSTANT_TEST_RSA_PRIVATE_KEY
 from .test_wal import wal_header_for_file
+from copy import deepcopy
 from http.client import HTTPConnection
 from pghoard import postgres_command
 from pghoard.archive_sync import ArchiveSync
@@ -55,13 +56,17 @@ class TestWebServer(object):
 
     def _run_and_wait_basebackup(self, pghoard, db):
         pghoard.create_backup_site_paths(pghoard.test_site)
-        conn_str = create_connection_string(db.user)
+        r_conn = deepcopy(db.user)
+        r_conn["dbname"] = "replication"
+        r_conn["replication"] = True
+        conn_str = create_connection_string(r_conn)
         basebackup_path = os.path.join(pghoard.config["backup_location"], pghoard.test_site, "basebackup")
         q = Queue()
-        final_location = pghoard.create_basebackup(pghoard.test_site, conn_str, basebackup_path, q)
+        pghoard.config["backup_sites"][pghoard.test_site]["stream_compression"] = True
+        pghoard.create_basebackup(pghoard.test_site, conn_str, basebackup_path, q)
         result = q.get(timeout=60)
         assert result["success"]
-        return final_location
+        return pghoard.basebackups[pghoard.test_site].target_basebackup_path
 
     def test_basebackups(self, capsys, db, http_restore, pghoard, tmpdir):  # pylint: disable=redefined-outer-name
         tmpdir = str(tmpdir)
@@ -209,12 +214,14 @@ class TestWebServer(object):
         for name in list_archive(folder="xlog"):
             store.delete_key(os.path.join(pghoard.test_site, "xlog", name))
         self._switch_xlog(db, 1)
+
         arsy.run(["--site", pghoard.test_site, "--config", pghoard.config_path])
-        # assume no timeline files and at one or more wal files (but not more than three)
-        assert list(list_archive("timeline")) == []
+
         archived_xlogs = set(list_archive("xlog"))
         assert len(archived_xlogs) >= 1
         assert len(archived_xlogs) <= 3
+        # assume the same timeline file as before and at one or more wal files (but not more than three)
+        assert list(list_archive("timeline")) == ["00000002.history"]
 
     def test_archive_command_with_invalid_file(self, pghoard):
         # only xlog and timeline (.history) files can be archived

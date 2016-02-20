@@ -8,7 +8,10 @@ from contextlib import closing
 from pghoard import wal
 from pghoard.basebackup import PGBaseBackup
 from pghoard.common import convert_pg_command_version_to_number, replication_connection_string_using_pgpass
-from pghoard.common import default_log_format_str, get_object_storage_config, set_syslog_handler
+from pghoard.common import (
+    default_log_format_str,
+    get_object_storage_config,
+    set_syslog_handler)
 from pghoard.compressor import CompressorThread
 from pghoard.rohmu.inotify import InotifyWatcher
 from pghoard.transfer import TransferAgent
@@ -103,38 +106,32 @@ class PGHoard(object):
             return False
         return True
 
-    def create_basebackup(self, cluster, connection_string, basebackup_path, callback_queue=None):
+    def create_basebackup(self, site, connection_string, basebackup_path, callback_queue=None):
         pg_version_server = self.check_pg_server_version(connection_string)
         if not self.check_pg_versions_ok(pg_version_server, "pg_basebackup"):
             if callback_queue:
                 callback_queue.put({"success": False})
             return None
-        i = 0
-        while True:
-            tsdir = datetime.datetime.utcnow().strftime("%Y-%m-%d") + "_" + str(i)
-            raw_basebackup_path = os.path.join(basebackup_path + "_incoming", tsdir)
-            final_basebackup_path = os.path.join(basebackup_path, tsdir)
-            # the backup directory names need not to be a sequence, so we lean
-            # towards skipping over any partial or leftover progress below
-            if not os.path.exists(raw_basebackup_path) and not os.path.exists(final_basebackup_path):
-                os.makedirs(raw_basebackup_path)
-                break
-            i += 1
 
-        command = [
-            self.config.get("pg_basebackup_path", "/usr/bin/pg_basebackup"),
-            "--dbname", connection_string,
-            "--format", "tar",
-            "--xlog",
-            "--pgdata", raw_basebackup_path,
-            "--progress",
-            "--label", "initial_base_backup",
-            "--verbose",
-            ]
-        thread = PGBaseBackup(command, raw_basebackup_path, self.compression_queue, callback_queue)
+        # Note that this xlog file value will only be correct if no other basebackups are run
+        # in parallel. PGHoard itself will never do this itself but if the user starts
+        # one on his own, and if tablespaces are set to False we'll get an incorrect
+        # start-wal-time since the pg_basebackup from pghoard will not generate a
+        # new checkpoint. This means that this xlog information would not be the oldest
+        # required to restore from this basebackup.
+        current_xlog = wal.get_current_wal_from_identify_system(connection_string)
+
+        thread = PGBaseBackup(
+            config=self.config,
+            site=site,
+            connection_string=connection_string,
+            basebackup_path=basebackup_path,
+            compression_queue=self.compression_queue,
+            transfer_queue=self.transfer_queue,
+            callback_queue=callback_queue,
+            start_wal_segment=current_xlog)
         thread.start()
-        self.basebackups[cluster] = thread
-        return final_basebackup_path
+        self.basebackups[site] = thread
 
     def check_pg_server_version(self, connection_string):
         pg_version = None

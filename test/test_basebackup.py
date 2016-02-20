@@ -30,21 +30,30 @@ START TIME: 2015-02-12 14:07:19 GMT
 LABEL: pg_basebackup base backup
 ''')
             tfile.add(os.path.join(td, "backup_label"), arcname="backup_label")
-        pgb = PGBaseBackup(command=None, basebackup_location=None, compression_queue=None)
+        pgb = PGBaseBackup(config=None, site="foosite", connection_string=None,
+                           basebackup_path=None, compression_queue=None, transfer_queue=None)
         start_wal_segment, start_time = pgb.parse_backup_label(fn)
         assert start_wal_segment == "000000010000000000000004"
         assert start_time == "2015-02-12T14:07:19+00:00"
 
     def test_basebackups(self, capsys, db, pghoard, tmpdir):
         pghoard.create_backup_site_paths(pghoard.test_site)
-        conn_str = create_connection_string(db.user)
+        r_conn = deepcopy(db.user)
+        r_conn["dbname"] = "replication"
+        r_conn["replication"] = True
+        conn_str = create_connection_string(r_conn)
         basebackup_path = os.path.join(pghoard.config["backup_location"], pghoard.test_site, "basebackup")
         q = Queue()
-        final_location = pghoard.create_basebackup(pghoard.test_site, conn_str, basebackup_path, q)
+        pghoard.create_basebackup(pghoard.test_site, conn_str, basebackup_path, q)
+        result = q.get(timeout=60)
+        assert result["success"]
+
+        pghoard.config["backup_sites"][pghoard.test_site]["stream_compression"] = True
+        pghoard.create_basebackup(pghoard.test_site, conn_str, basebackup_path, q)
         result = q.get(timeout=60)
         assert result["success"]
         if not pghoard.config["backup_sites"][pghoard.test_site]["object_storage"]:
-            assert os.path.exists(final_location)
+            assert os.path.exists(pghoard.basebackups[pghoard.test_site].target_basebackup_path)
         # make sure it shows on the list
         Restore().run([
             "list-basebackups",

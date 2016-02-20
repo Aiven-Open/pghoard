@@ -8,7 +8,7 @@ See LICENSE for details
 from .base import PGHoardTestCase
 from pghoard.common import create_connection_string
 from pghoard.pghoard import PGHoard
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 import json
 import os
 
@@ -56,7 +56,13 @@ class TestPGHoard(PGHoardTestCase):
         self.pghoard.check_pg_versions_ok = self.real_check_pg_versions_ok
         super().teardown_method(method)
 
-    def test_handle_site(self):
+    @patch("subprocess.check_output")
+    def test_handle_site(self, subprocess_mock):
+        subprocess_mock.return_value = b"""\
+systemid|6222667313856416063
+timeline|1
+xlogpos|0/B003760
+dbname|"""
         self.pghoard.handle_site(self.test_site, self.config["backup_sites"][self.test_site])
         assert self.pghoard.receivexlogs == {}
         assert len(self.pghoard.time_of_last_backup_check) == 1

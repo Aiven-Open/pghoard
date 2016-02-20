@@ -5,6 +5,8 @@ Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
 from . common import set_subprocess_stdout_and_stderr_nonblocking, terminate_subprocess
+from dateutil.tz import tzlocal
+from pghoard.rohmu.compressor import Compressor
 from threading import Thread
 import datetime
 import dateutil.parser
@@ -17,16 +19,53 @@ import time
 
 
 class PGBaseBackup(Thread):
-    def __init__(self, command, basebackup_location, compression_queue, callback_queue=None):
+    def __init__(self, config, site, connection_string, basebackup_path,
+                 compression_queue, transfer_queue=None,
+                 callback_queue=None, start_wal_segment=None):
         super().__init__()
         self.log = logging.getLogger("PGBaseBackup")
-        self.command = command
-        self.basebackup_location = basebackup_location
+        self.config = config
+        self.site = site
+        self.connection_string = connection_string
+        self.basebackup_path = basebackup_path
         self.callback_queue = callback_queue
         self.compression_queue = compression_queue
+        self.transfer_queue = transfer_queue
+        self.start_wal_segment = start_wal_segment
+        self.target_basebackup_path = None
         self.running = True
         self.pid = None
         self.latest_activity = datetime.datetime.utcnow()
+
+    def get_command_line(self):
+        i = 0
+        while True:
+            tsdir = datetime.datetime.utcnow().strftime("%Y-%m-%d") + "_" + str(i)
+            raw_basebackup_path = os.path.join(self.basebackup_path + "_incoming", tsdir)
+            final_basebackup_path = os.path.join(self.basebackup_path, tsdir)
+            # the backup directory names need not to be a sequence, so we lean
+            # towards skipping over any partial or leftover progress below
+            if not os.path.exists(raw_basebackup_path) and not os.path.exists(final_basebackup_path):
+                os.makedirs(raw_basebackup_path)
+                break
+            i += 1
+
+        command = [
+            self.config.get("pg_basebackup_path", "/usr/bin/pg_basebackup"),
+            "--dbname", self.connection_string,
+            "--format", "tar",
+            "--xlog",
+            "--progress",
+            "--label", "initial_base_backup",
+            "--verbose",
+            ]
+        if self.config["backup_sites"][self.site].get("stream_compression") is True:
+            self.target_basebackup_path = final_basebackup_path
+            command.extend(["--pgdata", "-"])  # special meaning, output to stdout
+        else:
+            self.target_basebackup_path = os.path.join(raw_basebackup_path, "base.tar")
+            command.extend(["--pgdata", raw_basebackup_path])
+        return command
 
     def parse_backup_label(self, basebackup_path):
         tar = tarfile.open(basebackup_path)
@@ -41,13 +80,24 @@ class PGBaseBackup(Thread):
                        start_time)
         return start_wal_segment, start_time
 
-    def run(self):
-        self.log.debug("Starting to run: %r", self.command)
-        start_time = time.time()
-        proc = subprocess.Popen(self.command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    def compress_directly_to_a_file(self, proc, basebackup_path):
+        rsa_public_key = None
+        encryption_key_id = self.config["backup_sites"][self.site].get("encryption_key_id", None)
+        if encryption_key_id:
+            rsa_public_key = self.config["backup_sites"][self.site]["encryption_keys"][encryption_key_id]["public"]
+        c = Compressor()
+        compression_algorithm = self.config.get("compression", {}).get("algorithm", "snappy")
+        self.log.debug("Compressing basebackup directly to file: %r", basebackup_path)
+        original_input_size, compressed_file_size = c.compress_filepath(
+            fileobj=proc.stdout,
+            targetfilepath=basebackup_path,
+            compression_algorithm=compression_algorithm,
+            rsa_public_key=rsa_public_key)
+        return original_input_size, compressed_file_size, {"compression-algorithm": compression_algorithm,
+                                                           "encryption-key-id": encryption_key_id}
+
+    def poll_until_uncompressed_basebackup_ready(self, proc):
         set_subprocess_stdout_and_stderr_nonblocking(proc)
-        self.pid = proc.pid
-        self.log.info("Started: %r, running as PID: %r", self.command, self.pid)
         while self.running:
             rlist, _, _ = select.select([proc.stdout, proc.stderr], [], [], 1.0)
             for fd in rlist:
@@ -57,15 +107,56 @@ class PGBaseBackup(Thread):
                     self.latest_activity = datetime.datetime.utcnow()
             if proc.poll() is not None:
                 break
+
+    def run(self):
+        command = self.get_command_line()
+        self.log.debug("Starting to run: %r", command)
+        start_time = time.time()
+        proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+        self.pid = proc.pid
+        self.log.info("Started: %r, running as PID: %r, basebackup_location: %r", command, self.pid,
+                      self.target_basebackup_path)
+
+        if self.config["backup_sites"][self.site].get("stream_compression") is True:
+            original_input_size, compressed_file_size, metadata = \
+                self.compress_directly_to_a_file(proc, self.target_basebackup_path)
+        else:
+            original_input_size = self.poll_until_uncompressed_basebackup_ready(proc)
+
         rc = terminate_subprocess(proc, log=self.log)
         self.log.debug("Ran: %r, took: %.3fs to run, returncode: %r",
-                       self.command, time.time() - start_time, rc)
-        basebackup_path = os.path.join(self.basebackup_location, "base.tar")
-        if os.path.exists(basebackup_path):
-            start_wal_segment, start_time = self.parse_backup_label(basebackup_path)
+                       command, time.time() - start_time, rc)
+
+        if self.config["backup_sites"][self.site].get("stream_compression") is True:
+            # Since we can't parse the backup label we cheat with the start-wal-segment and
+            # start-time a bit. The start-wal-segment is the segment currently being written before
+            # the backup and the start_time is taken _after_ the backup has completed and so is conservatively
+            # in the future but not exactly correct. These both are valid only as long as no other
+            # basebackups than those controlled by pghoard are currently running at the same time.
+            # pg_basebackups are taken simultaneously directly or through other backup managers the xlog
+            # file will be incorrect since a new checkpoint will not be issued for a parallel backup
+            start_time = datetime.datetime.now(tzlocal()).isoformat()
+            transfer_object = {
+                "callback_queue": self.callback_queue,
+                "file_size": compressed_file_size,
+                "filetype": "basebackup",
+                "local_path": self.target_basebackup_path,
+                "metadata": {
+                    "start-time": start_time,
+                    "start-wal-segment": self.start_wal_segment,
+                    "original-file-size": original_input_size,
+                },
+                "site": self.site,
+                "type": "UPLOAD",
+            }
+            transfer_object["metadata"].update(metadata)
+            self.transfer_queue.put(transfer_object)
+        elif os.path.exists(self.target_basebackup_path):
+            start_wal_segment, start_time = self.parse_backup_label(self.target_basebackup_path)
             self.compression_queue.put({
                 "callback_queue": self.callback_queue,
-                "full_path": basebackup_path,
+                "full_path": self.target_basebackup_path,
                 "metadata": {"start-wal-segment": start_wal_segment, "start-time": start_time},
                 "type": "CLOSE_WRITE",
             })

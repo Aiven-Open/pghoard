@@ -5,7 +5,9 @@ Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
 from collections import namedtuple
+from . common import replication_connection_string_using_pgpass
 import struct
+import subprocess
 
 WAL_HEADER_LEN = 20
 WAL_MAGIC = {
@@ -59,3 +61,32 @@ def lsn_from_name(name):
     _, log, seg = name_to_tli_log_seg(name)
     pos = seg * XLOG_SEG_SIZE
     return "{:X}/{:X}".format(log, pos)
+
+
+def construct_wal_name(sysinfo):
+    """Get wal file name out of something like this:
+    {'dbname': '', 'systemid': '6181331723016416192', 'timeline': '1', 'xlogpos': '0/90001B0'}
+    """
+    log_hex, seg_hex = sysinfo["xlogpos"].split("/", 1)
+    # seg_hex's topmost 8 bits are filename, low 24 bits are position in
+    # file which we are not interested in
+    return "{tli:08X}{log:08X}{seg:08X}".format(
+        tli=int(sysinfo["timeline"]),
+        log=int(log_hex, 16),
+        seg=int(seg_hex, 16) >> 24)
+
+
+def get_current_wal_from_identify_system(conn_str):
+    # unfortunately psycopg2's available versions don't support
+    # replication protocol so we'll just have to execute psql to figure
+    # out the current WAL position.
+    out = subprocess.check_output(["psql", "-Aqxc", "IDENTIFY_SYSTEM", conn_str])
+    sysinfo = dict(line.split("|", 1) for line in out.decode("ascii").splitlines())
+    # construct the currently open WAL file name using sysinfo, we need
+    # everything older than that
+    return construct_wal_name(sysinfo)
+
+
+def get_current_wal_file(node_info):
+    conn_str, _ = replication_connection_string_using_pgpass(node_info)
+    return get_current_wal_from_identify_system(conn_str)
