@@ -70,7 +70,7 @@ def construct_wal_name(sysinfo):
     log_hex, seg_hex = sysinfo["xlogpos"].split("/", 1)
     # seg_hex's topmost 8 bits are filename, low 24 bits are position in
     # file which we are not interested in
-    return "{tli:08X}{log:08X}{seg:08X}".format(
+    return name_for_tli_log_seg(
         tli=int(sysinfo["timeline"]),
         log=int(log_hex, 16),
         seg=int(seg_hex, 16) >> 24)
