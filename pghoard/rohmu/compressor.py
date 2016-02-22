@@ -114,23 +114,32 @@ class Compressor:
             fsrc = SnappyFile(fsrc)  # pylint: disable=redefined-variable-type
         return fsrc
 
-    def compress_filepath(self, filepath, targetfilepath, compression_algorithm, rsa_public_key=None):
+    def compress_filepath(self, filepath=None, targetfilepath=None,
+                          compression_algorithm=None, rsa_public_key=None, fileobj=None):
         start_time = time.monotonic()
         compressor = self.compressor(compression_algorithm)
+
+        compressed_file_size = 0
         encryptor = None
+        original_input_size = 0
+
         if rsa_public_key:
             encryptor = Encryptor(rsa_public_key)
         tmp_target_file_path = targetfilepath + ".tmp-compress"
-        with open(filepath, "rb") as input_file:
+        if not fileobj:
+            fileobj = open(filepath, "rb")
+        with fileobj:
             with open(tmp_target_file_path, "wb") as output_file:
                 while True:
-                    input_data = input_file.read(IO_BLOCK_SIZE)
+                    input_data = fileobj.read(IO_BLOCK_SIZE)
                     if not input_data:
                         break
+                    original_input_size += len(input_data)
                     compressed_data = compressor.compress(input_data)
                     if encryptor and compressed_data:
                         compressed_data = encryptor.update(compressed_data)
                     if compressed_data:
+                        compressed_file_size += len(compressed_data)
                         output_file.write(compressed_data)
 
                 compressed_data = (compressor.flush() or b"")
@@ -144,8 +153,10 @@ class Compressor:
                     output_file.write(compressed_data)
 
         os.rename(tmp_target_file_path, targetfilepath)
-        self.log.debug("Compression from %r to %r with: %r took: %.2fs",
-                       filepath, targetfilepath, compression_algorithm, time.monotonic() - start_time)
+        self.log.debug("Compression from %r to %r with: %r original_input_size: %r compressed_file_size: %r took: %.2fs",
+                       filepath, targetfilepath, compression_algorithm, original_input_size, compressed_file_size,
+                       time.monotonic() - start_time)
+        return original_input_size, compressed_file_size
 
     def compress_filepath_to_memory(self, filepath, compression_algorithm, rsa_public_key=None):
         # This is meant for WAL files compressed due to archive_command

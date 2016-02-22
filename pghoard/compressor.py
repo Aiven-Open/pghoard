@@ -124,12 +124,11 @@ class CompressorThread(Thread, Compressor):
             compressed_filepath = None
         else:
             compressed_filepath = self.get_compressed_file_path(site, filetype, event["full_path"])
-            self.compress_filepath(
+            original_file_size, compressed_file_size = self.compress_filepath(
                 event["full_path"],
                 compressed_filepath,
                 compression_algorithm=self.compression_algorithm(),
                 rsa_public_key=rsa_public_key)
-            compressed_file_size = os.stat(compressed_filepath).st_size
         self.log.info("Compressed %d byte file: %r to %d bytes, took: %.3fs",
                       original_file_size, event['full_path'], compressed_file_size,
                       time.time() - start_time)

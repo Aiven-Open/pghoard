@@ -4,33 +4,18 @@ pghoard: sync local WAL files to remote archive
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
-from .common import default_log_format_str, replication_connection_string_using_pgpass
-from .common import TIMELINE_RE, XLOG_RE
+from .common import default_log_format_str, TIMELINE_RE, XLOG_RE
 from . import wal
 import argparse
 import json
 import logging
 import os
 import requests
-import subprocess
 import sys
 
 
 class SyncError(Exception):
     pass
-
-
-def construct_wal_name(sysinfo):
-    """Get wal file name out of something like this:
-    {'dbname': '', 'systemid': '6181331723016416192', 'timeline': '1', 'xlogpos': '0/90001B0'}
-    """
-    log_hex, seg_hex = sysinfo["xlogpos"].split("/", 1)
-    # seg_hex's topmost 8 bits are filename, low 24 bits are position in
-    # file which we are not interested in
-    return "{tli:08X}{log:08X}{seg:08X}".format(
-        tli=int(sysinfo["timeline"]),
-        log=int(log_hex, 16),
-        seg=int(seg_hex, 16) >> 24)
 
 
 class ArchiveSync(object):
@@ -55,16 +40,7 @@ class ArchiveSync(object):
 
     def get_current_wal_file(self):
         # identify the (must be) local database
-        node_info = self.backup_site["nodes"][0]
-        conn_str, _ = replication_connection_string_using_pgpass(node_info)
-        # unfortunately psycopg2's available versions don't support
-        # replication protocol so we'll just have to execute psql to figure
-        # out the current WAL position.
-        out = subprocess.check_output(["psql", "-Aqxc", "IDENTIFY_SYSTEM", conn_str])
-        sysinfo = dict(line.split("|", 1) for line in out.decode("ascii").splitlines())
-        # construct the currently open WAL file name using sysinfo, we need
-        # everything older than that
-        return construct_wal_name(sysinfo)
+        return wal.get_current_wal_file(self.backup_site["nodes"][0])
 
     def get_first_required_wal_segment(self):
         resp = requests.get("{base}/basebackup".format(base=self.base_url))

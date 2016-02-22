@@ -207,7 +207,7 @@ class Restore(object):
         metadata = self.storage.get_basebackup_file_to_fileobj(basebackup, tmp)
 
         rsa_private_key = None
-        if "encryption-key-id" in metadata:
+        if "encryption-key-id" in metadata and metadata["encryption-key-id"]:
             key_id = metadata["encryption-key-id"]
             site_keys = self.config["backup_sites"][site]["encryption_keys"]
             rsa_private_key = site_keys[key_id]["private"]
