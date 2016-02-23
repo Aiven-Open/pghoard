@@ -109,11 +109,16 @@ class TestWebServer(object):
         conn = psycopg2.connect(create_connection_string(db.user))
         conn.autocommit = True
         cursor = conn.cursor()
+        cursor.execute("SELECT pg_xlogfile_name(pg_current_xlog_location())")
+        start_xlog = cursor.fetchone()[0]
         cursor.execute("CREATE TABLE IF NOT EXISTS testint (i INT)")
         for n in range(count):
             cursor.execute("INSERT INTO testint (i) VALUES (%s)", [n])
             cursor.execute("SELECT pg_switch_xlog()")
+        cursor.execute("SELECT pg_xlogfile_name(pg_current_xlog_location())")
+        end_xlog = cursor.fetchone()[0]
         conn.close()
+        return start_xlog, end_xlog
 
     def test_archive_sync(self, db, pghoard):
         store = pghoard.transfer_agents[0].get_object_storage(pghoard.test_site)
@@ -128,13 +133,16 @@ class TestWebServer(object):
                 if matcher(fname):
                     yield fname
 
+        # create a basebackup to start with
+        self._run_and_wait_basebackup(pghoard, db)
+
         # force a couple of wal segment switches
-        self._switch_xlog(db, 4)
+        start_xlog, _ = self._switch_xlog(db, 4)
         # we should have at least 4 xlog files now (there may be more in
         # case other tests created them -- we share a single postresql
         # cluster between all tests)
         pg_xlog_dir = pghoard.config["backup_sites"][pghoard.test_site]["pg_xlog_directory"]
-        pg_xlogs = {f for f in os.listdir(pg_xlog_dir) if XLOG_RE.match(f)}
+        pg_xlogs = {f for f in os.listdir(pg_xlog_dir) if XLOG_RE.match(f) and f > start_xlog}
         assert len(pg_xlogs) >= 4
 
         # create a couple of "recycled" xlog files that we must ignore
@@ -218,9 +226,9 @@ class TestWebServer(object):
         arsy.run(["--site", pghoard.test_site, "--config", pghoard.config_path])
 
         archived_xlogs = set(list_archive("xlog"))
+        # assume the same timeline file as before and at one or more wal files (but not more than three)
         assert len(archived_xlogs) >= 1
         assert len(archived_xlogs) <= 3
-        # assume the same timeline file as before and at one or more wal files (but not more than three)
         assert list(list_archive("timeline")) == ["00000002.history"]
 
     def test_archive_command_with_invalid_file(self, pghoard):

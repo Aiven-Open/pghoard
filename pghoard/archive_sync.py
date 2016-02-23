@@ -57,9 +57,11 @@ class ArchiveSync(object):
         latest_basebackup = max(items, key=lambda item: item["name"])
         return latest_basebackup["metadata"]["start-wal-segment"]
 
-    def archive_sync(self):
+    def archive_sync(self, verify, new_backup_on_failure):
         self.check_and_upload_missing_local_files()
-        return self.check_wal_archive_integrity()
+        if not verify:
+            return
+        return self.check_wal_archive_integrity(new_backup_on_failure)
 
     def check_and_upload_missing_local_files(self):
         current_wal_file = self.get_current_wal_file()
@@ -110,15 +112,15 @@ class ArchiveSync(object):
             else:
                 self.log.info("%s file %r archived", archive_type, xlog_file)
 
-    def check_wal_archive_integrity(self):
+    def check_wal_archive_integrity(self, new_backup_on_failure):
         current_wal_file = self.get_current_wal_file()
         first_required_wal_file = self.get_first_required_wal_segment()
         if not current_wal_file:
-            self.log.error("Could not figure out current WAL segment, returning failure")
-            return -1
+            raise SyncError("Could not figure out current WAL segment")
         if not first_required_wal_file:
-            self.log.error("No basebackups found, returning failure")
-            return -1
+            raise SyncError("No basebackups found")
+        self.log.info("Verifying archive integrity from %r to %r",
+                      current_wal_file, first_required_wal_file)
 
         current_tli, current_log, current_seg = wal.name_to_tli_log_seg(current_wal_file)
         target_tli, target_log, target_seg = wal.name_to_tli_log_seg(first_required_wal_file)
@@ -142,12 +144,17 @@ class ArchiveSync(object):
                     return 0
                 valid_timeline = True
                 continue
+            elif not valid_timeline:
+                msg = "{} file {} missing, integrity check from {} to {} failed".format(
+                    archive_type, xlog_file, current_wal_file, first_required_wal_file)
+                if not new_backup_on_failure:
+                    raise SyncError(msg)
+                self.log.error("Requesting new basebackup: %s", msg)
+                self.request_basebackup()
+                return 0
             else:
-                if not valid_timeline:
-                    self.log.error("%s file %r missing, we need a new basebackup", archive_type, xlog_file)
-                    self.request_basebackup()
-                    return -1
-
+                # Go back one timeline and flag the current timeline as invalid, this will prevent segment
+                # number from being decreased on the next iteration.
                 valid_timeline = False
                 current_tli -= 1
 
@@ -162,6 +169,9 @@ class ArchiveSync(object):
         parser = argparse.ArgumentParser()
         parser.add_argument("--site", help="pghoard site", required=True)
         parser.add_argument("--config", help="pghoard config file", required=True)
+        parser.add_argument("--no-verify", help="verify archive integrity", action="store_false")
+        parser.add_argument("--create-new-backup-on-failure", help="request a new basebackup if verification fails",
+                            action="store_true", default=False)
         args = parser.parse_args(args)
         try:
             with open(args.config) as fp:
@@ -171,20 +181,19 @@ class ArchiveSync(object):
             raise SyncError("Site {!r} not configured in {!r}".format(args.site, args.config))
         except ValueError:
             raise SyncError("Invalid JSON configuration file {!r}".format(args.config))
-        try:
-            return self.archive_sync()
-        except KeyboardInterrupt:
-            print("*** interrupted by keyboard ***")
-            return 1
+        return self.archive_sync(args.no_verify, args.create_new_backup_on_failure)
 
 
 def main():
     logging.basicConfig(level=logging.INFO, format=default_log_format_str)
+    tool = ArchiveSync()
     try:
-        tool = ArchiveSync()
         return tool.run()
+    except KeyboardInterrupt:
+        print("*** interrupted by keyboard ***")
+        return 1
     except SyncError as ex:
-        print("FATAL: {}: {}".format(ex.__class__.__name__, ex))
+        tool.log.error("FATAL: %s: %s", ex.__class__.__name__, ex)
         return 1
 
 
