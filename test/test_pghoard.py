@@ -6,7 +6,7 @@ See LICENSE for details
 """
 # pylint: disable=attribute-defined-outside-init
 from .base import PGHoardTestCase
-from pghoard.common import create_connection_string
+from pghoard.common import create_alert_file, create_connection_string, delete_alert_file
 from pghoard.pghoard import PGHoard
 from unittest.mock import Mock, patch
 import json
@@ -194,9 +194,9 @@ dbname|"""
 
     def test_alert_files(self):
         alert_file_path = os.path.join(self.temp_dir, "test_alert")
-        self.pghoard.create_alert_file("test_alert")
+        create_alert_file(self.pghoard.config, "test_alert")
         assert os.path.exists(alert_file_path) is True
-        self.pghoard.delete_alert_file("test_alert")
+        delete_alert_file(self.pghoard.config, "test_alert")
         assert os.path.exists(alert_file_path) is False
 
     def test_backup_state_file(self):

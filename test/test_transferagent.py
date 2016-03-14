@@ -6,10 +6,12 @@ See LICENSE for details
 """
 # pylint: disable=attribute-defined-outside-init
 from .base import PGHoardTestCase
+from pghoard.rohmu.errors import StorageError
 from pghoard.transfer import TransferAgent
-from queue import Queue
+from queue import Empty, Queue
 from unittest.mock import Mock
 import os
+import pytest
 
 
 class MockStorage(Mock):
@@ -18,6 +20,14 @@ class MockStorage(Mock):
 
     def store_file_from_disk(self, key, local_path, metadata):  # pylint: disable=unused-argument
         pass
+
+
+class MockStorageRaising(Mock):
+    def get_contents_to_string(self, key):  # pylint: disable=unused-argument
+        return b"joo", {"key": "value"}
+
+    def store_file_from_disk(self, key, local_path, metadata):  # pylint: disable=unused-argument
+        raise StorageError("foo")
 
 
 class TestTransferAgent(PGHoardTestCase):
@@ -110,3 +120,22 @@ class TestTransferAgent(PGHoardTestCase):
         })
         assert callback_queue.get(timeout=1.0) == {"success": True, "opaque": None}
         assert os.path.exists(self.foo_basebackup_path) is False
+
+    def test_handle_failing_upload_xlog(self):
+        callback_queue = Queue()
+        storage = MockStorageRaising()
+        self.transfer_agent.get_object_storage = storage
+        assert os.path.exists(self.foo_path) is True
+        self.transfer_queue.put({
+            "callback_queue": callback_queue,
+            "file_size": 3,
+            "filetype": "xlog",
+            "local_path": self.foo_path,
+            "metadata": {"start-wal-segment": "00000001000000000000000C"},
+            "site": self.test_site,
+            "type": "UPLOAD",
+        })
+        with pytest.raises(Empty):
+            callback_queue.get(timeout=3.0)
+        assert os.path.exists("upload_retries_warning") is True
+        os.unlink("upload_retries_warning")

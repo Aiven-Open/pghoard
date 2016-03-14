@@ -158,6 +158,12 @@ There has been a problem in the authentication of at least one of the
 PostgreSQL connections.  This usually denotes a missing pg_hba.conf entry or
 incompatible settings in postgresql.conf.
 
+``upload_retries_warning``
+
+Upload of a file has failed more times than
+``upload_retries_warning_limit``. Needs human intervention to figure
+out why and to delete the alert once the situation has been fixed.
+
 ``version_mismatch_error``
 
 Your local PostgreSQL client versions of pg_basebackup or pg_receivexlog do
@@ -298,6 +304,11 @@ installations use extra tablespaces and if you already use pghoard to
 take basebackups, you will not need to take other basebackups yourself
 meaning this option is probably safe to use but you need to opt in
 explicitly in order to benefit from it.
+
+``upload_retries_warning_limit`` (default ``3``)
+
+After this many failed upload attempts for a single file, create an
+alert file.
 
 ``object_storage`` (no default)
 
