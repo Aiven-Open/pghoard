@@ -178,11 +178,20 @@ Server PostgreSQL versions is not supported.
 General notes
 =============
 
-If correctly installed, pghoard comes with three executables, ``pghoard``,
-``pghoard_restore`` and ``pghoard_archivecommand``.
+If correctly installed, pghoard comes with five executables, ``pghoard``,
+``pghoard_archive_sync``, ``pghoard_create_keys`` and
+``pghoard_postgres_command`` and ``pghoard_restore``
 
 ``pghoard`` is the main process that should be run under systemd or
 supervisord.  It handles the backup of the configured sites.
+
+``pghoard_archive_sync`` can be used to see if any local files should
+be archived but haven't been. The other usecase it has is to determine
+if there are any gaps in the required files in the WAL archive
+from the current WAL file on to to the latest basebackup's first WAL file.
+
+``pghoard_create_keys`` can be used to generate and output encryption keys
+in the ``pghoard`` configuration format.
 
 ``pghoard_restore`` is a command line tool that can be used to restore a
 previous database backup from either pghoard itself or from one of the
