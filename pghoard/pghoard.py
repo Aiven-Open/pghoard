@@ -435,7 +435,10 @@ class PGHoard(object):
                 t.join()
 
 
-def main(argv):
+def main(argv=None):
+    if argv is None:
+        argv = sys.argv
+
     if len(argv) != 2:
         print("Usage: {} <config filename>".format(argv[0]))
         return 1

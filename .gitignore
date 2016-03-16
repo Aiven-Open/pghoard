@@ -1,9 +1,10 @@
 *.pyc
 *.pyo
 *~
-.coverage
-.project
-.pydevproject
+/.coverage
+/.project
+/.pydevproject
 __pycache__/
-build/
-pghoard.egg-info/
+/build/
+/dist/
+/pghoard.egg-info/

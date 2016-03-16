@@ -1,0 +1,13 @@
+include pghoard/*.py
+include pghoard.json
+include pghoard.unit
+include test/*.py
+include scripts/*
+include README.rst
+include version.py
+include setup.py
+include setup.cfg
+include LICENSE
+include MANIFEST.in
+
+recursive-exclude examples *~ *.pyc \.*
