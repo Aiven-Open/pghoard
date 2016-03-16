@@ -1,0 +1,17 @@
+pghoard 1.0.0 (2016-03-16)
+==========================
+
+* Support compressing basebackups on the fly
+* Add archive_sync command to sync archive / check archive integrity
+* Support different recovery_targets
+* Support encryption and integrity protection of the backup files
+* Snappy compression support
+* Better unittests (also with an actual PostgreSQL)
+* Require Python3.4 or newer
+* Support prefetching files during restore
+* Bug fixes
+
+pghoard 0.9.0 (2015-06-19)
+============================
+
+* Initial release

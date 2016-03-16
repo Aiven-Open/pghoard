@@ -5,7 +5,7 @@ Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
 from contextlib import suppress
-from pghoard.common import get_object_storage_config
+from pghoard.common import create_alert_file, get_object_storage_config
 from pghoard.rohmu.errors import (
     FileNotFoundFromStorageError,
     LocalFileIsRemoteFileError,
@@ -180,7 +180,12 @@ class TransferAgent(Thread):
             return {"success": True, "opaque": file_to_transfer.get("opaque")}
         except Exception as ex:  # pylint: disable=broad-except
             self.log.exception("Problem in moving file: %r, need to retry", file_to_transfer["local_path"])
-            # TODO come up with something so we don't busy loop
+            # Sleep for a bit to avoid busy looping
             time.sleep(0.5)
+
+            file_to_transfer["retries"] = file_to_transfer.get("retries", 0) + 1
+            if file_to_transfer["retries"] > self.config.get("upload_retries_warning_limit", 3):
+                create_alert_file(self.config, "upload_retries_warning")
+
             self.transfer_queue.put(file_to_transfer)
             return {"success": False, "call_callback": False, "exception": ex}

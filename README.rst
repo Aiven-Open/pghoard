@@ -158,6 +158,12 @@ There has been a problem in the authentication of at least one of the
 PostgreSQL connections.  This usually denotes a missing pg_hba.conf entry or
 incompatible settings in postgresql.conf.
 
+``upload_retries_warning``
+
+Upload of a file has failed more times than
+``upload_retries_warning_limit``. Needs human intervention to figure
+out why and to delete the alert once the situation has been fixed.
+
 ``version_mismatch_error``
 
 Your local PostgreSQL client versions of pg_basebackup or pg_receivexlog do
@@ -172,11 +178,20 @@ Server PostgreSQL versions is not supported.
 General notes
 =============
 
-If correctly installed, pghoard comes with three executables, ``pghoard``,
-``pghoard_restore`` and ``pghoard_archivecommand``.
+If correctly installed, pghoard comes with five executables, ``pghoard``,
+``pghoard_archive_sync``, ``pghoard_create_keys`` and
+``pghoard_postgres_command`` and ``pghoard_restore``
 
 ``pghoard`` is the main process that should be run under systemd or
 supervisord.  It handles the backup of the configured sites.
+
+``pghoard_archive_sync`` can be used to see if any local files should
+be archived but haven't been. The other usecase it has is to determine
+if there are any gaps in the required files in the WAL archive
+from the current WAL file on to to the latest basebackup's first WAL file.
+
+``pghoard_create_keys`` can be used to generate and output encryption keys
+in the ``pghoard`` configuration format.
 
 ``pghoard_restore`` is a command line tool that can be used to restore a
 previous database backup from either pghoard itself or from one of the
@@ -298,6 +313,11 @@ installations use extra tablespaces and if you already use pghoard to
 take basebackups, you will not need to take other basebackups yourself
 meaning this option is probably safe to use but you need to opt in
 explicitly in order to benefit from it.
+
+``upload_retries_warning_limit`` (default ``3``)
+
+After this many failed upload attempts for a single file, create an
+alert file.
 
 ``object_storage`` (no default)
 

@@ -9,6 +9,7 @@ from pghoard import wal
 from pghoard.basebackup import PGBaseBackup
 from pghoard.common import convert_pg_command_version_to_number, replication_connection_string_using_pgpass
 from pghoard.common import (
+    create_alert_file,
     default_log_format_str,
     get_object_storage_config,
     set_syslog_handler)
@@ -94,7 +95,7 @@ class PGHoard(object):
     def check_pg_versions_ok(self, pg_version_server, command):
         if not pg_version_server or pg_version_server <= 90300:
             self.log.error("pghoard does not support versions earlier than 9.3, found: %r", pg_version_server)
-            self.create_alert_file("version_unsupported_error")
+            create_alert_file(self.config, "version_unsupported_error")
             return False
         command_path = self.config.get(command + "_path", "/usr/bin/" + command)
         output = os.popen(command_path + " --version").read().strip()
@@ -102,7 +103,7 @@ class PGHoard(object):
         if pg_version_server // 100 != pg_version_client // 100:
             self.log.error("Server version: %r does not match %s version: %r",
                            pg_version_server, command_path, pg_version_client)
-            self.create_alert_file("version_mismatch_error")
+            create_alert_file(self.config, "version_mismatch_error")
             return False
         return True
 
@@ -142,9 +143,9 @@ class PGHoard(object):
             self.log.warning("%s (%s) connecting to DB at: %r",
                              ex.__class__.__name__, ex, connection_string)
             if "password authentication" in str(ex) or "authentication failed" in str(ex):
-                self.create_alert_file("authentication_error")
+                create_alert_file(self.config, "authentication_error")
             else:
-                self.create_alert_file("configuration_error")
+                create_alert_file(self.config, "configuration_error")
         except Exception:  # log all errors and return None; pylint: disable=broad-except
             self.log.exception("Problem in getting PG server version")
         return pg_version
@@ -381,18 +382,6 @@ class PGHoard(object):
             fp.write(json_to_dump)
         os.rename(state_file_path + ".tmp", state_file_path)
         self.log.debug("Wrote JSON state file to disk, took %.4fs", time.time() - start_time)
-
-    def create_alert_file(self, filename):
-        filepath = os.path.join(self.config.get("alert_file_dir", os.getcwd()), filename)
-        self.log.debug("Creating alert file: %r", filepath)
-        with open(filepath, "w") as fp:
-            fp.write("alert")
-
-    def delete_alert_file(self, filename):
-        filepath = os.path.join(self.config.get("alert_file_dir", os.getcwd()), filename)
-        if os.path.exists(filepath):
-            self.log.debug("Deleting alert file: %r", filepath)
-            os.unlink(filepath)
 
     def load_config(self, _signal=None, _frame=None):
         self.log.debug("Loading JSON config from: %r, signal: %r, frame: %r",

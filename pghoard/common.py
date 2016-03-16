@@ -220,3 +220,17 @@ def get_object_storage_config(config, site):
         storage_config = config["backup_location"]
         storage_type = "local"
     return storage_type, storage_config
+
+
+def create_alert_file(config, filename):
+    filepath = os.path.join(config.get("alert_file_dir", os.getcwd()), filename)
+    LOG.warning("Creating alert file: %r", filepath)
+    with open(filepath, "w") as fp:
+        fp.write("alert")
+
+
+def delete_alert_file(config, filename):
+    filepath = os.path.join(config.get("alert_file_dir", os.getcwd()), filename)
+    if os.path.exists(filepath):
+        LOG.debug("Deleting alert file: %r", filepath)
+        os.unlink(filepath)
