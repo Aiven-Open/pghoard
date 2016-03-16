@@ -1,7 +1,8 @@
 short_ver = 0.9.0
 long_ver = $(shell git describe --long 2>/dev/null || echo $(short_ver)-0-unknown-g`git describe --always`)
+generated = pghoard/version.py
 
-all: py-egg
+all: $(generated)
 
 PYTHON ?= python3
 PYTHON_SOURCE_DIRS = pghoard/ test/
@@ -9,21 +10,26 @@ PYTEST_ARG ?= -v
 
 clean:
 	$(RM) -r *.egg-info/ build/ dist/
-	$(RM) ../pghoard_* test-*.xml
+	$(RM) ../pghoard_* test-*.xml $(generated)
 
-deb:
+pghoard/version.py: version.py
+	$(PYTHON) $^ $@
+
+deb: $(generated)
 	cp debian/changelog.in debian/changelog
 	dch -v $(long_ver) --distribution unstable "Automatically built .deb"
 	dpkg-buildpackage -A -uc -us
 
-rpm:
-	git archive --output=pghoard-rpm-src.tar.gz --prefix=pghoard/ HEAD
+rpm: $(generated)
+	git archive --output=pghoard-rpm-src.tar --prefix=pghoard/ HEAD
+	# add generated files to the tar, they're not in git repository
+	tar -r -f pghoard-rpm-src.tar --transform=s,pghoard/,pghoard/pghoard/, $(generated)
 	rpmbuild -bb pghoard.spec \
 		--define '_topdir $(PWD)/rpm' \
 		--define '_sourcedir $(CURDIR)' \
 		--define 'major_version $(short_ver)' \
 		--define 'minor_version $(subst -,.,$(subst $(short_ver)-,,$(long_ver)))'
-	$(RM) pghoard-rpm-src.tar.gz
+	$(RM) pghoard-rpm-src.tar
 
 build-dep-fed:
 	sudo dnf -y install postgresql-server \
@@ -34,17 +40,17 @@ build-dep-fed:
 
 test: flake8 pylint unittest
 
-unittest:
+unittest: $(generated)
 	$(PYTHON) -m pytest $(PYTEST_ARG) test/
 
-coverage:
+coverage: $(generated)
 	$(PYTHON) -m coverage run --source pghoard -m pytest $(PYTEST_ARG) test/
 	$(PYTHON) -m coverage report --show-missing
 
-pylint:
+pylint: $(generated)
 	$(PYTHON) -m pylint.lint --rcfile .pylintrc $(PYTHON_SOURCE_DIRS)
 
-flake8:
+flake8: $(generated)
 	$(PYTHON) -m flake8 --max-line-len=125 $(PYTHON_SOURCE_DIRS)
 
 .PHONY: rpm

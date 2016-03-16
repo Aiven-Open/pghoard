@@ -4,7 +4,7 @@ Release:        %{minor_version}%{?dist}
 Url:            http://github.com/ohmu/pghoard
 Summary:        PostgreSQL streaming backup service
 License:        ASL 2.0
-Source0:        pghoard-rpm-src.tar.gz
+Source0:        pghoard-rpm-src.tar
 Requires(pre):  shadow-utils
 Requires:       postgresql-server, systemd
 Requires:       python3-boto, python3-cryptography python3-dateutil
