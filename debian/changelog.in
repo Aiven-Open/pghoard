@@ -1,3 +1,9 @@
+pghoard (1.0.0) unstable; urgency=low
+
+  * Release version 1.0.0
+
+ -- Oskari Saarenmaa <os@ohmu.fi>  Wed, 16 Mar 2016 08:14:25 +0200
+
 pghoard (0.9.0) unstable; urgency=low
 
   * First version

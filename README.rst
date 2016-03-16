@@ -90,7 +90,7 @@ and eventually after the setup section, you can just run::
 
 Python/Other::
 
-  easy_install dist/pghoard-0.9.0-py3.4.egg
+  easy_install dist/pghoard-1.0.0-py3.4.egg
 
 On Debian/Other systems it is recommended that you run pghoard within a
 supervisord (http://supervisord.org) Process control system.  (see examples
