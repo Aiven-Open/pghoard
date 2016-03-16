@@ -1,10 +1,10 @@
 from setuptools import setup, find_packages
-from pghoard import __version__
 import os
+import version
 
 setup(
     name="pghoard",
-    version=os.getenv("VERSION") or __version__,
+    version=version.get_project_version("pghoard/version.py"),
     zip_safe=False,
     packages=find_packages(exclude=["test"]),
     install_requires=[
