@@ -13,6 +13,7 @@ clean:
 
 deb:
 	cp debian/changelog.in debian/changelog
+	dch -v $(long_ver) --distribution unstable "Automatically built .deb"
 	dpkg-buildpackage -A -uc -us
 
 rpm:
