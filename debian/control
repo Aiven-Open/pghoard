@@ -2,14 +2,21 @@ Source: pghoard
 Maintainer: Hannu Valtonen <hannu.valtonen@ohmu.fi>
 Section: python
 Priority: optional
-Build-Depends: python-setuptools (>= 0.6b3), python-all (>= 2.6.6-3), debhelper (>= 7.4.3), python-snappy (>=0.5-1)
-Standards-Version: 3.9.1
+Build-Depends: debhelper (>= 8), dh-python,
+ python3-all (>= 3.4), python3-setuptools,
+ python3-cryptography, python3-dateutil, python3-psycopg2,
+ python3-requests, python3-snappy
+X-Python3-Version: >= 3.4
+Standards-Version: 3.9.4
+Homepage: https://github.com/ohmu/pghoard
 
 Package: pghoard
 Architecture: all
-Depends: ${misc:Depends}, ${python:Depends},
- python-cryptography, python-dateutil, python-psycopg2, python-requests
+Depends: ${misc:Depends}, ${python3:Depends},
+ python3-cryptography, python3-dateutil, python3-psycopg2,
+ python3-requests, python3-snappy
 Description: PostgreSQL streaming backup service
- PGhoard is a PostgreSQL streaming backup service allowing the compression
- and encryption of backup files.  Also transfer of backup files to an object
- storage is supported.
+ PGhoard is a PostgreSQL streaming backup service.  Backups are stored in
+ encrypted and compressed format in a cloud object storage.  PGHoard
+ currently supports Amazon Web Services S3, Google Cloud Storage and Ceph.
+ Support for Windows Azure and OpenStack Swift is experimental.
