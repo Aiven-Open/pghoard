@@ -4,8 +4,33 @@ pghoard |BuildStatus|_
 .. |BuildStatus| image:: https://travis-ci.org/ohmu/pghoard.png?branch=master
 .. _BuildStatus: https://travis-ci.org/ohmu/pghoard
 
-``pghoard`` is a PostgreSQL backup/restore service, it consists of a daemon
-process and a restore client.
+``pghoard`` is a PostgreSQL backup daemon and restore tooling for cloud object storages.
+
+Features:
+
+* Automatic periodic basebackups
+* Automatic transaction log (WAL/xlog) backups (using either ``pg_receivexlog``
+  or ``archive_command``)
+* Cloud object storage support (AWS S3, Google Cloud, Azure, Ceph)
+* Backup restoration directly from object storage, compressed and encrypted
+* Point-in-time-recovery (PITR)
+* Initialize a new standby from object storage backups, automatically configured as
+  a replicating hot-standby
+
+Fault-resilience and monitoring:
+
+* Persists over temporary object storage connectivity issues by retrying transfers
+* Verifies WAL file headers before upload (backup) and after download (restore),
+  so that e.g. files recycled by PostgreSQL are ignored
+* Automatic history cleanup (backups and related WAL files older than N days)
+* ``archive_sync`` tool for detecting holes in WAL backup streams and fixing them
+* Keeps statistics updated in a file on disk (for monitoring tools)
+* Creates alert files on disk on problems (for monitoring tools)
+
+Performance:
+
+* Parallel compression and encryption
+* WAL pre-fetching on restore
 
 Overview
 ========
