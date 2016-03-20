@@ -217,7 +217,9 @@ def get_object_storage_config(config, site):
         # fall back to `local` driver at `backup_location` if set
         if not config.get("backup_location"):
             return None, None
-        storage_config = config["backup_location"]
+        storage_config = {
+            "directory": config["backup_location"],
+        }
         storage_type = "local"
     return storage_type, storage_config
 

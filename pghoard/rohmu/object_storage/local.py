@@ -16,8 +16,8 @@ import shutil
 
 
 class LocalTransfer(BaseTransfer):
-    def __init__(self, backup_location, prefix=None):
-        prefix = os.path.join(backup_location, (prefix or "").strip("/"))
+    def __init__(self, directory, prefix=None):
+        prefix = os.path.join(directory, (prefix or "").strip("/"))
         super().__init__(prefix=prefix)
         self.log.debug("LocalTransfer initialized")
 

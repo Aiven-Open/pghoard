@@ -358,8 +358,7 @@ The following object storage types are supported:
 * ``google`` for Google Cloud Storage, required configuration keys:
 
  * ``project_id`` containing the Google Storage project identifier
- * ``bucket_name`` bucket where you want to store the files (defaults to
-   ``pghoard``)
+ * ``bucket_name`` bucket where you want to store the files
  * ``credential_file`` for the path to the Google JSON credential file
 
 * ``s3`` for Amazon Web Services S3, required configuration keys:
@@ -377,7 +376,7 @@ The following object storage types are supported:
  * ``bucket_name`` name of the S3 bucket
  * ``host`` for overriding host for non AWS-S3 implementations
  * ``port`` for overriding port for non AWS-S3 implementations
- * ``issecure`` for overriding the requirement for https for non AWS-S3
+ * ``is_secure`` for overriding the requirement for https for non AWS-S3
    implementations
 
 * ``azure`` for Microsoft Azure Storage, required configuration keys:
