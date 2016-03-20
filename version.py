@@ -8,6 +8,15 @@ import os
 import subprocess
 
 
+def save_version(new_ver, old_ver, version_file):
+    if not new_ver:
+        return False
+    if not old_ver or new_ver != old_ver:
+        with open(version_file, "w") as fp:
+            fp.write("__version__ = '{}'\n".format(new_ver))
+    return True
+
+
 def get_project_version(version_file):
     version_file = os.path.join(os.path.dirname(os.path.realpath(__file__)), version_file)
     try:
@@ -17,15 +26,18 @@ def get_project_version(version_file):
         file_ver = None
 
     try:
-        git_out = subprocess.check_output(["git", "describe", "--always"])
+        git_out = subprocess.check_output(["git", "describe", "--always"],
+                                          stderr=subprocess.DEVNULL)
     except (FileNotFoundError, subprocess.CalledProcessError):
         pass
     else:
         git_ver = git_out.splitlines()[0].strip().decode("utf-8")
-        if git_ver and ((git_ver != file_ver) or not file_ver):
-            with open(version_file, "w") as fp:
-                fp.write("__version__ = '{}'\n".format(git_ver))
+        if save_version(git_ver, file_ver, version_file):
             return git_ver
+
+    env_ver = os.getenv("PGHOARD_SHORT_VER")
+    if save_version(env_ver, file_ver, version_file):
+        return env_ver
 
     if not file_ver:
         raise Exception("version not available from git or from file {!r}".format(version_file))

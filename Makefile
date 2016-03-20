@@ -13,7 +13,7 @@ clean:
 	$(RM) ../pghoard_* test-*.xml $(generated)
 
 pghoard/version.py: version.py
-	$(PYTHON) $^ $@
+	PGHOARD_SHORT_VER=$(short_ver) $(PYTHON) $^ $@
 
 deb: $(generated)
 	cp debian/changelog.in debian/changelog
