@@ -45,7 +45,11 @@ class LocalTransfer(BaseTransfer):
     def list_path(self, key):
         target_path = self.format_key_for_backend(key.strip("/"))
         return_list = []
-        for file_name in os.listdir(target_path):
+        try:
+            input_files = os.listdir(target_path)
+        except FileNotFoundError:
+            return return_list
+        for file_name in input_files:
             if file_name.startswith("."):
                 continue
             if file_name.endswith(".metadata"):
@@ -67,10 +71,14 @@ class LocalTransfer(BaseTransfer):
 
     def get_contents_to_file(self, key, filepath_to_store_to):
         source_path = self.format_key_for_backend(key.strip("/"))
-        if not os.path.exists(source_path):
+        try:
+            src_stat = os.stat(source_path)
+        except FileNotFoundError:
             raise FileNotFoundFromStorageError(key)
-        if source_path == filepath_to_store_to:
-            raise LocalFileIsRemoteFileError(source_path)
+        with suppress(FileNotFoundError):
+            dst_stat = os.stat(filepath_to_store_to)
+            if dst_stat.st_dev == src_stat.st_dev and dst_stat.st_ino == src_stat.st_ino:
+                raise LocalFileIsRemoteFileError(source_path)
         shutil.copyfile(source_path, filepath_to_store_to)
         return self.get_metadata_for_key(key)
 
@@ -94,14 +102,19 @@ class LocalTransfer(BaseTransfer):
 
     def store_file_from_memory(self, key, memstring, metadata=None):
         target_path = self.format_key_for_backend(key.strip("/"))
+        os.makedirs(os.path.dirname(target_path), exist_ok=True)
         with open(target_path, "wb") as fp:
             fp.write(memstring)
         self._save_metadata(target_path, metadata)
 
     def store_file_from_disk(self, key, filepath, metadata=None):
         target_path = self.format_key_for_backend(key.strip("/"))
-        if target_path == filepath:
-            self._save_metadata(target_path, metadata)
-            raise LocalFileIsRemoteFileError(target_path)
+        src_stat = os.stat(filepath)
+        with suppress(FileNotFoundError):
+            dst_stat = os.stat(target_path)
+            if dst_stat.st_dev == src_stat.st_dev and dst_stat.st_ino == src_stat.st_ino:
+                self._save_metadata(target_path, metadata)
+                raise LocalFileIsRemoteFileError(target_path)
+        os.makedirs(os.path.dirname(target_path), exist_ok=True)
         shutil.copyfile(filepath, target_path)
         self._save_metadata(target_path, metadata)

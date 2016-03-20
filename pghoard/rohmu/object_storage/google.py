@@ -127,8 +127,6 @@ class GoogleTransfer(BaseTransfer):
             raise
 
     def get_contents_to_file(self, key, filepath_to_store_to):
-        key = self.format_key_for_backend(key)
-        self.log.debug("Starting to fetch the contents of: %r to: %r", key, filepath_to_store_to)
         fileobj = FileIO(filepath_to_store_to, mode="wb")
         done = False
         metadata = {}
@@ -143,6 +141,7 @@ class GoogleTransfer(BaseTransfer):
 
     def get_contents_to_fileobj(self, key, fileobj_to_store_to):
         key = self.format_key_for_backend(key)
+        self.log.debug("Starting to fetch the contents of: %r to %r", key, fileobj_to_store_to)
         request = self.gs_objects.get_media(bucket=self.bucket_name, object=key)
         download = MediaIoBaseDownload(fileobj_to_store_to, request, chunksize=CHUNK_SIZE)
         done = False
@@ -171,6 +170,7 @@ class GoogleTransfer(BaseTransfer):
 
     def _upload(self, upload_type, local_object, key, metadata, extra_props):
         key = self.format_key_for_backend(key)
+        self.log.debug("Starting to upload %r", key)
         upload = upload_type(local_object, mimetype="application/octet-stream",
                              resumable=True, chunksize=CHUNK_SIZE)
         body = {"metadata": metadata}
