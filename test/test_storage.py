@@ -147,6 +147,8 @@ def _test_storage_init(storage_type, with_prefix, tmpdir):
         storage_config = conf_func()
     if storage_type in ("aws_s3", "ceph_s3"):
         driver = "s3"
+    elif storage_type == "ceph_swift":
+        driver = "swift"
     else:
         driver = storage_type
 
@@ -181,6 +183,14 @@ def test_storage_ceph_s3_with_prefix(tmpdir):
     _test_storage_init("ceph_s3", True, tmpdir)
 
 
+def test_storage_ceph_swift(tmpdir):
+    _test_storage_init("ceph_swift", False, tmpdir)
+
+
+def test_storage_ceph_swift_with_prefix(tmpdir):
+    _test_storage_init("ceph_swift", True, tmpdir)
+
+
 def test_storage_google(tmpdir):
     _test_storage_init("google", False, tmpdir)
 
@@ -195,3 +205,11 @@ def test_storage_local(tmpdir):
 
 def test_storage_local_with_prefix(tmpdir):
     _test_storage_init("local", True, tmpdir)
+
+
+def test_storage_swift(tmpdir):
+    _test_storage_init("swift", False, tmpdir)
+
+
+def test_storage_swift_with_prefix(tmpdir):
+    _test_storage_init("swift", True, tmpdir)

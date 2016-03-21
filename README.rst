@@ -11,7 +11,7 @@ Features:
 * Automatic periodic basebackups
 * Automatic transaction log (WAL/xlog) backups (using either ``pg_receivexlog``
   or ``archive_command``)
-* Cloud object storage support (AWS S3, Google Cloud, Azure, Ceph)
+* Cloud object storage support (AWS S3, Google Cloud, OpenStack Swift, Azure, Ceph)
 * Backup restoration directly from object storage, compressed and encrypted
 * Point-in-time-recovery (PITR)
 * Initialize a new standby from object storage backups, automatically configured as
@@ -59,7 +59,7 @@ RSA private/public key pair.
 
 ``pghoard`` also supports backing up and restoring from either a local machine
 or from various object stores (AWS S3, Azure (experimental), Ceph, Google
-Cloud.)
+Cloud and OpenStack Swift.)
 
 In case you just have a single database machine, it is heavily recommended
 to let ``pghoard`` backup the files into an object storage service, so in case
@@ -385,6 +385,19 @@ The following object storage types are supported:
  * ``account_key`` for the secret key of the Azure Storage account
  * ``container_name`` for the name of Azure Storage container used to store
    objects
+
+* ``swift`` for OpenStack Swift, required configuration keys:
+
+ * ``user`` for the Swift user ('subuser' in Ceph RadosGW)
+ * ``key"`` for the Swift secret_key
+ * ``auth_url`` for Swift authentication URL
+ * ``container_name`` name of the data container
+
+ * Optional configuration keys fro Swift:
+
+  * ``auth_version`` - defaults to ``2.0`` for keystone, use ``1.0`` with
+    Ceph Rados GW.
+  * ``tenant_name``
 
 ``pg_basebackup_path`` (default ``/usr/bin/pg_basebackup``)
 

@@ -20,5 +20,8 @@ def get_transfer(storage_type, storage_config):
     elif storage_type == "s3":
         from .object_storage.s3 import S3Transfer
         return S3Transfer(**storage_config)
+    elif storage_type == "swift":
+        from .object_storage.swift import SwiftTransfer
+        return SwiftTransfer(**storage_config)  # pylint: disable=missing-kwoa
 
     raise InvalidConfigurationError("unsupported storage type {0!r}".format(storage_type))
