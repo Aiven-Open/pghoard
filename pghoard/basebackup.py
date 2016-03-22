@@ -4,7 +4,7 @@ pghoard - pg_basebackup handler
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
-from . common import set_subprocess_stdout_and_stderr_nonblocking, terminate_subprocess
+from .common import set_stream_nonblocking, set_subprocess_stdout_and_stderr_nonblocking, terminate_subprocess
 from dateutil.tz import tzlocal
 from pghoard.rohmu.compressor import Compressor
 from threading import Thread
@@ -88,8 +88,10 @@ class PGBaseBackup(Thread):
         c = Compressor()
         compression_algorithm = self.config.get("compression", {}).get("algorithm", "snappy")
         self.log.debug("Compressing basebackup directly to file: %r", basebackup_path)
+        set_stream_nonblocking(proc.stderr)
         original_input_size, compressed_file_size = c.compress_filepath(
             fileobj=proc.stdout,
+            stderr=proc.stderr,
             targetfilepath=basebackup_path,
             compression_algorithm=compression_algorithm,
             rsa_public_key=rsa_public_key)
