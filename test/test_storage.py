@@ -14,7 +14,7 @@ import pytest
 import uuid
 
 try:
-    from . import test_storage_configs
+    from . import test_storage_configs  # pylint: disable=no-name-in-module, import-error
 except ImportError:
     test_storage_configs = object()
 
