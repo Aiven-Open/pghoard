@@ -104,7 +104,7 @@ def create_pgpass_file(connection_string_or_info):
     if "password" not in info:
         return create_connection_string(info)
     linekey = "{host}:{port}:{dbname}:{user}:".format(
-        host=info.get("host", ""),
+        host=info.get("host", "localhost"),
         port=info.get("port", 5432),
         user=info.get("user", ""),
         dbname=info.get("dbname", "*"))
