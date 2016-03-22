@@ -1,3 +1,17 @@
+pghoard 1.0.1 (2016-XX-XX)
+==========================
+
+* Support for OpenStack Swift object storage
+* More generic object storage configuration.  All configuration keys for
+  object stores are passed as-is to the implementation.  This also meant
+  that some defaults were dropped: bucket_name and container_name must be
+  manually set, they no longer default to `pghoard`.
+* New test cases to validate object storage interfaces - the tests revealed
+  a couple of minor issues which have been fixed in this release
+* ``pghoard`` can now be built from a checkout of a tag, namely generation
+  version.py no longer requires a .git directory
+* Documentation and build process improvements
+
 pghoard 1.0.0 (2016-03-16)
 ==========================
 

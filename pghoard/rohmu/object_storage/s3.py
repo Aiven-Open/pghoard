@@ -71,6 +71,8 @@ class S3Transfer(BaseTransfer):
         self.log.debug("Listing path %r", path)
         result = []
         for item in self.bucket.list(path, "/"):
+            if not hasattr(item, "last_modified"):
+                continue  # skip objects with no last_modified: not regular objects
             result.append({
                 "last_modified": dateutil.parser.parse(item.last_modified),
                 "metadata": self._metadata_for_key(item.name),
@@ -108,11 +110,7 @@ class S3Transfer(BaseTransfer):
         if metadata:
             for k, v in metadata.items():
                 s3key.set_metadata(k, v)
-        # NOTE: replace=False isn't a foolproof way to make sure we don't
-        # overwrite files since S3 doesn't support this natively, and it
-        # basically just means doing a separate "check if file exists"
-        # before uploading the file.
-        s3key.set_contents_from_string(memstring, replace=False)
+        s3key.set_contents_from_string(memstring, replace=True)
 
     def store_file_from_disk(self, key, filepath, metadata=None):
         s3key = Key(self.bucket)
@@ -120,7 +118,7 @@ class S3Transfer(BaseTransfer):
         if metadata:
             for k, v in metadata.items():
                 s3key.set_metadata(k, v)
-        s3key.set_contents_from_filename(filepath, replace=False)
+        s3key.set_contents_from_filename(filepath, replace=True)
 
     def get_or_create_bucket(self, bucket_name):
         try:

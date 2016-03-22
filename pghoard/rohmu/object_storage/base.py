@@ -20,8 +20,11 @@ class BaseTransfer(object):
     def format_key_for_backend(self, key, trailing_slash=False):
         """Add a possible prefix to the key before sending it to the backend"""
         path = self.prefix + key
-        if trailing_slash and path[-1] != "/":
-            path += "/"
+        if trailing_slash:
+            if not path or path[-1] != "/":
+                path += "/"
+        else:
+            path = path.rstrip("/")
         return path
 
     def format_key_from_backend(self, key):
