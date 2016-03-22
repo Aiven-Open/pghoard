@@ -5,7 +5,7 @@ Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
 from contextlib import closing
-from pghoard import wal
+from pghoard import version, wal
 from pghoard.basebackup import PGBaseBackup
 from pghoard.common import convert_pg_command_version_to_number, replication_connection_string_using_pgpass
 from pghoard.common import (
@@ -21,6 +21,7 @@ from pghoard.rohmu import get_transfer
 from pghoard.rohmu.errors import FileNotFoundFromStorageError, InvalidConfigurationError
 from pghoard.webserver import WebServer
 from queue import Empty, Queue
+import argparse
 import datetime
 import json
 import logging
@@ -435,24 +436,30 @@ class PGHoard(object):
                 t.join()
 
 
-def main(argv=None):
-    if argv is None:
-        argv = sys.argv
+def main(args=None):
+    if args is None:
+        args = sys.argv[1:]
 
-    if len(argv) != 2:
-        print("Usage: {} <config filename>".format(argv[0]))
-        return 1
-    if not os.path.exists(argv[1]):
-        print("{}: {!r} doesn't exist".format(argv[0], argv[1]))
+    parser = argparse.ArgumentParser(
+        prog="pghoard",
+        description="postgresql automatic backup daemon")
+    parser.add_argument("--version", action='version', help="show program version",
+                        version=version.__version__)
+    parser.add_argument("config", help="configuration file")
+    arg = parser.parse_args(args)
+
+    if not os.path.exists(arg.config):
+        print("pghoard: {!r} doesn't exist".format(arg.config))
         return 1
     try:
         logging.basicConfig(level=logging.DEBUG, format=default_log_format_str)
-        pghoard = PGHoard(sys.argv[1])
+        pghoard = PGHoard(arg.config)
     except InvalidConfigurationError as ex:
-        print("{}: failed to load config {}".format(argv[0], ex))
+        print("pghoard: failed to load config {}: {}".format(arg.config, ex))
         return 1
+
     return pghoard.run()
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv))
+    sys.exit(main())

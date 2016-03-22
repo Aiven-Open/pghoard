@@ -1,4 +1,4 @@
 from . import pghoard
 import sys
 
-sys.exit(pghoard.main(sys.argv))
+sys.exit(pghoard.main())
