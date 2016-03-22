@@ -1,6 +1,7 @@
 pghoard 1.0.1 (2016-XX-XX)
 ==========================
 
+* pghoard_create_keys can now update an existing configuration file
 * Support for OpenStack Swift object storage
 * More generic object storage configuration.  All configuration keys for
   object stores are passed as-is to the implementation.  This also meant

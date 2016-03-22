@@ -22,7 +22,10 @@ def create_json_conf(filepath, temp_dir, test_site):
                 ],
                 "basebackup_interval_hours": 1,
                 "basebackup_count": 1,
-                "object_storage": {},
+                "object_storage": {
+                    "storage_type": "local",
+                    "directory": os.path.join(temp_dir, "backups"),
+                },
             },
         },
         "backup_location": os.path.join(temp_dir, "backups"),

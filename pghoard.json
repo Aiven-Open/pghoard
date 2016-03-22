@@ -9,7 +9,7 @@
                 {
                     "host": "127.0.0.1",
                     "password": "example",
-                    "port": 5433,
+                    "port": 5432,
                     "user": "replication"
                 }
             ],
@@ -22,12 +22,12 @@
             }
         }
     },
-    "http_address": "",
+    "http_address": "127.0.0.1",
     "http_port": 16000,
     "log_level": "DEBUG",
-    "pg_basebackup_path": "/usr/pgsql-9.4/bin/pg_basebackup",
-    "pg_receivexlog_path": "/usr/pgsql-9.4/bin/pg_receivexlog",
-    "syslog": true,
+    "pg_basebackup_path": "/usr/bin/pg_basebackup",
+    "pg_receivexlog_path": "/usr/bin/pg_receivexlog",
+    "syslog": false,
     "syslog_address": "/dev/log",
     "syslog_facility": "local2"
 }

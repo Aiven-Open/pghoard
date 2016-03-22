@@ -16,7 +16,7 @@ Depends: ${misc:Depends}, ${python3:Depends},
  python3-cryptography, python3-dateutil, python3-psycopg2,
  python3-requests, python3-snappy
 Description: PostgreSQL streaming backup service
- PGhoard is a PostgreSQL streaming backup service.  Backups are stored in
+ PGHoard is a PostgreSQL streaming backup service.  Backups are stored in
  encrypted and compressed format in a cloud object storage.  PGHoard
  currently supports Amazon Web Services S3, Google Cloud Storage, OpenStack
  Swift and Ceph (using S3 or Swift interfaces with RadosGW.)

@@ -13,7 +13,7 @@ BuildRequires:  python3-flake8, python3-pytest, python3-pylint, python3-devel
 BuildArch:      noarch
 
 %description
-PGhoard is a PostgreSQL streaming backup service.  Backups are stored in
+PGHoard is a PostgreSQL streaming backup service.  Backups are stored in
 encrypted and compressed format in a cloud object storage.  PGHoard
 currently supports Amazon Web Services S3, Google Cloud Storage, OpenStack
 Swift and Ceph (using S3 or Swift interfaces with RadosGW.)

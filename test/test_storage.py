@@ -6,6 +6,7 @@ See LICENSE for details
 """
 # pylint: disable=too-many-statements
 from io import BytesIO
+from pghoard.common import get_object_storage_config
 from pghoard.rohmu import errors, get_transfer
 import datetime
 import hashlib
@@ -14,7 +15,7 @@ import pytest
 import uuid
 
 try:
-    from . import test_storage_configs
+    from . import test_storage_configs  # pylint: disable=no-name-in-module, import-error
 except ImportError:
     test_storage_configs = object()
 
@@ -213,3 +214,27 @@ def test_storage_swift(tmpdir):
 
 def test_storage_swift_with_prefix(tmpdir):
     _test_storage_init("swift", True, tmpdir)
+
+
+def test_storage_config(tmpdir):
+    config = {}
+    assert get_object_storage_config(config, "default") == (None, None)
+    site_config = config.setdefault("backup_sites", {}).setdefault("default", {})
+    assert get_object_storage_config(config, "default") == (None, None)
+
+    config["backup_location"] = tmpdir.strpath
+    local_type_conf = ("local", {"directory": tmpdir.strpath})
+    assert get_object_storage_config(config, "default") == local_type_conf
+
+    site_config["object_storage"] = {}
+    with pytest.raises(errors.InvalidConfigurationError) as excinfo:
+        get_object_storage_config(config, "default")
+    assert "storage_type not defined in site 'default'" in str(excinfo.value)
+
+    site_config["object_storage"] = {"storage_type": "foo", "other": "bar"}
+    foo_type_conf = get_object_storage_config(config, "default")
+    assert foo_type_conf == ("foo", {"other": "bar"})
+
+    with pytest.raises(errors.InvalidConfigurationError) as excinfo:
+        get_transfer(foo_type_conf[0], foo_type_conf[1])
+    assert "unsupported storage type 'foo'" in str(excinfo.value)

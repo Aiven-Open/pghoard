@@ -4,7 +4,7 @@ pghoard - common utility functions
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
-from pghoard.rohmu.errors import Error
+from pghoard.rohmu.errors import Error, InvalidConfigurationError
 from urllib.parse import urlparse, parse_qs
 import datetime
 import fcntl
@@ -104,7 +104,7 @@ def create_pgpass_file(connection_string_or_info):
     if "password" not in info:
         return create_connection_string(info)
     linekey = "{host}:{port}:{dbname}:{user}:".format(
-        host=info.get("host", ""),
+        host=info.get("host", "localhost"),
         port=info.get("port", 5432),
         user=info.get("user", ""),
         dbname=info.get("dbname", "*"))
@@ -212,7 +212,6 @@ def json_encode(obj, compact=True, binary=False):
 def get_object_storage_config(config, site):
     try:
         storage_config = config["backup_sites"][site]["object_storage"]
-        storage_type = storage_config["storage_type"]
     except KeyError:
         # fall back to `local` driver at `backup_location` if set
         if not config.get("backup_location"):
@@ -221,6 +220,12 @@ def get_object_storage_config(config, site):
             "directory": config["backup_location"],
         }
         storage_type = "local"
+    else:
+        storage_config = storage_config.copy()
+        try:
+            storage_type = storage_config.pop("storage_type")
+        except KeyError:
+            raise InvalidConfigurationError("storage_type not defined in site {!r} object_storage".format(site))
     return storage_type, storage_config
 
 
