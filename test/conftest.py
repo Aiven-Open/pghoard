@@ -122,7 +122,10 @@ def pghoard(db, tmpdir, request):  # pylint: disable=redefined-outer-name
                 "basebackup_interval_hours": 24,
                 "pg_xlog_directory": os.path.join(db.pgdata, "pg_xlog"),
                 "nodes": [db.user],
-                "object_storage": {},
+                "object_storage": {
+                    "storage_type": "local",
+                    "directory": os.path.join(str(tmpdir), "backups"),
+                },
             },
         },
         "http_address": "127.0.0.1",
