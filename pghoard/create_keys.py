@@ -4,6 +4,7 @@ pghoard - encryption key generation tool
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
+from . import version
 from .common import default_log_format_str
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -78,6 +79,8 @@ def save_keys(config_file, site, key_id, rsa_private_key, rsa_public_key):
 def main():
     logging.basicConfig(level=logging.INFO, format=default_log_format_str)
     parser = argparse.ArgumentParser()
+    parser.add_argument("--version", action='version', help="show program version",
+                        version=version.__version__)
     parser.add_argument("--site", help="backup site", required=True)
     parser.add_argument("--key-id", help="key alias as used with encryption_key_id configuration directive", required=True)
     parser.add_argument("--bits", help="length of the generated key in bits, default %(default)d", default=3072, type=int)

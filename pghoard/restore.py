@@ -4,6 +4,7 @@ pghoard
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
+from pghoard import version
 from pghoard.common import default_log_format_str, get_object_storage_config
 from pghoard.rohmu import get_transfer
 from pghoard.rohmu.compressor import Compressor
@@ -71,6 +72,8 @@ class Restore(object):
 
     def create_parser(self):
         parser = argparse.ArgumentParser()
+        parser.add_argument("--version", action='version', help="show program version",
+                            version=version.__version__)
         sub = parser.add_subparsers(help="sub-command help")
 
         def add_cmd(method):

@@ -5,7 +5,7 @@ Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
 from .common import default_log_format_str, TIMELINE_RE, XLOG_RE
-from . import wal
+from . import version, wal
 import argparse
 import json
 import logging
@@ -167,6 +167,8 @@ class ArchiveSync(object):
 
     def run(self, args=None):
         parser = argparse.ArgumentParser()
+        parser.add_argument("--version", action='version', help="show program version",
+                            version=version.__version__)
         parser.add_argument("--site", help="pghoard site", required=True)
         parser.add_argument("--config", help="pghoard config file", required=True)
         parser.add_argument("--no-verify", help="verify archive integrity", action="store_false")

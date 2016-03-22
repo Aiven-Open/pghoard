@@ -5,6 +5,7 @@ Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
 
+from . import version
 from http.client import HTTPConnection, BadStatusLine, IncompleteRead
 import argparse
 import os
@@ -97,6 +98,8 @@ def restore_command(site, xlog, output, host=PGHOARD_HOST, port=PGHOARD_PORT, re
 
 def main(args=None):
     parser = argparse.ArgumentParser()
+    parser.add_argument("--version", action='version', help="show program version",
+                        version=version.__version__)
     parser.add_argument("--host", type=str, default=PGHOARD_HOST,
                         help="pghoard service host")
     parser.add_argument("--port", type=int, default=PGHOARD_PORT,
