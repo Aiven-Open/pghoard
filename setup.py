@@ -2,9 +2,19 @@ from setuptools import setup, find_packages
 import os
 import version
 
+
+readme_path = os.path.join(os.path.dirname(__file__), "README.rst")
+with open(readme_path, "r") as fp:
+    readme_text = fp.read()
+
+
+version_for_setup_py = version.get_project_version("pghoard/version.py")
+version_for_setup_py = ".dev".join(version_for_setup_py.split("-", 2)[:2])
+
+
 setup(
     name="pghoard",
-    version=version.get_project_version("pghoard/version.py"),
+    version=version_for_setup_py,
     zip_safe=False,
     packages=find_packages(exclude=["test"]),
     install_requires=[
@@ -31,7 +41,7 @@ setup(
     license="Apache 2.0",
     platforms=["POSIX", "MacOS"],
     description="PostgreSQL automatic backup/restore service daemon",
-    long_description=open("README.rst").read(),
+    long_description=readme_text,
     url="https://github.com/ohmu/pghoard/",
     classifiers=[
         "Development Status :: 5 - Production/Stable",
