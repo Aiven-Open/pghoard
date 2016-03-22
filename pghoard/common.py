@@ -159,10 +159,15 @@ def set_syslog_handler(syslog_address, syslog_facility, logger):
     return syslog_handler
 
 
+def set_stream_nonblocking(stream):
+    fd = stream.fileno()
+    fl = fcntl.fcntl(fd, fcntl.F_GETFL)
+    fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
+
+
 def set_subprocess_stdout_and_stderr_nonblocking(proc):
-    for fd in [proc.stdout.fileno(), proc.stderr.fileno()]:
-        fl = fcntl.fcntl(fd, fcntl.F_GETFL)
-        fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
+    set_stream_nonblocking(proc.stdout)
+    set_stream_nonblocking(proc.stderr)
 
 
 def terminate_subprocess(proc, timeout=0.1, log=None):

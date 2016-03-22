@@ -115,7 +115,8 @@ class Compressor:
         return fsrc
 
     def compress_filepath(self, filepath=None, targetfilepath=None,
-                          compression_algorithm=None, rsa_public_key=None, fileobj=None):
+                          compression_algorithm=None, rsa_public_key=None,
+                          fileobj=None, stderr=None):
         start_time = time.monotonic()
         compressor = self.compressor(compression_algorithm)
 
@@ -141,6 +142,15 @@ class Compressor:
                     if compressed_data:
                         compressed_file_size += len(compressed_data)
                         output_file.write(compressed_data)
+
+                    # if fileobj is an actual process stderr can be passed
+                    # here as long as it's set to non-blocking mode in which
+                    # case we read from it to prevent the buffer from
+                    # filling up, and also log the output at debug level.
+                    if stderr:
+                        stderr_output = stderr.read()
+                        if stderr_output:
+                            self.log.debug(stderr_output)
 
                 compressed_data = (compressor.flush() or b"")
                 if encryptor:
