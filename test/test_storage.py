@@ -122,7 +122,8 @@ def _test_storage(st, driver, tmpdir):
             fp.write(chunk)
             test_size_send += len(chunk)
     test_hash_send = test_hash.hexdigest()
-    st.store_file_from_disk("test1/30m", test_file, {"30m": "data", "size": test_size_send})
+    st.store_file_from_disk("test1/30m", test_file, multipart=True,
+                            metadata={"30m": "data", "size": test_size_send})
     os.unlink(test_file)
 
     expected_meta = {"30m": "data", "size": str(test_size_send)}
@@ -153,7 +154,8 @@ def _test_storage(st, driver, tmpdir):
             # reupload a file with the same name but with less chunks
             os.truncate(test_file, st.segment_size + 1)
             test_size_send = os.path.getsize(test_file)
-            st.store_file_from_disk("test1/30m", test_file, {"30m": "less data", "size": test_size_send})
+            st.store_file_from_disk("test1/30m", test_file, multipart=True,
+                                    metadata={"30m": "less data", "size": test_size_send})
 
             segment_list = st.list_path("test1_segments/30m")
             assert len(segment_list) == 2

@@ -57,5 +57,5 @@ class BaseTransfer(object):
     def store_file_from_memory(self, key, memstring, metadata=None):
         raise NotImplementedError
 
-    def store_file_from_disk(self, key, filepath, metadata=None):
+    def store_file_from_disk(self, key, filepath, metadata=None, multipart=None):
         raise NotImplementedError

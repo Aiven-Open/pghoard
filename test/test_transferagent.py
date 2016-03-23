@@ -18,7 +18,7 @@ class MockStorage(Mock):
     def get_contents_to_string(self, key):  # pylint: disable=unused-argument
         return b"joo", {"key": "value"}
 
-    def store_file_from_disk(self, key, local_path, metadata):  # pylint: disable=unused-argument
+    def store_file_from_disk(self, key, local_path, metadata, multipart=None):  # pylint: disable=unused-argument
         pass
 
 
@@ -26,7 +26,7 @@ class MockStorageRaising(Mock):
     def get_contents_to_string(self, key):  # pylint: disable=unused-argument
         return b"joo", {"key": "value"}
 
-    def store_file_from_disk(self, key, local_path, metadata):  # pylint: disable=unused-argument
+    def store_file_from_disk(self, key, local_path, metadata, multipart=None):  # pylint: disable=unused-argument
         raise StorageError("foo")
 
 

@@ -162,9 +162,13 @@ class TransferAgent(Thread):
                 storage.store_file_from_memory(key, file_to_transfer["blob"],
                                                metadata=file_to_transfer["metadata"])
             else:
+                # Basebackups may be multipart uploads, depending on the driver.
+                # Swift needs to know about this so it can do possible cleanups.
+                multipart = file_to_transfer["filetype"] == "basebackup"
                 try:
                     storage.store_file_from_disk(key, file_to_transfer["local_path"],
-                                                 metadata=file_to_transfer["metadata"])
+                                                 metadata=file_to_transfer["metadata"],
+                                                 multipart=multipart)
                     unlink_local = True
                 except LocalFileIsRemoteFileError:
                     pass
