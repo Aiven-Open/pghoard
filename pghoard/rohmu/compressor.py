@@ -1,5 +1,5 @@
 """
-rohmu - compressor threads
+rohmu - compressor interface
 
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
@@ -114,19 +114,22 @@ class Compressor:
             fsrc = SnappyFile(fsrc)  # pylint: disable=redefined-variable-type
         return fsrc
 
-    def compress_filepath(self, filepath=None, targetfilepath=None,
+    def compress_filepath(self, filepath=None, compressed_filepath=None,
                           compression_algorithm=None, rsa_public_key=None,
                           fileobj=None, stderr=None):
         start_time = time.monotonic()
+        action = "Compressed"
+
         compressor = self.compressor(compression_algorithm)
+        encryptor = None
 
         compressed_file_size = 0
-        encryptor = None
         original_input_size = 0
 
         if rsa_public_key:
             encryptor = Encryptor(rsa_public_key)
-        tmp_target_file_path = targetfilepath + ".tmp-compress"
+            action += " and encrypted"
+        tmp_target_file_path = compressed_filepath + ".tmp-compress"
         if not fileobj:
             fileobj = open(filepath, "rb")
         with fileobj:
@@ -161,18 +164,30 @@ class Compressor:
 
                 if compressed_data:
                     output_file.write(compressed_data)
+                    compressed_file_size += len(compressed_data)
 
-        os.rename(tmp_target_file_path, targetfilepath)
-        self.log.debug("Compression from %r to %r with: %r original_input_size: %r compressed_file_size: %r took: %.2fs",
-                       filepath, targetfilepath, compression_algorithm, original_input_size, compressed_file_size,
-                       time.monotonic() - start_time)
+        os.rename(tmp_target_file_path, compressed_filepath)
+        source_name = "UNKNOWN"
+        if filepath:
+            source_name = "file {!r}".format(filepath)
+        elif fileobj:
+            if hasattr(fileobj, "name"):
+                source_name = "open file {!r}".format(getattr(fileobj, "name"))
+            elif hasattr(fileobj, "args"):
+                source_name = "command {!r}".format(getattr(fileobj, "args")[0])
+        self.log.info("%s %d byte %s to %d bytes (%d%%), took: %.3fs",
+                      action, original_input_size, source_name, compressed_file_size,
+                      100 * compressed_file_size / (original_input_size or 1),
+                      time.monotonic() - start_time)
         return original_input_size, compressed_file_size
 
     def compress_filepath_to_memory(self, filepath, compression_algorithm, rsa_public_key=None):
-        # This is meant for WAL files compressed due to archive_command
+        # This is meant to be used for smallish files, ie WAL and timeline files
         start_time = time.monotonic()
+        action = "Compressed"
         with open(filepath, "rb") as input_file:
             data = input_file.read()
+        original_input_size = len(data)
 
         compressor = self.compressor(compression_algorithm)
         compressed_data = compressor.compress(data)
@@ -180,7 +195,11 @@ class Compressor:
         if rsa_public_key:
             encryptor = Encryptor(rsa_public_key)
             compressed_data = encryptor.update(compressed_data) + encryptor.finalize()
+            action += " and encrypted"
+        compressed_file_size = len(compressed_data)
 
-        self.log.debug("Compressing %r with: %r took: %.2fs",
-                       filepath, compression_algorithm, time.monotonic() - start_time)
-        return compressed_data
+        self.log.info("%s %d byte file %r to %d bytes (%d%%), took: %.3fs",
+                      action, original_input_size, filepath, compressed_file_size,
+                      100 * compressed_file_size / (original_input_size or 1),
+                      time.monotonic() - start_time)
+        return original_input_size, compressed_data

@@ -51,14 +51,25 @@ class Compression(PGHoardTestCase):
         os.makedirs(self.incoming_path)
         self.handled_path = os.path.join(self.config["backup_location"], self.test_site, "xlog")
         os.makedirs(self.handled_path)
-        self.foo_path = os.path.join(self.incoming_path, "00000001000000000000000C")
-        self.foo_path_partial = os.path.join(self.incoming_path, "00000001000000000000000C.partial")
+        self.random_file_path = os.path.join(self.incoming_path, "00000001000000000000000C")
+        self.random_file_path_partial = os.path.join(self.incoming_path, "00000001000000000000000C.partial")
 
-        self.foo_contents = bytes(os.urandom(IO_BLOCK_SIZE * 2))
-        with open(self.foo_path, "wb") as out:
-            # ensure the plaintext file is bigger than the block size and random (compressed is longer)
-            out.write(self.foo_contents)
-            self.foo_size = out.tell()
+        # Create a totally random file, bigger than block size.  Compressed output is longer
+        self.random_file_contents = os.urandom(IO_BLOCK_SIZE * 2)
+        with open(self.random_file_path, "wb") as out:
+            out.write(self.random_file_contents)
+            self.random_file_size = out.tell()
+
+        # Create an easily compressible test file, too (with random prefix and suffix)
+        self.zero_file_path = os.path.join(self.incoming_path, "00000001000000000000000D")
+        self.zero_file_path_partial = os.path.join(self.incoming_path, "00000001000000000000000D.partial")
+
+        # ensure the plaintext file is bigger than the block size and zero (compressed is smaller)
+        zeros = (IO_BLOCK_SIZE * 2 - 32) * b"\x00"
+        self.zero_file_contents = os.urandom(16) + zeros + os.urandom(16)
+        with open(self.zero_file_path, "wb") as out:
+            out.write(self.zero_file_contents)
+            self.zero_file_size = out.tell()
 
         self.compressor = CompressorThread(config=self.config,
                                            compression_queue=self.compression_queue,
@@ -91,16 +102,16 @@ class Compression(PGHoardTestCase):
     def test_compress_to_file(self):
         self.compression_queue.put({
             "type": "MOVE",
-            "src_path": self.foo_path_partial,
-            "full_path": self.foo_path,
+            "src_path": self.random_file_path_partial,
+            "full_path": self.random_file_path,
         })
         transfer_event = self.transfer_queue.get(timeout=1.0)
         expected = {
             "filetype": "xlog",
-            "local_path": self.foo_path.replace(self.incoming_path, self.handled_path),
+            "local_path": self.random_file_path.replace(self.incoming_path, self.handled_path),
             "metadata": {
                 "compression-algorithm": self.algorithm,
-                "original-file-size": self.foo_size,
+                "original-file-size": self.random_file_size,
             },
             "site": self.test_site,
         }
@@ -111,18 +122,18 @@ class Compression(PGHoardTestCase):
         event = {
             "compress_to_memory": True,
             "delete_file_after_compression": False,
-            "full_path": self.foo_path,
-            "src_path": self.foo_path_partial,
+            "full_path": self.random_file_path,
+            "src_path": self.random_file_path_partial,
             "type": "MOVE",
         }
         self.compressor.handle_event(event, filetype="xlog")
         expected = {
             "callback_queue": None,
             "filetype": "xlog",
-            "local_path": self.foo_path,
+            "local_path": self.random_file_path,
             "metadata": {
                 "compression-algorithm": self.algorithm,
-                "original-file-size": self.foo_size,
+                "original-file-size": self.random_file_size,
             },
             "site": self.test_site,
         }
@@ -130,26 +141,26 @@ class Compression(PGHoardTestCase):
         for key, value in expected.items():
             assert transfer_event[key] == value
 
-        assert self.decompress(transfer_event["blob"]) == self.foo_contents
+        assert self.decompress(transfer_event["blob"]) == self.random_file_contents
 
     def test_compress_encrypt_to_memory(self):
         self.compressor.config["backup_sites"][self.test_site]["encryption_key_id"] = "testkey"
         event = {
             "compress_to_memory": True,
             "delete_file_after_compression": False,
-            "full_path": self.foo_path,
-            "src_path": self.foo_path_partial,
+            "full_path": self.random_file_path,
+            "src_path": self.random_file_path_partial,
             "type": "MOVE",
         }
         self.compressor.handle_event(event, filetype="xlog")
         expected = {
             "callback_queue": None,
             "filetype": "xlog",
-            "local_path": self.foo_path,
+            "local_path": self.random_file_path,
             "metadata": {
                 "compression-algorithm": self.algorithm,
                 "encryption-key-id": "testkey",
-                "original-file-size": self.foo_size,
+                "original-file-size": self.random_file_size,
             },
             "site": self.test_site,
         }
@@ -163,8 +174,8 @@ class Compression(PGHoardTestCase):
             "callback_queue": callback_queue,
             "compress_to_memory": True,
             "delete_file_after_compression": False,
-            "full_path": self.foo_path,
-            "src_path": self.foo_path_partial,
+            "full_path": self.zero_file_path,
+            "src_path": self.zero_file_path_partial,
             "type": "CLOSE_WRITE",
         }
         transfer_event = self.compression_queue.put(event)
@@ -172,29 +183,29 @@ class Compression(PGHoardTestCase):
         expected = {
             "callback_queue": callback_queue,
             "filetype": "xlog",
-            "local_path": self.foo_path,
+            "local_path": self.zero_file_path,
             "metadata": {
                 "compression-algorithm": self.algorithm,
-                "original-file-size": self.foo_size,
+                "original-file-size": self.zero_file_size,
             },
             "site": self.test_site,
         }
         for key, value in expected.items():
             assert transfer_event[key] == value
 
-        assert self.decompress(transfer_event["blob"]) == self.foo_contents
+        assert self.decompress(transfer_event["blob"]) == self.zero_file_contents
 
     def test_decompression_event(self):
         callback_queue = Queue()
         local_filepath = os.path.join(self.temp_dir, "00000001000000000000000D")
         self.compression_queue.put({
-            "blob": self.compress(self.foo_contents),
+            "blob": self.compress(self.random_file_contents),
             "callback_queue": callback_queue,
             "filetype": "xlog",
             "local_path": local_filepath,
             "metadata": {
                 "compression-algorithm": self.algorithm,
-                "original-file-size": self.foo_size,
+                "original-file-size": self.random_file_size,
             },
             "site": self.test_site,
             "type": "DECOMPRESSION",
@@ -202,11 +213,11 @@ class Compression(PGHoardTestCase):
         callback_queue.get(timeout=1.0)
         assert os.path.exists(local_filepath) is True
         with open(local_filepath, "rb") as fp:
-            assert fp.read() == self.foo_contents
+            assert fp.read() == self.random_file_contents
 
     def test_decompression_decrypt_event(self):
-        blob = self.compressor.compress_filepath_to_memory(
-            self.foo_path,
+        _, blob = self.compressor.compress_filepath_to_memory(
+            self.random_file_path,
             compression_algorithm=self.compressor.compression_algorithm(),
             rsa_public_key=CONSTANT_TEST_RSA_PUBLIC_KEY)
         callback_queue = Queue()
@@ -219,7 +230,7 @@ class Compression(PGHoardTestCase):
             "metadata": {
                 "compression-algorithm": self.algorithm,
                 "encryption-key-id": "testkey",
-                "original-file-size": self.foo_size,
+                "original-file-size": self.random_file_size,
             },
             "site": self.test_site,
             "type": "DECOMPRESSION",
@@ -227,7 +238,7 @@ class Compression(PGHoardTestCase):
         callback_queue.get(timeout=1.0)
         assert os.path.exists(local_filepath) is True
         with open(local_filepath, "rb") as fp:
-            assert fp.read() == self.foo_contents
+            assert fp.read() == self.random_file_contents
 
 
 class TestLzmaCompression(Compression):

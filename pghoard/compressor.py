@@ -10,7 +10,6 @@ from threading import Thread
 import json
 import logging
 import os
-import time
 
 
 class CompressorThread(Thread, Compressor):
@@ -105,33 +104,27 @@ class CompressorThread(Thread, Compressor):
             event['callback_queue'].put({"success": True, "opaque": event.get("opaque")})
 
     def handle_event(self, event, filetype):
-        start_time, compressed_blob = time.time(), None
-        site = event.get("site", self.find_site_for_file(event["full_path"]))
         rsa_public_key = None
+        site = event.get("site", self.find_site_for_file(event["full_path"]))
         encryption_key_id = self.config["backup_sites"][site].get("encryption_key_id", None)
         if encryption_key_id:
             rsa_public_key = self.config["backup_sites"][site]["encryption_keys"][encryption_key_id]["public"]
 
-        original_file_size = os.stat(event['full_path']).st_size
-        self.log.debug("Starting to compress: %r, filetype: %r, original_size: %r",
-                       event['full_path'], filetype, original_file_size)
         if event.get("compress_to_memory", False):
-            compressed_blob = self.compress_filepath_to_memory(
-                event["full_path"],
+            original_file_size, compressed_blob = self.compress_filepath_to_memory(
+                filepath=event["full_path"],
                 compression_algorithm=self.compression_algorithm(),
                 rsa_public_key=rsa_public_key)
             compressed_file_size = len(compressed_blob)
             compressed_filepath = None
         else:
+            compressed_blob = None
             compressed_filepath = self.get_compressed_file_path(site, filetype, event["full_path"])
             original_file_size, compressed_file_size = self.compress_filepath(
-                event["full_path"],
-                compressed_filepath,
+                filepath=event["full_path"],
+                compressed_filepath=compressed_filepath,
                 compression_algorithm=self.compression_algorithm(),
                 rsa_public_key=rsa_public_key)
-        self.log.info("Compressed %d byte file: %r to %d bytes, took: %.3fs",
-                      original_file_size, event['full_path'], compressed_file_size,
-                      time.time() - start_time)
 
         if event.get('delete_file_after_compression', True):
             os.unlink(event['full_path'])
