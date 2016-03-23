@@ -75,7 +75,7 @@ class AzureTransfer(BaseTransfer):
         self.conn.put_block_blob_from_bytes(self.container_name, key, memstring,
                                             x_ms_meta_name_values=metadata_to_send)
 
-    def store_file_from_disk(self, key, filepath, metadata=None):
+    def store_file_from_disk(self, key, filepath, metadata=None, multipart=None):
         key = self.format_key_for_backend(key)
         # Azure requires all metadata keys and values to be strings
         metadata_to_send = dict((str(k), str(v)) for k, v in metadata.items())

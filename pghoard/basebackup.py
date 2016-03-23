@@ -5,7 +5,7 @@ Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
 from .common import set_stream_nonblocking, set_subprocess_stdout_and_stderr_nonblocking, terminate_subprocess
-from dateutil.tz import tzlocal
+from contextlib import suppress
 from pghoard.rohmu.compressor import Compressor
 from threading import Thread
 import datetime
@@ -54,9 +54,8 @@ class PGBaseBackup(Thread):
             self.config.get("pg_basebackup_path", "/usr/bin/pg_basebackup"),
             "--dbname", self.connection_string,
             "--format", "tar",
-            "--xlog",
+            "--label", "pghoard_base_backup",
             "--progress",
-            "--label", "initial_base_backup",
             "--verbose",
             ]
         if self.config["backup_sites"][self.site].get("stream_compression") is True:
@@ -76,8 +75,8 @@ class PGBaseBackup(Thread):
             elif line.startswith(b"START TIME: "):
                 start_time_text = line[len("START TIME: "):].decode("utf8")
                 start_time = dateutil.parser.parse(start_time_text).isoformat()  # pylint: disable=no-member
-        self.log.debug("Found: %r as starting wal segment, start_time: %r", start_wal_segment,
-                       start_time)
+        self.log.debug("Found: %r as starting wal segment, start_time: %r",
+                       start_wal_segment, start_time)
         return start_wal_segment, start_time
 
     def compress_directly_to_a_file(self, proc, basebackup_path):
@@ -110,27 +109,40 @@ class PGBaseBackup(Thread):
             if proc.poll() is not None:
                 break
 
+    def _proc_success(self, proc, output_file):
+        rc = terminate_subprocess(proc, log=self.log)
+        msg = "Ran: {!r}, took: {:.3f}s to run, returncode: {}".format(
+            proc.args, time.monotonic() - proc.basebackup_start_time, rc)
+        if rc == 0 and os.path.exists(output_file):
+            self.log.info(msg)
+            return True
+
+        self.log.error(msg)
+        if output_file:
+            with suppress(FileNotFoundError):
+                os.unlink(output_file)
+        if self.callback_queue:
+            # post a failure event
+            self.callback_queue.put({"success": False})
+        self.running = False
+
     def run(self):
         command = self.get_command_line()
         self.log.debug("Starting to run: %r", command)
-        start_time = time.time()
         proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        setattr(proc, "basebackup_start_time", time.monotonic())
 
         self.pid = proc.pid
-        self.log.info("Started: %r, running as PID: %r, basebackup_location: %r", command, self.pid,
-                      self.target_basebackup_path)
+        self.log.info("Started: %r, running as PID: %r, basebackup_location: %r",
+                      command, self.pid, self.target_basebackup_path)
 
         if self.config["backup_sites"][self.site].get("stream_compression") is True:
+            stream_target = self.target_basebackup_path + ".tmp-stream"
             original_input_size, compressed_file_size, metadata = \
-                self.compress_directly_to_a_file(proc, self.target_basebackup_path)
-        else:
-            original_input_size = self.poll_until_uncompressed_basebackup_ready(proc)
-
-        rc = terminate_subprocess(proc, log=self.log)
-        self.log.debug("Ran: %r, took: %.3fs to run, returncode: %r",
-                       command, time.time() - start_time, rc)
-
-        if self.config["backup_sites"][self.site].get("stream_compression") is True:
+                self.compress_directly_to_a_file(proc, stream_target)
+            if not self._proc_success(proc, stream_target):
+                return
+            os.rename(stream_target, self.target_basebackup_path)
             # Since we can't parse the backup label we cheat with the start-wal-segment and
             # start-time a bit. The start-wal-segment is the segment currently being written before
             # the backup and the start_time is taken _after_ the backup has completed and so is conservatively
@@ -138,7 +150,7 @@ class PGBaseBackup(Thread):
             # basebackups than those controlled by pghoard are currently running at the same time.
             # pg_basebackups are taken simultaneously directly or through other backup managers the xlog
             # file will be incorrect since a new checkpoint will not be issued for a parallel backup
-            start_time = datetime.datetime.now(tzlocal()).isoformat()
+            start_time = datetime.datetime.now(datetime.timezone.utc).isoformat()
             transfer_object = {
                 "callback_queue": self.callback_queue,
                 "file_size": compressed_file_size,
@@ -154,15 +166,19 @@ class PGBaseBackup(Thread):
             }
             transfer_object["metadata"].update(metadata)
             self.transfer_queue.put(transfer_object)
-        elif os.path.exists(self.target_basebackup_path):
+        else:
+            original_input_size = self.poll_until_uncompressed_basebackup_ready(proc)
+            if not self._proc_success(proc, self.target_basebackup_path):
+                return
             start_wal_segment, start_time = self.parse_backup_label(self.target_basebackup_path)
             self.compression_queue.put({
                 "callback_queue": self.callback_queue,
                 "full_path": self.target_basebackup_path,
-                "metadata": {"start-wal-segment": start_wal_segment, "start-time": start_time},
+                "metadata": {
+                    "start-time": start_time,
+                    "start-wal-segment": start_wal_segment,
+                },
                 "type": "CLOSE_WRITE",
             })
-        elif self.callback_queue:
-            # post a failure event
-            self.callback_queue.put({"success": False})
+
         self.running = False

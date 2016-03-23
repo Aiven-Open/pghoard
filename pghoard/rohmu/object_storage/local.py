@@ -116,7 +116,7 @@ class LocalTransfer(BaseTransfer):
             fp.write(memstring)
         self._save_metadata(target_path, metadata)
 
-    def store_file_from_disk(self, key, filepath, metadata=None):
+    def store_file_from_disk(self, key, filepath, metadata=None, multipart=None):
         target_path = self.format_key_for_backend(key.strip("/"))
         src_stat = os.stat(filepath)
         with suppress(FileNotFoundError):

@@ -112,7 +112,7 @@ class S3Transfer(BaseTransfer):
                 s3key.set_metadata(k, v)
         s3key.set_contents_from_string(memstring, replace=True)
 
-    def store_file_from_disk(self, key, filepath, metadata=None):
+    def store_file_from_disk(self, key, filepath, metadata=None, multipart=None):
         s3key = Key(self.bucket)
         s3key.key = self.format_key_for_backend(key)
         if metadata:

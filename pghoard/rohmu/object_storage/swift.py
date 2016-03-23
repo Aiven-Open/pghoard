@@ -148,12 +148,14 @@ class SwiftTransfer(BaseTransfer):
         metadata_to_send = self._metadata_to_headers(metadata) if metadata else {}
         self.conn.put_object(self.container_name, key, contents=memstring, headers=metadata_to_send)
 
-    def store_file_from_disk(self, key, filepath, metadata=None):
-        # Start by trying to delete the file - if it's a multipart file we need to manually delete it,
-        # otherwise old segments won't be cleaned up by anything.  Note that we only issue deletes with the
-        # store_file_from_disk functions, store_file_from_memory is used to upload smaller chunks.
-        with suppress(FileNotFoundFromStorageError):
-            self.delete_key(key)
+    def store_file_from_disk(self, key, filepath, metadata=None, multipart=None):
+        if multipart:
+            # Start by trying to delete the file - if it's a potential multipart file we need to manually
+            # delete it, otherwise old segments won't be cleaned up by anything.  Note that we only issue
+            # deletes with the store_file_from_disk functions, store_file_from_memory is used to upload smaller
+            # chunks.
+            with suppress(FileNotFoundFromStorageError):
+                self.delete_key(key)
         key = self.format_key_for_backend(key)
         headers = self._metadata_to_headers(metadata) if metadata else {}
         obsz = os.path.getsize(filepath)

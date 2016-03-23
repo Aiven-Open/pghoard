@@ -187,7 +187,8 @@ class GoogleTransfer(BaseTransfer):
     def store_file_from_memory(self, key, memstring, metadata=None, extra_props=None):  # pylint: disable=arguments-differ
         return self._upload(MediaIoBaseUpload, BytesIO(memstring), key, metadata, extra_props)
 
-    def store_file_from_disk(self, key, filepath, metadata=None, extra_props=None):  # pylint: disable=arguments-differ
+    def store_file_from_disk(self, key, filepath, metadata=None,  # pylint: disable=arguments-differ, unused-variable
+                             *, multipart=None, extra_props=None):  # pylint: disable=arguments-differ, unused-variable
         return self._upload(MediaFileUpload, filepath, key, metadata, extra_props)
 
     def get_or_create_bucket(self, bucket_name):
