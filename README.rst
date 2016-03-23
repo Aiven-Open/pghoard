@@ -397,6 +397,9 @@ The following object storage types are supported:
 
   * ``auth_version`` - defaults to ``2.0`` for keystone, use ``1.0`` with
     Ceph Rados GW.
+  * ``segment_size`` - defaults to ``1024**3`` (1 gigabyte).  Objects larger
+    than this will be split into multiple segments on upload.  Many Swift
+    installations require large files (usually 5 gigabytes) to be segmented.
   * ``tenant_name``
 
 ``pg_basebackup_path`` (default ``/usr/bin/pg_basebackup``)

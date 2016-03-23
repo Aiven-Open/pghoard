@@ -97,8 +97,17 @@ class LocalTransfer(BaseTransfer):
 
     def _save_metadata(self, target_path, metadata):
         metadata_path = target_path + ".metadata"
+        # metadata is always a string: string mapping
+        if not metadata:
+            metadata = {}
+        else:
+            metadata = {
+                str(k): str(v)
+                for k, v in metadata.items()
+                if v is not None
+            }
         with open(metadata_path, "w") as fp:
-            json.dump(metadata or {}, fp)
+            json.dump(metadata, fp)
 
     def store_file_from_memory(self, key, memstring, metadata=None):
         target_path = self.format_key_for_backend(key.strip("/"))

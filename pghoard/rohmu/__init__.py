@@ -7,7 +7,12 @@ See LICENSE for details
 from . errors import InvalidConfigurationError
 
 
-def get_transfer(storage_type, storage_config):
+def get_transfer(storage_config, *, storage_type=None):
+    # TODO: drop storage_type from the function signature, always read it from the config
+    if "storage_type" in storage_config:
+        storage_config = storage_config.copy()
+        storage_type = storage_config.pop("storage_type")
+
     if storage_type == "azure":
         from .object_storage.azure import AzureTransfer
         return AzureTransfer(**storage_config)

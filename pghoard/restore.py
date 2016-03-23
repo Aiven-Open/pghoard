@@ -127,8 +127,8 @@ class Restore(object):
         self.storage.show_basebackup_list()
 
     def _get_object_storage(self, site, pgdata):
-        storage_type, storage_config = get_object_storage_config(self.config, site)
-        storage = get_transfer(storage_type, storage_config)
+        storage_config = get_object_storage_config(self.config, site)
+        storage = get_transfer(storage_config)
         return ObjectStore(storage, self.config.get("path_prefix", ""), site, pgdata)
 
     def list_basebackups(self, arg):
@@ -210,8 +210,8 @@ class Restore(object):
         metadata = self.storage.get_basebackup_file_to_fileobj(basebackup, tmp)
 
         rsa_private_key = None
-        if "encryption-key-id" in metadata and metadata["encryption-key-id"]:
-            key_id = metadata["encryption-key-id"]
+        key_id = metadata.get("encryption-key-id")
+        if key_id:
             site_keys = self.config["backup_sites"][site]["encryption_keys"]
             rsa_private_key = site_keys[key_id]["private"]
 

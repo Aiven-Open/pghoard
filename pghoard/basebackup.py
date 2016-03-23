@@ -92,7 +92,7 @@ class PGBaseBackup(Thread):
         original_input_size, compressed_file_size = c.compress_filepath(
             fileobj=proc.stdout,
             stderr=proc.stderr,
-            targetfilepath=basebackup_path,
+            compressed_filepath=basebackup_path,
             compression_algorithm=compression_algorithm,
             rsa_public_key=rsa_public_key)
         return original_input_size, compressed_file_size, {"compression-algorithm": compression_algorithm,
