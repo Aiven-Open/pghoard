@@ -95,8 +95,8 @@ def _test_storage(st, driver, tmpdir):
         # test LocalFileIsRemoteFileError for local storage
         target_file = os.path.join(st.prefix, "test1/x1")
         with pytest.raises(errors.LocalFileIsRemoteFileError):
-            st.store_file_from_disk("test1/x1", target_file, {"lfirfe": True})
-        assert st.get_contents_to_string("test1/x1") == (b"1", {"lfirfe": True})
+            st.store_file_from_disk("test1/x1", target_file, {"local": True})
+        assert st.get_contents_to_string("test1/x1") == (b"1", {"local": "True"})
 
         with pytest.raises(errors.LocalFileIsRemoteFileError):
             st.get_contents_to_file("test1/x1", target_file)
