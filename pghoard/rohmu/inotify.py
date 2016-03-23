@@ -26,7 +26,6 @@ s_size = 16
 INOTIFY_EVENT_BUFFER_SIZE = 2048 * (ctypes.sizeof(InotifyEvent) + s_size)
 
 event_types = {
-    "IN_MODIFY": 0x00000002,
     "IN_CLOSE_WRITE": 0x00000008,
     "IN_CREATE": 0x00000100,
     "IN_MOVED_FROM": 0x00000040,
@@ -49,11 +48,10 @@ def parse_inotify_buffer(event_buffer):
 
 
 class InotifyWatcher(Thread):
-    def __init__(self, compression_queue, ignore_modified=True):
+    def __init__(self, compression_queue):
         super().__init__()
         # use the newer form for future-proofness
         self.log = logging.getLogger("PGHoardInotify")
-        self.ignore_modified = ignore_modified
         self.libc = ctypes.CDLL("libc.so.6")
         self.fd = self.libc.inotify_init()
         self.watch_to_path = {}
@@ -108,11 +106,7 @@ class InotifyWatcher(Thread):
         decoded_name = name.decode("utf8")
         full_path = os.path.join(self.watch_to_path[wd], decoded_name)
 
-        if mask & event_types["IN_MODIFY"] > 0:
-            # a chunk was written to the file, handled first due to high volume
-            if not self.ignore_modified:
-                self.compression_queue.put({"type": "MODIFY", "full_path": full_path})
-        elif mask & event_types["IN_CREATE"] > 0:
+        if mask & event_types["IN_CREATE"] > 0:
             # file was created but writing to it is not finished yet
             self.log_event("IN_CREATE", full_path)
         elif mask & event_types["IN_CLOSE_WRITE"] > 0:

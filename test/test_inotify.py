@@ -24,7 +24,7 @@ class TestInotify(PGHoardTestCase):
         self.foo_path = os.path.join(self.temp_dir, "foo")
         with open(self.foo_path, "w") as out:
             out.write("foo")
-        self.inotify = InotifyWatcher(self.queue, ignore_modified=False)
+        self.inotify = InotifyWatcher(self.queue)
         self.inotify.add_watch(self.temp_dir)
         self.inotify.start()
 
@@ -37,13 +37,7 @@ class TestInotify(PGHoardTestCase):
     def test_create_file(self):
         with open(os.path.join(self.temp_dir, "bar"), "wb") as fp:
             fp.write(b"jee")
-        assert self.queue.get(timeout=1.0)["type"] == "MODIFY"
         assert self.queue.get(timeout=1.0)["type"] == "CLOSE_WRITE"
-
-    def test_modify(self):
-        with open(os.path.join(self.temp_dir, "foo"), "ab") as fp:
-            fp.write(b"jee")
-        assert self.queue.get(timeout=1.0)["type"] == "MODIFY"
 
     def test_delete(self):
         os.unlink(self.foo_path)
