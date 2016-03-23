@@ -36,13 +36,16 @@ def _test_storage(st, driver, tmpdir):
     with pytest.raises(errors.FileNotFoundFromStorageError):
         st.get_contents_to_string("NONEXISTENT")
     assert st.list_path("") == []
-    assert st.list_path("xyz") == []
+    assert st.list_path("NONEXISTENT") == []
     st.store_file_from_memory("NONEXISTENT-a/x1", b"dummy", None)
     dummy_file = str(scratch.join("a"))
     with open(dummy_file, "wb") as fp:
         fp.write(b"dummy")
     st.store_file_from_disk("NONEXISTENT-b/x1", dummy_file, None)
     st.store_file_from_disk("NONEXISTENT-b/x1", dummy_file, {"x": 1})
+
+    st.delete_key("NONEXISTENT-b/x1")
+    st.delete_key("NONEXISTENT-a/x1")
 
     # Other basic cases
     from_disk_file = str(scratch.join("a"))
@@ -119,10 +122,15 @@ def _test_storage(st, driver, tmpdir):
             fp.write(chunk)
             test_size_send += len(chunk)
     test_hash_send = test_hash.hexdigest()
-    st.store_file_from_disk("test1/x1", test_file, {"30m": "data"})
+    st.store_file_from_disk("test1/30m", test_file, {"30m": "data", "size": test_size_send})
     os.unlink(test_file)
+
+    expected_meta = {"30m": "data", "size": str(test_size_send)}
+    meta = st.get_metadata_for_key("test1/30m")
+    assert meta == expected_meta
+
     with open(test_file, "wb") as fp:
-        assert st.get_contents_to_fileobj("test1/x1", fp) == {"30m": "data"}
+        assert st.get_contents_to_fileobj("test1/30m", fp) == expected_meta
     test_hash = hashlib.sha256()
     test_size_rec = 0
     with open(test_file, "rb") as fp:
@@ -135,6 +143,27 @@ def _test_storage(st, driver, tmpdir):
     test_hash_rec = test_hash.hexdigest()
     assert test_hash_rec == test_hash_send
     assert test_size_rec == test_size_send
+
+    if driver == "swift":
+        segments = test_size_send // st.segment_size
+        segment_list = st.list_path("test1_segments/30m")
+        assert len(segment_list) >= segments
+
+        if segments >= 2:
+            # reupload a file with the same name but with less chunks
+            os.truncate(test_file, st.segment_size + 1)
+            test_size_send = os.path.getsize(test_file)
+            st.store_file_from_disk("test1/30m", test_file, {"30m": "less data", "size": test_size_send})
+
+            segment_list = st.list_path("test1_segments/30m")
+            assert len(segment_list) == 2
+
+    assert len(st.list_path("test1")) == 1
+    st.delete_key("test1/30m")
+    assert st.list_path("test1") == []
+
+    if driver == "swift":
+        assert st.list_path("test1_segments/30m") == []
 
 
 def _test_storage_init(storage_type, with_prefix, tmpdir):

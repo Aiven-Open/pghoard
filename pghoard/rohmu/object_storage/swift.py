@@ -12,18 +12,21 @@ import dateutil.parser
 import os
 import time
 
-CHUNK_SIZE = 1024 * 1024 * 5
+CHUNK_SIZE = 1024 * 1024 * 5  # 5 Mi
+SEGMENT_SIZE = 1024 * 1024 * 1024  # 1 Gi
 
 
 class SwiftTransfer(BaseTransfer):
     def __init__(self, *, user, key, container_name, auth_url,
-                 auth_version="2.0", tenant_name=None, prefix=None):
+                 auth_version="2.0", tenant_name=None, prefix=None,
+                 segment_size=SEGMENT_SIZE):
         prefix = prefix.lstrip("/") if prefix else ""
         super().__init__(prefix=prefix)
         self.container_name = container_name
         self.conn = client.Connection(user=user, key=key, authurl=auth_url,
                                       tenant_name=tenant_name, auth_version=auth_version)
         self.container = self.get_or_create_container(self.container_name)
+        self.segment_size = segment_size
         self.log.debug("SwiftTransfer initialized")
 
     @staticmethod
@@ -71,15 +74,36 @@ class SwiftTransfer(BaseTransfer):
             })
         return return_list
 
-    def delete_key(self, key):
-        key = self.format_key_for_backend(key)
-        self.log.debug("Deleting key: %r", key)
+    def _delete_object_plain(self, key):
         try:
             return self.conn.delete_object(self.container_name, key)
         except exceptions.ClientException as ex:
             if ex.http_status == 404:
                 raise FileNotFoundFromStorageError(key)
             raise
+
+    def _delete_object_segments(self, key, manifest):
+        self._delete_object_plain(key)
+        seg_container, seg_prefix = manifest.split("/", 1)
+        _, segments = self.conn.get_container(seg_container, prefix=seg_prefix, delimiter="/")
+        for item in segments:
+            if "name" in item:
+                with suppress(FileNotFoundFromStorageError):
+                    self._delete_object_plain(item["name"])
+
+    def delete_key(self, key):
+        key = self.format_key_for_backend(key)
+        self.log.debug("Deleting key: %r", key)
+        try:
+            headers = self.conn.head_object(self.container_name, key)
+        except exceptions.ClientException as ex:
+            if ex.http_status == 404:
+                raise FileNotFoundFromStorageError(key)
+            raise
+        if "x-object-manifest" in headers:
+            self._delete_object_segments(key, headers["x-object-manifest"])
+        else:
+            self._delete_object_plain(key)
 
     def get_contents_to_file(self, key, filepath_to_store_to):
         temp_filepath = "{}~".format(filepath_to_store_to)
@@ -125,10 +149,41 @@ class SwiftTransfer(BaseTransfer):
         self.conn.put_object(self.container_name, key, contents=memstring, headers=metadata_to_send)
 
     def store_file_from_disk(self, key, filepath, metadata=None):
+        # Start by trying to delete the file - if it's a multipart file we need to manually delete it,
+        # otherwise old segments won't be cleaned up by anything.  Note that we only issue deletes with the
+        # store_file_from_disk functions, store_file_from_memory is used to upload smaller chunks.
+        with suppress(FileNotFoundFromStorageError):
+            self.delete_key(key)
         key = self.format_key_for_backend(key)
-        metadata_to_send = self._metadata_to_headers(metadata) if metadata else {}
+        headers = self._metadata_to_headers(metadata) if metadata else {}
+        obsz = os.path.getsize(filepath)
         with open(filepath, "rb") as fp:
-            self.conn.put_object(self.container_name, key, contents=fp, headers=metadata_to_send)
+            if obsz <= self.segment_size:
+                self.log.debug("Uploading %r to %r (%r bytes)", filepath, key, obsz)
+                self.conn.put_object(self.container_name, key,
+                                     contents=fp, content_length=obsz,
+                                     headers=headers)
+                return
+
+            # Segmented transfer
+            # upload segments of a file like `backup-bucket/site-name/basebackup/2016-03-22_0`
+            # to as `backup-bucket/site-name/basebackup_segments/2016-03-22_0/{:08x}`
+            segment_no = 0
+            segment_path = "{}_segments/{}/".format(os.path.dirname(key), os.path.basename(key))
+            segment_key_format = "{}{{:08x}}".format(segment_path).format
+            remaining = obsz
+            while remaining > 0:
+                this_segment_size = min(self.segment_size, remaining)
+                remaining -= this_segment_size
+                segment_no += 1
+                self.log.debug("Uploading segment %r of %r to %r (%r bytes)",
+                               segment_no, filepath, key, this_segment_size)
+                segment_key = segment_key_format(segment_no)
+                self.conn.put_object(self.container_name, segment_key,
+                                     contents=fp, content_length=this_segment_size)
+            self.log.info("Uploaded %r segments of %r to %r", segment_no, key, segment_path)
+            headers["x-object-manifest"] = "{}/{}".format(self.container_name, segment_path.lstrip("/"))
+            self.conn.put_object(self.container_name, key, contents="", headers=headers, content_length=0)
 
     def get_or_create_container(self, container_name):
         start_time = time.monotonic()
