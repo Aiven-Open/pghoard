@@ -220,18 +220,14 @@ def get_object_storage_config(config, site):
     except KeyError:
         # fall back to `local` driver at `backup_location` if set
         if not config.get("backup_location"):
-            return None, None
+            return None
         storage_config = {
             "directory": config["backup_location"],
+            "storage_type": "local",
         }
-        storage_type = "local"
-    else:
-        storage_config = storage_config.copy()
-        try:
-            storage_type = storage_config.pop("storage_type")
-        except KeyError:
-            raise InvalidConfigurationError("storage_type not defined in site {!r} object_storage".format(site))
-    return storage_type, storage_config
+    if "storage_type" not in storage_config:
+        raise InvalidConfigurationError("storage_type not defined in site {!r} object_storage".format(site))
+    return storage_config
 
 
 def create_alert_file(config, filename):

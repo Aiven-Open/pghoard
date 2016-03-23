@@ -175,17 +175,19 @@ def _test_storage_init(storage_type, with_prefix, tmpdir):
         except AttributeError:
             pytest.skip(storage_type + " config isn't available")
         storage_config = conf_func()
+
     if storage_type in ("aws_s3", "ceph_s3"):
         driver = "s3"
     elif storage_type == "ceph_swift":
         driver = "swift"
     else:
         driver = storage_type
+    storage_config["storage_type"] = driver
 
     if with_prefix:
         storage_config["prefix"] = uuid.uuid4().hex
 
-    st = get_transfer(driver, storage_config)
+    st = get_transfer(storage_config)
     _test_storage(st, driver, tmpdir)
 
 
@@ -247,12 +249,12 @@ def test_storage_swift_with_prefix(tmpdir):
 
 def test_storage_config(tmpdir):
     config = {}
-    assert get_object_storage_config(config, "default") == (None, None)
+    assert get_object_storage_config(config, "default") is None
     site_config = config.setdefault("backup_sites", {}).setdefault("default", {})
-    assert get_object_storage_config(config, "default") == (None, None)
+    assert get_object_storage_config(config, "default") is None
 
     config["backup_location"] = tmpdir.strpath
-    local_type_conf = ("local", {"directory": tmpdir.strpath})
+    local_type_conf = {"directory": tmpdir.strpath, "storage_type": "local"}
     assert get_object_storage_config(config, "default") == local_type_conf
 
     site_config["object_storage"] = {}
@@ -262,8 +264,8 @@ def test_storage_config(tmpdir):
 
     site_config["object_storage"] = {"storage_type": "foo", "other": "bar"}
     foo_type_conf = get_object_storage_config(config, "default")
-    assert foo_type_conf == ("foo", {"other": "bar"})
+    assert foo_type_conf == {"storage_type": "foo", "other": "bar"}
 
     with pytest.raises(errors.InvalidConfigurationError) as excinfo:
-        get_transfer(foo_type_conf[0], foo_type_conf[1])
+        get_transfer(foo_type_conf)
     assert "unsupported storage type 'foo'" in str(excinfo.value)

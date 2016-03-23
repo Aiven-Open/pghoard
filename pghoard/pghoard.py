@@ -239,8 +239,8 @@ class PGHoard(object):
     def get_remote_basebackups_info(self, site):
         storage = self.site_transfers.get(site)
         if not storage:
-            storage_type, storage_config = get_object_storage_config(self.config, site)
-            storage = get_transfer(storage_type, storage_config)
+            storage_config = get_object_storage_config(self.config, site)
+            storage = get_transfer(storage_config)
             self.site_transfers[site] = storage
 
         results = storage.list_path(os.path.join(self.config.get("path_prefix", ""),

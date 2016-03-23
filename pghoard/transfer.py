@@ -43,8 +43,8 @@ class TransferAgent(Thread):
     def get_object_storage(self, site_name):
         storage = self.site_transfers.get(site_name)
         if not storage:
-            storage_type, storage_config = get_object_storage_config(self.config, site_name)
-            storage = get_transfer(storage_type, storage_config)
+            storage_config = get_object_storage_config(self.config, site_name)
+            storage = get_transfer(storage_config)
             self.site_transfers[site_name] = storage
 
         return storage
