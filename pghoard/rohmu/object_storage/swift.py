@@ -48,7 +48,7 @@ class SwiftTransfer(BaseTransfer):
         key = self.format_key_for_backend(key)
         return self._metadata_for_key(key)
 
-    def _metadata_for_key(self, key):
+    def _metadata_for_key(self, key, *, resolve_manifest=False):
         try:
             headers = self.conn.head_object(self.container_name, key)
         except exceptions.ClientException as ex:
@@ -56,7 +56,16 @@ class SwiftTransfer(BaseTransfer):
                 raise FileNotFoundFromStorageError(key)
             raise
 
-        return self._headers_to_metadata(headers)
+        metadata = self._headers_to_metadata(headers)
+
+        if resolve_manifest and "x-object-manifest" in headers:
+            manifest = headers["x-object-manifest"]
+            seg_container, seg_prefix = manifest.split("/", 1)
+            _, segments = self.conn.get_container(seg_container, prefix=seg_prefix, delimiter="/")
+            segments_size = sum(item["bytes"] for item in segments if "bytes" in item)
+            metadata["_segments_size"] = segments_size
+
+        return metadata
 
     def list_path(self, key):
         path = self.format_key_for_backend(key, trailing_slash=True)
@@ -66,11 +75,13 @@ class SwiftTransfer(BaseTransfer):
         for item in results:
             if "subdir" in item:
                 continue  # skip directory entries
+            metadata = self._metadata_for_key(item["name"], resolve_manifest=True)
+            segments_size = metadata.pop("_segments_size", 0)
             return_list.append({
                 "name": self.format_key_from_backend(item["name"]),
-                "size": item["bytes"],
+                "size": item["bytes"] + segments_size,
                 "last_modified": dateutil.parser.parse(item["last_modified"]),
-                "metadata": self._metadata_for_key(item["name"]),
+                "metadata": metadata,
             })
         return return_list
 

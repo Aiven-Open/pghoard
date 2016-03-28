@@ -145,6 +145,11 @@ def _test_storage(st, driver, tmpdir):
     assert test_hash_rec == test_hash_send
     assert test_size_rec == test_size_send
 
+    tlist = st.list_path("test1")
+    assert len(tlist) == 1
+    assert tlist[0]["name"] == "test1/30m"
+    assert tlist[0]["size"] == test_size_rec
+
     if driver == "swift":
         segments = test_size_send // st.segment_size
         segment_list = st.list_path("test1_segments/30m")
@@ -159,8 +164,8 @@ def _test_storage(st, driver, tmpdir):
 
             segment_list = st.list_path("test1_segments/30m")
             assert len(segment_list) == 2
+            assert len(st.list_path("test1")) == 1
 
-    assert len(st.list_path("test1")) == 1
     st.delete_key("test1/30m")
     assert st.list_path("test1") == []
 
@@ -193,7 +198,7 @@ def _test_storage_init(storage_type, with_prefix, tmpdir):
     _test_storage(st, driver, tmpdir)
 
 
-def test_storage_aws_s3(tmpdir):
+def test_storage_aws_s3_no_prefix(tmpdir):
     _test_storage_init("aws_s3", False, tmpdir)
 
 
@@ -201,7 +206,7 @@ def test_storage_aws_s3_with_prefix(tmpdir):
     _test_storage_init("aws_s3", True, tmpdir)
 
 
-def test_storage_azure(tmpdir):
+def test_storage_azure_no_prefix(tmpdir):
     _test_storage_init("azure", False, tmpdir)
 
 
@@ -209,7 +214,7 @@ def test_storage_azure_with_prefix(tmpdir):
     _test_storage_init("azure", True, tmpdir)
 
 
-def test_storage_ceph_s3(tmpdir):
+def test_storage_ceph_s3_no_prefix(tmpdir):
     _test_storage_init("ceph_s3", False, tmpdir)
 
 
@@ -217,7 +222,7 @@ def test_storage_ceph_s3_with_prefix(tmpdir):
     _test_storage_init("ceph_s3", True, tmpdir)
 
 
-def test_storage_ceph_swift(tmpdir):
+def test_storage_ceph_swift_no_prefix(tmpdir):
     _test_storage_init("ceph_swift", False, tmpdir)
 
 
@@ -225,7 +230,7 @@ def test_storage_ceph_swift_with_prefix(tmpdir):
     _test_storage_init("ceph_swift", True, tmpdir)
 
 
-def test_storage_google(tmpdir):
+def test_storage_google_no_prefix(tmpdir):
     _test_storage_init("google", False, tmpdir)
 
 
@@ -233,7 +238,7 @@ def test_storage_google_with_prefix(tmpdir):
     _test_storage_init("google", True, tmpdir)
 
 
-def test_storage_local(tmpdir):
+def test_storage_local_no_prefix(tmpdir):
     _test_storage_init("local", False, tmpdir)
 
 
@@ -241,7 +246,7 @@ def test_storage_local_with_prefix(tmpdir):
     _test_storage_init("local", True, tmpdir)
 
 
-def test_storage_swift(tmpdir):
+def test_storage_swift_no_prefix(tmpdir):
     _test_storage_init("swift", False, tmpdir)
 
 
