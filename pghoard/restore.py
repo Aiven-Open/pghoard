@@ -86,7 +86,7 @@ class Restore(object):
             cmd.add_argument("--config", help="pghoard config file", required=require_config)
 
         def host_port_args():
-            cmd.add_argument("--host", help="pghoard repository host", default="localhost")
+            cmd.add_argument("--host", help="pghoard repository host", default="127.0.0.1")
             cmd.add_argument("--port", help="pghoard repository port", default=16000)
 
         def target_args():
