@@ -12,6 +12,7 @@ from pghoard.rohmu.errors import Error
 from psycopg2.extensions import adapt
 from requests import Session
 import argparse
+import datetime
 import dateutil.parser
 import json
 import logging
@@ -64,6 +65,23 @@ def create_recovery_conf(dirpath, site,
     return content
 
 
+def print_basebackup_list(basebackups, *, caption="Available basebackups"):
+    print(caption)
+    fmt = "{name:40}  {size:>10}  {time:20}  {meta}".format
+    print(fmt(name="Basebackup", size="Size", time="Start time", meta="Metadata"))
+    print(fmt(name="-" * 40, size="-" * 10, time="-" * 20, meta="-" * 12))
+    for b in sorted(basebackups, key=lambda b: b["name"]):
+        meta = b["metadata"].copy()
+        lm = meta.pop("start-time")
+        if isinstance(lm, str):
+            lm = dateutil.parser.parse(lm)
+        if lm.tzinfo:  # pylint: disable=no-member
+            lm = lm.astimezone(datetime.timezone.utc).replace(tzinfo=None)  # pylint: disable=no-member
+        lm_str = lm.isoformat()[:19] + "Z"  # # pylint: disable=no-member
+        size_str = "{} MB".format(b["size"] // (1024 ** 2))
+        print(fmt(name=b["name"], size=size_str, time=lm_str, meta=meta))
+
+
 class Restore(object):
     def __init__(self):
         self.config = None
@@ -86,7 +104,7 @@ class Restore(object):
             cmd.add_argument("--config", help="pghoard config file", required=require_config)
 
         def host_port_args():
-            cmd.add_argument("--host", help="pghoard repository host", default="localhost")
+            cmd.add_argument("--host", help="pghoard repository host", default="127.0.0.1")
             cmd.add_argument("--port", help="pghoard repository port", default=16000)
 
         def target_args():
@@ -157,22 +175,28 @@ class Restore(object):
             raise RestoreError("{}: {}".format(ex.__class__.__name__, ex))
 
     def _find_nearest_basebackup(self, recovery_target_time=None):
-        applicable_basebackups = {}
+        applicable_basebackups = []
 
         basebackups = self.storage.list_basebackups()
         for basebackup in basebackups:
-            backup_start_time = dateutil.parser.parse(basebackup["metadata"]["start-time"])
             if recovery_target_time:
-                if backup_start_time < recovery_target_time:
-                    applicable_basebackups[backup_start_time] = basebackup
-            else:
-                applicable_basebackups[backup_start_time] = basebackup
+                backup_start_time = dateutil.parser.parse(basebackup["metadata"]["start-time"])
+                if backup_start_time >= recovery_target_time:
+                    continue
+            applicable_basebackups.append(basebackup)
 
         if not applicable_basebackups:
             raise RestoreError("No applicable basebackups found, exiting")
-        basebackup = applicable_basebackups[max(applicable_basebackups)]
-        print("Found: {} basebackups, selecting: {} for restore".format(applicable_basebackups, basebackup))
-        return basebackup["name"]
+
+        applicable_basebackups.sort(key=lambda basebackup: basebackup["metadata"]["start-time"])
+        caption = "Found {} applicable basebackup{}".format(
+            len(applicable_basebackups),
+            "" if len(applicable_basebackups) == 1 else "s")
+        print_basebackup_list(applicable_basebackups, caption=caption)
+
+        selected = applicable_basebackups[-1]["name"]
+        print("\nSelecting {!r} for restore".format(selected))
+        return selected
 
     def _get_basebackup(self, pgdata, basebackup, site,
                         primary_conninfo=None,
@@ -266,12 +290,8 @@ class ObjectStore(object):
 
     def show_basebackup_list(self):
         result = self.list_basebackups()
-        line = "Available %r basebackups:" % self.site
-        print(line)
-        print("=" * len(line))
-        print("basebackup\t\t\tsize\tlast_modified\t\t\tmetadata")
-        for r in sorted(result, key=lambda b: b["name"]):
-            print("%s\t%s\t%s\t%s" % (r["name"], r["size"], r["last_modified"], r["metadata"]))
+        caption = "Available %r basebackups:" % self.site
+        print_basebackup_list(result, caption=caption)
 
     def get_basebackup_file_to_fileobj(self, basebackup, fileobj):
         metadata = self.storage.get_metadata_for_key(basebackup)

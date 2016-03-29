@@ -43,8 +43,18 @@ class TestRecoveryConf(PGHoardTestCase):
     def test_find_nearest_backup(self):
         r = Restore()
         r.storage = Mock()
-        basebackups = [{"name": "2015-02-12_0", "metadata": {"start-time": "2015-02-12T14:07:19+00:00"}},
-                       {"name": "2015-02-13_0", "metadata": {"start-time": "2015-02-13T14:07:19+00:00"}}]
+        basebackups = [
+            {
+                "name": "2015-02-12_0",
+                "size": 42,
+                "metadata": {"start-time": "2015-02-12T14:07:19+00:00"},
+            },
+            {
+                "name": "2015-02-13_0",
+                "size": 42 * 1024 * 1024,
+                "metadata": {"start-time": "2015-02-13T14:07:19+00:00"},
+            },
+        ]
 
         r.storage.list_basebackups = Mock(return_value=basebackups)
         assert r._find_nearest_basebackup() == "2015-02-13_0"  # pylint: disable=protected-access
