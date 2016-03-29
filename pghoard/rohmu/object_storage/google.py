@@ -17,7 +17,12 @@ from googleapiclient.errors import HttpError  # pylint: disable=import-error
 from googleapiclient.http import MediaFileUpload, MediaIoBaseUpload, MediaIoBaseDownload  # pylint: disable=import-error
 from oauth2client import GOOGLE_TOKEN_URI  # pylint: disable=import-error
 from oauth2client.client import GoogleCredentials  # pylint: disable=import-error
-from oauth2client.service_account import _ServiceAccountCredentials  # pylint: disable=import-error
+try:
+    from oauth2client.service_account import ServiceAccountCredentials  # pylint: disable=import-error
+except ImportError:
+    from oauth2client.service_account \  # pylint: disable=import-error
+        import _ServiceAccountCredentials as ServiceAccountCredentials  # pylint: disable=import-error
+
 from ..errors import FileNotFoundFromStorageError, InvalidConfigurationError
 from .base import BaseTransfer
 
@@ -42,7 +47,7 @@ def get_credentials(credential_file=None, credentials=None):
         return GoogleCredentials.from_stream(credential_file)
 
     if credentials and credentials["type"] == "service_account":
-        return _ServiceAccountCredentials(
+        return ServiceAccountCredentials(
             service_account_id=credentials["client_id"],
             service_account_email=credentials["client_email"],
             private_key_id=credentials["private_key_id"],
