@@ -88,15 +88,21 @@ LABEL: pg_basebackup base backup
         assert pghoard.basebackups == {}
 
         # initialize with a single backup
+        backup_start = time.monotonic()
         pghoard.handle_site(pghoard.test_site, site_config)
         assert pghoard.test_site in pghoard.basebackups
         # wait for backup to complete and put the event back in so pghoard finds it, too
         pghoard.basebackups_callbacks[pghoard.test_site].put(pghoard.basebackups_callbacks[pghoard.test_site].get())
+
+        # adjust basebackup interval to be slightly longer than what this
+        # basebackup took and make sure it's not retriggered
+        site_config["basebackup_interval_hours"] = (time.monotonic() - backup_start + 1) / 3600
         pghoard.handle_site(pghoard.test_site, site_config)
         assert pghoard.test_site not in pghoard.basebackups
 
         # create a new backup now that we have some state
         time.sleep(1)
+        backup_start = time.monotonic()
         pghoard.handle_site(pghoard.test_site, site_config)
         assert pghoard.test_site in pghoard.basebackups
         # wait for backup to complete and put the event back in so pghoard finds it, too
@@ -107,8 +113,9 @@ LABEL: pg_basebackup base backup
         first_time_of = pghoard.time_of_last_backup[pghoard.test_site]
         first_time_of_check = pghoard.time_of_last_backup_check[pghoard.test_site]
 
-        # create another backup
+        # create another backup by using the triggering mechanism
         time.sleep(1)
+        pghoard.requested_basebackup_sites.add(pghoard.test_site)
         pghoard.handle_site(pghoard.test_site, site_config)
         assert pghoard.test_site in pghoard.basebackups
         pghoard.basebackups_callbacks[pghoard.test_site].put(pghoard.basebackups_callbacks[pghoard.test_site].get())

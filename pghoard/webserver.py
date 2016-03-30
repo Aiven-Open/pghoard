@@ -359,7 +359,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         if filetype == "basebackup":
             # Request a basebackup to be made for site
             self.server.log.debug("Requesting a new basebackup for site: %r to be made", site)
-            self.server.requested_basebackup_sites[site] = True
+            self.server.requested_basebackup_sites.add(site)
             raise HttpResponse(status=201)
 
         start_time = time.time()

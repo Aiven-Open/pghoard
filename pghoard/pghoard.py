@@ -23,6 +23,7 @@ from pghoard.webserver import WebServer
 from queue import Empty, Queue
 import argparse
 import datetime
+import dateutil.parser
 import json
 import logging
 import logging.handlers
@@ -71,7 +72,7 @@ class PGHoard(object):
         self.receivexlogs = {}
         self.compressors = []
         self.transfer_agents = []
-        self.requested_basebackup_sites = {}
+        self.requested_basebackup_sites = set()
 
         self.inotify = InotifyWatcher(self.compression_queue)
         self.webserver = WebServer(
@@ -249,18 +250,22 @@ class PGHoard(object):
         for entry in results:
             # drop path from resulting list and convert timestamps
             entry["name"] = os.path.basename(entry["name"])
-            entry["last_modified"] = entry["last_modified"].timestamp()
+            entry["metadata"]["start-time"] = dateutil.parser.parse(entry["metadata"]["start-time"])
 
         results.sort(key=lambda entry: entry["metadata"]["start-time"])
         return results
 
     def check_backup_count_and_state(self, site):
+        """Look up basebackups from the object store, prune any extra
+        backups and return the datetime of the latest backup."""
         allowed_basebackup_count = self.config['backup_sites'][site]['basebackup_count']
         basebackups = self.get_remote_basebackups_info(site)
         self.log.debug("Found %r basebackups", basebackups)
 
-        # Needs to be the m_time of the newest basebackup
-        m_time = basebackups[-1]["last_modified"] if basebackups else 0
+        if basebackups:
+            last_backup_time = basebackups[-1]["metadata"]["start-time"]
+        else:
+            last_backup_time = None
 
         while len(basebackups) > allowed_basebackup_count:
             self.log.warning("Too many basebackups: %d > %d, %r, starting to get rid of %r",
@@ -275,7 +280,8 @@ class PGHoard(object):
                 self.delete_remote_wal_before(last_wal_segment_still_needed, site)
             self.delete_remote_basebackup(site, basebackup_to_be_deleted["name"])
         self.state["backup_sites"][site]['basebackups'] = basebackups
-        return m_time
+
+        return last_backup_time
 
     def set_state_defaults(self, site):
         if site not in self.state["backup_sites"]:
@@ -338,11 +344,22 @@ class PGHoard(object):
             self.time_of_last_backup[site] = self.check_backup_count_and_state(site)
             self.time_of_last_backup_check[site] = time.monotonic()
 
-        time_since_last_backup = time.time() - self.time_of_last_backup[site]
-        if time_since_last_backup > site_config["basebackup_interval_hours"] * 3600 or \
-           self.requested_basebackup_sites.pop(site, False):
-            self.log.debug("Starting to create a new basebackup for: %r since time from previous: %r",
-                           site, time_since_last_backup)
+        new_backup_needed = False
+        if site in self.requested_basebackup_sites:
+            self.log.info("Creating a new basebackup for %r due to request", site)
+            self.requested_basebackup_sites.discard(site)
+            new_backup_needed = True
+        elif self.time_of_last_backup.get(site) is None:
+            self.log.info("Creating a new basebackup for %r because there are currently none", site)
+            new_backup_needed = True
+        else:
+            delta_since_last_backup = datetime.datetime.now(datetime.timezone.utc) - self.time_of_last_backup[site]
+            if delta_since_last_backup >= datetime.timedelta(hours=site_config["basebackup_interval_hours"]):
+                self.log.info("Creating a new basebackup for %r by schedule (%s from previous)",
+                              site, delta_since_last_backup)
+                new_backup_needed = True
+
+        if new_backup_needed:
             connection_string, slot = replication_connection_string_using_pgpass(chosen_backup_node)
             self.basebackups_callbacks[site] = Queue()
             self.create_basebackup(site, connection_string, basebackup_path, self.basebackups_callbacks[site])
