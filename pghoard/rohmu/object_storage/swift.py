@@ -8,6 +8,7 @@ from .base import BaseTransfer
 from ..errors import FileNotFoundFromStorageError
 from contextlib import suppress
 from swiftclient import client, exceptions  # pylint: disable=import-error
+import datetime
 import dateutil.parser
 import os
 import time
@@ -77,10 +78,13 @@ class SwiftTransfer(BaseTransfer):
                 continue  # skip directory entries
             metadata = self._metadata_for_key(item["name"], resolve_manifest=True)
             segments_size = metadata.pop("_segments_size", 0)
+            last_modified = dateutil.parser.parse(item["last_modified"])
+            if last_modified.tzinfo is None:  # Assume UTC  # pylint: disable=no-member
+                last_modified = last_modified.replace(tzinfo=datetime.timezone.utc)  # pylint: disable=no-member
             return_list.append({
                 "name": self.format_key_from_backend(item["name"]),
                 "size": item["bytes"] + segments_size,
-                "last_modified": dateutil.parser.parse(item["last_modified"]),
+                "last_modified": last_modified,
                 "metadata": metadata,
             })
         return return_list

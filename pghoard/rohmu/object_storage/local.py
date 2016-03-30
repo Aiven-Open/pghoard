@@ -9,7 +9,6 @@ from io import BytesIO
 from ..errors import FileNotFoundFromStorageError, LocalFileIsRemoteFileError
 from . base import BaseTransfer
 import datetime
-import dateutil.tz
 import json
 import os
 import shutil
@@ -61,10 +60,11 @@ class LocalTransfer(BaseTransfer):
             with open(metadata_file, "r") as fp:
                 metadata = json.load(fp)
             st = os.stat(full_path)
+            last_modified = datetime.datetime.fromtimestamp(st.st_mtime, tz=datetime.timezone.utc)
             return_list.append({
                 "name": os.path.join(key.strip("/"), file_name),
                 "size": st.st_size,
-                "last_modified": datetime.datetime.fromtimestamp(st.st_mtime, tz=dateutil.tz.tzutc()),
+                "last_modified": last_modified,
                 "metadata": metadata,
             })
         return return_list

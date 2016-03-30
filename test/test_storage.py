@@ -79,6 +79,7 @@ def _test_storage(st, driver, tmpdir):
     assert len(tlist) == 2
     for fe in tlist:
         assert isinstance(fe["last_modified"], datetime.datetime)
+        assert fe["last_modified"].tzinfo is not None
         if fe["name"] == "test1/x1":
             assert fe["size"] == 1
             assert fe["metadata"] == {}
