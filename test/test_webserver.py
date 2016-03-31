@@ -454,4 +454,4 @@ class TestWebServer(object):
         status = conn.request("PUT", nonexistent_basebackup)
         status = conn.getresponse().status
         assert status == 201
-        assert pghoard.requested_basebackup_sites == {'test_requesting_basebackup': True}
+        assert pghoard.requested_basebackup_sites == {"test_requesting_basebackup"}

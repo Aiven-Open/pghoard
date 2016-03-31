@@ -9,6 +9,7 @@ from .base import PGHoardTestCase
 from pghoard.common import create_alert_file, create_connection_string, delete_alert_file
 from pghoard.pghoard import PGHoard
 from unittest.mock import Mock, patch
+import datetime
 import json
 import os
 
@@ -79,17 +80,18 @@ dbname|"""
         with open(bb_path, "wb") as fp:
             fp.write(b"something")
         with open(metadata_file_path, "w") as fp:
-            json.dump({"start-time": "2015-07-03 12:00:00"}, fp)
+            json.dump({"start-time": "2015-07-03 12:00:00+00:00"}, fp)
         available_backup = self.pghoard.get_remote_basebackups_info(self.test_site)[0]
         assert available_backup["name"] == "2015-07-03_0"
-        assert available_backup["metadata"] == {"start-time": "2015-07-03 12:00:00"}
+        start_time = datetime.datetime(2015, 7, 3, 12, tzinfo=datetime.timezone.utc)
+        assert available_backup["metadata"] == {"start-time": start_time}
 
         bb_path = os.path.join(self.basebackup_path, "2015-07-02_9")
         metadata_file_path = bb_path + ".metadata"
         with open(bb_path, "wb") as fp:
             fp.write(b"something")
         with open(metadata_file_path, "w") as fp:
-            json.dump({"start-time": "2015-07-02 12:00:00"}, fp)
+            json.dump({"start-time": "2015-07-02 12:00:00+00:00"}, fp)
         basebackups = self.pghoard.get_remote_basebackups_info(self.test_site)
         assert basebackups[0]["name"] == "2015-07-02_9"
         assert basebackups[1]["name"] == "2015-07-03_0"
@@ -99,7 +101,7 @@ dbname|"""
         with open(bb_path, "wb") as fp:
             fp.write(b"something")
         with open(metadata_file_path, "w") as fp:
-            json.dump({"start-time": "2015-07-02 22:00:00"}, fp)
+            json.dump({"start-time": "2015-07-02 22:00:00+00"}, fp)
         basebackups = self.pghoard.get_remote_basebackups_info(self.test_site)
         assert basebackups[0]["name"] == "2015-07-02_9"
         assert basebackups[1]["name"] == "2015-07-02_10"
@@ -113,12 +115,14 @@ dbname|"""
             for bb, wals in what.items():
                 if bb:
                     bb_path = os.path.join(self.basebackup_path, bb)
+                    date_parts = [int(part) for part in bb.replace("_", "-").split("-")]
+                    start_time = datetime.datetime(*date_parts, tzinfo=datetime.timezone.utc)
                     with open(bb_path, "wb") as fp:
                         fp.write(b"something")
                     with open(bb_path + ".metadata", "w") as fp:
                         json.dump({
                             "start-wal-segment": wals[0],
-                            "start-time": bb,
+                            "start-time": start_time.isoformat(),
                         }, fp)
                 for wal in wals:
                     with open(os.path.join(self.compressed_xlog_path, wal), "wb") as fp:
