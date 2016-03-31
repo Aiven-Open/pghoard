@@ -11,7 +11,8 @@ from pghoard.common import (
     default_json_serialization,
     get_connection_info,
     json_encode,
-    )
+    write_json_file,
+)
 from pghoard.rohmu.compressor import snappy, SnappyFile
 from pghoard.rohmu.errors import Error
 import datetime
@@ -74,7 +75,7 @@ class TestCommon(PGHoardTestCase):
         with pytest.raises(Error):
             convert_pg_command_version_to_number("test (PostgreSQL) 9devel")
 
-    def test_json_serialization(self):
+    def test_json_serialization(self, tmpdir):
         ob = {
             "foo": [
                 "bar",
@@ -91,6 +92,21 @@ class TestCommon(PGHoardTestCase):
         assert isinstance(json_encode(ob, binary=True), bytes)
         assert "\n" not in json_encode(ob)
         assert "\n" in json_encode(ob, compact=False)
+
+        output_file = tmpdir.join("test.json").strpath
+        write_json_file(output_file, ob)
+        with open(output_file, "r") as fp:
+            ob2 = json.load(fp)
+        ob_ = dict(ob, t=ob["t"].isoformat() + "Z")
+        assert ob2 == ob_
+
+        write_json_file(output_file, ob, compact=True)
+        with open(output_file, "r") as fp:
+            output_data = fp.read()
+        assert "\n" not in output_data
+        ob2_ = json.loads(output_data)
+
+        assert ob2 == ob2_
 
     @pytest.mark.skipif(not snappy, reason="snappy not installed")
     def test_snappy_read(self, tmpdir):

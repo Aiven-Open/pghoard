@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import re
+import tempfile
 import time
 
 
@@ -212,6 +213,17 @@ def json_encode(obj, compact=True, binary=False):
                      separators=(",", ":") if compact else None,
                      default=default_json_serialization)
     return res.encode("utf-8") if binary else res
+
+
+def write_json_file(filename, obj, *, compact=False):
+    json_data = json_encode(obj, compact=compact)
+    dirname, basename = os.path.dirname(filename), os.path.basename(filename)
+    fd, tempname = tempfile.mkstemp(dir=dirname or ".", prefix=basename, suffix=".tmp")
+    with os.fdopen(fd, "w") as fp:
+        fp.write(json_data)
+        if not compact:
+            fp.write("\n")
+    os.rename(tempname, filename)
 
 
 def get_object_storage_config(config, site):
