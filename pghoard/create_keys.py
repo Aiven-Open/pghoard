@@ -5,7 +5,7 @@ Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
 from . import version
-from .common import default_log_format_str
+from .common import default_log_format_str, write_json_file
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives import serialization
@@ -70,9 +70,7 @@ def save_keys(config_file, site, key_id, rsa_private_key, rsa_public_key):
         "public": rsa_public_key,
     }
     site_config["encryption_key_id"] = key_id
-    with open(config_file, "w") as fp:
-        json.dump(config, fp, sort_keys=True, indent=4)
-        fp.write("\n")
+    write_json_file(config_file, config)
     print("Saved new key_id {!r} for site {!r} in {!r}".format(key_id, site, config_file))
 
 

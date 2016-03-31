@@ -4,10 +4,10 @@ pghoard - compressor threads
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
+from pghoard.common import write_json_file
 from pghoard.rohmu.compressor import Compressor
 from queue import Empty
 from threading import Thread
-import json
 import logging
 import os
 
@@ -130,13 +130,15 @@ class CompressorThread(Thread, Compressor):
             os.unlink(event['full_path'])
 
         metadata = event.get("metadata", {})
-        metadata.update({"compression-algorithm": self.compression_algorithm(), "original-file-size": original_file_size})
+        metadata.update({
+            "compression-algorithm": self.compression_algorithm(),
+            "original-file-size": original_file_size,
+        })
         if encryption_key_id:
             metadata.update({"encryption-key-id": encryption_key_id})
         if compressed_filepath:
             metadata_path = compressed_filepath + ".metadata"
-            with open(metadata_path, "w") as fp:
-                json.dump(metadata, fp)
+            write_json_file(metadata_path, metadata)
 
         self.set_state_defaults_for_site(site)
         self.state[site][filetype]["original_data"] += original_file_size
