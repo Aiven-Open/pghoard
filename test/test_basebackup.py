@@ -148,3 +148,5 @@ LABEL: pg_basebackup base backup
         fourth_time_of_check = pghoard.time_of_last_backup_check[pghoard.test_site]
         assert fourth_time_of == third_time_of
         assert fourth_time_of_check == third_time_of_check
+
+        pghoard.write_backup_state_to_json_file()

@@ -7,12 +7,15 @@ See LICENSE for details
 from contextlib import closing
 from pghoard import version, wal
 from pghoard.basebackup import PGBaseBackup
-from pghoard.common import convert_pg_command_version_to_number, replication_connection_string_using_pgpass
 from pghoard.common import (
+    convert_pg_command_version_to_number,
     create_alert_file,
     default_log_format_str,
     get_object_storage_config,
-    set_syslog_handler)
+    replication_connection_string_using_pgpass,
+    set_syslog_handler,
+    write_json_file,
+)
 from pghoard.compressor import CompressorThread
 from pghoard.rohmu.inotify import InotifyWatcher
 from pghoard.transfer import TransferAgent
@@ -381,11 +384,11 @@ class PGHoard(object):
         start_time = time.time()
         state_file_path = self.config.get("json_state_file_path", "/tmp/pghoard_state.json")
         self.state["pg_receivexlogs"] = {
-            key: {"latest_activity": value.latest_activity.isoformat(), "running": value.running}
+            key: {"latest_activity": value.latest_activity, "running": value.running}
             for key, value in self.receivexlogs.items()
         }
         self.state["pg_basebackups"] = {
-            key: {"latest_activity": value.latest_activity.isoformat(), "running": value.running}
+            key: {"latest_activity": value.latest_activity, "running": value.running}
             for key, value in self.basebackups.items()
         }
         self.state["compressors"] = [compressor.state for compressor in self.compressors]
@@ -393,12 +396,9 @@ class PGHoard(object):
         self.state["queues"] = {
             "compression_queue": self.compression_queue.qsize(),
             "transfer_queue": self.transfer_queue.qsize(),
-            }
-        json_to_dump = json.dumps(self.state, indent=4, sort_keys=True)
-        self.log.debug("Writing JSON state file to: %r, file_size: %r", state_file_path, len(json_to_dump))
-        with open(state_file_path + ".tmp", "w") as fp:
-            fp.write(json_to_dump)
-        os.rename(state_file_path + ".tmp", state_file_path)
+        }
+        self.log.debug("Writing JSON state file to %r", state_file_path)
+        write_json_file(state_file_path, self.state)
         self.log.debug("Wrote JSON state file to disk, took %.4fs", time.time() - start_time)
 
     def load_config(self, _signal=None, _frame=None):
