@@ -1,4 +1,4 @@
-pghoard 1.0.1 (2016-XX-XX)
+pghoard 1.1.0 (2016-04-05)
 ==========================
 
 * Consider last basebackup's start time instead of completion time for
