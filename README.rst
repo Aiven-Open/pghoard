@@ -32,8 +32,10 @@ Performance:
 * Parallel compression and encryption
 * WAL pre-fetching on restore
 
+
 Overview
 ========
+
 PostgreSQL Point In Time Replication (PITR) consists of a having a database
 basebackup and changes after that point go into WAL log files that can be
 replayed to get to the desired replication point.
@@ -93,6 +95,7 @@ Python/Other::
 This will produce an egg file into a dist directory within the same folder.
 
 ``pghoard`` requires Python 3.4 or newer and PostgreSQL 9.3 or newer.
+
 
 Installation
 ============
@@ -248,10 +251,10 @@ state of ``pghoard`` 's backup activities.
 Configuration keys
 ==================
 
-``active`` (default ``True``)
+``active`` (default ``true``)
 
-Can be set on a per ``backup_site`` level to False to disable the taking of new backups
-and to stop the deletion of old ones.
+Can be set on a per ``backup_site`` level to ``false`` to disable the taking
+of new backups and to stop the deletion of old ones.
 
 ``active_backup_mode`` (no default)
 
@@ -307,9 +310,10 @@ key needs to be in place for restoring encrypted backups.
 You can use ``pghoard_create_keys`` to generate and output encryption keys
 in the ``pghoard`` configuration format.
 
-``http_address`` (default ``""``)
+``http_address`` (default ``"127.0.0.1"``)
 
-HTTP webserver address, by default ``pghoard`` binds to all available addresses.
+Address to bind the PGHoard HTTP server to.  Set to an empty string to
+listen to all available addresses.
 
 ``http_port`` (default ``16000``)
 
@@ -329,7 +333,7 @@ Determines log level of ``pghoard``.
 
 If a file exists in this location, no new backup actions will be started.
 
-``stream_compression`` (default ``False``)
+``stream_compression`` (default ``false``)
 
 If you set this to true ``pghoard`` will use an optimized way of taking
 a basebackup directly in a compressed and encrypted form saving
@@ -402,20 +406,21 @@ The following object storage types are supported:
     installations require large files (usually 5 gigabytes) to be segmented.
   * ``tenant_name``
 
-``pg_basebackup_path`` (default ``/usr/bin/pg_basebackup``)
+``pg_basebackup_path`` (default ``"/usr/bin/pg_basebackup"``)
 
 Determines the path where to find the correct ``pg_basebackup`` binary.
 
-``pg_receivexlog_path`` (default ``/usr/bin/pg_receivexlog``)
+``pg_receivexlog_path`` (default ``"/usr/bin/pg_receivexlog"``)
 
 Determines the path where to find the correct ``pg_receivexlog`` binary.
 
-``pg_xlog_directory`` (default ``""``)
+``pg_xlog_directory`` (default ``"/var/lib/pgsql/data/pg_xlog"``)
 
-This is used when using a PostgreSQL  ``archive_command`` against ``pghoard``. It
-means the absolute path to the PostgreSQL ``pg_xlog`` directory.  Note that
-``pghoard`` will need to be able to read files from the directory in order to
-back them up.
+This is used when ``pghoard_postgres_command`` is used as PostgreSQL's
+``archive_command`` or ``restore_command``.  It should be set to the
+absolute path to the PostgreSQL ``pg_xlog`` directory.  Note that
+``pghoard`` will need to be able to read and write files from the directory
+in order to back them up or to recover them.
 
 ``restore_prefetch`` (default ``min(compression.thread_count,
 transfer.thread_count) - 1``)
@@ -445,6 +450,7 @@ Determines syslog log facility. (requires syslog to be true as well)
 * ``transfer`` WAL/basebackup transfer parameters
 
  * ``thread_count`` (default ``5``) number of parallel uploads/downloads
+
 
 License
 =======

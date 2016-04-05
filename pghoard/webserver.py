@@ -53,7 +53,7 @@ class WebServer(Thread):
         self.requested_basebackup_sites = requested_basebackup_sites
         self.compression_queue = compression_queue
         self.transfer_queue = transfer_queue
-        self.address = self.config.get("http_address", "")
+        self.address = self.config.get("http_address", "127.0.0.1")
         self.port = self.config.get("http_port", 16000)
         self.server = None
         self._running = False
