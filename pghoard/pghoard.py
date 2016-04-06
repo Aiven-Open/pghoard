@@ -329,7 +329,7 @@ class PGHoard(object):
             self.receivexlog_listener(site, xlog_path + "_incoming", connection_string, slot)
 
         if site not in self.time_of_last_backup_check or \
-                time.monotonic() - self.time_of_last_backup_check[site] > 60:
+                time.monotonic() - self.time_of_last_backup_check[site] > 300:
             self.time_of_last_backup[site] = self.check_backup_count_and_state(site)
             self.time_of_last_backup_check[site] = time.monotonic()
 
@@ -353,6 +353,9 @@ class PGHoard(object):
             self.log.info("Creating a new basebackup for %r due to request", site)
             self.requested_basebackup_sites.discard(site)
             new_backup_needed = True
+        elif site_config.get("basebackup_interval_hours") is None:
+            # Basebackups are disabled for this site (but they can still be requested over the API.)
+            pass
         elif self.time_of_last_backup.get(site) is None:
             self.log.info("Creating a new basebackup for %r because there are currently none", site)
             new_backup_needed = True

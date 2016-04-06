@@ -101,7 +101,7 @@ LABEL: pg_basebackup base backup
         assert pghoard.test_site not in pghoard.basebackups
 
         # create a new backup now that we have some state
-        time.sleep(1)
+        time.sleep(2)
         backup_start = time.monotonic()
         pghoard.handle_site(pghoard.test_site, site_config)
         assert pghoard.test_site in pghoard.basebackups
@@ -113,21 +113,6 @@ LABEL: pg_basebackup base backup
         first_time_of = pghoard.time_of_last_backup[pghoard.test_site]
         first_time_of_check = pghoard.time_of_last_backup_check[pghoard.test_site]
 
-        # create another backup by using the triggering mechanism
-        time.sleep(1)
-        pghoard.requested_basebackup_sites.add(pghoard.test_site)
-        pghoard.handle_site(pghoard.test_site, site_config)
-        assert pghoard.test_site in pghoard.basebackups
-        pghoard.basebackups_callbacks[pghoard.test_site].put(pghoard.basebackups_callbacks[pghoard.test_site].get())
-        # again, let pghoard notice the backup is done
-        pghoard.handle_site(pghoard.test_site, site_config)
-        assert pghoard.test_site not in pghoard.basebackups
-
-        second_time_of = pghoard.time_of_last_backup[pghoard.test_site]
-        second_time_of_check = pghoard.time_of_last_backup_check[pghoard.test_site]
-        assert second_time_of > first_time_of
-        assert second_time_of_check > first_time_of_check
-
         # reset the timer to something more sensible and make sure we don't trigger any new basebackups
         site_config["basebackup_interval_hours"] = 1
         pghoard.time_of_last_backup_check[pghoard.test_site] = 0
@@ -135,11 +120,26 @@ LABEL: pg_basebackup base backup
         pghoard.handle_site(pghoard.test_site, site_config)
         assert pghoard.test_site not in pghoard.basebackups
 
+        second_time_of = pghoard.time_of_last_backup[pghoard.test_site]
+        second_time_of_check = pghoard.time_of_last_backup_check[pghoard.test_site]
+        assert second_time_of == first_time_of
+        assert second_time_of_check > first_time_of_check
+
+        # create another backup by using the triggering mechanism
+        pghoard.requested_basebackup_sites.add(pghoard.test_site)
+        pghoard.handle_site(pghoard.test_site, site_config)
+        assert pghoard.test_site in pghoard.basebackups
+        # again, let pghoard notice the backup is done
+        pghoard.basebackups_callbacks[pghoard.test_site].put(pghoard.basebackups_callbacks[pghoard.test_site].get())
+        pghoard.handle_site(pghoard.test_site, site_config)
+        assert pghoard.test_site not in pghoard.basebackups
+
         third_time_of = pghoard.time_of_last_backup[pghoard.test_site]
         third_time_of_check = pghoard.time_of_last_backup_check[pghoard.test_site]
-        assert third_time_of == second_time_of
+        assert third_time_of > second_time_of
         assert third_time_of_check > second_time_of_check
 
+        # call handle_site yet again - nothing should happen and no timestamps should be updated
         time.sleep(1)
         pghoard.handle_site(pghoard.test_site, site_config)
         assert pghoard.test_site not in pghoard.basebackups
