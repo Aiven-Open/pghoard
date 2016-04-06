@@ -1,3 +1,9 @@
+pghoard 1.2.0 (2016-XX-XX)
+==========================
+
+* Trim log format when logging to journal under systemd
+* Emit a warning when running under systemd without python-systemd installed
+
 pghoard 1.1.0 (2016-04-05)
 ==========================
 

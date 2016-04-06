@@ -14,6 +14,7 @@ from pghoard.common import (
     get_object_storage_config,
     replication_connection_string_using_pgpass,
     set_syslog_handler,
+    syslog_format_str,
     write_json_file,
 )
 from pghoard.compressor import CompressorThread
@@ -468,8 +469,19 @@ def main(args=None):
     if not os.path.exists(arg.config):
         print("pghoard: {!r} doesn't exist".format(arg.config))
         return 1
-    try:
+
+    # Are we running under systemd?
+    if os.getenv("NOTIFY_SOCKET"):
+        logging.basicConfig(level=logging.DEBUG, format=syslog_format_str)
+        if not daemon:
+            print(
+                "WARNING: Running under systemd but python-systemd not available, "
+                "systemd won't see our notifications"
+            )
+    else:
         logging.basicConfig(level=logging.DEBUG, format=default_log_format_str)
+
+    try:
         pghoard = PGHoard(arg.config)
     except InvalidConfigurationError as ex:
         print("pghoard: failed to load config {}: {}".format(arg.config, ex))

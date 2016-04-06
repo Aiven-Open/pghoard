@@ -23,7 +23,7 @@ XLOG_RE = re.compile("^[A-F0-9]{24}$")
 
 
 default_log_format_str = "%(asctime)s\t%(name)s\t%(threadName)s\t%(levelname)s\t%(message)s"
-syslog_format_str = '%(name)s %(levelname)s: %(message)s'
+syslog_format_str = '%(name)s %(threadName)s %(levelname)s: %(message)s'
 
 
 def create_connection_string(connection_info):
