@@ -14,6 +14,7 @@ from pghoard.common import (
     get_object_storage_config,
     replication_connection_string_using_pgpass,
     set_syslog_handler,
+    syslog_format_str,
     write_json_file,
 )
 from pghoard.compressor import CompressorThread
@@ -328,7 +329,7 @@ class PGHoard(object):
             self.receivexlog_listener(site, xlog_path + "_incoming", connection_string, slot)
 
         if site not in self.time_of_last_backup_check or \
-                time.monotonic() - self.time_of_last_backup_check[site] > 60:
+                time.monotonic() - self.time_of_last_backup_check[site] > 300:
             self.time_of_last_backup[site] = self.check_backup_count_and_state(site)
             self.time_of_last_backup_check[site] = time.monotonic()
 
@@ -352,6 +353,9 @@ class PGHoard(object):
             self.log.info("Creating a new basebackup for %r due to request", site)
             self.requested_basebackup_sites.discard(site)
             new_backup_needed = True
+        elif site_config.get("basebackup_interval_hours") is None:
+            # Basebackups are disabled for this site (but they can still be requested over the API.)
+            pass
         elif self.time_of_last_backup.get(site) is None:
             self.log.info("Creating a new basebackup for %r because there are currently none", site)
             new_backup_needed = True
@@ -468,8 +472,19 @@ def main(args=None):
     if not os.path.exists(arg.config):
         print("pghoard: {!r} doesn't exist".format(arg.config))
         return 1
-    try:
+
+    # Are we running under systemd?
+    if os.getenv("NOTIFY_SOCKET"):
+        logging.basicConfig(level=logging.DEBUG, format=syslog_format_str)
+        if not daemon:
+            print(
+                "WARNING: Running under systemd but python-systemd not available, "
+                "systemd won't see our notifications"
+            )
+    else:
         logging.basicConfig(level=logging.DEBUG, format=default_log_format_str)
+
+    try:
         pghoard = PGHoard(arg.config)
     except InvalidConfigurationError as ex:
         print("pghoard: failed to load config {}: {}".format(arg.config, ex))

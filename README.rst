@@ -261,7 +261,7 @@ of new backups and to stop the deletion of old ones.
 Can be either ``pg_receivexlog`` or ``archive_command``. If set to
 ``pg_receivexlog``, ``pghoard`` will start up a ``pg_receivexlog`` process to be
 run against the database server.  If ``archive_command`` is set, we rely on the
-user setting the correct ``pg_archive_command``
+user setting the correct ``archive_command`` in ``postgresql.conf``.
 
 ``alert_file_dir`` (default ``os.getcwd()``)
 
@@ -289,9 +289,10 @@ more there are the more diskspace will be used.
 
 ``basebackup_interval_hours`` (no default)
 
-How often to take a new basebackup of a cluster. The shorter the interval,
-the faster your recovery will be, but the more CPU/IO usage is
-required from the servers it takes the basebackup from.
+How often to take a new basebackup of a cluster.  The shorter the interval,
+the faster your recovery will be, but the more CPU/IO usage is required from
+the servers it takes the basebackup from.  If omitted or set to a null value
+basebackups are not automatically taken at all.
 
 ``encryption_key_id`` (no default)
 

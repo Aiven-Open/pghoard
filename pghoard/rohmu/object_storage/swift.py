@@ -10,11 +10,32 @@ from contextlib import suppress
 from swiftclient import client, exceptions  # pylint: disable=import-error
 import datetime
 import dateutil.parser
+import logging
 import os
 import time
 
 CHUNK_SIZE = 1024 * 1024 * 5  # 5 Mi
 SEGMENT_SIZE = 1024 * 1024 * 1024  # 1 Gi
+
+
+# Swift client logs excessively at INFO level, outputting things like a curl
+# command line to recreate the request that failed with a simple 404 error.
+# At WARNING level curl commands are not logged, but we get a full ugly
+# traceback for all failures, including 404s.  Monkey-patch them away.
+def swift_exception_logger(err):
+    if not isinstance(err, exceptions.ClientException):
+        return orig_swift_exception_logger(err)
+    if getattr(err, "http_status", None) is None:
+        return orig_swift_exception_logger(err)
+    if err.http_status == 404 and err.msg.startswith("Object GET failed"):
+        client.logger.warning("GET %r FAILED: %r", err.http_path, err.http_status)
+    else:
+        client.logger.error(str(err))
+
+
+orig_swift_exception_logger = client.logger.exception
+client.logger.exception = swift_exception_logger
+logging.getLogger("swiftclient").setLevel(logging.WARNING)
 
 
 class SwiftTransfer(BaseTransfer):

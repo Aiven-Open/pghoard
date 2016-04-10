@@ -1,3 +1,13 @@
+pghoard 1.2.0 (2016-XX-XX)
+==========================
+
+* Creating new basebackups by timer can be disabled entirely for a site by
+  removing the basebackup_interval_hours option or setting it to a null
+  value
+* Trim log format when logging to journal under systemd
+* Emit a warning when running under systemd without python-systemd installed
+* Test improvements
+
 pghoard 1.1.0 (2016-04-05)
 ==========================
 
