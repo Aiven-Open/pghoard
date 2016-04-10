@@ -4,8 +4,8 @@ rohmu - local filesystem interface
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
-from contextlib import suppress
 from io import BytesIO
+from ..compat import suppress
 from ..errors import FileNotFoundFromStorageError, LocalFileIsRemoteFileError
 from . base import BaseTransfer
 import datetime

@@ -4,7 +4,7 @@ rohmu - inotify wrapper
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
-from contextlib import suppress
+from .compat import suppress
 from ctypes import c_int, c_uint32, c_char_p
 from threading import Thread
 import ctypes

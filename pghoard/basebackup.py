@@ -5,7 +5,7 @@ Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
 from .common import set_stream_nonblocking, set_subprocess_stdout_and_stderr_nonblocking, terminate_subprocess
-from contextlib import suppress
+from pghoard.rohmu.compat import suppress
 from pghoard.rohmu.compressor import Compressor
 from threading import Thread
 import datetime

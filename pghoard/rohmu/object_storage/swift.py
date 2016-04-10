@@ -5,8 +5,8 @@ Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
 from .base import BaseTransfer
+from ..compat import suppress
 from ..errors import FileNotFoundFromStorageError
-from contextlib import suppress
 from swiftclient import client, exceptions  # pylint: disable=import-error
 import datetime
 import dateutil.parser
