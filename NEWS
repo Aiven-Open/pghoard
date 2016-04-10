@@ -1,6 +1,7 @@
 pghoard 1.2.0 (2016-XX-XX)
 ==========================
 
+* Support for Python 3.3
 * Creating new basebackups by timer can be disabled entirely for a site by
   removing the basebackup_interval_hours option or setting it to a null
   value

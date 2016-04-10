@@ -94,7 +94,7 @@ Python/Other::
 
 This will produce an egg file into a dist directory within the same folder.
 
-``pghoard`` requires Python 3.4 or newer and PostgreSQL 9.3 or newer.
+``pghoard`` requires Python 3.3 or newer and PostgreSQL 9.3 or newer.
 
 
 Installation
