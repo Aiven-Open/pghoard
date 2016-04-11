@@ -58,7 +58,7 @@ def db():
     tmpdir_obj = py_path.local(tempfile.mkdtemp(prefix="pghoard_dbtest_"))
     tmpdir = str(tmpdir_obj)
     # try to find the binaries for these versions in some path
-    versions = ["9.5", "9.4", "9.3"]
+    versions = ["9.5", "9.4", "9.3", "9.2"]
     pathformats = ["/usr/pgsql-{ver}/bin", "/usr/lib/postgresql/{ver}/bin"]
     pgbin = None
     for ver in versions:

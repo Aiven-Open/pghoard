@@ -11,27 +11,53 @@ import select
 import subprocess
 import time
 
-from . common import set_subprocess_stdout_and_stderr_nonblocking, terminate_subprocess
+from . common import get_connection_info, set_subprocess_stdout_and_stderr_nonblocking, terminate_subprocess
 from threading import Thread
 
 
 class PGReceiveXLog(Thread):
-    def __init__(self, command):
+    def __init__(self, config, connection_string, xlog_location, slot, pg_version_server):
         super().__init__()
         self.log = logging.getLogger("PGReceiveXLog")
-        self.command = command
+        self.config = config
+        self.connection_string = connection_string
+        self.xlog_location = xlog_location
+        self.slot = slot
+        self.pg_version_server = pg_version_server
         self.pid = None
         self.running = False
         self.latest_activity = datetime.datetime.utcnow()
+        self.log.info("Initialized PGReceiveXLog")
 
     def run(self):
         self.running = True
-        self.log.debug("Starting to run: %r", self.command)
+
+        command = [
+            self.config.get("pg_receivexlog_path", "/usr/bin/pg_receivexlog"),
+            "--status-interval", "1",
+            "--verbose",
+            "--directory", self.xlog_location,
+        ]
+        if self.pg_version_server < 90300:
+            conn_info = get_connection_info(self.connection_string)
+            if "user" in conn_info:
+                command.extend(["--user", conn_info["user"]])
+            if "port" in conn_info:
+                command.extend(["--port", conn_info["port"]])
+            if "host" in conn_info:
+                command.extend(["--host", conn_info["host"]])
+        else:
+            command.extend(["--dbname", self.connection_string])
+
+        if self.pg_version_server >= 90400 and self.slot:
+            command.extend(["--slot", self.slot])
+
+        self.log.debug("Starting to run: %r", command)
         start_time = time.time()
-        proc = subprocess.Popen(self.command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         set_subprocess_stdout_and_stderr_nonblocking(proc)
         self.pid = proc.pid
-        self.log.info("Started: %r, running as PID: %r", self.command, self.pid)
+        self.log.info("Started: %r, running as PID: %r", command, self.pid)
         while self.running:
             rlist, _, _ = select.select([proc.stdout, proc.stderr], [], [], 1.0)
             for fd in rlist:
@@ -43,5 +69,5 @@ class PGReceiveXLog(Thread):
                 break
         rc = terminate_subprocess(proc, log=self.log)
         self.log.debug("Ran: %r, took: %.3fs to run, returncode: %r",
-                       self.command, time.time() - start_time, rc)
+                       command, time.time() - start_time, rc)
         self.running = False

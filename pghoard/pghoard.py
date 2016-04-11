@@ -99,8 +99,8 @@ class PGHoard(object):
         self.log.info("pghoard initialized, own_hostname: %r, cwd: %r", socket.gethostname(), os.getcwd())
 
     def check_pg_versions_ok(self, pg_version_server, command):
-        if not pg_version_server or pg_version_server <= 90300:
-            self.log.error("pghoard does not support versions earlier than 9.3, found: %r", pg_version_server)
+        if not pg_version_server or pg_version_server <= 90200:
+            self.log.error("pghoard does not support versions earlier than 9.2, found: %r", pg_version_server)
             create_alert_file(self.config, "version_unsupported_error")
             return False
         command_path = self.config.get(command + "_path", "/usr/bin/" + command)
@@ -136,7 +136,8 @@ class PGHoard(object):
             compression_queue=self.compression_queue,
             transfer_queue=self.transfer_queue,
             callback_queue=callback_queue,
-            start_wal_segment=current_xlog)
+            start_wal_segment=current_xlog,
+            pg_version_server=pg_version_server)
         thread.start()
         self.basebackups[site] = thread
 
@@ -160,19 +161,14 @@ class PGHoard(object):
         pg_version_server = self.check_pg_server_version(connection_string)
         if not self.check_pg_versions_ok(pg_version_server, "pg_receivexlog"):
             return
-        command = [
-            self.config.get("pg_receivexlog_path", "/usr/bin/pg_receivexlog"),
-            "--dbname", connection_string,
-            "--status-interval", "1",
-            "--verbose",
-            "--directory", xlog_location,
-        ]
-
-        if pg_version_server >= 90400 and slot:
-            command.extend(["--slot", slot])
 
         self.inotify.add_watch(xlog_location)
-        thread = PGReceiveXLog(command)
+        thread = PGReceiveXLog(
+            config=self.config,
+            connection_string=connection_string,
+            xlog_location=xlog_location,
+            slot=slot,
+            pg_version_server=pg_version_server)
         thread.start()
         self.receivexlogs[cluster] = thread
 

@@ -4,7 +4,8 @@ pghoard - pg_basebackup handler
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
-from .common import set_stream_nonblocking, set_subprocess_stdout_and_stderr_nonblocking, terminate_subprocess
+from .common import (get_connection_info, set_stream_nonblocking, set_subprocess_stdout_and_stderr_nonblocking,
+                     terminate_subprocess)
 from pghoard.rohmu.compat import suppress
 from pghoard.rohmu.compressor import Compressor
 from threading import Thread
@@ -21,7 +22,7 @@ import time
 class PGBaseBackup(Thread):
     def __init__(self, config, site, connection_string, basebackup_path,
                  compression_queue, transfer_queue=None,
-                 callback_queue=None, start_wal_segment=None):
+                 callback_queue=None, start_wal_segment=None, pg_version_server=None):
         super().__init__()
         self.log = logging.getLogger("PGBaseBackup")
         self.config = config
@@ -35,6 +36,7 @@ class PGBaseBackup(Thread):
         self.target_basebackup_path = None
         self.running = True
         self.pid = None
+        self.pg_version_server = pg_version_server
         self.latest_activity = datetime.datetime.utcnow()
 
     def get_command_line(self):
@@ -52,12 +54,22 @@ class PGBaseBackup(Thread):
 
         command = [
             self.config.get("pg_basebackup_path", "/usr/bin/pg_basebackup"),
-            "--dbname", self.connection_string,
             "--format", "tar",
             "--label", "pghoard_base_backup",
             "--progress",
             "--verbose",
             ]
+        if self.pg_version_server < 90300:
+            conn_info = get_connection_info(self.connection_string)
+            if "user" in conn_info:
+                command.extend(["--user", conn_info["user"]])
+            if "port" in conn_info:
+                command.extend(["--port", conn_info["port"]])
+            if "host" in conn_info:
+                command.extend(["--host", conn_info["host"]])
+        else:
+            command.extend(["--dbname", self.connection_string])
+
         if self.config["backup_sites"][self.site].get("stream_compression") is True:
             self.target_basebackup_path = final_basebackup_path
             command.extend(["--pgdata", "-"])  # special meaning, output to stdout
