@@ -4,8 +4,8 @@ pghoard
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
-from contextlib import suppress
 from pghoard.common import create_alert_file, get_object_storage_config
+from pghoard.rohmu.compat import suppress
 from pghoard.rohmu.errors import (
     FileNotFoundFromStorageError,
     LocalFileIsRemoteFileError,

@@ -110,7 +110,7 @@ def db():
             pass
 
 
-@pytest.yield_fixture
+@pytest.yield_fixture  # pylint: disable=redefined-outer-name
 def pghoard(db, tmpdir, request):  # pylint: disable=redefined-outer-name
     test_site = request.function.__name__
     config = {

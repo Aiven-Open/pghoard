@@ -50,7 +50,7 @@ class TestEncryptor(PGHoardTestCase):
         data_tmp.flush()
 
         tmp = tempfile.TemporaryFile(prefix="test-pghoard.", mode="r+b")
-        tar = tarfile.open(fileobj=tmp, mode="w")
+        tar = tarfile.open(name="foo", fileobj=tmp, mode="w")
         tar.add(data_tmp.name, arcname="archived_content")
         tar.close()
 

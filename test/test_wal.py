@@ -9,7 +9,7 @@ import pytest
 import struct
 from pghoard import wal
 
-WAL_HEADER_95 = codecs.decode(b"87d006002f0000000000009c1100000000000000", "hex")
+WAL_HEADER_95 = codecs.decode(b"87d006002f0000000000009c1100000000000000", "hex_codec")
 
 
 def wal_header_for_file(name):
