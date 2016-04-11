@@ -12,10 +12,30 @@ from pghoard import wal
 WAL_HEADER_95 = codecs.decode(b"87d006002f0000000000009c1100000000000000", "hex_codec")
 
 
-def wal_header_for_file(name):
+def wal_header_for_file(name, version=90500):
     tli, log, seg = wal.name_to_tli_log_seg(name)
+    if version < 90300:
+        recoff = seg * wal.XLOG_SEG_SIZE
+        return struct.pack("=HHILLI", wal.WAL_MAGIC_BY_VERSION[version], 0, tli, log, recoff, 0)
     pageaddr = (log << 32) | (seg * wal.XLOG_SEG_SIZE)
-    return struct.pack("=HHIQI", list(wal.WAL_MAGIC).pop(0), 0, tli, pageaddr, 0)
+    return struct.pack("=HHIQI", wal.WAL_MAGIC_BY_VERSION[version], 0, tli, pageaddr, 0)
+
+
+def test_wal_header_pg92():
+    header = b'q\xd0\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\xef\xfc\rW'
+    walheader = wal.read_header(header)
+    assert walheader.lsn == "0/1000000"
+    assert walheader.filename == "000000010000000000000001"
+    constructed_header = wal_header_for_file("000000010000000000000001", version=90200)
+    # Ignore the useless rem_len field
+    assert constructed_header[:-4] == header[:-4]
+
+
+def test_wal_header_pg95():
+    header = b'\x87\xd0\x02\x00\x01\x00\x00\x00\x00\x00\x00\x0b\x00\x00\x00\x00\x00\x00\x00\x00'
+    walheader = wal.read_header(header)
+    assert walheader.lsn == "0/B000000"
+    assert walheader.filename == "00000001000000000000000B"
 
 
 def test_wal_header():
