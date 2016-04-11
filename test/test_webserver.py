@@ -239,11 +239,16 @@ class TestWebServer(object):
         backup_xlog_path = os.path.join(pghoard.config["backup_location"], pghoard.test_site, bl_file)
         with open(xlog_path, "w") as fp:
             fp.write("jee")
+        # backup labels are ignored - archiving returns success but file won't appear on disk
+        archive_command(host="127.0.0.1", port=pghoard.config["http_port"],
+                        site=pghoard.test_site, xlog=bl_label)
+        assert not os.path.exists(backup_xlog_path)
+        # any other files raise an error
         with pytest.raises(postgres_command.PGCError) as excinfo:
             archive_command(host="127.0.0.1", port=pghoard.config["http_port"],
-                            site=pghoard.test_site, xlog=bl_label)
+                            site=pghoard.test_site, xlog=bl_label + ".x")
         assert excinfo.value.exit_code == postgres_command.EXIT_ARCHIVE_FAIL
-        assert not os.path.exists(backup_xlog_path)
+        assert not os.path.exists(backup_xlog_path + ".x")
 
     def test_get_invalid(self, pghoard, tmpdir):
         ne_xlog_seg = "0000FFFF0000000C000000FE"

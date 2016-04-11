@@ -54,6 +54,9 @@ def http_request(host, port, method, path, headers=None):
 
 
 def archive_command(site, xlog, host=PGHOARD_HOST, port=PGHOARD_PORT):
+    if xlog.endswith(".backup"):
+        print("Ignoring request to archive backup label {!r}: PGHoard does not use them".format(xlog))
+        return
     status = http_request(host, port, "PUT", "/{}/archive/{}".format(site, xlog))
     if status == 201:
         return
