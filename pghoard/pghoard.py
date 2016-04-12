@@ -428,7 +428,7 @@ class PGHoard(object):
         if self.config.get("syslog") and not self.syslog_handler:
             self.syslog_handler = set_syslog_handler(self.config.get("syslog_address", "/dev/log"),
                                                      self.config.get("syslog_facility", "local2"),
-                                                     self.log)
+                                                     logging.getLogger())
         self.log_level = getattr(logging, self.config.get("log_level", "DEBUG"))
         try:
             logging.getLogger().setLevel(self.log_level)
