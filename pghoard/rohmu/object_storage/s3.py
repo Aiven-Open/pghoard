@@ -7,10 +7,16 @@ See LICENSE for details
 import boto.exception
 import boto.s3
 import dateutil.parser
+import math
+import os
+import time
 from boto.s3.connection import OrdinaryCallingFormat
 from boto.s3.key import Key
-from .. errors import FileNotFoundFromStorageError, InvalidConfigurationError
+from .. errors import Error, FileNotFoundFromStorageError, InvalidConfigurationError
 from .base import BaseTransfer
+
+
+MULTIPART_CHUNK_SIZE = 1024 * 1024 * 100
 
 
 def _location_for_region(region):
@@ -31,7 +37,8 @@ class S3Transfer(BaseTransfer):
                  prefix=None,
                  host=None,
                  port=None,
-                 is_secure=False):
+                 is_secure=False,
+                 segment_size=MULTIPART_CHUNK_SIZE):
         super().__init__(prefix=prefix)
         self.region = region
         self.location = _location_for_region(region)
@@ -45,6 +52,7 @@ class S3Transfer(BaseTransfer):
             self.conn = boto.s3.connect_to_region(region_name=region, aws_access_key_id=aws_access_key_id,
                                                   aws_secret_access_key=aws_secret_access_key)
         self.bucket = self.get_or_create_bucket(self.bucket_name)
+        self.multipart_chunk_size = segment_size
         self.log.debug("S3Transfer initialized")
 
     def get_metadata_for_key(self, key):
@@ -112,13 +120,57 @@ class S3Transfer(BaseTransfer):
                 s3key.set_metadata(k, v)
         s3key.set_contents_from_string(memstring, replace=True)
 
+    def _store_multipart_upload(self, mp, fp, part_num, filepath):
+        retries = 0
+        pos = fp.tell()
+        while retries < 100:
+            try:
+                self.log.debug("Uploading part: %r of %r, bytes: %r-%r, retries: %r",
+                               part_num, filepath,
+                               (part_num - 1) * self.multipart_chunk_size, part_num * self.multipart_chunk_size,
+                               retries)
+                mp.upload_part_from_file(fp=fp, part_num=part_num, size=self.multipart_chunk_size)
+                return True
+            except:  # pylint: disable=bare-except
+                self.log.exception("Upload of part: %r of %r failed, retries: %r", filepath, part_num, retries)
+                time.sleep(1.0)
+                retries += 1
+                fp.seek(pos, os.SEEK_SET)
+        return False
+
     def store_file_from_disk(self, key, filepath, metadata=None, multipart=None):
-        s3key = Key(self.bucket)
-        s3key.key = self.format_key_for_backend(key)
-        if metadata:
-            for k, v in metadata.items():
-                s3key.set_metadata(k, v)
-        s3key.set_contents_from_filename(filepath, replace=True)
+        size = os.path.getsize(filepath)
+        key = self.format_key_for_backend(key)
+        if not multipart or size <= self.multipart_chunk_size:
+            s3key = Key(self.bucket)
+            s3key.key = key
+            if metadata:
+                for k, v in metadata.items():
+                    s3key.set_metadata(k, v)
+            s3key.set_contents_from_filename(filepath, replace=True)
+        else:
+            start_of_multipart_upload = time.monotonic()
+            chunks = math.ceil(size / self.multipart_chunk_size)
+            self.log.debug("Starting to upload multipart file: %r, size: %r, chunks: %d",
+                           key, size, chunks)
+            mp = self.bucket.initiate_multipart_upload(key, metadata=metadata)
+
+            with open(filepath, "rb") as fp:
+                for part_num in range(1, chunks + 1):
+                    start_time = time.monotonic()
+                    if not self._store_multipart_upload(mp, fp, part_num, filepath):
+                        raise Error("Problem with multipart upload of: {}".format(key))
+                    self.log.info("Upload of part: %r/%r of %r, part size: %r took: %.2fs",
+                                  part_num, chunks, filepath, self.multipart_chunk_size,
+                                  time.monotonic() - start_time)
+            if len(mp.get_all_parts()) == chunks:
+                self.log.info("Multipart upload of %r, size: %r, took: %.2fs, now completing multipart",
+                              filepath, size, time.monotonic() - start_of_multipart_upload)
+                mp.complete_upload()
+            else:
+                self.log.error("Error in multipart upload: %r %r, canceling", key, filepath)
+                mp.cancel_upload()
+                raise Error("Problem completing multipart upload of: {}".format(key))
 
     def get_or_create_bucket(self, bucket_name):
         try:
