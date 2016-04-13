@@ -233,7 +233,7 @@ dbname|"""
         assert self.pghoard.compression_queue.qsize() == 1
 
 
-class TestPGHoardWithPG(object):
+class TestPGHoardWithPG:
     def test_auth_alert_files(self, db, pghoard):
         def clean_alert_files():
             for f in os.listdir(pghoard.config["alert_file_dir"]):

@@ -18,7 +18,7 @@ class SyncError(Exception):
     pass
 
 
-class ArchiveSync(object):
+class ArchiveSync:
     """Iterate over xlog directory in reverse alphanumeric order and upload
     files to object storage until we find a file that already exists there.
     This can be used after a failover has happened to make sure the archive

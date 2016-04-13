@@ -15,7 +15,7 @@ import tarfile
 import time
 
 
-class TestPGBaseBackup(object):
+class TestPGBaseBackup:
     def test_parse_backup_label(self, tmpdir):
         td = str(tmpdir)
         fn = os.path.join(td, "backup.tar")

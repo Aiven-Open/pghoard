@@ -23,7 +23,7 @@ class EncryptorError(Exception):
     """ EncryptorError """
 
 
-class Encryptor(object):
+class Encryptor:
     def __init__(self, rsa_public_key_pem):
         if not isinstance(rsa_public_key_pem, bytes):
             rsa_public_key_pem = rsa_public_key_pem.encode("ascii")
@@ -61,7 +61,7 @@ class Encryptor(object):
         return ret
 
 
-class Decryptor(object):
+class Decryptor:
     def __init__(self, rsa_private_key_pem):
         if not isinstance(rsa_private_key_pem, bytes):
             rsa_private_key_pem = rsa_private_key_pem.encode("ascii")

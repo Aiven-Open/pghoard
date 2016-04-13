@@ -106,8 +106,11 @@ class PGBaseBackup(Thread):
             compressed_filepath=basebackup_path,
             compression_algorithm=compression_algorithm,
             rsa_public_key=rsa_public_key)
-        return original_input_size, compressed_file_size, {"compression-algorithm": compression_algorithm,
-                                                           "encryption-key-id": encryption_key_id}
+        metadata = {
+            "compression-algorithm": compression_algorithm,
+            "encryption-key-id": encryption_key_id,
+        }
+        return original_input_size, compressed_file_size, metadata
 
     def poll_until_uncompressed_basebackup_ready(self, proc):
         set_subprocess_stdout_and_stderr_nonblocking(proc)

@@ -46,7 +46,7 @@ except ImportError:
     daemon = None
 
 
-class PGHoard(object):
+class PGHoard:
     def __init__(self, config_path):
         self.log = logging.getLogger("pghoard")
         self.log_level = None
@@ -60,7 +60,7 @@ class PGHoard(object):
         self.state = {
             "backup_sites": {},
             "startup_time": datetime.datetime.utcnow().isoformat(),
-            }
+        }
         self.load_config()
 
         if not os.path.exists(self.config["backup_location"]):
@@ -258,7 +258,7 @@ class PGHoard(object):
     def check_backup_count_and_state(self, site):
         """Look up basebackups from the object store, prune any extra
         backups and return the datetime of the latest backup."""
-        allowed_basebackup_count = self.config['backup_sites'][site]['basebackup_count']
+        allowed_basebackup_count = self.config["backup_sites"][site]["basebackup_count"]
         basebackups = self.get_remote_basebackups_info(site)
         self.log.debug("Found %r basebackups", basebackups)
 
@@ -279,13 +279,13 @@ class PGHoard(object):
             if last_wal_segment_still_needed:
                 self.delete_remote_wal_before(last_wal_segment_still_needed, site)
             self.delete_remote_basebackup(site, basebackup_to_be_deleted["name"])
-        self.state["backup_sites"][site]['basebackups'] = basebackups
+        self.state["backup_sites"][site]["basebackups"] = basebackups
 
         return last_backup_time
 
     def set_state_defaults(self, site):
         if site not in self.state["backup_sites"]:
-            self.state['backup_sites'][site] = {"basebackups": []}
+            self.state["backup_sites"][site] = {"basebackups": []}
 
     def startup_walk_for_missed_files(self):
         for site in self.config["backup_sites"]:
@@ -372,7 +372,7 @@ class PGHoard(object):
         self.startup_walk_for_missed_files()
         while self.running:
             try:
-                for site, site_config in self.config['backup_sites'].items():
+                for site, site_config in self.config["backup_sites"].items():
                     self.handle_site(site, site_config)
                 self.write_backup_state_to_json_file()
             except:  # pylint: disable=bare-except
@@ -460,7 +460,7 @@ def main(args=None):
     parser = argparse.ArgumentParser(
         prog="pghoard",
         description="postgresql automatic backup daemon")
-    parser.add_argument("--version", action='version', help="show program version",
+    parser.add_argument("--version", action="version", help="show program version",
                         version=version.__version__)
     parser.add_argument("config", help="configuration file")
     arg = parser.parse_args(args)

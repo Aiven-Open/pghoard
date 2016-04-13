@@ -19,7 +19,7 @@ except ImportError:
     snappy = None
 
 
-class SnappyFile(object):
+class SnappyFile:
     def __init__(self, fp):
         self._comp = snappy.StreamDecompressor()
         self._fp = fp
@@ -99,7 +99,7 @@ class Compressor:
             fp.write(data)
 
         self.log.debug("Decompressed %d byte file: %r to %d bytes, took: %.3fs",
-                       len(event['blob']), event['local_path'], os.path.getsize(event['local_path']),
+                       len(event["blob"]), event["local_path"], os.path.getsize(event["local_path"]),
                        time.monotonic() - start_time)
 
     def decompress_from_fileobj_to_fileobj(self, fsrc, metadata, rsa_private_key=None):

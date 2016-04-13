@@ -29,7 +29,7 @@ def http_restore(pghoard):
     return HTTPRestore("localhost", pghoard.config["http_port"], site=pghoard.test_site, pgdata=pgdata)
 
 
-class TestWebServer(object):
+class TestWebServer:
     def test_list_empty_basebackups(self, pghoard, http_restore, capsys):  # pylint: disable=redefined-outer-name
         # List with direct HttpRestore access
         assert http_restore.list_basebackups() == []

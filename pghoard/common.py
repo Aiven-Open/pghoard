@@ -4,6 +4,7 @@ pghoard - common utility functions
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
+from pghoard.rohmu.compat import suppress
 from pghoard.rohmu.errors import Error, InvalidConfigurationError
 from urllib.parse import urlparse, parse_qs
 import datetime
@@ -23,7 +24,7 @@ XLOG_RE = re.compile("^[A-F0-9]{24}$")
 
 
 default_log_format_str = "%(asctime)s\t%(name)s\t%(threadName)s\t%(levelname)s\t%(message)s"
-syslog_format_str = '%(name)s %(threadName)s %(levelname)s: %(message)s'
+syslog_format_str = "%(name)s %(threadName)s %(levelname)s: %(message)s"
 
 
 def create_connection_string(connection_info):
@@ -251,6 +252,5 @@ def create_alert_file(config, filename):
 
 def delete_alert_file(config, filename):
     filepath = os.path.join(config.get("alert_file_dir", os.getcwd()), filename)
-    if os.path.exists(filepath):
-        LOG.debug("Deleting alert file: %r", filepath)
+    with suppress(FileNotFoundError):
         os.unlink(filepath)

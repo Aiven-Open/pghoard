@@ -82,7 +82,7 @@ def print_basebackup_list(basebackups, *, caption="Available basebackups"):
         print(fmt(name=b["name"], size=size_str, time=lm_str, meta=meta))
 
 
-class Restore(object):
+class Restore:
     def __init__(self):
         self.config = None
         self.log = logging.getLogger("PGHoardRestore")
@@ -277,7 +277,7 @@ class Restore(object):
             return 1
 
 
-class ObjectStore(object):
+class ObjectStore:
     def __init__(self, storage, path_prefix, site, pgdata):
         self.storage = storage
         self.path_prefix = path_prefix

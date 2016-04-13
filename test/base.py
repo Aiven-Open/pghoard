@@ -37,7 +37,7 @@ nkMAHqg9PS372Cs=
 -----END PRIVATE KEY-----"""
 
 
-class PGHoardTestCase(object):
+class PGHoardTestCase:
     @classmethod
     def setup_class(cls):
         cls.log = logging.getLogger(cls.__name__)

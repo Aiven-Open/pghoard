@@ -16,7 +16,7 @@ WAL_MAGIC = {
     0xD07E: 90400,
     0xD087: 90500,
 }
-WAL_MAGIC_BY_VERSION = dict((value, key) for key, value in WAL_MAGIC.items())
+WAL_MAGIC_BY_VERSION = {value: key for key, value in WAL_MAGIC.items()}
 
 # NOTE: XLOG_SEG_SIZE is a ./configure option in PostgreSQL, but in practice it
 # looks like everyone uses the default (16MB) and it's all we support for now.

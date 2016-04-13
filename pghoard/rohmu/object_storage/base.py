@@ -8,7 +8,7 @@ from ..errors import StorageError
 import logging
 
 
-class BaseTransfer(object):
+class BaseTransfer:
     def __init__(self, prefix):
         self.log = logging.getLogger(self.__class__.__name__)
         if not prefix:

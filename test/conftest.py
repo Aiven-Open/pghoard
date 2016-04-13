@@ -23,7 +23,7 @@ import time
 logging.basicConfig(level=logging.DEBUG, format=default_log_format_str)
 
 
-class TestPG(object):
+class TestPG:
     def __init__(self, pgbin, pgdata):
         self.pgbin = pgbin
         self.pgdata = pgdata
