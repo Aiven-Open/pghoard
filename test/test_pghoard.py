@@ -6,7 +6,7 @@ See LICENSE for details
 """
 # pylint: disable=attribute-defined-outside-init
 from .base import PGHoardTestCase
-from pghoard.common import create_alert_file, create_connection_string, delete_alert_file
+from pghoard.common import create_alert_file, create_connection_string, delete_alert_file, write_json_file
 from pghoard.pghoard import PGHoard
 from unittest.mock import Mock, patch
 import datetime
@@ -14,35 +14,19 @@ import json
 import os
 
 
-def create_json_conf(filepath, temp_dir, test_site):
-    conf = {
-        "backup_sites": {
-            test_site: {
-                "nodes": [
-                    {"host": "1.2.3.4"},
-                ],
-                "basebackup_interval_hours": 1,
-                "basebackup_count": 1,
-                "object_storage": {
-                    "storage_type": "local",
-                    "directory": os.path.join(temp_dir, "backups"),
-                },
-            },
-        },
-        "backup_location": os.path.join(temp_dir, "backups"),
-        "alert_file_dir": temp_dir,
-        "json_state_file_path": temp_dir + "/state.json",
-    }
-    with open(filepath, "w") as fp:
-        json.dump(conf, fp)
-    return conf
-
-
 class TestPGHoard(PGHoardTestCase):
     def setup_method(self, method):
         super().setup_method(method)
+        self.config = self.config_template()
+        self.config["backup_sites"][self.test_site].update({
+            "basebackup_count": 1,
+            "basebackup_interval_hours": 1,
+            "nodes": [{"host": "127.0.0.4"}],
+        })
         config_path = os.path.join(self.temp_dir, "pghoard.json")
-        self.config = create_json_conf(config_path, self.temp_dir, self.test_site)
+        write_json_file(config_path, self.config)
+        os.makedirs(self.config["alert_file_dir"], exist_ok=True)
+
         backup_site_path = os.path.join(self.config["backup_location"], self.test_site)
         self.compressed_xlog_path = os.path.join(backup_site_path, "xlog")
         os.makedirs(self.compressed_xlog_path)
@@ -200,7 +184,7 @@ dbname|"""
         assert len(os.listdir(self.compressed_xlog_path)) == 1
 
     def test_alert_files(self):
-        alert_file_path = os.path.join(self.temp_dir, "test_alert")
+        alert_file_path = os.path.join(self.config["alert_file_dir"], "test_alert")
         create_alert_file(self.pghoard.config, "test_alert")
         assert os.path.exists(alert_file_path) is True
         delete_alert_file(self.pghoard.config, "test_alert")
@@ -208,7 +192,7 @@ dbname|"""
 
     def test_backup_state_file(self):
         self.pghoard.write_backup_state_to_json_file()
-        state_path = os.path.join(self.temp_dir, "state.json")
+        state_path = self.config["json_state_file_path"]
         thread_count = 5
         with open(state_path, "r") as fp:
             state = json.load(fp)

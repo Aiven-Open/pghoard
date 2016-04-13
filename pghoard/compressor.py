@@ -30,7 +30,7 @@ class CompressorThread(Thread, Compressor):
         else:
             backupname = os.path.basename(original_path)
 
-        cfp = os.path.join(self.config["backup_location"], self.config.get("path_prefix", ""), site, filetype, backupname)
+        cfp = os.path.join(self.config["backup_location"], self.config["path_prefix"], site, filetype, backupname)
         self.log.debug("compressed_file_path for %r is %r", original_path, cfp)
         return cfp
 
@@ -43,7 +43,7 @@ class CompressorThread(Thread, Compressor):
         return filepath.split("/")[-3]
 
     def compression_algorithm(self):
-        return self.config.get("compression", {}).get("algorithm", "snappy")
+        return self.config["compression"]["algorithm"]
 
     def run(self):
         while self.running:
@@ -106,14 +106,14 @@ class CompressorThread(Thread, Compressor):
     def handle_event(self, event, filetype):
         rsa_public_key = None
         site = event.get("site", self.find_site_for_file(event["full_path"]))
-        encryption_key_id = self.config["backup_sites"][site].get("encryption_key_id", None)
+        encryption_key_id = self.config["backup_sites"][site]["encryption_key_id"]
         if encryption_key_id:
             rsa_public_key = self.config["backup_sites"][site]["encryption_keys"][encryption_key_id]["public"]
 
         if event.get("compress_to_memory", False):
             original_file_size, compressed_blob = self.compress_filepath_to_memory(
                 filepath=event["full_path"],
-                compression_algorithm=self.compression_algorithm(),
+                compression_algorithm=self.config["compression"]["algorithm"],
                 rsa_public_key=rsa_public_key)
             compressed_file_size = len(compressed_blob)
             compressed_filepath = None
@@ -123,7 +123,7 @@ class CompressorThread(Thread, Compressor):
             original_file_size, compressed_file_size = self.compress_filepath(
                 filepath=event["full_path"],
                 compressed_filepath=compressed_filepath,
-                compression_algorithm=self.compression_algorithm(),
+                compression_algorithm=self.config["compression"]["algorithm"],
                 rsa_public_key=rsa_public_key)
 
         if event.get("delete_file_after_compression", True):
@@ -131,7 +131,7 @@ class CompressorThread(Thread, Compressor):
 
         metadata = event.get("metadata", {})
         metadata.update({
-            "compression-algorithm": self.compression_algorithm(),
+            "compression-algorithm": self.config["compression"]["algorithm"],
             "original-file-size": original_file_size,
         })
         if encryption_key_id:

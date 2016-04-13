@@ -26,25 +26,20 @@ class Compression(PGHoardTestCase):
 
     def setup_method(self, method):
         super().setup_method(method)
-        self.config = {
-            "backup_sites": {
-                self.test_site: {
-                    "object_storage": {
-                        "storage_type": "s3",
-                    },
-                    "encryption_keys": {
-                        "testkey": {
-                            "public": CONSTANT_TEST_RSA_PUBLIC_KEY,
-                            "private": CONSTANT_TEST_RSA_PRIVATE_KEY
-                        },
-                    },
+        self.config = self.config_template()
+        self.config["backup_sites"][self.test_site] = {
+            "encryption_key_id": None,
+            "encryption_keys": {
+                "testkey": {
+                    "public": CONSTANT_TEST_RSA_PUBLIC_KEY,
+                    "private": CONSTANT_TEST_RSA_PRIVATE_KEY
                 },
             },
-            "backup_location": os.path.join(self.temp_dir, "backups"),
-            "compression": {
-                "algorithm": self.algorithm,
-            }
+            "object_storage": {
+                "storage_type": "s3",
+            },
         }
+        self.config["compression"]["algorithm"] = self.algorithm
         self.compression_queue = Queue()
         self.transfer_queue = Queue()
         self.incoming_path = os.path.join(self.temp_dir, self.test_site, "xlog")
@@ -218,7 +213,7 @@ class Compression(PGHoardTestCase):
     def test_decompression_decrypt_event(self):
         _, blob = self.compressor.compress_filepath_to_memory(
             self.random_file_path,
-            compression_algorithm=self.compressor.compression_algorithm(),
+            compression_algorithm=self.config["compression"]["algorithm"],
             rsa_public_key=CONSTANT_TEST_RSA_PUBLIC_KEY)
         callback_queue = Queue()
         local_filepath = os.path.join(self.temp_dir, "00000001000000000000000E")

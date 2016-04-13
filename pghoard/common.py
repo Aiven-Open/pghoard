@@ -232,7 +232,7 @@ def get_object_storage_config(config, site):
         storage_config = config["backup_sites"][site]["object_storage"]
     except KeyError:
         # fall back to `local` driver at `backup_location` if set
-        if not config.get("backup_location"):
+        if not config["backup_location"]:
             return None
         storage_config = {
             "directory": config["backup_location"],
@@ -244,13 +244,13 @@ def get_object_storage_config(config, site):
 
 
 def create_alert_file(config, filename):
-    filepath = os.path.join(config.get("alert_file_dir", os.getcwd()), filename)
+    filepath = os.path.join(config["alert_file_dir"], filename)
     LOG.warning("Creating alert file: %r", filepath)
     with open(filepath, "w") as fp:
         fp.write("alert")
 
 
 def delete_alert_file(config, filename):
-    filepath = os.path.join(config.get("alert_file_dir", os.getcwd()), filename)
+    filepath = os.path.join(config["alert_file_dir"], filename)
     with suppress(FileNotFoundError):
         os.unlink(filepath)

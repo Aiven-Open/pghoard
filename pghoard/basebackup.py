@@ -53,7 +53,7 @@ class PGBaseBackup(Thread):
             i += 1
 
         command = [
-            self.config.get("pg_basebackup_path", "/usr/bin/pg_basebackup"),
+            self.config["pg_basebackup_path"],
             "--format", "tar",
             "--label", "pghoard_base_backup",
             "--progress",
@@ -70,7 +70,7 @@ class PGBaseBackup(Thread):
         else:
             command.extend(["--dbname", self.connection_string])
 
-        if self.config["backup_sites"][self.site].get("stream_compression") is True:
+        if self.config["backup_sites"][self.site]["stream_compression"] is True:
             self.target_basebackup_path = final_basebackup_path
             command.extend(["--pgdata", "-"])  # special meaning, output to stdout
         else:
@@ -93,11 +93,11 @@ class PGBaseBackup(Thread):
 
     def compress_directly_to_a_file(self, proc, basebackup_path):
         rsa_public_key = None
-        encryption_key_id = self.config["backup_sites"][self.site].get("encryption_key_id", None)
+        encryption_key_id = self.config["backup_sites"][self.site]["encryption_key_id"]
         if encryption_key_id:
             rsa_public_key = self.config["backup_sites"][self.site]["encryption_keys"][encryption_key_id]["public"]
         c = Compressor()
-        compression_algorithm = self.config.get("compression", {}).get("algorithm", "snappy")
+        compression_algorithm = self.config["compression"]["algorithm"]
         self.log.debug("Compressing basebackup directly to file: %r", basebackup_path)
         set_stream_nonblocking(proc.stderr)
         original_input_size, compressed_file_size = c.compress_filepath(
@@ -151,7 +151,7 @@ class PGBaseBackup(Thread):
         self.log.info("Started: %r, running as PID: %r, basebackup_location: %r",
                       command, self.pid, self.target_basebackup_path)
 
-        if self.config["backup_sites"][self.site].get("stream_compression") is True:
+        if self.config["backup_sites"][self.site]["stream_compression"] is True:
             stream_target = self.target_basebackup_path + ".tmp-stream"
             original_input_size, compressed_file_size, metadata = \
                 self.compress_directly_to_a_file(proc, stream_target)

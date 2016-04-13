@@ -24,11 +24,22 @@ logging.basicConfig(level=logging.DEBUG, format=default_log_format_str)
 
 
 class TestPG:
-    def __init__(self, pgbin, pgdata):
-        self.pgbin = pgbin
+    def __init__(self, pgdata):
+        self.pgbin = self.find_pgbin()
         self.pgdata = pgdata
         self.pg = None
         self.user = None
+
+    @staticmethod
+    def find_pgbin():
+        versions = ["9.5", "9.4", "9.3", "9.2"]
+        pathformats = ["/usr/pgsql-{ver}/bin", "/usr/lib/postgresql/{ver}/bin"]
+        for ver in versions:
+            for pathfmt in pathformats:
+                pgbin = pathfmt.format(ver=ver)
+                if os.path.exists(pgbin):
+                    return pgbin
+        return "/usr/bin"
 
     def run_cmd(self, cmd, *args):
         argv = ["{}/{}".format(self.pgbin, cmd)]
@@ -58,20 +69,8 @@ def db():
     tmpdir_obj = py_path.local(tempfile.mkdtemp(prefix="pghoard_dbtest_"))
     tmpdir = str(tmpdir_obj)
     # try to find the binaries for these versions in some path
-    versions = ["9.5", "9.4", "9.3", "9.2"]
-    pathformats = ["/usr/pgsql-{ver}/bin", "/usr/lib/postgresql/{ver}/bin"]
-    pgbin = None
-    for ver in versions:
-        for pathfmt in pathformats:
-            pgbin = pathfmt.format(ver=ver)
-            if os.path.exists(pgbin):
-                break
-        if os.path.exists(pgbin):
-            break
-    if not os.path.exists(pgbin):
-        pgbin = "/usr/bin"
     pgdata = os.path.join(tmpdir, "pgdata")
-    db = TestPG(pgbin, pgdata)  # pylint: disable=redefined-outer-name
+    db = TestPG(pgdata)  # pylint: disable=redefined-outer-name
     db.run_cmd("initdb", "-D", pgdata, "--encoding", "utf-8")
     # NOTE: does not use TCP ports, no port conflicts
     db.user = dict(host=pgdata, user="pghoard", password="pghoard", dbname="postgres", port="5432")
@@ -131,7 +130,7 @@ def pghoard(db, tmpdir, request):  # pylint: disable=redefined-outer-name
         "http_address": "127.0.0.1",
         "http_port": random.randint(1024, 32000),
         "pg_basebackup_path": os.path.join(db.pgbin, "pg_basebackup"),
-        "pg_receivexlog_path": os.path.join(db.pgbin, "pg_receivexlog_path"),
+        "pg_receivexlog_path": os.path.join(db.pgbin, "pg_receivexlog"),
         "compression": {
             "algorithm": "snappy" if snappy else "lzma",
         }

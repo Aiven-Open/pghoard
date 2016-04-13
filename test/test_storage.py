@@ -256,7 +256,9 @@ def test_storage_swift_with_prefix(tmpdir):
 
 
 def test_storage_config(tmpdir):
-    config = {}
+    config = {
+        "backup_location": None,
+    }
     assert get_object_storage_config(config, "default") is None
     site_config = config.setdefault("backup_sites", {}).setdefault("default", {})
     assert get_object_storage_config(config, "default") is None
