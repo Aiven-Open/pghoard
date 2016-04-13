@@ -122,8 +122,29 @@ def _test_storage(st, driver, tmpdir):
             fp.write(chunk)
             test_size_send += len(chunk)
     test_hash_send = test_hash.hexdigest()
-    st.store_file_from_disk("test1/30m", test_file, multipart=True,
-                            metadata={"30m": "data", "size": test_size_send})
+
+    if driver == "s3":
+        # inject a failure in multipart uploads
+        def failing_new_key(key_name):  # pylint: disable=unused-argument
+            # fail after the second call, restore functionality after the third
+            fail_calls[0] += 1
+            if fail_calls[0] > 3:
+                st.bucket.new_key = orig_new_key
+            if fail_calls[0] > 2:
+                raise Exception("multipart upload failure!")
+
+        fail_calls = [0]
+        orig_new_key = st.bucket.new_key
+        st.bucket.new_key = failing_new_key
+
+        st.store_file_from_disk("test1/30m", test_file, multipart=True,
+                                metadata={"30m": "data", "size": test_size_send})
+
+        assert fail_calls[0] > 3
+    else:
+        st.store_file_from_disk("test1/30m", test_file, multipart=True,
+                                metadata={"30m": "data", "size": test_size_send})
+
     os.unlink(test_file)
 
     expected_meta = {"30m": "data", "size": str(test_size_send)}
