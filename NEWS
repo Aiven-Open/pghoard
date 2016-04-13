@@ -11,6 +11,7 @@ pghoard 1.2.0 (2016-XX-XX)
 * Emit a warning when running under systemd without python-systemd installed
 * Test and logging improvements, including support for proper use of syslog
 * s3 Support multipart uploads for greater network error resiliency
+* Miscellaneous bug fixes
 
 pghoard 1.1.0 (2016-04-05)
 ==========================

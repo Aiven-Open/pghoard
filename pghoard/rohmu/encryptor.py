@@ -124,76 +124,78 @@ class Decryptor:
 class DecryptorFile(io.BufferedIOBase):
     def __init__(self, source_fp, rsa_private_key_pem):
         super().__init__()
+        self.key = rsa_private_key_pem
+        self.source_fp = source_fp
+        self.buffer = None
+        self.buffer_offset = None
+        self.decryptor = None
+        self.offset = None
+        self.state = None
+        self._reset()
+
+    def _reset(self):
         self.buffer = b""
         self.buffer_offset = 0
-        self.decryptor = None
-        self.key = rsa_private_key_pem
+        self.decryptor = Decryptor(self.key)
         self.offset = 0
         self.state = "OPEN"
-        self.source_fp = source_fp
 
     def _check_not_closed(self):
         if self.state == "CLOSED":
             raise ValueError("I/O operation on closed file")
 
+    def _get_buffer_blocks(self):
+        if not self.buffer:
+            return []
+        if self.buffer_offset:
+            blocks = [self.buffer[self.buffer_offset:]]
+        else:
+            blocks = [self.buffer]
+        self.buffer = b""
+        self.buffer_offset = 0
+        return blocks
+
     def _read_all(self):
-        if self.state == "EOF":
-            retval = self.buffer[self.buffer_offset:]
-            self.buffer_offset = 0
-            self.buffer = b""
-            return retval
-        blocks = []
-        if self.buffer_offset > 0:
-            blocks.append(self.buffer)
-            self.buffer = b""
-            self.buffer_offset = 0
-        while True:
+        blocks = self._get_buffer_blocks()
+        while self.decryptor:
             data = self.source_fp.read(IO_BLOCK_SIZE)
             if not data:
-                self.state = "EOF"
                 data = self.decryptor.finalize()
-                if data:
-                    blocks.append(data)
-                    self.offset += len(data)
-                break
-            data = self.decryptor.update(data)
+                self.decryptor = None
+            else:
+                data = self.decryptor.update(data)
             if data:
                 self.offset += len(data)
                 blocks.append(data)
+        if not self.decryptor:
+            self.state = "EOF"
         return b"".join(blocks)
 
     def _read_block(self, size):
+        # TODO: this function is used to implement seeking, add a `discard` flag here so we don't have to ready
+        # everything to memory when seeking, but note that we must maintain buffer for the data beyond seek pos
         readylen = len(self.buffer) - self.buffer_offset
         if size <= readylen:
             retval = self.buffer[self.buffer_offset:self.buffer_offset + size]
             self.buffer_offset += size
             self.offset += len(retval)
             return retval
-        if self.state == "EOF":
-            retval = self.buffer[self.buffer_offset:]
-            self.buffer_offset = 0
-            self.buffer = b""
-            return retval
-        blocks = []
-        if self.buffer_offset:
-            blocks = [self.buffer[self.buffer_offset:]]
-        else:
-            blocks = [self.buffer]
-        while readylen < size:
+
+        blocks = self._get_buffer_blocks()
+        while self.decryptor and readylen < size:
             data = self.source_fp.read(IO_BLOCK_SIZE)
             if not data:
-                self.state = "EOF"
                 data = self.decryptor.finalize()
-                if data:
-                    blocks.append(data)
-                    readylen += len(data)
-                break
-            data = self.decryptor.update(data)
+                self.decryptor = None
+            else:
+                data = self.decryptor.update(data)
             if data:
                 blocks.append(data)
                 readylen += len(data)
         self.buffer = b"".join(blocks)
-        self.buffer_offset = 0
+        # Return at most `size` bytes, if `size` is higher than equal to ready length and decryptor is None
+        # we've processed the entire file and are at EOF.  We don't say we're at EOF even if the source file is
+        # at EOF if we have data remaining in our internal buffer.
         if size < readylen:
             retval = self.buffer[:size]
             self.buffer_offset = size
@@ -201,6 +203,8 @@ class DecryptorFile(io.BufferedIOBase):
             retval = self.buffer
             self.buffer = b""
             self.buffer_offset = 0
+            if self.decryptor is None:
+                self.state = "EOF"
         self.offset += len(retval)
         return retval
 
@@ -224,28 +228,15 @@ class DecryptorFile(io.BufferedIOBase):
     def flush(self):
         self._check_not_closed()
 
-    def peek(self, size=-1):  # pylint: disable=unused-argument
-        self._check_not_closed()
-        if len(self.buffer):
-            return self.buffer
-        data = self.read(size)
-        self.buffer += data
-        return data
-
     def read(self, size=-1):
         """Read up to size decrypted bytes"""
         self._check_not_closed()
-        if not self.decryptor:
-            self.decryptor = Decryptor(self.key)
         if self.state == "EOF" or size == 0:
             return b""
         elif size < 0:
             return self._read_all()
         else:
             return self._read_block(size)
-
-    def read1(self, size=-1):
-        return self.read(size)
 
     def readable(self):
         """True if this stream supports reading"""
@@ -254,7 +245,7 @@ class DecryptorFile(io.BufferedIOBase):
 
     def seek(self, offset, whence=0):
         self._check_not_closed()
-        if whence == 0:
+        if whence == os.SEEK_SET:
             if offset < 0:
                 raise ValueError("negative seek position")
             if self.offset == offset:
@@ -264,25 +255,18 @@ class DecryptorFile(io.BufferedIOBase):
                 return self.offset
             elif self.offset > offset:
                 # simulate backward seek by restarting from the beginning
-                self.buffer = b""
-                self.buffer_offset = 0
                 self.source_fp.seek(0)
-                self.offset = 0
-                self.decryptor = None
-                self.state = "OPEN"
-                self.read(offset)
+                self._reset()
+                self._read_block(offset)
                 return self.offset
-            else:
-                self.read(self.offset - offset)
-                return self.offset
-        elif whence == 1:
+        elif whence == os.SEEK_CUR:
             if offset != 0:
                 raise io.UnsupportedOperation("can't do nonzero cur-relative seeks")
             return self.offset
-        elif whence == 2:
+        elif whence == os.SEEK_END:
             if offset != 0:
                 raise io.UnsupportedOperation("can't do nonzero end-relative seeks")
-            self.read()
+            self._read_all()
             return self.offset
         else:
             raise ValueError("Invalid whence value")

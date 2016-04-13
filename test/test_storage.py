@@ -4,7 +4,6 @@ pghoard - rohmu object storage interface tests
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
-# pylint: disable=too-many-statements
 from io import BytesIO
 from pghoard.common import get_object_storage_config
 from pghoard.rohmu import errors, get_transfer
