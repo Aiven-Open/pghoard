@@ -15,6 +15,7 @@ disable=
     too-many-instance-attributes,
     too-many-locals,
     too-many-public-methods,
+    too-many-statements,
     ungrouped-imports,
     wrong-import-order,
     wrong-import-position

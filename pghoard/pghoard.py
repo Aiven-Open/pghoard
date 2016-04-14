@@ -8,7 +8,6 @@ from contextlib import closing
 from pghoard import version, wal
 from pghoard.basebackup import PGBaseBackup
 from pghoard.common import (
-    convert_pg_command_version_to_number,
     create_alert_file,
     default_log_format_str,
     get_object_storage_config,
@@ -18,6 +17,7 @@ from pghoard.common import (
     write_json_file,
 )
 from pghoard.compressor import CompressorThread
+from pghoard.config import set_config_defaults
 from pghoard.rohmu.inotify import InotifyWatcher
 from pghoard.transfer import TransferAgent
 from pghoard.receivexlog import PGReceiveXLog
@@ -36,6 +36,7 @@ import psycopg2
 import random
 import signal
 import socket
+import subprocess
 import sys
 import time
 
@@ -46,7 +47,7 @@ except ImportError:
     daemon = None
 
 
-class PGHoard(object):
+class PGHoard:
     def __init__(self, config_path):
         self.log = logging.getLogger("pghoard")
         self.log_level = None
@@ -60,7 +61,7 @@ class PGHoard(object):
         self.state = {
             "backup_sites": {},
             "startup_time": datetime.datetime.utcnow().isoformat(),
-            }
+        }
         self.load_config()
 
         if not os.path.exists(self.config["backup_location"]):
@@ -103,12 +104,10 @@ class PGHoard(object):
             self.log.error("pghoard does not support versions earlier than 9.2, found: %r", pg_version_server)
             create_alert_file(self.config, "version_unsupported_error")
             return False
-        command_path = self.config.get(command + "_path", "/usr/bin/" + command)
-        output = os.popen(command_path + " --version").read().strip()
-        pg_version_client = convert_pg_command_version_to_number(output)
+        pg_version_client = self.config[command + "_version"]
         if pg_version_server // 100 != pg_version_client // 100:
             self.log.error("Server version: %r does not match %s version: %r",
-                           pg_version_server, command_path, pg_version_client)
+                           pg_version_server, self.config[command + "_path"], pg_version_client)
             create_alert_file(self.config, "version_mismatch_error")
             return False
         return True
@@ -173,7 +172,7 @@ class PGHoard(object):
         self.receivexlogs[cluster] = thread
 
     def create_backup_site_paths(self, site):
-        site_path = os.path.join(self.config["backup_location"], self.config.get("path_prefix", ""), site)
+        site_path = os.path.join(self.config["backup_location"], self.config["path_prefix"], site)
         xlog_path = os.path.join(site_path, "xlog")
         basebackup_path = os.path.join(site_path, "basebackup")
 
@@ -203,7 +202,7 @@ class PGHoard(object):
                     break
                 seg, log = wal.get_previous_wal_on_same_timeline(seg, log)
 
-            wal_path = os.path.join(self.config.get("path_prefix", ""), site, "xlog",
+            wal_path = os.path.join(self.config["path_prefix"], site, "xlog",
                                     wal.name_for_tli_log_seg(tli, log, seg))
             self.log.debug("Deleting wal_file: %r", wal_path)
             try:
@@ -226,10 +225,7 @@ class PGHoard(object):
 
     def delete_remote_basebackup(self, site, basebackup):
         storage = self.site_transfers.get(site)
-        obj_key = os.path.join(self.config.get("path_prefix", ""),
-                               site,
-                               "basebackup",
-                               basebackup)
+        obj_key = os.path.join(self.config["path_prefix"], site, "basebackup", basebackup)
         try:
             storage.delete_key(obj_key)
         except FileNotFoundFromStorageError:
@@ -244,9 +240,7 @@ class PGHoard(object):
             storage = get_transfer(storage_config)
             self.site_transfers[site] = storage
 
-        results = storage.list_path(os.path.join(self.config.get("path_prefix", ""),
-                                                 site,
-                                                 "basebackup"))
+        results = storage.list_path(os.path.join(self.config["path_prefix"], site, "basebackup"))
         for entry in results:
             # drop path from resulting list and convert timestamps
             entry["name"] = os.path.basename(entry["name"])
@@ -258,7 +252,6 @@ class PGHoard(object):
     def check_backup_count_and_state(self, site):
         """Look up basebackups from the object store, prune any extra
         backups and return the datetime of the latest backup."""
-        allowed_basebackup_count = self.config['backup_sites'][site]['basebackup_count']
         basebackups = self.get_remote_basebackups_info(site)
         self.log.debug("Found %r basebackups", basebackups)
 
@@ -266,6 +259,10 @@ class PGHoard(object):
             last_backup_time = basebackups[-1]["metadata"]["start-time"]
         else:
             last_backup_time = None
+
+        allowed_basebackup_count = self.config["backup_sites"][site]["basebackup_count"]
+        if allowed_basebackup_count is None:
+            allowed_basebackup_count = len(basebackups)
 
         while len(basebackups) > allowed_basebackup_count:
             self.log.warning("Too many basebackups: %d > %d, %r, starting to get rid of %r",
@@ -279,13 +276,13 @@ class PGHoard(object):
             if last_wal_segment_still_needed:
                 self.delete_remote_wal_before(last_wal_segment_still_needed, site)
             self.delete_remote_basebackup(site, basebackup_to_be_deleted["name"])
-        self.state["backup_sites"][site]['basebackups'] = basebackups
+        self.state["backup_sites"][site]["basebackups"] = basebackups
 
         return last_backup_time
 
     def set_state_defaults(self, site):
         if site not in self.state["backup_sites"]:
-            self.state['backup_sites'][site] = {"basebackups": []}
+            self.state["backup_sites"][site] = {"basebackups": []}
 
     def startup_walk_for_missed_files(self):
         for site in self.config["backup_sites"]:
@@ -314,13 +311,12 @@ class PGHoard(object):
         self.set_state_defaults(site)
         xlog_path, basebackup_path = self.create_backup_site_paths(site)
 
-        if not site_config.get("active", True):
-            #  If a site has been marked inactive, don't bother checking anything
-            return
+        if not site_config["active"]:
+            return  # If a site has been marked inactive, don't bother checking anything
 
         chosen_backup_node = random.choice(site_config["nodes"])
 
-        if site not in self.receivexlogs and site_config.get("active_backup_mode") == "pg_receivexlog":
+        if site not in self.receivexlogs and site_config["active_backup_mode"] == "pg_receivexlog":
             connection_string, slot = replication_connection_string_using_pgpass(chosen_backup_node)
             self.receivexlog_listener(site, xlog_path + "_incoming", connection_string, slot)
 
@@ -349,7 +345,7 @@ class PGHoard(object):
             self.log.info("Creating a new basebackup for %r due to request", site)
             self.requested_basebackup_sites.discard(site)
             new_backup_needed = True
-        elif site_config.get("basebackup_interval_hours") is None:
+        elif site_config["basebackup_interval_hours"] is None:
             # Basebackups are disabled for this site (but they can still be requested over the API.)
             pass
         elif self.time_of_last_backup.get(site) is None:
@@ -372,7 +368,7 @@ class PGHoard(object):
         self.startup_walk_for_missed_files()
         while self.running:
             try:
-                for site, site_config in self.config['backup_sites'].items():
+                for site, site_config in self.config["backup_sites"].items():
                     self.handle_site(site, site_config)
                 self.write_backup_state_to_json_file()
             except:  # pylint: disable=bare-except
@@ -382,7 +378,7 @@ class PGHoard(object):
     def write_backup_state_to_json_file(self):
         """Periodically write a JSON state file to disk"""
         start_time = time.time()
-        state_file_path = self.config.get("json_state_file_path", "/tmp/pghoard_state.json")
+        state_file_path = self.config["json_state_file_path"]
         self.state["pg_receivexlogs"] = {
             key: {"latest_activity": value.latest_activity, "running": value.running}
             for key, value in self.receivexlogs.items()
@@ -406,9 +402,10 @@ class PGHoard(object):
                        self.config_path, _signal, _frame)
         try:
             with open(self.config_path, "r") as fp:
-                self.config = json.load(fp)
-        except (IOError, ValueError) as ex:
-            self.log.exception("Invalid JSON config %r: %s", self.config_path, ex)
+                new_config = json.load(fp)
+            set_config_defaults(new_config)
+        except (OSError, subprocess.CalledProcessError, UnicodeDecodeError, ValueError) as ex:
+            self.log.exception("Invalid config file %r: %s: %s", self.config_path, ex.__class__.__name__, ex)
             # if we were called by a signal handler we'll ignore (and log)
             # the error and hope the user fixes the configuration before
             # restarting pghoard.
@@ -416,15 +413,7 @@ class PGHoard(object):
                 return
             raise InvalidConfigurationError(self.config_path)
 
-        # default to 5 compression and transfer threads
-        self.config.setdefault("compression", {}).setdefault("thread_count", 5)
-        self.config.setdefault("transfer", {}).setdefault("thread_count", 5)
-        # default to prefetching min(#compressors, #transferagents) - 1 objects so all
-        # operations where prefetching is used run fully in parallel without waiting to start
-        self.config.setdefault("restore_prefetch", min(
-            self.config["compression"]["thread_count"],
-            self.config["transfer"]["thread_count"]) - 1)
-
+        self.config = new_config
         if self.config.get("syslog") and not self.syslog_handler:
             self.syslog_handler = set_syslog_handler(self.config.get("syslog_address", "/dev/log"),
                                                      self.config.get("syslog_facility", "local2"),
@@ -434,7 +423,6 @@ class PGHoard(object):
             logging.getLogger().setLevel(self.log_level)
         except ValueError:
             self.log.exception("Problem with log_level: %r", self.log_level)
-        # we need the failover_command to be converted into subprocess [] format
         self.log.debug("Loaded config: %r from: %r", self.config, self.config_path)
 
     def quit(self, _signal=None, _frame=None):
@@ -460,7 +448,7 @@ def main(args=None):
     parser = argparse.ArgumentParser(
         prog="pghoard",
         description="postgresql automatic backup daemon")
-    parser.add_argument("--version", action='version', help="show program version",
+    parser.add_argument("--version", action="version", help="show program version",
                         version=version.__version__)
     parser.add_argument("config", help="configuration file")
     arg = parser.parse_args(args)

@@ -15,11 +15,13 @@ import struct
 
 
 class InotifyEvent(ctypes.Structure):
-    _fields_ = [('wd', c_int),
-                ('mask', c_uint32),
-                ('cookie', c_uint32),
-                ('len', c_uint32),
-                ('name', c_char_p)]
+    _fields_ = [
+        ("wd", c_int),
+        ("mask", c_uint32),
+        ("cookie", c_uint32),
+        ("len", c_uint32),
+        ("name", c_char_p),
+    ]
 
 s_size = 16
 # default 2048 events
@@ -41,8 +43,8 @@ IN_NONBLOCK = 0x00004000
 def parse_inotify_buffer(event_buffer):
     i = 0
     while i + s_size <= len(event_buffer):
-        wd, mask, cookie, length = struct.unpack_from('iIII', event_buffer, i)
-        name = event_buffer[i + s_size:i + s_size + length].rstrip(b'\0')
+        wd, mask, cookie, length = struct.unpack_from("iIII", event_buffer, i)
+        name = event_buffer[i + s_size:i + s_size + length].rstrip(b"\0")
         i += s_size + length
         yield wd, mask, cookie, name
 
@@ -99,7 +101,7 @@ class InotifyWatcher(Thread):
         self.log.debug("event: %s %s, %r", full_path, ev_type, st)
 
     def create_event(self, wd, mask, cookie, name):
-        if mask & event_types['IN_IGNORED']:
+        if mask & event_types["IN_IGNORED"]:
             # explicit removal of watch or dir, ignore
             return
 

@@ -68,7 +68,7 @@ class TransferAgent(Thread):
             self.log.debug("Starting to %r %r, size: %r",
                            file_to_transfer["type"], file_to_transfer["local_path"],
                            file_to_transfer.get("file_size", "unknown"))
-            file_to_transfer.setdefault("path_prefix", self.config.get("path_prefix", ""))
+            file_to_transfer.setdefault("path_prefix", self.config["path_prefix"])
             start_time = time.time()
             key = self.form_key_path(file_to_transfer)
             oper = file_to_transfer["type"].lower()
@@ -188,7 +188,7 @@ class TransferAgent(Thread):
             time.sleep(0.5)
 
             file_to_transfer["retries"] = file_to_transfer.get("retries", 0) + 1
-            if file_to_transfer["retries"] > self.config.get("upload_retries_warning_limit", 3):
+            if file_to_transfer["retries"] > self.config["upload_retries_warning_limit"]:
                 create_alert_file(self.config, "upload_retries_warning")
 
             self.transfer_queue.put(file_to_transfer)

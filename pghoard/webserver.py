@@ -54,8 +54,8 @@ class WebServer(Thread):
         self.requested_basebackup_sites = requested_basebackup_sites
         self.compression_queue = compression_queue
         self.transfer_queue = transfer_queue
-        self.address = self.config.get("http_address", "127.0.0.1")
-        self.port = self.config.get("http_port", 16000)
+        self.address = self.config["http_address"]
+        self.port = self.config["http_port"]
         self.server = None
         self._running = False
         self.log.debug("WebServer initialized with address: %r port: %r", self.address, self.port)
@@ -254,7 +254,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         callback_queue = Queue()
 
         site_config = self.server.config["backup_sites"][site]
-        xlog_dir = site_config.get("pg_xlog_directory", "/var/lib/pgsql/data/pg_xlog")
+        xlog_dir = site_config["pg_xlog_directory"]
         downloads = {}
         for obname in names:
             if obname in self.server.prefetch_404:
@@ -326,7 +326,7 @@ class RequestHandler(BaseHTTPRequestHandler):
 
         # See if we have already prefetched the file
         site_config = self.server.config["backup_sites"][site]
-        xlog_dir = site_config.get("pg_xlog_directory", "/var/lib/pgsql/data/pg_xlog")
+        xlog_dir = site_config["pg_xlog_directory"]
         prefetch_target_path = os.path.join(xlog_dir, "{}.pghoard.prefetch".format(filename))
         if os.path.exists(prefetch_target_path):
             self._save_and_verify_restored_file(filetype, filename, prefetch_target_path, target_path)
@@ -366,7 +366,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         start_time = time.time()
 
         site_config = self.server.config["backup_sites"][site]
-        xlog_dir = site_config.get("pg_xlog_directory", "/var/lib/pgsql/data/pg_xlog")
+        xlog_dir = site_config["pg_xlog_directory"]
         xlog_path = os.path.join(xlog_dir, filename)
         self.server.log.debug("Got request to archive: %r %r %r, %r", site, filetype,
                               filename, xlog_path)
@@ -377,7 +377,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         self._verify_wal(filetype, filename, xlog_path)
 
         callback_queue = Queue()
-        if not self.server.config["backup_sites"][site].get("object_storage"):
+        if not self.server.config["backup_sites"][site]["object_storage"]:
             compress_to_memory = False
         else:
             compress_to_memory = True

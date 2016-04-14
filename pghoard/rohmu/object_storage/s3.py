@@ -12,7 +12,7 @@ import os
 import time
 from boto.s3.connection import OrdinaryCallingFormat
 from boto.s3.key import Key
-from .. errors import Error, FileNotFoundFromStorageError, InvalidConfigurationError
+from ..errors import FileNotFoundFromStorageError, InvalidConfigurationError, StorageError
 from .base import BaseTransfer
 
 
@@ -121,22 +121,27 @@ class S3Transfer(BaseTransfer):
         s3key.set_contents_from_string(memstring, replace=True)
 
     def _store_multipart_upload(self, mp, fp, part_num, filepath):
-        retries = 0
+        attempt = 0
+        last_ex = None
         pos = fp.tell()
-        while retries < 100:
+        while attempt < 100:
+            if attempt > 0:
+                time.sleep(1.0)
+                fp.seek(pos, os.SEEK_SET)
             try:
-                self.log.debug("Uploading part: %r of %r, bytes: %r-%r, retries: %r",
+                self.log.debug("Uploading part: %r of %r, bytes: %r-%r, attempt: %r",
                                part_num, filepath,
                                (part_num - 1) * self.multipart_chunk_size, part_num * self.multipart_chunk_size,
-                               retries)
+                               attempt)
                 mp.upload_part_from_file(fp=fp, part_num=part_num, size=self.multipart_chunk_size)
-                return True
-            except:  # pylint: disable=bare-except
-                self.log.exception("Upload of part: %r of %r failed, retries: %r", filepath, part_num, retries)
-                time.sleep(1.0)
-                retries += 1
-                fp.seek(pos, os.SEEK_SET)
-        return False
+                return
+            except Exception as ex:  # pylint: disable=broad-except
+                self.log.exception("Uploading part %r of %r failed, attempt: %r", part_num, filepath, attempt)
+                last_ex = ex
+            attempt += 1
+
+        err = "Multipart upload of {0!r} failed: {1.__class__.__name__}: {1}".format(mp.key_name, last_ex)
+        raise StorageError(err) from last_ex
 
     def store_file_from_disk(self, key, filepath, metadata=None, multipart=None):
         size = os.path.getsize(filepath)
@@ -156,10 +161,11 @@ class S3Transfer(BaseTransfer):
             mp = self.bucket.initiate_multipart_upload(key, metadata=metadata)
 
             with open(filepath, "rb") as fp:
-                for part_num in range(1, chunks + 1):
+                part_num = 0
+                while fp.tell() < size:
+                    part_num += 1
                     start_time = time.monotonic()
-                    if not self._store_multipart_upload(mp, fp, part_num, filepath):
-                        raise Error("Problem with multipart upload of: {}".format(key))
+                    self._store_multipart_upload(mp, fp, part_num, filepath)
                     self.log.info("Upload of part: %r/%r of %r, part size: %r took: %.2fs",
                                   part_num, chunks, filepath, self.multipart_chunk_size,
                                   time.monotonic() - start_time)
@@ -168,9 +174,10 @@ class S3Transfer(BaseTransfer):
                               filepath, size, time.monotonic() - start_of_multipart_upload)
                 mp.complete_upload()
             else:
-                self.log.error("Error in multipart upload: %r %r, canceling", key, filepath)
+                err = "Multipart upload of {!r} does not match expected chunk list".format(key)
+                self.log.error(err)
                 mp.cancel_upload()
-                raise Error("Problem completing multipart upload of: {}".format(key))
+                raise StorageError(err)
 
     def get_or_create_bucket(self, bucket_name):
         try:

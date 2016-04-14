@@ -6,6 +6,7 @@ See LICENSE for details
 """
 from pghoard import version
 from pghoard.common import default_log_format_str, get_object_storage_config
+from pghoard.config import set_config_defaults
 from pghoard.rohmu import get_transfer
 from pghoard.rohmu.compressor import Compressor
 from pghoard.rohmu.errors import Error
@@ -82,7 +83,7 @@ def print_basebackup_list(basebackups, *, caption="Available basebackups"):
         print(fmt(name=b["name"], size=size_str, time=lm_str, meta=meta))
 
 
-class Restore(object):
+class Restore:
     def __init__(self):
         self.config = None
         self.log = logging.getLogger("PGHoardRestore")
@@ -137,7 +138,7 @@ class Restore(object):
     def _load_config(self, configfile):
         with open(configfile) as fp:
             config = json.load(fp)
-        return config
+        return set_config_defaults(config, check_commands=False)
 
     def list_basebackups_http(self, arg):
         """List available basebackups from a HTTP source"""
@@ -147,7 +148,7 @@ class Restore(object):
     def _get_object_storage(self, site, pgdata):
         storage_config = get_object_storage_config(self.config, site)
         storage = get_transfer(storage_config)
-        return ObjectStore(storage, self.config.get("path_prefix", ""), site, pgdata)
+        return ObjectStore(storage, self.config["path_prefix"], site, pgdata)
 
     def list_basebackups(self, arg):
         """List basebackups from an object store"""
@@ -277,7 +278,7 @@ class Restore(object):
             return 1
 
 
-class ObjectStore(object):
+class ObjectStore:
     def __init__(self, storage, path_prefix, site, pgdata):
         self.storage = storage
         self.path_prefix = path_prefix

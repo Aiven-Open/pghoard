@@ -33,16 +33,10 @@ class MockStorageRaising(Mock):
 class TestTransferAgent(PGHoardTestCase):
     def setup_method(self, method):
         super().setup_method(method)
-        self.config = {
-            "backup_sites": {
-                self.test_site: {
-                    "object_storage": {
-                        "storage_type": "s3",
-                    },
-                },
-            },
-            "backup_location": self.temp_dir,
-        }
+        self.config = self.config_template()
+        self.config["backup_sites"][self.test_site]["object_storage"] = {"storage_type": "s3"}
+        os.makedirs(self.config["alert_file_dir"], exist_ok=True)
+
         self.foo_path = os.path.join(self.temp_dir, self.test_site, "xlog", "00000001000000000000000C")
         os.makedirs(os.path.join(self.temp_dir, self.test_site, "xlog"))
         with open(self.foo_path, "w") as out:
@@ -137,5 +131,6 @@ class TestTransferAgent(PGHoardTestCase):
         })
         with pytest.raises(Empty):
             callback_queue.get(timeout=3.0)
-        assert os.path.exists("upload_retries_warning") is True
-        os.unlink("upload_retries_warning")
+        alert_file_path = os.path.join(self.config["alert_file_dir"], "upload_retries_warning")
+        assert os.path.exists(alert_file_path) is True
+        os.unlink(alert_file_path)

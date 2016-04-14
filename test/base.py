@@ -5,9 +5,12 @@ Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
 # pylint: disable=attribute-defined-outside-init
+from .conftest import TestPG
+from pghoard.config import set_config_defaults
 from shutil import rmtree
 from tempfile import mkdtemp
 import logging
+import os
 
 
 CONSTANT_TEST_RSA_PUBLIC_KEY = """\
@@ -37,10 +40,29 @@ nkMAHqg9PS372Cs=
 -----END PRIVATE KEY-----"""
 
 
-class PGHoardTestCase(object):
+class PGHoardTestCase:
     @classmethod
     def setup_class(cls):
         cls.log = logging.getLogger(cls.__name__)
+
+    def config_template(self):
+        bindir = TestPG.find_pgbin()
+        config = {
+            "alert_file_dir": os.path.join(str(self.temp_dir), "alerts"),
+            "backup_location": os.path.join(str(self.temp_dir), "backups"),
+            "backup_sites": {
+                self.test_site: {
+                    "object_storage": {
+                        "storage_type": "local",
+                        "directory": os.path.join(self.temp_dir, "backups"),
+                    },
+                },
+            },
+            "json_state_file_path": os.path.join(self.temp_dir, "state.json"),
+            "pg_basebackup_path": os.path.join(bindir, "pg_basebackup"),
+            "pg_receivexlog_path": os.path.join(bindir, "pg_receivexlog"),
+        }
+        return set_config_defaults(config)
 
     def setup_method(self, method):
         self.temp_dir = mkdtemp(prefix=self.__class__.__name__)

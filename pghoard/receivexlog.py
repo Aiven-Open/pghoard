@@ -33,7 +33,7 @@ class PGReceiveXLog(Thread):
         self.running = True
 
         command = [
-            self.config.get("pg_receivexlog_path", "/usr/bin/pg_receivexlog"),
+            self.config["pg_receivexlog_path"],
             "--status-interval", "1",
             "--verbose",
             "--directory", self.xlog_location,
