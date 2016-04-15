@@ -4,8 +4,9 @@ pghoard - encryption key generation tool
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
-from . import version
+from . import config, version
 from .common import default_log_format_str, write_json_file
+from .rohmu.errors import InvalidConfigurationError
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives import serialization
@@ -52,17 +53,18 @@ def create_config(site, key_id, rsa_private_key, rsa_public_key):
     }
 
 
-def show_key_config(key_id, site, rsa_private_key, rsa_public_key):
+def show_key_config(site, key_id, rsa_private_key, rsa_public_key):
+    if not site:
+        raise CommandError("Site must be defined if configuration file is not provided")
     key_config = create_config(site, key_id, rsa_private_key, rsa_public_key)
     print(json.dumps(key_config, indent=4, sort_keys=True))
 
 
 def save_keys(config_file, site, key_id, rsa_private_key, rsa_public_key):
-    with open(config_file, "r") as fp:
-        config = json.load(fp)
-    if site not in config["backup_sites"]:
-        raise CommandError("Site {!r} not defined in {!r}".format(site, config_file))
-    site_config = config["backup_sites"][site]
+    config_obj = config.read_json_config_file(config_file, check_commands=False)
+    site = config.get_site_from_config(config_obj, site)
+    site_config = config_obj["backup_sites"][site]
+
     if key_id in site_config.setdefault("encryption_keys", {}):
         raise CommandError("key_id {!r} already defined for site {!r} in {!r}".format(key_id, site, config_file))
     site_config["encryption_keys"][key_id] = {
@@ -70,7 +72,7 @@ def save_keys(config_file, site, key_id, rsa_private_key, rsa_public_key):
         "public": rsa_public_key,
     }
     site_config["encryption_key_id"] = key_id
-    write_json_file(config_file, config)
+    write_json_file(config_file, config_obj)
     print("Saved new key_id {!r} for site {!r} in {!r}".format(key_id, site, config_file))
 
 
@@ -79,7 +81,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--version", action="version", help="show program version",
                         version=version.__version__)
-    parser.add_argument("--site", help="backup site", required=True)
+    parser.add_argument("--site", help="backup site", required=False)
     parser.add_argument("--key-id", help="key alias as used with encryption_key_id configuration directive", required=True)
     parser.add_argument("--bits", help="length of the generated key in bits, default %(default)d", default=3072, type=int)
     parser.add_argument("--config", help="configuration file to store the keys in")
@@ -92,7 +94,7 @@ def main():
             return save_keys(args.config, args.site, args.key_id, rsa_private_key, rsa_public_key)
         else:
             return show_key_config(args.site, args.key_id, rsa_private_key, rsa_public_key)
-    except CommandError as ex:
+    except (CommandError, InvalidConfigurationError) as ex:
         print("FATAL: {}".format(ex))
         return 1
 

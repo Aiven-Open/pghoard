@@ -4,10 +4,10 @@ pghoard: sync local WAL files to remote archive
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
+from . import config, version, wal
 from .common import default_log_format_str, TIMELINE_RE, XLOG_RE
-from . import version, wal
+from .rohmu.errors import InvalidConfigurationError
 import argparse
-import json
 import logging
 import os
 import requests
@@ -32,11 +32,11 @@ class ArchiveSync:
         self.backup_site = None
         self.base_url = None
 
-    def set_config(self, config, site):
-        self.config = config
-        self.site = site
-        self.backup_site = config["backup_sites"][site]
-        self.base_url = "http://127.0.0.1:{}/{}".format(config["http_port"], site)
+    def set_config(self, config_file, site):
+        self.config = config.read_json_config_file(config_file, check_commands=False)
+        self.site = config.get_site_from_config(self.config, site)
+        self.backup_site = self.config["backup_sites"][self.site]
+        self.base_url = "http://127.0.0.1:{}/{}".format(self.config["http_port"], self.site)
 
     def get_current_wal_file(self):
         # identify the (must be) local database
@@ -170,20 +170,13 @@ class ArchiveSync:
         parser = argparse.ArgumentParser()
         parser.add_argument("--version", action='version', help="show program version",
                             version=version.__version__)
-        parser.add_argument("--site", help="pghoard site", required=True)
+        parser.add_argument("--site", help="pghoard site", required=False)
         parser.add_argument("--config", help="pghoard config file", required=True)
         parser.add_argument("--no-verify", help="verify archive integrity", action="store_false")
         parser.add_argument("--create-new-backup-on-failure", help="request a new basebackup if verification fails",
                             action="store_true", default=False)
         args = parser.parse_args(args)
-        try:
-            with open(args.config) as fp:
-                config = json.load(fp)
-            self.set_config(config, args.site)
-        except KeyError:
-            raise SyncError("Site {!r} not configured in {!r}".format(args.site, args.config))
-        except ValueError:
-            raise SyncError("Invalid JSON configuration file {!r}".format(args.config))
+        self.set_config(args.config, args.site)
         return self.archive_sync(args.no_verify, args.create_new_backup_on_failure)
 
 
@@ -195,7 +188,7 @@ def main():
     except KeyboardInterrupt:
         print("*** interrupted by keyboard ***")
         return 1
-    except SyncError as ex:
+    except (InvalidConfigurationError, SyncError) as ex:
         tool.log.error("FATAL: %s: %s", ex.__class__.__name__, ex)
         return 1
 

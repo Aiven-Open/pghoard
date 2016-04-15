@@ -3,6 +3,8 @@ pghoard 1.2.0 (2016-XX-XX)
 
 * Support for PostgreSQL 9.2
 * Support for Python 3.3
+* Various commands no longer require site if a config file with a single
+  site is used.  Configuration handling was refactored and much improved
 * S3 multipart uploads for greater network error resiliency
 * Creating new basebackups by timer can be disabled entirely for a site by
   removing the basebackup_interval_hours option or setting it to a null

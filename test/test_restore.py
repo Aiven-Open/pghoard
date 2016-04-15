@@ -5,6 +5,7 @@ Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
 from .base import PGHoardTestCase
+from pghoard.common import write_json_file
 from pghoard.restore import create_recovery_conf, Restore, RestoreError
 from unittest.mock import Mock
 import datetime
@@ -14,14 +15,15 @@ import pytest
 
 class TestRecoveryConf(PGHoardTestCase):
     def test_recovery_targets(self, tmpdir):
+        config_file = tmpdir.join("conf.json").strpath
+        write_json_file(config_file, {"backup_sites": {"test": {}}})
         r = Restore()
-        r._load_config = Mock()  # pylint: disable=protected-access
         r._get_object_storage = Mock()  # pylint: disable=protected-access
         with pytest.raises(RestoreError) as excinfo:
             r.run(args=[
                 "get-basebackup",
-                "--config=" + str(tmpdir),
-                "--target-dir=" + str(tmpdir),
+                "--config", config_file,
+                "--target-dir", tmpdir.strpath,
                 "--site=test",
                 "--recovery-target-action=promote",
                 "--recovery-target-name=foobar",
@@ -31,8 +33,8 @@ class TestRecoveryConf(PGHoardTestCase):
         with pytest.raises(RestoreError) as excinfo:
             r.run(args=[
                 "get-basebackup",
-                "--config=" + str(tmpdir),
-                "--target-dir=" + str(tmpdir),
+                "--config", config_file,
+                "--target-dir", tmpdir.strpath,
                 "--site=test",
                 "--recovery-target-action=promote",
                 "--recovery-target-time=foobar",
