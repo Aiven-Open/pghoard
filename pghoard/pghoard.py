@@ -114,6 +114,8 @@ class PGHoard:
 
     def create_basebackup(self, site, connection_string, basebackup_path, callback_queue=None):
         pg_version_server = self.check_pg_server_version(connection_string)
+        if pg_version_server:
+            self.config["backup_sites"][site]["pg_version"] = pg_version_server
         if not self.check_pg_versions_ok(pg_version_server, "pg_basebackup"):
             if callback_queue:
                 callback_queue.put({"success": False})
@@ -156,8 +158,10 @@ class PGHoard:
             self.log.exception("Problem in getting PG server version")
         return pg_version
 
-    def receivexlog_listener(self, cluster, xlog_location, connection_string, slot):
+    def receivexlog_listener(self, site, xlog_location, connection_string, slot):
         pg_version_server = self.check_pg_server_version(connection_string)
+        if pg_version_server:
+            self.config["backup_sites"][site]["pg_version"] = pg_version_server
         if not self.check_pg_versions_ok(pg_version_server, "pg_receivexlog"):
             return
 
@@ -169,7 +173,7 @@ class PGHoard:
             slot=slot,
             pg_version_server=pg_version_server)
         thread.start()
-        self.receivexlogs[cluster] = thread
+        self.receivexlogs[site] = thread
 
     def create_backup_site_paths(self, site):
         site_path = os.path.join(self.config["backup_location"], self.config["path_prefix"], site)
@@ -190,8 +194,9 @@ class PGHoard:
 
         return xlog_path, basebackup_path
 
-    def delete_remote_wal_before(self, wal_segment, site):
-        self.log.debug("Starting WAL deletion from: %r before: %r", site, wal_segment)
+    def delete_remote_wal_before(self, wal_segment, site, pg_version):
+        self.log.debug("Starting WAL deletion from: %r before: %r, pg_version: %r",
+                       site, wal_segment, pg_version)
         storage = self.site_transfers.get(site)
         valid_timeline = True
         tli, log, seg = wal.name_to_tli_log_seg(wal_segment)
@@ -200,8 +205,7 @@ class PGHoard:
                 # Decrement one segment if we're on a valid timeline
                 if seg == 0 and log == 0:
                     break
-                seg, log = wal.get_previous_wal_on_same_timeline(seg, log)
-
+                seg, log = wal.get_previous_wal_on_same_timeline(seg, log, pg_version)
             wal_path = os.path.join(self.config["path_prefix"], site, "xlog",
                                     wal.name_for_tli_log_seg(tli, log, seg))
             self.log.debug("Deleting wal_file: %r", wal_path)
@@ -268,13 +272,13 @@ class PGHoard:
             self.log.warning("Too many basebackups: %d > %d, %r, starting to get rid of %r",
                              len(basebackups), allowed_basebackup_count, basebackups, basebackups[0]["name"])
             basebackup_to_be_deleted = basebackups.pop(0)
-
+            pg_version = basebackup_to_be_deleted["metadata"].get("pg-version")
             last_wal_segment_still_needed = 0
             if basebackups:
                 last_wal_segment_still_needed = basebackups[0]["metadata"]["start-wal-segment"]
 
             if last_wal_segment_still_needed:
-                self.delete_remote_wal_before(last_wal_segment_still_needed, site)
+                self.delete_remote_wal_before(last_wal_segment_still_needed, site, pg_version)
             self.delete_remote_basebackup(site, basebackup_to_be_deleted["name"])
         self.state["backup_sites"][site]["basebackups"] = basebackups
 

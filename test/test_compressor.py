@@ -38,6 +38,7 @@ class Compression(PGHoardTestCase):
             "object_storage": {
                 "storage_type": "s3",
             },
+            "pg_version": 90500,
         }
         self.config["compression"]["algorithm"] = self.algorithm
         self.compression_queue = Queue()
@@ -107,6 +108,7 @@ class Compression(PGHoardTestCase):
             "metadata": {
                 "compression-algorithm": self.algorithm,
                 "original-file-size": self.random_file_size,
+                "pg-version": 90500,
             },
             "site": self.test_site,
         }
@@ -129,6 +131,7 @@ class Compression(PGHoardTestCase):
             "metadata": {
                 "compression-algorithm": self.algorithm,
                 "original-file-size": self.random_file_size,
+                "pg-version": 90500,
             },
             "site": self.test_site,
         }
@@ -156,6 +159,7 @@ class Compression(PGHoardTestCase):
                 "compression-algorithm": self.algorithm,
                 "encryption-key-id": "testkey",
                 "original-file-size": self.random_file_size,
+                "pg-version": 90500,
             },
             "site": self.test_site,
         }
@@ -182,6 +186,7 @@ class Compression(PGHoardTestCase):
             "metadata": {
                 "compression-algorithm": self.algorithm,
                 "original-file-size": self.zero_file_size,
+                "pg-version": 90500,
             },
             "site": self.test_site,
         }
@@ -201,6 +206,7 @@ class Compression(PGHoardTestCase):
             "metadata": {
                 "compression-algorithm": self.algorithm,
                 "original-file-size": self.random_file_size,
+                "pg-version": 90500,
             },
             "site": self.test_site,
             "type": "DECOMPRESSION",
@@ -226,6 +232,7 @@ class Compression(PGHoardTestCase):
                 "compression-algorithm": self.algorithm,
                 "encryption-key-id": "testkey",
                 "original-file-size": self.random_file_size,
+                "pg-version": 90500,
             },
             "site": self.test_site,
             "type": "DECOMPRESSION",

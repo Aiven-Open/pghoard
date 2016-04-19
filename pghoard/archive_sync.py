@@ -55,7 +55,8 @@ class ArchiveSync:
         # wal segment as we'll anyway try to restore the latest basebackup
         # *by name*.
         latest_basebackup = max(items, key=lambda item: item["name"])
-        return latest_basebackup["metadata"]["start-wal-segment"]
+        pg_version = latest_basebackup["metadata"].get("pg-version")
+        return latest_basebackup["metadata"]["start-wal-segment"], pg_version
 
     def archive_sync(self, verify, new_backup_on_failure):
         self.check_and_upload_missing_local_files()
@@ -65,7 +66,7 @@ class ArchiveSync:
 
     def check_and_upload_missing_local_files(self):
         current_wal_file = self.get_current_wal_file()
-        first_required_wal_file = self.get_first_required_wal_segment()
+        first_required_wal_file, _ = self.get_first_required_wal_segment()
 
         # Find relevant xlog files.  We do this by checking archival status
         # of all XLOG files older than the one currently open (ie reverse
@@ -114,7 +115,7 @@ class ArchiveSync:
 
     def check_wal_archive_integrity(self, new_backup_on_failure):
         current_wal_file = self.get_current_wal_file()
-        first_required_wal_file = self.get_first_required_wal_segment()
+        first_required_wal_file, pg_version = self.get_first_required_wal_segment()
         if not current_wal_file:
             raise SyncError("Could not figure out current WAL segment")
         if not first_required_wal_file:
@@ -132,7 +133,7 @@ class ArchiveSync:
         while True:
             if valid_timeline:
                 # Decrement one segment if we're on a valid timeline
-                current_seg, current_log = wal.get_previous_wal_on_same_timeline(current_seg, current_log)
+                current_seg, current_log = wal.get_previous_wal_on_same_timeline(current_seg, current_log, pg_version)
 
             xlog_file = wal.name_for_tli_log_seg(current_tli, current_log, current_seg)
             resp = requests.head("{base}/archive/{file}".format(base=self.base_url, file=xlog_file))
