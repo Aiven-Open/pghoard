@@ -51,10 +51,14 @@ def name_to_tli_log_seg(name):
     return (tli, log, seg)
 
 
-def get_previous_wal_on_same_timeline(seg, log):
+def get_previous_wal_on_same_timeline(seg, log, pg_version):
     if seg == 0:
         log -= 1
-        seg = 0xFF
+        # Pre 9.3 PG versions have a gap in their WAL ranges
+        if pg_version and pg_version < 90300:
+            seg = 0xFE
+        else:
+            seg = 0xFF
     else:
         seg -= 1
     return seg, log
