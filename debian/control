@@ -3,10 +3,10 @@ Maintainer: Hannu Valtonen <hannu.valtonen@ohmu.fi>
 Section: python
 Priority: optional
 Build-Depends: debhelper (>= 8), dh-python,
- python3-all (>= 3.4), python3-setuptools,
+ python3-all (>= 3.3), python3-setuptools,
  python3-cryptography, python3-dateutil, python3-psycopg2,
  python3-requests, python3-snappy
-X-Python3-Version: >= 3.4
+X-Python3-Version: >= 3.3
 Standards-Version: 3.9.4
 Homepage: https://github.com/ohmu/pghoard
 
@@ -20,4 +20,4 @@ Description: PostgreSQL streaming backup service
  encrypted and compressed format in a cloud object storage.  PGHoard
  currently supports Amazon Web Services S3, Google Cloud Storage, OpenStack
  Swift and Ceph (using S3 or Swift interfaces with RadosGW.)
- Support for Windows Azure is experimental.
+ Support for Microsoft Azure is experimental.

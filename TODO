@@ -4,4 +4,3 @@ TODO
 * SSL support for Webserver
 * Authentication/authorization for Webserver for use in non private networks
 * check that we have the diskspace needed for a basebackup from PG
-* Older PG version support (WAL segment number holes, something else?)
