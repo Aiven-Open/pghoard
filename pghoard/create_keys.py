@@ -13,6 +13,7 @@ from cryptography.hazmat.primitives import serialization
 import argparse
 import json
 import logging
+import os
 import sys
 
 
@@ -84,7 +85,7 @@ def main():
     parser.add_argument("--site", help="backup site", required=False)
     parser.add_argument("--key-id", help="key alias as used with encryption_key_id configuration directive", required=True)
     parser.add_argument("--bits", help="length of the generated key in bits, default %(default)d", default=3072, type=int)
-    parser.add_argument("--config", help="configuration file to store the keys in")
+    parser.add_argument("--config", help="configuration file to store the keys in", default=os.environ.get("PGHOARD_CONFIG"))
 
     args = parser.parse_args()
 

@@ -108,7 +108,12 @@ class Restore:
             return cp
 
         def generic_args(require_config=True, require_site=False):
-            cmd.add_argument("--config", help="pghoard config file", required=require_config)
+            config_path = os.environ.get("PGHOARD_CONFIG")
+            if config_path:
+                cmd.add_argument("--config", help="pghoard config file", default=config_path)
+            else:
+                cmd.add_argument("--config", help="pghoard config file", required=require_config)
+
             cmd.add_argument("--site", help="pghoard site", required=require_site)
 
         def host_port_args():

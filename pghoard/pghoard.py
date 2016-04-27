@@ -457,11 +457,18 @@ def main(args=None):
         description="postgresql automatic backup daemon")
     parser.add_argument("--version", action="version", help="show program version",
                         version=version.__version__)
-    parser.add_argument("config", help="configuration file")
+    parser.add_argument("--config", help="configuration file path", default=os.environ.get("PGHOARD_CONFIG"))
+    parser.add_argument("config_file", help="configuration file path (for backward compatibility)",
+                        nargs="?")
     arg = parser.parse_args(args)
 
-    if not os.path.exists(arg.config):
-        print("pghoard: {!r} doesn't exist".format(arg.config))
+    config_path = arg.config or arg.config_file
+    if not config_path:
+        print("pghoard: config file path must be given with --config or via env PGHOARD_CONFIG")
+        return 1
+
+    if not os.path.exists(config_path):
+        print("pghoard: {!r} doesn't exist".format(config_path))
         return 1
 
     # Are we running under systemd?
@@ -476,9 +483,9 @@ def main(args=None):
         logging.basicConfig(level=logging.DEBUG, format=default_log_format_str)
 
     try:
-        pghoard = PGHoard(arg.config)
+        pghoard = PGHoard(config_path)
     except InvalidConfigurationError as ex:
-        print("pghoard: failed to load config {}: {}".format(arg.config, ex))
+        print("pghoard: failed to load config {}: {}".format(config_path, ex))
         return 1
 
     return pghoard.run()
