@@ -77,15 +77,15 @@ class TestRecoveryConf(PGHoardTestCase):
                 return fp.read()
 
         assert not os.path.exists(fn)
-        create_recovery_conf(td, "dummysite", None)
+        create_recovery_conf(td, "dummysite")
         assert "primary_conninfo" not in getdata()
-        create_recovery_conf(td, "dummysite", "")
+        create_recovery_conf(td, "dummysite", primary_conninfo="")
         assert "primary_conninfo" not in getdata()
-        create_recovery_conf(td, "dummysite", "dbname='test'")
+        create_recovery_conf(td, "dummysite", primary_conninfo="dbname='test'")
         assert "primary_conninfo" in getdata()  # make sure it's there
         assert "''test''" in getdata()  # make sure it's quoted
         assert "standby_mode = 'on'" in getdata()
-        content = create_recovery_conf(td, "dummysite", "dbname='test'", restore_to_master=True)
+        content = create_recovery_conf(td, "dummysite", primary_conninfo="dbname='test'", restore_to_master=True)
         assert "primary_conninfo" in content
         assert "standby_mode = 'on'" not in content
         content = create_recovery_conf(td, "dummysite",

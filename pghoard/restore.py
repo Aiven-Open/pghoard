@@ -6,6 +6,7 @@ See LICENSE for details
 """
 from pghoard import config, version
 from pghoard.common import default_log_format_str, get_object_storage_config
+from pghoard.postgres_command import PGHOARD_HOST, PGHOARD_PORT
 from pghoard.rohmu import get_transfer
 from pghoard.rohmu.compressor import Compressor
 from pghoard.rohmu.errors import Error, InvalidConfigurationError
@@ -26,7 +27,8 @@ class RestoreError(Error):
     """Restore error"""
 
 
-def create_recovery_conf(dirpath, site,
+def create_recovery_conf(dirpath, site, *,
+                         port=PGHOARD_PORT,
                          primary_conninfo=None,
                          recovery_end_command=None,
                          recovery_target_action=None,
@@ -34,12 +36,19 @@ def create_recovery_conf(dirpath, site,
                          recovery_target_time=None,
                          recovery_target_xid=None,
                          restore_to_master=None):
-    restore_command = "pghoard_postgres_command --mode restore --site {} --output %p --xlog %f".format(site)
+    restore_command = [
+        "pghoard_postgres_command",
+        "--mode", "restore",
+        "--port", str(port),
+        "--site", site,
+        "--output", "%p",
+        "--xlog", "%f",
+    ]
     lines = [
         "# pghoard created recovery.conf",
         "recovery_target_timeline = 'latest'",
         "trigger_file = {}".format(adapt(os.path.join(dirpath, "trigger_file"))),
-        "restore_command = '{}'".format(restore_command),
+        "restore_command = '{}'".format(" ".join(restore_command)),
     ]
     if not restore_to_master:
         lines.append("standby_mode = 'on'")
@@ -103,8 +112,8 @@ class Restore:
             cmd.add_argument("--site", help="pghoard site", required=require_site)
 
         def host_port_args():
-            cmd.add_argument("--host", help="pghoard repository host", default="127.0.0.1")
-            cmd.add_argument("--port", help="pghoard repository port", default=16000)
+            cmd.add_argument("--host", help="pghoard repository host", default=PGHOARD_HOST)
+            cmd.add_argument("--port", help="pghoard repository port", default=PGHOARD_PORT)
 
         def target_args():
             cmd.add_argument("--basebackup", help="pghoard basebackup", default="latest")
@@ -245,6 +254,7 @@ class Restore:
         create_recovery_conf(
             dirpath=pgdata,
             site=site,
+            port=self.config["http_port"],
             primary_conninfo=primary_conninfo,
             recovery_end_command=recovery_end_command,
             recovery_target_action=recovery_target_action,

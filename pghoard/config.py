@@ -5,6 +5,7 @@ Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
 from pghoard.common import convert_pg_command_version_to_number
+from pghoard.postgres_command import PGHOARD_HOST, PGHOARD_PORT
 from pghoard.rohmu.compressor import snappy
 from pghoard.rohmu.errors import InvalidConfigurationError
 import json
@@ -17,8 +18,8 @@ def set_config_defaults(config, *, check_commands=True):
     # misc global defaults
     config.setdefault("alert_file_dir", os.getcwd())  # XXX: get a better default
     config.setdefault("backup_location", None)
-    config.setdefault("http_address", "127.0.0.1")
-    config.setdefault("http_port", 16000)
+    config.setdefault("http_address", PGHOARD_HOST)
+    config.setdefault("http_port", PGHOARD_PORT)
     config.setdefault("json_state_file_path", "/tmp/pghoard_state.json")  # XXX: get a better default
     config.setdefault("path_prefix", "")
     config.setdefault("upload_retries_warning_limit", 3)
