@@ -373,8 +373,10 @@ class PGHoard:
                 for site, site_config in self.config["backup_sites"].items():
                     self.handle_site(site, site_config)
                 self.write_backup_state_to_json_file()
+            except subprocess.CalledProcessError as ex:
+                self.log.error("%s: %s", ex.__class__.__name__, ex)
             except:  # pylint: disable=bare-except
-                self.log.exception("Problem in PGHoard main loop")
+                self.log.exception("Unexpected exception in PGHoard main loop")
             time.sleep(5.0)
 
     def write_backup_state_to_json_file(self):
