@@ -169,78 +169,48 @@ Other possible configuration settings are covered in more detail under the
    ready to be started.
 
 
-Alert files
-===========
+Backing up your database
+========================
 
-Alert files are created whenever an error condition that requires human
-intervention to solve.  You're recommended to add checks for the existence
-of these files to your alerting system.
+PostgreSQL backups consist of full database backups, *basebackups*, plus
+write ahead logs and related metadata, *WAL*.  Both *basebackups* and *WAL*
+are required to create and restore a consistent database.
 
-``authentication_error``
+To enable backups with PGHoard the ``pghoard`` daemon must be running
+locally.  The daemon will periodically take full basebackups of the database
+files to the object store.  Additionally, PGHoard and PostgreSQL must be set
+up correctly to archive the WAL.  There are two ways to do this:
 
-There has been a problem in the authentication of at least one of the
-PostgreSQL connections.  This usually denotes a wrong username and/or
-password.
+The default option is to use PostgreSQL's own WAL-archive mechanism with
+``pghoard`` by running the ``pghoard`` daemon locally and entering the
+following configuration keys in ``postgresql.conf``::
 
-``configuration_error``
-
-There has been a problem in the authentication of at least one of the
-PostgreSQL connections.  This usually denotes a missing ``pg_hba.conf`` entry or
-incompatible settings in postgresql.conf.
-
-``upload_retries_warning``
-
-Upload of a file has failed more times than
-``upload_retries_warning_limit``. Needs human intervention to figure
-out why and to delete the alert once the situation has been fixed.
-
-``version_mismatch_error``
-
-Your local PostgreSQL client versions of pg_basebackup or ``pg_receivexlog`` do
-not match with the servers PostgreSQL version.  You need to update them to
-be on the same version level.
-
-``version_unsupported_error``
-
-Server PostgreSQL versions is not supported.
-
-
-General notes
-=============
-
-If correctly installed, ``pghoard`` comes with five executables, ``pghoard``,
-``pghoard_archive_sync``, ``pghoard_create_keys`` and
-``pghoard_postgres_command`` and ``pghoard_restore``
-
-``pghoard`` is the main process that should be run under ``systemd`` or
-``supervisord``.  It handles the backup of the configured sites.
-
-``pghoard_archive_sync`` can be used to see if any local files should
-be archived but haven't been. The other usecase it has is to determine
-if there are any gaps in the required files in the WAL archive
-from the current WAL file on to to the latest basebackup's first WAL file.
-
-``pghoard_create_keys`` can be used to generate and output encryption keys
-in the ``pghoard`` configuration format.
-
-``pghoard_restore`` is a command line tool that can be used to restore a
-previous database backup from either ``pghoard`` itself or from one of the
-supported object stores.  ``pghoard_restore`` can also configure
-``recovery.conf`` to use ``pghoard_postgres_command`` as the WAL ``restore_command``
-in ``recovery.conf``.
-
-``pghoard_postgres_command`` is a command line tool that can be used as
-PostgreSQL's ``archive_command`` or ``recovery_command``.  It communicates with
-``pghoard`` 's locally running webserver to let it know there's a new file that
-needs to be compressed, encrypted and stored in an object store (in archive
-mode) or it's inverse (in restore mode.)
-
-To enable PostgreSQL's archiving with ``pghoard`` you must set up ``pghoard``
-properly and enter the following configuration keys in ``postgresql.conf``::
-
-    wal_level = archive
     archive_mode = on
-    archive_command = pghoard_postgres_command --mode archive --site yoursite --xlog %f
+    archive_command = pghoard_postgres_command --mode archive --site default --xlog %f
+
+This instructs PostgreSQL to call the ``pghoard_postgres_command`` whenever
+a new WAL segment is ready.  The command instructs PGHoard to store the
+segment in its object store.
+
+The other option is to set up PGHoard to read the WAL stream directly from
+PostgreSQL.  To to this ``archive_mode`` must be disabled in
+``postgresql.conf`` and ``pghoard.json`` must set ``active_backup_mode`` to
+``pg_receivexlog`` in the relevant site, for example::
+
+    {
+        "backup_sites": {
+            "default": {
+                "active_backup_mode": "pg_receivexlog",
+                ...
+             },
+         },
+         ...
+     }
+
+Note that as explained in the `Setup`_ section, ``postgresql.conf`` setting
+``wal_level`` must always be set to ``archive``, ``hot_standby`` or
+``logical`` and ``max_wal_senders`` must allow 2 connections from PGHoard,
+i.e. it should be set to 2 plus the number of streaming replicas, if any.
 
 While ``pghoard`` is running it may be useful to read the JSON state file
 ``pghoard_state.json`` that exists where ``json_state_file_path`` points.
@@ -287,6 +257,37 @@ in time. PGHoard must be running before you start up the
 PostgreSQL server. To see other possible restoration options please run::
 
   pghoard_restore --help
+
+
+Commands
+========
+
+If correctly installed, ``pghoard`` comes with five executables, ``pghoard``,
+``pghoard_archive_sync``, ``pghoard_create_keys`` and
+``pghoard_postgres_command`` and ``pghoard_restore``
+
+``pghoard`` is the main process that should be run under ``systemd`` or
+``supervisord``.  It handles the backup of the configured sites.
+
+``pghoard_archive_sync`` can be used to see if any local files should
+be archived but haven't been. The other usecase it has is to determine
+if there are any gaps in the required files in the WAL archive
+from the current WAL file on to to the latest basebackup's first WAL file.
+
+``pghoard_create_keys`` can be used to generate and output encryption keys
+in the ``pghoard`` configuration format.
+
+``pghoard_restore`` is a command line tool that can be used to restore a
+previous database backup from either ``pghoard`` itself or from one of the
+supported object stores.  ``pghoard_restore`` can also configure
+``recovery.conf`` to use ``pghoard_postgres_command`` as the WAL ``restore_command``
+in ``recovery.conf``.
+
+``pghoard_postgres_command`` is a command line tool that can be used as
+PostgreSQL's ``archive_command`` or ``recovery_command``.  It communicates with
+``pghoard`` 's locally running webserver to let it know there's a new file that
+needs to be compressed, encrypted and stored in an object store (in archive
+mode) or it's inverse (in restore mode.)
 
 
 Configuration keys
@@ -492,6 +493,42 @@ Determines syslog log facility. (requires syslog to be true as well)
 * ``transfer`` WAL/basebackup transfer parameters
 
  * ``thread_count`` (default ``5``) number of parallel uploads/downloads
+
+
+Alert files
+===========
+
+Alert files are created whenever an error condition that requires human
+intervention to solve.  You're recommended to add checks for the existence
+of these files to your alerting system.
+
+``authentication_error``
+
+There has been a problem in the authentication of at least one of the
+PostgreSQL connections.  This usually denotes a wrong username and/or
+password.
+
+``configuration_error``
+
+There has been a problem in the authentication of at least one of the
+PostgreSQL connections.  This usually denotes a missing ``pg_hba.conf`` entry or
+incompatible settings in postgresql.conf.
+
+``upload_retries_warning``
+
+Upload of a file has failed more times than
+``upload_retries_warning_limit``. Needs human intervention to figure
+out why and to delete the alert once the situation has been fixed.
+
+``version_mismatch_error``
+
+Your local PostgreSQL client versions of pg_basebackup or ``pg_receivexlog`` do
+not match with the servers PostgreSQL version.  You need to update them to
+be on the same version level.
+
+``version_unsupported_error``
+
+Server PostgreSQL version is not supported.
 
 
 License
