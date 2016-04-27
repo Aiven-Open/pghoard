@@ -73,11 +73,11 @@ def create_recovery_conf(dirpath, site, *,
     return content
 
 
-def print_basebackup_list(basebackups, *, caption="Available basebackups"):
-    print(caption)
-    fmt = "{name:40}  {size:>10}  {time:20}  {meta}".format
-    print(fmt(name="Basebackup", size="Size", time="Start time", meta="Metadata"))
-    print(fmt(name="-" * 40, size="-" * 10, time="-" * 20, meta="-" * 12))
+def print_basebackup_list(basebackups, *, caption="Available basebackups", verbose=True):
+    print(caption, "\n")
+    fmt = "{name:40}  {size:>11}  {orig_size:>11}  {time:20}".format
+    print(fmt(name="Basebackup", size="Backup size", time="Start time", orig_size="Orig size"))
+    print(fmt(name="-" * 40, size="-" * 11, time="-" * 20, orig_size="-" * 11))
     for b in sorted(basebackups, key=lambda b: b["name"]):
         meta = b["metadata"].copy()
         lm = meta.pop("start-time")
@@ -87,7 +87,14 @@ def print_basebackup_list(basebackups, *, caption="Available basebackups"):
             lm = lm.astimezone(datetime.timezone.utc).replace(tzinfo=None)  # pylint: disable=no-member
         lm_str = lm.isoformat()[:19] + "Z"  # # pylint: disable=no-member
         size_str = "{} MB".format(b["size"] // (1024 ** 2))
-        print(fmt(name=b["name"], size=size_str, time=lm_str, meta=meta))
+        orig_size = int(meta.pop("original-file-size", 0) or 0)
+        if orig_size:
+            orig_size_str = "{} MB".format(orig_size // (1024 ** 2))
+        else:
+            orig_size_str = "n/a"
+        print(fmt(name=b["name"], size=size_str, time=lm_str, orig_size=orig_size_str))
+        if verbose:
+            print("    metadata:", meta)
 
 
 class Restore:
@@ -109,6 +116,7 @@ class Restore:
 
         def generic_args(require_config=True, require_site=False):
             config_path = os.environ.get("PGHOARD_CONFIG")
+            cmd.add_argument("-v", "--verbose", help="verbose output", action="store_true")
             if config_path:
                 cmd.add_argument("--config", help="pghoard config file", default=config_path)
             else:
@@ -150,7 +158,7 @@ class Restore:
     def list_basebackups_http(self, arg):
         """List available basebackups from a HTTP source"""
         self.storage = HTTPRestore(arg.host, arg.port, arg.site)
-        self.storage.show_basebackup_list()
+        self.storage.show_basebackup_list(verbose=arg.verbose)
 
     def _get_object_storage(self, site, pgdata):
         storage_config = get_object_storage_config(self.config, site)
@@ -162,7 +170,7 @@ class Restore:
         self.config = config.read_json_config_file(arg.config, check_commands=False)
         site = config.get_site_from_config(self.config, arg.site)
         self.storage = self._get_object_storage(site, pgdata=None)
-        self.storage.show_basebackup_list()
+        self.storage.show_basebackup_list(verbose=arg.verbose)
 
     def get_basebackup(self, arg):
         """Download a basebackup from an object store"""
@@ -299,10 +307,10 @@ class ObjectStore:
     def list_basebackups(self):
         return self.storage.list_path(os.path.join(self.path_prefix, self.site, "basebackup"))
 
-    def show_basebackup_list(self):
+    def show_basebackup_list(self, verbose=True):
         result = self.list_basebackups()
         caption = "Available %r basebackups:" % self.site
-        print_basebackup_list(result, caption=caption)
+        print_basebackup_list(result, caption=caption, verbose=verbose)
 
     def get_basebackup_file_to_fileobj(self, basebackup, fileobj):
         metadata = self.storage.get_metadata_for_key(basebackup)

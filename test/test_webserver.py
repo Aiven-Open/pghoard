@@ -78,7 +78,7 @@ class TestWebServer:
         # make sure they show up on the printable listing, too
         http_restore.show_basebackup_list()
         out, _ = capsys.readouterr()
-        assert str(backups[0]["metadata"]["original-file-size"]) in out
+        assert "{} MB".format(int(backups[0]["metadata"]["original-file-size"]) // (1024 ** 2)) in out
         assert backups[0]["name"] in out
         # TODO: add support for downloading basebackups through the webserver
         # http_restore.get_archive_file(backups[0]["name"], target_path="dltest", target_path_prefix=tmpdir)
