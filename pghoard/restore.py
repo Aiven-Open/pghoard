@@ -4,18 +4,17 @@ pghoard
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
-from pghoard import version
+from pghoard import config, version
 from pghoard.common import default_log_format_str, get_object_storage_config
-from pghoard.config import set_config_defaults
+from pghoard.postgres_command import PGHOARD_HOST, PGHOARD_PORT
 from pghoard.rohmu import get_transfer
 from pghoard.rohmu.compressor import Compressor
-from pghoard.rohmu.errors import Error
+from pghoard.rohmu.errors import Error, InvalidConfigurationError
 from psycopg2.extensions import adapt
 from requests import Session
 import argparse
 import datetime
 import dateutil.parser
-import json
 import logging
 import os
 import shutil
@@ -28,7 +27,8 @@ class RestoreError(Error):
     """Restore error"""
 
 
-def create_recovery_conf(dirpath, site,
+def create_recovery_conf(dirpath, site, *,
+                         port=PGHOARD_PORT,
                          primary_conninfo=None,
                          recovery_end_command=None,
                          recovery_target_action=None,
@@ -36,12 +36,19 @@ def create_recovery_conf(dirpath, site,
                          recovery_target_time=None,
                          recovery_target_xid=None,
                          restore_to_master=None):
-    restore_command = "pghoard_postgres_command --mode restore --site {} --output %p --xlog %f".format(site)
+    restore_command = [
+        "pghoard_postgres_command",
+        "--mode", "restore",
+        "--port", str(port),
+        "--site", site,
+        "--output", "%p",
+        "--xlog", "%f",
+    ]
     lines = [
         "# pghoard created recovery.conf",
         "recovery_target_timeline = 'latest'",
         "trigger_file = {}".format(adapt(os.path.join(dirpath, "trigger_file"))),
-        "restore_command = '{}'".format(restore_command),
+        "restore_command = '{}'".format(" ".join(restore_command)),
     ]
     if not restore_to_master:
         lines.append("standby_mode = 'on'")
@@ -100,13 +107,13 @@ class Restore:
             cp.set_defaults(func=method)
             return cp
 
-        def generic_args(require_config=True):
-            cmd.add_argument("--site", help="pghoard site", required=True)
+        def generic_args(require_config=True, require_site=False):
             cmd.add_argument("--config", help="pghoard config file", required=require_config)
+            cmd.add_argument("--site", help="pghoard site", required=require_site)
 
         def host_port_args():
-            cmd.add_argument("--host", help="pghoard repository host", default="127.0.0.1")
-            cmd.add_argument("--port", help="pghoard repository port", default=16000)
+            cmd.add_argument("--host", help="pghoard repository host", default=PGHOARD_HOST)
+            cmd.add_argument("--port", help="pghoard repository port", default=PGHOARD_PORT)
 
         def target_args():
             cmd.add_argument("--basebackup", help="pghoard basebackup", default="latest")
@@ -124,7 +131,7 @@ class Restore:
 
         cmd = add_cmd(self.list_basebackups_http)
         host_port_args()
-        generic_args(require_config=False)
+        generic_args(require_config=False, require_site=True)
 
         cmd = add_cmd(self.list_basebackups)
         generic_args()
@@ -134,11 +141,6 @@ class Restore:
         generic_args()
 
         return parser
-
-    def _load_config(self, configfile):
-        with open(configfile) as fp:
-            config = json.load(fp)
-        return set_config_defaults(config, check_commands=False)
 
     def list_basebackups_http(self, arg):
         """List available basebackups from a HTTP source"""
@@ -152,16 +154,18 @@ class Restore:
 
     def list_basebackups(self, arg):
         """List basebackups from an object store"""
-        self.config = self._load_config(arg.config)
-        self.storage = self._get_object_storage(arg.site, pgdata=None)
+        self.config = config.read_json_config_file(arg.config, check_commands=False)
+        site = config.get_site_from_config(self.config, arg.site)
+        self.storage = self._get_object_storage(site, pgdata=None)
         self.storage.show_basebackup_list()
 
     def get_basebackup(self, arg):
         """Download a basebackup from an object store"""
-        self.config = self._load_config(arg.config)
+        self.config = config.read_json_config_file(arg.config, check_commands=False)
+        site = config.get_site_from_config(self.config, arg.site)
         try:
-            self.storage = self._get_object_storage(arg.site, arg.target_dir)
-            self._get_basebackup(arg.target_dir, arg.basebackup, arg.site,
+            self.storage = self._get_object_storage(site, arg.target_dir)
+            self._get_basebackup(arg.target_dir, arg.basebackup, site,
                                  primary_conninfo=arg.primary_conninfo,
                                  recovery_end_command=arg.recovery_end_command,
                                  recovery_target_action=arg.recovery_target_action,
@@ -217,7 +221,7 @@ class Restore:
         if recovery_target_time:
             try:
                 recovery_target_time = dateutil.parser.parse(recovery_target_time)
-            except ValueError as ex:
+            except (TypeError, ValueError) as ex:
                 raise RestoreError("recovery_target_time {!r}: {}".format(recovery_target_time, ex))
             basebackup = self._find_nearest_basebackup(recovery_target_time)
         elif basebackup == "latest":
@@ -250,6 +254,7 @@ class Restore:
         create_recovery_conf(
             dirpath=pgdata,
             site=site,
+            port=self.config["http_port"],
             primary_conninfo=primary_conninfo,
             recovery_end_command=recovery_end_command,
             recovery_target_action=recovery_target_action,
@@ -324,7 +329,7 @@ def main():
     try:
         restore = Restore()
         return restore.run()
-    except RestoreError as ex:
+    except (InvalidConfigurationError, RestoreError) as ex:
         print("FATAL: {}: {}".format(ex.__class__.__name__, ex))
         return 1
 

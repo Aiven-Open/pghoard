@@ -17,7 +17,7 @@ PGHoard is a PostgreSQL streaming backup service.  Backups are stored in
 encrypted and compressed format in a cloud object storage.  PGHoard
 currently supports Amazon Web Services S3, Google Cloud Storage, OpenStack
 Swift and Ceph (using S3 or Swift interfaces with RadosGW.)
-Support for Windows Azure is experimental.
+Support for Microsoft Azure is experimental.
 
 
 %prep

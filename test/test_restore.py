@@ -5,6 +5,7 @@ Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
 from .base import PGHoardTestCase
+from pghoard.common import write_json_file
 from pghoard.restore import create_recovery_conf, Restore, RestoreError
 from unittest.mock import Mock
 import datetime
@@ -14,14 +15,15 @@ import pytest
 
 class TestRecoveryConf(PGHoardTestCase):
     def test_recovery_targets(self, tmpdir):
+        config_file = tmpdir.join("conf.json").strpath
+        write_json_file(config_file, {"backup_sites": {"test": {}}})
         r = Restore()
-        r._load_config = Mock()  # pylint: disable=protected-access
         r._get_object_storage = Mock()  # pylint: disable=protected-access
         with pytest.raises(RestoreError) as excinfo:
             r.run(args=[
                 "get-basebackup",
-                "--config=" + str(tmpdir),
-                "--target-dir=" + str(tmpdir),
+                "--config", config_file,
+                "--target-dir", tmpdir.strpath,
                 "--site=test",
                 "--recovery-target-action=promote",
                 "--recovery-target-name=foobar",
@@ -31,8 +33,8 @@ class TestRecoveryConf(PGHoardTestCase):
         with pytest.raises(RestoreError) as excinfo:
             r.run(args=[
                 "get-basebackup",
-                "--config=" + str(tmpdir),
-                "--target-dir=" + str(tmpdir),
+                "--config", config_file,
+                "--target-dir", tmpdir.strpath,
                 "--site=test",
                 "--recovery-target-action=promote",
                 "--recovery-target-time=foobar",
@@ -75,15 +77,15 @@ class TestRecoveryConf(PGHoardTestCase):
                 return fp.read()
 
         assert not os.path.exists(fn)
-        create_recovery_conf(td, "dummysite", None)
+        create_recovery_conf(td, "dummysite")
         assert "primary_conninfo" not in getdata()
-        create_recovery_conf(td, "dummysite", "")
+        create_recovery_conf(td, "dummysite", primary_conninfo="")
         assert "primary_conninfo" not in getdata()
-        create_recovery_conf(td, "dummysite", "dbname='test'")
+        create_recovery_conf(td, "dummysite", primary_conninfo="dbname='test'")
         assert "primary_conninfo" in getdata()  # make sure it's there
         assert "''test''" in getdata()  # make sure it's quoted
         assert "standby_mode = 'on'" in getdata()
-        content = create_recovery_conf(td, "dummysite", "dbname='test'", restore_to_master=True)
+        content = create_recovery_conf(td, "dummysite", primary_conninfo="dbname='test'", restore_to_master=True)
         assert "primary_conninfo" in content
         assert "standby_mode = 'on'" not in content
         content = create_recovery_conf(td, "dummysite",

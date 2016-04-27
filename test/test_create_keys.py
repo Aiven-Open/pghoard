@@ -5,6 +5,7 @@ Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
 from pghoard import create_keys
+from pghoard.rohmu.errors import InvalidConfigurationError
 import json
 import os
 import pytest
@@ -34,6 +35,6 @@ def test_write_keys_in_old_config(tmpdir):
     with pytest.raises(create_keys.CommandError) as excinfo:
         create_keys.save_keys(config_file, "default", "testkey", private, public)
     assert "already defined" in str(excinfo.value)
-    with pytest.raises(create_keys.CommandError) as excinfo:
+    with pytest.raises(InvalidConfigurationError) as excinfo:
         create_keys.save_keys(config_file, "nosite", "testkey", private, public)
     assert "not defined" in str(excinfo.value)

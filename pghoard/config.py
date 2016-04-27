@@ -5,7 +5,10 @@ Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
 from pghoard.common import convert_pg_command_version_to_number
+from pghoard.postgres_command import PGHOARD_HOST, PGHOARD_PORT
 from pghoard.rohmu.compressor import snappy
+from pghoard.rohmu.errors import InvalidConfigurationError
+import json
 import os
 import subprocess
 
@@ -15,8 +18,8 @@ def set_config_defaults(config, *, check_commands=True):
     # misc global defaults
     config.setdefault("alert_file_dir", os.getcwd())  # XXX: get a better default
     config.setdefault("backup_location", None)
-    config.setdefault("http_address", "127.0.0.1")
-    config.setdefault("http_port", 16000)
+    config.setdefault("http_address", PGHOARD_HOST)
+    config.setdefault("http_port", PGHOARD_PORT)
     config.setdefault("json_state_file_path", "/tmp/pghoard_state.json")  # XXX: get a better default
     config.setdefault("path_prefix", "")
     config.setdefault("upload_retries_warning_limit", 3)
@@ -58,3 +61,36 @@ def set_config_defaults(config, *, check_commands=True):
         site_config.setdefault("stream_compression", False)
 
     return config
+
+
+def read_json_config_file(filename, *, check_commands=True):
+    try:
+        with open(filename, "r") as fp:
+            config = json.load(fp)
+    except FileNotFoundError:
+        raise InvalidConfigurationError("Configuration file {!r} does not exist".format(filename))
+    except ValueError as ex:
+        raise InvalidConfigurationError("Configuration file {!r} does not contain valid JSON: {}"
+                                        .format(filename, str(ex)))
+    except OSError as ex:
+        raise InvalidConfigurationError("Configuration file {!r} can't be opened: {}"
+                                        .format(filename, ex.__class__.__name__))
+
+    return set_config_defaults(config, check_commands=check_commands)
+
+
+def get_site_from_config(config, site):
+    if not config.get("backup_sites"):
+        raise InvalidConfigurationError("No backup sites defined in configuration")
+    site_count = len(config["backup_sites"])
+    if site is None:
+        if site_count > 1:
+            raise InvalidConfigurationError("Backup site not set and configuration file defines {} sites: {}"
+                                            .format(site_count, sorted(config["backup_sites"])))
+        site = list(config["backup_sites"])[0]
+    elif site not in config["backup_sites"]:
+        n_sites = "{} other site{}".format(site_count, "s" if site_count > 1 else "")
+        raise InvalidConfigurationError("Site {!r} not defined in configuration file.  {} are defined: {}"
+                                        .format(site, n_sites, sorted(config["backup_sites"])))
+
+    return site

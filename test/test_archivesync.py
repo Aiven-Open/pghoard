@@ -1,3 +1,4 @@
+from pghoard.common import write_json_file
 from unittest.mock import Mock, patch
 import os
 import pytest
@@ -44,10 +45,12 @@ def requests_head_call_return(*args, **kwargs):  # pylint: disable=unused-argume
 
 @patch("requests.head")
 @patch("requests.put")
-def test_check_wal_archive_integrity(requests_put_mock, requests_head_mock):
+def test_check_wal_archive_integrity(requests_put_mock, requests_head_mock, tmpdir):
     from pghoard.archive_sync import ArchiveSync, SyncError
+    config_file = tmpdir.join("arsy.conf").strpath
+    write_json_file(config_file, {"http_port": 8080, "backup_sites": {"foo": {}}})
     arsy = ArchiveSync()
-    arsy.set_config({"http_port": 8080, "backup_sites": {"foo": {}}}, site="foo")
+    arsy.set_config(config_file, site="foo")
     requests_put_mock.return_value = HTTPResult(201)  # So the backup requests succeeds
     requests_head_mock.side_effect = requests_head_call_return
 

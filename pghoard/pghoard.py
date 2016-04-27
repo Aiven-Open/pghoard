@@ -5,7 +5,7 @@ Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
 from contextlib import closing
-from pghoard import version, wal
+from pghoard import config, version, wal
 from pghoard.basebackup import PGBaseBackup
 from pghoard.common import (
     create_alert_file,
@@ -17,7 +17,6 @@ from pghoard.common import (
     write_json_file,
 )
 from pghoard.compressor import CompressorThread
-from pghoard.config import set_config_defaults
 from pghoard.rohmu.inotify import InotifyWatcher
 from pghoard.transfer import TransferAgent
 from pghoard.receivexlog import PGReceiveXLog
@@ -28,7 +27,6 @@ from queue import Empty, Queue
 import argparse
 import datetime
 import dateutil.parser
-import json
 import logging
 import logging.handlers
 import os
@@ -405,16 +403,16 @@ class PGHoard:
         self.log.debug("Loading JSON config from: %r, signal: %r, frame: %r",
                        self.config_path, _signal, _frame)
         try:
-            with open(self.config_path, "r") as fp:
-                new_config = json.load(fp)
-            set_config_defaults(new_config)
-        except (OSError, subprocess.CalledProcessError, UnicodeDecodeError, ValueError) as ex:
+            new_config = config.read_json_config_file(self.config_path)
+        except (InvalidConfigurationError, subprocess.CalledProcessError, UnicodeDecodeError) as ex:
             self.log.exception("Invalid config file %r: %s: %s", self.config_path, ex.__class__.__name__, ex)
             # if we were called by a signal handler we'll ignore (and log)
             # the error and hope the user fixes the configuration before
             # restarting pghoard.
             if _signal is not None:
                 return
+            if isinstance(ex, InvalidConfigurationError):
+                raise
             raise InvalidConfigurationError(self.config_path)
 
         self.config = new_config
