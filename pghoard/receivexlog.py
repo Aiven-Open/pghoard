@@ -27,7 +27,7 @@ class PGReceiveXLog(Thread):
         self.pid = None
         self.running = False
         self.latest_activity = datetime.datetime.utcnow()
-        self.log.info("Initialized PGReceiveXLog")
+        self.log.debug("Initialized PGReceiveXLog")
 
     def run(self):
         self.running = True

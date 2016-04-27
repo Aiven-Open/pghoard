@@ -140,5 +140,5 @@ class InotifyWatcher(Thread):
         self.log.debug("Starting InotifyWatcher")
         while self.running:
             self.read_events()
-        self.log.info("Quitting InotifyWatcher")
+        self.log.debug("Quitting InotifyWatcher")
         os.close(self.fd)

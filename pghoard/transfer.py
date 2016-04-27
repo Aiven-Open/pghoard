@@ -102,7 +102,7 @@ class TransferAgent(Thread):
                           "FAILED " if not result["success"] else "",
                           key, oper_size, time.time() - start_time)
 
-        self.log.info("Quitting TransferAgent")
+        self.log.debug("Quitting TransferAgent")
 
     def handle_list(self, site, key, file_to_transfer):
         try:

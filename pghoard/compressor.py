@@ -73,7 +73,7 @@ class CompressorThread(Thread, Compressor):
                 self.log.exception("Problem handling: %r: %s: %s",
                                    log_event, ex.__class__.__name__, ex)
                 raise
-        self.log.info("Quitting Compressor")
+        self.log.debug("Quitting Compressor")
 
     def get_event_filetype(self, event):
         filetype = None
