@@ -60,6 +60,11 @@ def set_config_defaults(config, *, check_commands=True):
         site_config.setdefault("object_storage", None)
         site_config.setdefault("pg_xlog_directory", "/var/lib/pgsql/data/pg_xlog")
         site_config.setdefault("stream_compression", False)
+        obj_store = site_config["object_storage"] or {}
+        if obj_store.get("type") == "local" and obj_store.get("directory") == config.get("backup_location"):
+            raise InvalidConfigurationError(
+                "Invalid 'local' target directory {!r}, must be different from 'backup_location'".format(
+                    config.get("backup_location")))
 
     return config
 
