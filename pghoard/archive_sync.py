@@ -46,11 +46,11 @@ class ArchiveSync:
         resp = requests.get("{base}/basebackup".format(base=self.base_url))
         if resp.status_code != 200:
             self.log.error("Error looking up basebackups")
-            return None
+            return None, None
         items = resp.json()["basebackups"]
         if not items:
             self.log.error("Unable to find any basebackups")
-            return None
+            return None, None
         # NOTE: select latest basebackup by name, not necessarily by latest
         # wal segment as we'll anyway try to restore the latest basebackup
         # *by name*.
