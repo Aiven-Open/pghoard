@@ -34,7 +34,7 @@ class TestPGHoard(PGHoardTestCase):
         os.makedirs(self.basebackup_path)
         self.pghoard = PGHoard(config_path)
         self.real_check_pg_server_version = self.pghoard.check_pg_server_version
-        self.pghoard.check_pg_server_version = Mock(return_value="psql (PostgreSQL) 9.4.4")
+        self.pghoard.check_pg_server_version = Mock(return_value=90404)
         self.real_check_pg_versions_ok = self.pghoard.check_pg_versions_ok
         self.pghoard.check_pg_versions_ok = Mock(return_value=True)
 
