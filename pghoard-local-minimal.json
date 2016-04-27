@@ -1,0 +1,19 @@
+{
+    "backup_location": "./metadata",
+    "backup_sites": {
+        "example-site": {
+            "nodes": [
+                {
+                    "host": "127.0.0.1",
+                    "password": "secret",
+                    "port": 5432,
+                    "user": "backup"
+                }
+            ],
+            "object_storage": {
+                "storage_type": "local",
+                "directory": "./backups"
+            }
+        }
+    }
+}
