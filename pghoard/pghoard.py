@@ -94,7 +94,7 @@ class PGHoard:
 
         if daemon:  # If we can import systemd we always notify it
             daemon.notify("READY=1")
-            self.log.info("Sent startup notification to systemd that pghoard is READY")
+            self.log.debug("Sent startup notification to systemd that pghoard is READY")
         self.log.info("pghoard initialized, own_hostname: %r, cwd: %r", socket.gethostname(), os.getcwd())
 
     def check_pg_versions_ok(self, pg_version_server, command):
@@ -373,8 +373,10 @@ class PGHoard:
                 for site, site_config in self.config["backup_sites"].items():
                     self.handle_site(site, site_config)
                 self.write_backup_state_to_json_file()
+            except subprocess.CalledProcessError as ex:
+                self.log.error("%s: %s", ex.__class__.__name__, ex)
             except:  # pylint: disable=bare-except
-                self.log.exception("Problem in PGHoard main loop")
+                self.log.exception("Unexpected exception in PGHoard main loop")
             time.sleep(5.0)
 
     def write_backup_state_to_json_file(self):
@@ -399,9 +401,8 @@ class PGHoard:
         write_json_file(state_file_path, self.state)
         self.log.debug("Wrote JSON state file to disk, took %.4fs", time.time() - start_time)
 
-    def load_config(self, _signal=None, _frame=None):
-        self.log.debug("Loading JSON config from: %r, signal: %r, frame: %r",
-                       self.config_path, _signal, _frame)
+    def load_config(self, _signal=None, _frame=None):  # pylint: disable=unused-argument
+        self.log.debug("Loading JSON config from: %r, signal: %r", self.config_path, _signal)
         try:
             new_config = config.read_json_config_file(self.config_path)
         except (InvalidConfigurationError, subprocess.CalledProcessError, UnicodeDecodeError) as ex:
@@ -427,8 +428,8 @@ class PGHoard:
             self.log.exception("Problem with log_level: %r", self.log_level)
         self.log.debug("Loaded config: %r from: %r", self.config, self.config_path)
 
-    def quit(self, _signal=None, _frame=None):
-        self.log.warning("Quitting, signal: %r, frame: %r", _signal, _frame)
+    def quit(self, _signal=None, _frame=None):  # pylint: disable=unused-argument
+        self.log.warning("Quitting, signal: %r", _signal)
         self.running = False
         self.inotify.running = False
         all_threads = [self.webserver]
