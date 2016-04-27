@@ -98,6 +98,9 @@ class PGHoard:
         self.log.info("pghoard initialized, own_hostname: %r, cwd: %r", socket.gethostname(), os.getcwd())
 
     def check_pg_versions_ok(self, pg_version_server, command):
+        if pg_version_server is None:
+            # remote pg version not available, don't create version alert in this case
+            return False
         if not pg_version_server or pg_version_server <= 90200:
             self.log.error("pghoard does not support versions earlier than 9.2, found: %r", pg_version_server)
             create_alert_file(self.config, "version_unsupported_error")
