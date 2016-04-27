@@ -52,7 +52,7 @@ timeline|1
 xlogpos|0/B003760
 dbname|"""
         self.pghoard.handle_site(self.test_site, self.config["backup_sites"][self.test_site])
-        assert self.pghoard.receivexlogs == {}
+        assert len(self.pghoard.receivexlogs) == 1
         assert len(self.pghoard.time_of_last_backup_check) == 1
 
     def test_get_local_basebackups_info(self):
