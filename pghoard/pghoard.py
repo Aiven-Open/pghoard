@@ -421,7 +421,8 @@ class PGHoard:
             self.syslog_handler = set_syslog_handler(self.config.get("syslog_address", "/dev/log"),
                                                      self.config.get("syslog_facility", "local2"),
                                                      logging.getLogger())
-        self.log_level = getattr(logging, self.config.get("log_level", "DEBUG"))
+        # NOTE: getLevelName() also converts level names to numbers
+        self.log_level = logging.getLevelName(self.config["log_level"])
         try:
             logging.getLogger().setLevel(self.log_level)
         except ValueError:

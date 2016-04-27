@@ -24,7 +24,7 @@
     },
     "http_address": "127.0.0.1",
     "http_port": 16000,
-    "log_level": "DEBUG",
+    "log_level": "INFO",
     "pg_basebackup_path": "/usr/bin/pg_basebackup",
     "pg_receivexlog_path": "/usr/bin/pg_receivexlog",
     "syslog": false,

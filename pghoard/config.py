@@ -21,6 +21,7 @@ def set_config_defaults(config, *, check_commands=True):
     config.setdefault("http_address", PGHOARD_HOST)
     config.setdefault("http_port", PGHOARD_PORT)
     config.setdefault("json_state_file_path", "/tmp/pghoard_state.json")  # XXX: get a better default
+    config.setdefault("log_level", "INFO")
     config.setdefault("path_prefix", "")
     config.setdefault("upload_retries_warning_limit", 3)
 
