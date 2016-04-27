@@ -16,10 +16,10 @@ import subprocess
 def set_config_defaults(config, *, check_commands=True):
     # TODO: consider implementing a real configuration schema at some point
     # misc global defaults
-    config.setdefault("alert_file_dir", os.getcwd())  # XXX: get a better default
     config.setdefault("backup_location", None)
     config.setdefault("http_address", PGHOARD_HOST)
     config.setdefault("http_port", PGHOARD_PORT)
+    config.setdefault("alert_file_dir", config.get("backup_location") or os.getcwd())
     config.setdefault("json_state_file_path", "/tmp/pghoard_state.json")  # XXX: get a better default
     config.setdefault("log_level", "INFO")
     config.setdefault("path_prefix", "")
