@@ -171,7 +171,7 @@ class ArchiveSync:
         parser.add_argument("--version", action='version', help="show program version",
                             version=version.__version__)
         parser.add_argument("--site", help="pghoard site", required=False)
-        parser.add_argument("--config", help="pghoard config file", required=True)
+        parser.add_argument("--config", help="pghoard config file", default=os.environ.get("PGHOARD_CONFIG"))
         parser.add_argument("--no-verify", help="verify archive integrity", action="store_false")
         parser.add_argument("--create-new-backup-on-failure", help="request a new basebackup if verification fails",
                             action="store_true", default=False)

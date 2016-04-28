@@ -13,6 +13,7 @@ from pghoard.common import (
     get_object_storage_config,
     replication_connection_string_using_pgpass,
     set_syslog_handler,
+    short_log_format_str,
     syslog_format_str,
     write_json_file,
 )
@@ -98,6 +99,9 @@ class PGHoard:
         self.log.info("pghoard initialized, own_hostname: %r, cwd: %r", socket.gethostname(), os.getcwd())
 
     def check_pg_versions_ok(self, pg_version_server, command):
+        if pg_version_server is None:
+            # remote pg version not available, don't create version alert in this case
+            return False
         if not pg_version_server or pg_version_server <= 90200:
             self.log.error("pghoard does not support versions earlier than 9.2, found: %r", pg_version_server)
             create_alert_file(self.config, "version_unsupported_error")
@@ -421,7 +425,8 @@ class PGHoard:
             self.syslog_handler = set_syslog_handler(self.config.get("syslog_address", "/dev/log"),
                                                      self.config.get("syslog_facility", "local2"),
                                                      logging.getLogger())
-        self.log_level = getattr(logging, self.config.get("log_level", "DEBUG"))
+        # NOTE: getLevelName() also converts level names to numbers
+        self.log_level = logging.getLevelName(self.config["log_level"])
         try:
             logging.getLogger().setLevel(self.log_level)
         except ValueError:
@@ -453,11 +458,19 @@ def main(args=None):
         description="postgresql automatic backup daemon")
     parser.add_argument("--version", action="version", help="show program version",
                         version=version.__version__)
-    parser.add_argument("config", help="configuration file")
+    parser.add_argument("-s", "--short-log", help="use non-verbose logging format", action="store_true")
+    parser.add_argument("--config", help="configuration file path", default=os.environ.get("PGHOARD_CONFIG"))
+    parser.add_argument("config_file", help="configuration file path (for backward compatibility)",
+                        nargs="?")
     arg = parser.parse_args(args)
 
-    if not os.path.exists(arg.config):
-        print("pghoard: {!r} doesn't exist".format(arg.config))
+    config_path = arg.config or arg.config_file
+    if not config_path:
+        print("pghoard: config file path must be given with --config or via env PGHOARD_CONFIG")
+        return 1
+
+    if not os.path.exists(config_path):
+        print("pghoard: {!r} doesn't exist".format(config_path))
         return 1
 
     # Are we running under systemd?
@@ -469,12 +482,13 @@ def main(args=None):
                 "systemd won't see our notifications"
             )
     else:
-        logging.basicConfig(level=logging.DEBUG, format=default_log_format_str)
+        logging.basicConfig(level=logging.DEBUG,
+                            format=short_log_format_str if arg.short_log else default_log_format_str)
 
     try:
-        pghoard = PGHoard(arg.config)
+        pghoard = PGHoard(config_path)
     except InvalidConfigurationError as ex:
-        print("pghoard: failed to load config {}: {}".format(arg.config, ex))
+        print("pghoard: failed to load config {}: {}".format(config_path, ex))
         return 1
 
     return pghoard.run()

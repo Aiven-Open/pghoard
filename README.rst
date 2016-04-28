@@ -135,10 +135,14 @@ installation.
 
 0.  Make sure PostgreSQL is configured to allow WAL archival and retrieval.
     ``postgresql.conf`` should have ``wal_level`` set to ``archive`` or
-    higher and ``max_wal_senders`` set to a non-zero value, for example::
+    higher and ``max_wal_senders`` set to at least ``1`` (``archive_command`` mode)
+    or at least ``2`` (``pg_receivexlog`` mode), for example::
 
         wal_level = archive
         max_wal_senders = 4
+
+    Note that changing ``wal_level`` or ``max_wal_senders`` settings requires
+    restarting PostgreSQL.
 
 1. Create a suitable PostgreSQL user account for ``pghoard``::
 
@@ -146,7 +150,11 @@ installation.
 
 2. Edit the local ``pg_hba.conf`` to allow access for the newly created
    account to the ``replication`` database from the master and standby
-   nodes. After editing, please reload the configuration with either::
+   nodes. For example::
+
+     host  replication  pghoard  127.0.0.1/32  md5
+
+   After editing, please reload the configuration with either::
 
      SELECT pg_reload_conf();
 
@@ -401,6 +409,11 @@ object describing a remote object storage.  The object must contain a key
 specific to the storage type.
 
 The following object storage types are supported:
+
+* ``local`` makes backups to a local directory, see ``pghoard-local-minimal.json``
+  for example. Required keys:
+
+ * ``directory`` for the path to the backup target (local) storage directory
 
 * ``google`` for Google Cloud Storage, required configuration keys:
 

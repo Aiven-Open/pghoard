@@ -16,11 +16,12 @@ import subprocess
 def set_config_defaults(config, *, check_commands=True):
     # TODO: consider implementing a real configuration schema at some point
     # misc global defaults
-    config.setdefault("alert_file_dir", os.getcwd())  # XXX: get a better default
     config.setdefault("backup_location", None)
     config.setdefault("http_address", PGHOARD_HOST)
     config.setdefault("http_port", PGHOARD_PORT)
+    config.setdefault("alert_file_dir", config.get("backup_location") or os.getcwd())
     config.setdefault("json_state_file_path", "/tmp/pghoard_state.json")  # XXX: get a better default
+    config.setdefault("log_level", "INFO")
     config.setdefault("path_prefix", "")
     config.setdefault("upload_retries_warning_limit", 3)
 
@@ -52,18 +53,23 @@ def set_config_defaults(config, *, check_commands=True):
     config.setdefault("backup_sites", {})
     for site_config in config["backup_sites"].values():
         site_config.setdefault("active", True)
-        site_config.setdefault("active_backup_mode", "archive_command")
-        site_config.setdefault("basebackup_count", None)
-        site_config.setdefault("basebackup_interval_hours", None)
+        site_config.setdefault("active_backup_mode", "pg_receivexlog")
+        site_config.setdefault("basebackup_count", 2)
+        site_config.setdefault("basebackup_interval_hours", 24)
         site_config.setdefault("encryption_key_id", None)
         site_config.setdefault("object_storage", None)
         site_config.setdefault("pg_xlog_directory", "/var/lib/pgsql/data/pg_xlog")
         site_config.setdefault("stream_compression", False)
+        obj_store = site_config["object_storage"] or {}
+        if obj_store.get("type") == "local" and obj_store.get("directory") == config.get("backup_location"):
+            raise InvalidConfigurationError(
+                "Invalid 'local' target directory {!r}, must be different from 'backup_location'".format(
+                    config.get("backup_location")))
 
     return config
 
 
-def read_json_config_file(filename, *, check_commands=True):
+def read_json_config_file(filename, *, check_commands=True, add_defaults=True):
     try:
         with open(filename, "r") as fp:
             config = json.load(fp)
@@ -75,6 +81,9 @@ def read_json_config_file(filename, *, check_commands=True):
     except OSError as ex:
         raise InvalidConfigurationError("Configuration file {!r} can't be opened: {}"
                                         .format(filename, ex.__class__.__name__))
+
+    if not add_defaults:
+        return config
 
     return set_config_defaults(config, check_commands=check_commands)
 

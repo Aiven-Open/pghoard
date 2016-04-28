@@ -13,6 +13,7 @@ from cryptography.hazmat.primitives import serialization
 import argparse
 import json
 import logging
+import os
 import sys
 
 
@@ -61,7 +62,8 @@ def show_key_config(site, key_id, rsa_private_key, rsa_public_key):
 
 
 def save_keys(config_file, site, key_id, rsa_private_key, rsa_public_key):
-    config_obj = config.read_json_config_file(config_file, check_commands=False)
+    config_obj = config.read_json_config_file(config_file, check_commands=False,
+                                              add_defaults=False)
     site = config.get_site_from_config(config_obj, site)
     site_config = config_obj["backup_sites"][site]
 
@@ -74,6 +76,8 @@ def save_keys(config_file, site, key_id, rsa_private_key, rsa_public_key):
     site_config["encryption_key_id"] = key_id
     write_json_file(config_file, config_obj)
     print("Saved new key_id {!r} for site {!r} in {!r}".format(key_id, site, config_file))
+    print("NOTE: The pghoard daemon does not require the 'private' key in its configuration file, "
+          "it can be stored elsewhere to improve security")
 
 
 def main():
@@ -84,7 +88,7 @@ def main():
     parser.add_argument("--site", help="backup site", required=False)
     parser.add_argument("--key-id", help="key alias as used with encryption_key_id configuration directive", required=True)
     parser.add_argument("--bits", help="length of the generated key in bits, default %(default)d", default=3072, type=int)
-    parser.add_argument("--config", help="configuration file to store the keys in")
+    parser.add_argument("--config", help="configuration file to store the keys in", default=os.environ.get("PGHOARD_CONFIG"))
 
     args = parser.parse_args()
 
