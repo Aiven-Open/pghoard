@@ -13,6 +13,7 @@ from pghoard.common import (
     get_object_storage_config,
     replication_connection_string_using_pgpass,
     set_syslog_handler,
+    short_log_format_str,
     syslog_format_str,
     write_json_file,
 )
@@ -457,6 +458,7 @@ def main(args=None):
         description="postgresql automatic backup daemon")
     parser.add_argument("--version", action="version", help="show program version",
                         version=version.__version__)
+    parser.add_argument("-s", "--short-log", help="use non-verbose logging format", action="store_true")
     parser.add_argument("--config", help="configuration file path", default=os.environ.get("PGHOARD_CONFIG"))
     parser.add_argument("config_file", help="configuration file path (for backward compatibility)",
                         nargs="?")
@@ -480,7 +482,8 @@ def main(args=None):
                 "systemd won't see our notifications"
             )
     else:
-        logging.basicConfig(level=logging.DEBUG, format=default_log_format_str)
+        logging.basicConfig(level=logging.DEBUG,
+                            format=short_log_format_str if arg.short_log else default_log_format_str)
 
     try:
         pghoard = PGHoard(config_path)
