@@ -62,7 +62,8 @@ def show_key_config(site, key_id, rsa_private_key, rsa_public_key):
 
 
 def save_keys(config_file, site, key_id, rsa_private_key, rsa_public_key):
-    config_obj = config.read_json_config_file(config_file, check_commands=False)
+    config_obj = config.read_json_config_file(config_file, check_commands=False,
+                                              add_defaults=False)
     site = config.get_site_from_config(config_obj, site)
     site_config = config_obj["backup_sites"][site]
 
@@ -75,6 +76,8 @@ def save_keys(config_file, site, key_id, rsa_private_key, rsa_public_key):
     site_config["encryption_key_id"] = key_id
     write_json_file(config_file, config_obj)
     print("Saved new key_id {!r} for site {!r} in {!r}".format(key_id, site, config_file))
+    print("NOTE: The pghoard daemon does not require the 'private' key in its configuration file, "
+          "it can be stored elsewhere to improve security")
 
 
 def main():

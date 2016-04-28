@@ -69,7 +69,7 @@ def set_config_defaults(config, *, check_commands=True):
     return config
 
 
-def read_json_config_file(filename, *, check_commands=True):
+def read_json_config_file(filename, *, check_commands=True, add_defaults=True):
     try:
         with open(filename, "r") as fp:
             config = json.load(fp)
@@ -81,6 +81,9 @@ def read_json_config_file(filename, *, check_commands=True):
     except OSError as ex:
         raise InvalidConfigurationError("Configuration file {!r} can't be opened: {}"
                                         .format(filename, ex.__class__.__name__))
+
+    if not add_defaults:
+        return config
 
     return set_config_defaults(config, check_commands=check_commands)
 
