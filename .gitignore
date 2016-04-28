@@ -8,3 +8,5 @@ __pycache__/
 /build/
 /dist/
 /pghoard.egg-info/
+/pghoard-rpm-src.tar
+/rpm/
