@@ -1,3 +1,8 @@
+pghoard 1.3.0 (2016-xx-xx)
+==========================
+
+* Make LZMA compression level configurable
+
 pghoard 1.2.0 (2016-04-28)
 ==========================
 

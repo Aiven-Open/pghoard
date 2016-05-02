@@ -107,6 +107,7 @@ class Compression(PGHoardTestCase):
             "local_path": self.random_file_path.replace(self.incoming_path, self.handled_path),
             "metadata": {
                 "compression-algorithm": self.algorithm,
+                "compression-level": 0,
                 "original-file-size": self.random_file_size,
                 "pg-version": 90500,
             },
@@ -130,6 +131,7 @@ class Compression(PGHoardTestCase):
             "local_path": self.random_file_path,
             "metadata": {
                 "compression-algorithm": self.algorithm,
+                "compression-level": 0,
                 "original-file-size": self.random_file_size,
                 "pg-version": 90500,
             },
@@ -157,6 +159,7 @@ class Compression(PGHoardTestCase):
             "local_path": self.random_file_path,
             "metadata": {
                 "compression-algorithm": self.algorithm,
+                "compression-level": 0,
                 "encryption-key-id": "testkey",
                 "original-file-size": self.random_file_size,
                 "pg-version": 90500,
@@ -185,6 +188,7 @@ class Compression(PGHoardTestCase):
             "local_path": self.zero_file_path,
             "metadata": {
                 "compression-algorithm": self.algorithm,
+                "compression-level": 0,
                 "original-file-size": self.zero_file_size,
                 "pg-version": 90500,
             },
@@ -205,6 +209,7 @@ class Compression(PGHoardTestCase):
             "local_path": local_filepath,
             "metadata": {
                 "compression-algorithm": self.algorithm,
+                "compression-level": 0,
                 "original-file-size": self.random_file_size,
                 "pg-version": 90500,
             },
@@ -220,6 +225,7 @@ class Compression(PGHoardTestCase):
         _, blob = self.compressor.compress_filepath_to_memory(
             self.random_file_path,
             compression_algorithm=self.config["compression"]["algorithm"],
+            compression_level=self.config["compression"]["level"],
             rsa_public_key=CONSTANT_TEST_RSA_PUBLIC_KEY)
         callback_queue = Queue()
         local_filepath = os.path.join(self.temp_dir, "00000001000000000000000E")
@@ -230,6 +236,7 @@ class Compression(PGHoardTestCase):
             "local_path": local_filepath,
             "metadata": {
                 "compression-algorithm": self.algorithm,
+                "compression-level": 0,
                 "encryption-key-id": "testkey",
                 "original-file-size": self.random_file_size,
                 "pg-version": 90500,

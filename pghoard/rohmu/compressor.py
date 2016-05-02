@@ -61,9 +61,9 @@ class Compressor:
     def __init__(self):
         self.log = logging.getLogger("rohmu.Compressor")
 
-    def compressor(self, compression_algorithm):
+    def compressor(self, compression_algorithm, compression_level):
         if compression_algorithm == "lzma":
-            return lzma.LZMACompressor(preset=0)
+            return lzma.LZMACompressor(preset=compression_level)
         elif compression_algorithm == "snappy":
             if not snappy:
                 raise MissingLibraryError("python-snappy is required when using snappy compression")
@@ -115,12 +115,12 @@ class Compressor:
         return fsrc
 
     def compress_filepath(self, filepath=None, compressed_filepath=None,
-                          compression_algorithm=None, rsa_public_key=None,
-                          fileobj=None, stderr=None):
+                          compression_algorithm=None, compression_level=0,
+                          rsa_public_key=None, fileobj=None, stderr=None):
         start_time = time.monotonic()
         action = "Compressed"
 
-        compressor = self.compressor(compression_algorithm)
+        compressor = self.compressor(compression_algorithm, compression_level)
         encryptor = None
 
         compressed_file_size = 0
@@ -181,7 +181,7 @@ class Compressor:
                       time.monotonic() - start_time)
         return original_input_size, compressed_file_size
 
-    def compress_filepath_to_memory(self, filepath, compression_algorithm, rsa_public_key=None):
+    def compress_filepath_to_memory(self, filepath, compression_algorithm, compression_level=0, rsa_public_key=None):
         # This is meant to be used for smallish files, ie WAL and timeline files
         start_time = time.monotonic()
         action = "Compressed"
@@ -189,7 +189,7 @@ class Compressor:
             data = input_file.read()
         original_input_size = len(data)
 
-        compressor = self.compressor(compression_algorithm)
+        compressor = self.compressor(compression_algorithm, compression_level)
         compressed_data = compressor.compress(data)
         compressed_data += (compressor.flush() or b"")  # snappy flush() is a stub
         if rsa_public_key:
