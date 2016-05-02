@@ -48,6 +48,7 @@ def set_config_defaults(config, *, check_commands=True):
         config["compression"].setdefault("algorithm", "snappy")
     else:
         config["compression"].setdefault("algorithm", "lzma")
+    config["compression"].setdefault("level", 0)
 
     # defaults for sites
     config.setdefault("backup_sites", {})

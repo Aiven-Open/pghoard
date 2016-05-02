@@ -49,10 +49,10 @@ With both modes of operations ``pghoard`` creates basebackups using
 pg_basebackup that is run against the database in question.
 
 ``pghoard`` compresses the received WAL logs and basebackups with Snappy (default)
-or LZMA (level 0) in order to ensure good compression speed and relatively small
-backup size. For performance critical applications it is recommended to test
-both compression algorithms to find the most suitable trade-off for the
-particular use-case (snappy is much faster but yields larger compressed files).
+or LZMA (configurable, level 0 by default) in order to ensure good compression speed
+and relatively smallbackup size. For performance critical applications it is
+recommended to test both compression algorithms to find the most suitable trade-off
+for the particular use-case (snappy is much faster but yields larger compressed files).
 
 Optionally, ``pghoard`` can encrypt backed up data at rest. Each individual
 file is encrypted and authenticated with file specific keys. The file
@@ -501,7 +501,8 @@ Determines syslog log facility. (requires syslog to be true as well)
 * ``compression`` WAL/basebackup compression parameters
 
  * ``algorithm`` default ``"snappy"`` if available, otherwise ``"lzma"``
- * ``thread_count`` (default ``5``) number of parallel compression threads
+ * ``level`` default ``"0"`` compression level for ``"lzma"`` compression
+* ``thread_count`` (default ``5``) number of parallel compression threads
 
 * ``transfer`` WAL/basebackup transfer parameters
 

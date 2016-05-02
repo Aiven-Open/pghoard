@@ -114,6 +114,7 @@ class CompressorThread(Thread, Compressor):
             original_file_size, compressed_blob = self.compress_filepath_to_memory(
                 filepath=event["full_path"],
                 compression_algorithm=self.config["compression"]["algorithm"],
+                compression_level=self.config["compression"]["level"],
                 rsa_public_key=rsa_public_key)
             compressed_file_size = len(compressed_blob)
             compressed_filepath = None
@@ -124,6 +125,7 @@ class CompressorThread(Thread, Compressor):
                 filepath=event["full_path"],
                 compressed_filepath=compressed_filepath,
                 compression_algorithm=self.config["compression"]["algorithm"],
+                compression_level=self.config["compression"]["level"],
                 rsa_public_key=rsa_public_key)
 
         if event.get("delete_file_after_compression", True):
@@ -133,6 +135,7 @@ class CompressorThread(Thread, Compressor):
         metadata.update({
             "pg-version": self.config["backup_sites"][site].get("pg_version", 90500),
             "compression-algorithm": self.config["compression"]["algorithm"],
+            "compression-level": self.config["compression"]["level"],
             "original-file-size": original_file_size,
         })
         if encryption_key_id:
