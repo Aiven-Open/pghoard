@@ -110,7 +110,8 @@ Fedora::
 
   dnf install rpm/RPMS/noarch/*
 
-On Fedora it is recommended to simply run ``pghoard`` under ``systemd``::
+On Linux systems it is recommended to simply run ``pghoard`` under
+``systemd``::
 
   systemctl enable pghoard.service
 
@@ -122,9 +123,10 @@ Python/Other::
 
   easy_install dist/pghoard-1.2.0-py3.4.egg
 
-On Debian/Other systems it is recommended that you run ``pghoard`` within a
-``supervisord`` (http://supervisord.org) Process control system.  (see examples
-directory for an example ``supervisord.conf``)
+On systems without ``systemd`` it is recommended that you run ``pghoard``
+under Supervisor_ or other similar process control system.
+
+.. _`Supervisor`: http://supervisord.org
 
 
 Setup
@@ -556,8 +558,12 @@ http://www.apache.org/licenses/LICENSE-2.0.txt
 Credits
 =======
 
-``pghoard`` was created by Hannu Valtonen <hannu.valtonen@ohmu.fi> and is now
-maintained by Ohmu Ltd's hackers <opensource@ohmu.fi>.
+``pghoard`` was created by Hannu Valtonen <hannu.valtonen@ohmu.fi> for
+`Aiven Cloud Database`_ and is now maintained by `Ohmu Ltd`_ hackers and
+Aiven developers <pghoard@ohmu.fi>.
+
+.. _`Ohmu Ltd`: https://ohmu.fi/
+.. _`Aiven Cloud Database`: https://aiven.io/
 
 Recent contributors are listed on the GitHub project page,
 https://github.com/ohmu/pghoard/graphs/contributors
