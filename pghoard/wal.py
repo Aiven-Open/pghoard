@@ -4,11 +4,14 @@ pghoard: inspect WAL files
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
+from .common import replication_connection_string_using_pgpass
 from collections import namedtuple
-from . common import replication_connection_string_using_pgpass
+import re
 import struct
 import subprocess
 
+TIMELINE_RE = re.compile(r"^[A-F0-9]{8}\.history$")
+XLOG_RE = re.compile("^[A-F0-9]{24}$")
 WAL_HEADER_LEN = 20
 WAL_MAGIC = {
     0xD071: 90200,
