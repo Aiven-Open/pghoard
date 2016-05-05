@@ -79,21 +79,42 @@ class Compression(PGHoardTestCase):
         super().teardown_method(method)
 
     def test_get_event_type(self):
-        filetype = self.compressor.get_event_filetype({
-            "full_path": "00000001000000000000000C",
-            "src_path": "00000001000000000000000C.partial",
+        # Rename from .partial to final should be recognized
+        event = {
+            "full_path": "/out/00000001000000000000000C",
+            "src_path": "/tmp/00000001000000000000000C.partial",
             "type": "MOVE",
-        })
-        assert filetype == "xlog"
-        # todo check timeline history file naming format
-        filetype = self.compressor.get_event_filetype({
-            "full_path": "1.history",
-            "src_path": "1.history.partial",
+        }
+        assert self.compressor.get_event_filetype(event) == "xlog"
+        # Rename from non-partial suffix is not recognized
+        event["src_path"] += "xyz"
+        assert self.compressor.get_event_filetype(event) is None
+        # "CLOSE_WRITE" doesn't consider src_path
+        del event["src_path"]
+        event["type"] = "CLOSE_WRITE"
+        assert self.compressor.get_event_filetype(event) == "xlog"
+        # other event types are ignored
+        event["type"] = "NAKKI"
+        assert self.compressor.get_event_filetype(event) is None
+
+        # Timeline history files are handled the same way (do they actually ever have .partial?)
+        event = {
+            "full_path": "/xlog/0000000A.history",
+            "src_path": "/tmp/0000000A.history.partial",
             "type": "MOVE",
-        })
-        assert filetype == "timeline"
-        filetype = self.compressor.get_event_filetype({"type": "CLOSE_WRITE", "full_path": "base.tar"})
-        assert filetype == "basebackup"
+        }
+        assert self.compressor.get_event_filetype(event) == "timeline"
+        event["src_path"] += "xyz"
+        assert self.compressor.get_event_filetype(event) is None
+        del event["src_path"]
+        event["type"] = "CLOSE_WRITE"
+        assert self.compressor.get_event_filetype(event) == "timeline"
+
+        event = {
+            "full_path": "/data/base.tar",
+            "type": "CLOSE_WRITE",
+        }
+        assert self.compressor.get_event_filetype(event) == "basebackup"
 
     def test_compress_to_file(self):
         self.compression_queue.put({

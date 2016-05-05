@@ -4,6 +4,7 @@ pghoard - compressor threads
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
+from pghoard import wal
 from pghoard.common import write_json_file
 from pghoard.rohmu.compressor import Compressor
 from queue import Empty
@@ -76,22 +77,16 @@ class CompressorThread(Thread, Compressor):
         self.log.debug("Quitting Compressor")
 
     def get_event_filetype(self, event):
-        filetype = None
-        # todo tighten these up by using a regexp
         if event["type"] == "CLOSE_WRITE" and os.path.basename(event["full_path"]) == "base.tar":
-            filetype = "basebackup"
-        elif event["type"] == "CLOSE_WRITE" and os.path.basename(event["full_path"]).endswith(".history"):
-            filetype = "timeline"
-        elif event["type"] == "CLOSE_WRITE" and os.path.basename(event["full_path"]) and \
-             len(os.path.basename(event["full_path"])) == 24:  # noqa
-            filetype = "xlog"
-        elif event["type"] == "MOVE" and event["src_path"].endswith(".partial") and \
-             len(os.path.basename(event["full_path"])) == 24:  # noqa
-            filetype = "xlog"
-        # todo check the form of timeline history file naming
-        elif event["type"] == "MOVE" and event["src_path"].endswith(".partial") and event["full_path"].endswith(".history"):
-            filetype = "timeline"
-        return filetype
+            return "basebackup"
+
+        if event["type"] == "CLOSE_WRITE" or (event["type"] == "MOVE" and event["src_path"].endswith(".partial")):
+            if wal.XLOG_RE.match(os.path.basename(event["full_path"])):
+                return "xlog"
+            if wal.TIMELINE_RE.match(os.path.basename(event["full_path"])):
+                return "timeline"
+
+        return None
 
     def handle_decompression_event(self, event):
         rsa_private_key = None
