@@ -128,7 +128,7 @@ class CompressorThread(Thread, Compressor):
 
         metadata = event.get("metadata", {})
         metadata.update({
-            "pg-version": self.config["backup_sites"][site].get("pg_version", 90500),
+            "pg-version": self.config["backup_sites"][site].get("pg_version"),
             "compression-algorithm": self.config["compression"]["algorithm"],
             "compression-level": self.config["compression"]["level"],
             "original-file-size": original_file_size,
