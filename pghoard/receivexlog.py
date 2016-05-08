@@ -11,7 +11,8 @@ import select
 import subprocess
 import time
 
-from . common import get_connection_info, set_subprocess_stdout_and_stderr_nonblocking, terminate_subprocess
+from .common import set_subprocess_stdout_and_stderr_nonblocking, terminate_subprocess
+from .pgutil import get_connection_info
 from threading import Thread
 
 

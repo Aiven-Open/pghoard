@@ -11,7 +11,7 @@ from copy import deepcopy
 from http.client import HTTPConnection
 from pghoard import postgres_command, wal
 from pghoard.archive_sync import ArchiveSync
-from pghoard.common import create_connection_string
+from pghoard.pgutil import create_connection_string
 from pghoard.postgres_command import archive_command, restore_command
 from pghoard.restore import HTTPRestore, Restore
 from pghoard.rohmu.encryptor import Encryptor

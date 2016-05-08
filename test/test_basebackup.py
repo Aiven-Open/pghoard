@@ -6,7 +6,7 @@ See LICENSE for details
 """
 from copy import deepcopy
 from pghoard.basebackup import PGBaseBackup
-from pghoard.common import create_connection_string
+from pghoard.pgutil import create_connection_string
 from pghoard.restore import Restore, RestoreError
 from queue import Queue
 import os
