@@ -339,12 +339,12 @@ or a ``postgres://`` connection uri.
 How many basebackups should be kept around for restoration purposes.  The
 more there are the more diskspace will be used.
 
-``basebackup_interval_hours`` (no default)
+``basebackup_interval_hours`` (default ``24``)
 
 How often to take a new basebackup of a cluster.  The shorter the interval,
 the faster your recovery will be, but the more CPU/IO usage is required from
-the servers it takes the basebackup from.  If omitted or set to a null value
-basebackups are not automatically taken at all.
+the servers it takes the basebackup from.  If set to a null value basebackups
+are not automatically taken at all.
 
 ``encryption_key_id`` (no default)
 
