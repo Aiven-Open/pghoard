@@ -6,9 +6,9 @@ See LICENSE for details
 """
 # pylint: disable=attribute-defined-outside-init
 from .base import PGHoardTestCase, CONSTANT_TEST_RSA_PUBLIC_KEY, CONSTANT_TEST_RSA_PRIVATE_KEY
-from pghoard.common import IO_BLOCK_SIZE
-from pghoard.rohmu.compressor import snappy
 from pghoard.compressor import CompressorThread
+from pghoard.rohmu import IO_BLOCK_SIZE
+from pghoard.rohmu.compressor import snappy
 from queue import Queue
 import lzma
 import os

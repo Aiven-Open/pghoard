@@ -17,7 +17,6 @@ import tempfile
 import time
 
 
-IO_BLOCK_SIZE = 2 ** 20  # 1 MiB
 LOG = logging.getLogger("pghoard.common")
 
 
