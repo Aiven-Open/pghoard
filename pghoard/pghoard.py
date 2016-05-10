@@ -5,16 +5,12 @@ Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
 from contextlib import closing
-from pghoard import config, version, wal
+from pghoard import config, logutil, version, wal
 from pghoard.basebackup import PGBaseBackup
 from pghoard.common import (
     create_alert_file,
-    default_log_format_str,
     get_object_storage_config,
     replication_connection_string_using_pgpass,
-    set_syslog_handler,
-    short_log_format_str,
-    syslog_format_str,
     write_json_file,
 )
 from pghoard.compressor import CompressorThread
@@ -29,7 +25,6 @@ import argparse
 import datetime
 import dateutil.parser
 import logging
-import logging.handlers
 import os
 import psycopg2
 import random
@@ -38,12 +33,6 @@ import socket
 import subprocess
 import sys
 import time
-
-
-try:
-    from systemd import daemon  # pylint: disable=no-name-in-module
-except ImportError:
-    daemon = None
 
 
 class PGHoard:
@@ -93,9 +82,7 @@ class PGHoard:
             ta = TransferAgent(self.config, self.compression_queue, self.transfer_queue)
             self.transfer_agents.append(ta)
 
-        if daemon:  # If we can import systemd we always notify it
-            daemon.notify("READY=1")
-            self.log.debug("Sent startup notification to systemd that pghoard is READY")
+        logutil.notify_systemd("READY=1")
         self.log.info("pghoard initialized, own_hostname: %r, cwd: %r", socket.gethostname(), os.getcwd())
 
     def check_pg_versions_ok(self, pg_version_server, command):
@@ -422,9 +409,11 @@ class PGHoard:
 
         self.config = new_config
         if self.config.get("syslog") and not self.syslog_handler:
-            self.syslog_handler = set_syslog_handler(self.config.get("syslog_address", "/dev/log"),
-                                                     self.config.get("syslog_facility", "local2"),
-                                                     logging.getLogger())
+            self.syslog_handler = logutil.set_syslog_handler(
+                address=self.config.get("syslog_address", "/dev/log"),
+                facility=self.config.get("syslog_facility", "local2"),
+                logger=logging.getLogger(),
+            )
         # NOTE: getLevelName() also converts level names to numbers
         self.log_level = logging.getLevelName(self.config["log_level"])
         try:
@@ -473,17 +462,7 @@ def main(args=None):
         print("pghoard: {!r} doesn't exist".format(config_path))
         return 1
 
-    # Are we running under systemd?
-    if os.getenv("NOTIFY_SOCKET"):
-        logging.basicConfig(level=logging.DEBUG, format=syslog_format_str)
-        if not daemon:
-            print(
-                "WARNING: Running under systemd but python-systemd not available, "
-                "systemd won't see our notifications"
-            )
-    else:
-        logging.basicConfig(level=logging.DEBUG,
-                            format=short_log_format_str if arg.short_log else default_log_format_str)
+    logutil.configure_logging(short_log=arg.short_log)
 
     try:
         pghoard = PGHoard(config_path)

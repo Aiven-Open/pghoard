@@ -20,11 +20,6 @@ import time
 LOG = logging.getLogger("pghoard.common")
 
 
-default_log_format_str = "%(asctime)s\t%(name)s\t%(threadName)s\t%(levelname)s\t%(message)s"
-short_log_format_str = "%(levelname)s\t%(message)s"
-syslog_format_str = "%(name)s %(threadName)s %(levelname)s: %(message)s"
-
-
 def create_pgpass_file(connection_string_or_info):
     """Look up password from the given object which can be a dict or a
     string and write a possible password in a pgpass file;
@@ -78,14 +73,6 @@ def replication_connection_string_using_pgpass(target_node_info):
     connection_info["replication"] = "true"
     connection_string = create_pgpass_file(connection_info)
     return connection_string, slot
-
-
-def set_syslog_handler(syslog_address, syslog_facility, logger):
-    syslog_handler = logging.handlers.SysLogHandler(address=syslog_address, facility=syslog_facility)
-    logger.addHandler(syslog_handler)
-    formatter = logging.Formatter(syslog_format_str)
-    syslog_handler.setFormatter(formatter)
-    return syslog_handler
 
 
 def set_stream_nonblocking(stream):
