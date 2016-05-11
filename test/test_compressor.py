@@ -6,6 +6,7 @@ See LICENSE for details
 """
 # pylint: disable=attribute-defined-outside-init
 from .base import PGHoardTestCase, CONSTANT_TEST_RSA_PUBLIC_KEY, CONSTANT_TEST_RSA_PRIVATE_KEY
+from .test_wal import wal_header_for_file
 from io import BytesIO
 from pghoard.compressor import CompressorThread
 from pghoard.rohmu import IO_BLOCK_SIZE
@@ -51,19 +52,22 @@ class Compression(PGHoardTestCase):
         self.random_file_path = os.path.join(self.incoming_path, "00000001000000000000000C")
         self.random_file_path_partial = os.path.join(self.incoming_path, "00000001000000000000000C.partial")
 
-        # Create a totally random file, bigger than block size.  Compressed output is longer
-        self.random_file_contents = os.urandom(IO_BLOCK_SIZE * 2)
+        # Create a totally random file, bigger than block size, with a valid header.
+        # Compressed output is longer than original for a random file.
+        self.random_file_contents = wal_header_for_file(os.path.basename(self.random_file_path))
+        self.random_file_contents += os.urandom(IO_BLOCK_SIZE * 2)
         with open(self.random_file_path, "wb") as out:
             out.write(self.random_file_contents)
             self.random_file_size = out.tell()
 
-        # Create an easily compressible test file, too (with random prefix and suffix)
+        # Create an easily compressible test file, too (with valid header and random prefix and suffix)
         self.zero_file_path = os.path.join(self.incoming_path, "00000001000000000000000D")
         self.zero_file_path_partial = os.path.join(self.incoming_path, "00000001000000000000000D.partial")
 
         # ensure the plaintext file is bigger than the block size and zero (compressed is smaller)
         zeros = (IO_BLOCK_SIZE * 2 - 32) * b"\x00"
-        self.zero_file_contents = os.urandom(16) + zeros + os.urandom(16)
+        self.zero_file_contents = wal_header_for_file(os.path.basename(self.zero_file_path))
+        self.zero_file_contents += os.urandom(16) + zeros + os.urandom(16)
         with open(self.zero_file_path, "wb") as out:
             out.write(self.zero_file_contents)
             self.zero_file_size = out.tell()
@@ -117,6 +121,16 @@ class Compression(PGHoardTestCase):
         }
         assert self.compressor.get_event_filetype(event) == "basebackup"
 
+    def test_compress_fileobj(self):
+        with open(self.random_file_path, "rb") as input_obj, BytesIO() as output_obj:
+            orig_len, compr_len = self.compressor.compress_fileobj(
+                input_obj=input_obj,
+                output_obj=output_obj,
+                compression_algorithm=self.algorithm)
+            assert output_obj.tell() == compr_len
+            assert len(output_obj.getvalue()) == compr_len
+            assert orig_len == self.random_file_size
+
     def test_compress_to_file(self):
         self.compression_queue.put({
             "type": "MOVE",
@@ -139,14 +153,13 @@ class Compression(PGHoardTestCase):
             assert transfer_event[key] == value
 
     def test_compress_to_memory(self):
-        event = {
+        self.compression_queue.put({
             "compress_to_memory": True,
             "delete_file_after_compression": False,
             "full_path": self.random_file_path,
             "src_path": self.random_file_path_partial,
             "type": "MOVE",
-        }
-        self.compressor.handle_event(event, filetype="xlog")
+        })
         expected = {
             "callback_queue": None,
             "filetype": "xlog",
@@ -159,7 +172,7 @@ class Compression(PGHoardTestCase):
             },
             "site": self.test_site,
         }
-        transfer_event = self.transfer_queue.get()
+        transfer_event = self.transfer_queue.get(timeout=1.0)
         for key, value in expected.items():
             assert transfer_event[key] == value
 
@@ -188,7 +201,7 @@ class Compression(PGHoardTestCase):
             },
             "site": self.test_site,
         }
-        transfer_event = self.transfer_queue.get()
+        transfer_event = self.transfer_queue.get(timeout=1.0)
         for key, value in expected.items():
             assert transfer_event[key] == value
 

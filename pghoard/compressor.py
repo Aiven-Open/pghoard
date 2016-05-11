@@ -120,6 +120,9 @@ class CompressorThread(Thread, Compressor):
             output_obj = NamedTemporaryFile(prefix=compressed_filepath, suffix=".tmp-compress")
 
         with output_obj, open(event["full_path"], "rb") as input_obj:
+            if filetype == "xlog":
+                wal.verify_wal(wal_name=os.path.basename(event["full_path"]), fileobj=input_obj)
+
             original_file_size, compressed_file_size = self.compress_fileobj(
                 input_obj=input_obj,
                 output_obj=output_obj,

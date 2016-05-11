@@ -114,8 +114,7 @@ class Compressor:
             fsrc = SnappyFile(fsrc)  # pylint: disable=redefined-variable-type
         return fsrc
 
-    def compress_fileobj(self, *,
-                         input_obj=None, stderr=None, output_obj=None,
+    def compress_fileobj(self, *, input_obj, output_obj, stderr=None,
                          compression_algorithm, compression_level=0, rsa_public_key=None):
         start_time = time.monotonic()
 
