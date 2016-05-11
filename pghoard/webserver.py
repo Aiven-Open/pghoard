@@ -172,15 +172,9 @@ class RequestHandler(BaseHTTPRequestHandler):
         if filetype != "xlog":
             return
         try:
-            with open(path, "rb") as fp:
-                hdr = wal.read_header(fp.read(wal.WAL_HEADER_LEN))
-        except (KeyError, OSError, ValueError) as ex:
-            fmt = "WAL file {path!r} verification failed: {ex.__class__.__name__}: {ex}"
-            raise HttpResponse(fmt.format(path=path, ex=ex), status=412)
-        expected_lsn = wal.lsn_from_name(filename)
-        if hdr.lsn != expected_lsn:
-            fmt = "Expected LSN {lsn!r} in restored WAL file {path!r}; found {found!r}"
-            raise HttpResponse(fmt.format(lsn=expected_lsn, path=path, found=hdr.lsn), status=412)
+            wal.verify_wal(wal_name=filename, filepath=path)
+        except ValueError as ex:
+            raise HttpResponse(str(ex), status=412)
 
     def _save_and_verify_restored_file(self, filetype, filename, tmp_target_path, target_path):
         self._verify_wal(filetype, filename, tmp_target_path)
