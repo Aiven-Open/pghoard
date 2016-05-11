@@ -52,6 +52,7 @@ class CompressorThread(Thread, Compressor):
                 event = self.compression_queue.get(timeout=1.0)
             except Empty:
                 continue
+
             try:
                 if event["type"] == "QUIT":
                     break
@@ -61,19 +62,21 @@ class CompressorThread(Thread, Compressor):
                     filetype = self.get_event_filetype(event)
                     if not filetype:
                         if "callback_queue" in event and event["callback_queue"]:
-                            self.log.debug("Returning success for event: %r, even though we did nothing for it", event)
+                            self.log.debug("Returning success for unrecognized and ignored event: %r", event)
                             event["callback_queue"].put({"success": True, "opaque": event.get("opaque")})
                         continue
-                    else:
-                        self.handle_event(event, filetype)
-            except Exception as ex:
+
+                    self.handle_event(event, filetype)
+            except Exception as ex:  # pylint: disable=broad-except
                 if "blob" in event:
                     log_event = dict(event, blob="<{} bytes>".format(len(event["blob"])))
                 else:
                     log_event = event
                 self.log.exception("Problem handling: %r: %s: %s",
                                    log_event, ex.__class__.__name__, ex)
-                raise
+                if "callback_queue" in event and event["callback_queue"]:
+                    event["callback_queue"].put({"success": False, "exception": ex, "opaque": event.get("opaque")})
+
         self.log.debug("Quitting Compressor")
 
     def get_event_filetype(self, event):
