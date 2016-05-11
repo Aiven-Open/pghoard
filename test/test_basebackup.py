@@ -59,9 +59,11 @@ LABEL: pg_basebackup base backup
             "list-basebackups",
             "--config", pghoard.config_path,
             "--site", pghoard.test_site,
+            "--verbose",
         ])
         out, _ = capsys.readouterr()
         assert pghoard.test_site in out
+        assert "pg-version" in out
         # try downloading it
         backup_out = str(tmpdir.join("test-restore"))
         os.makedirs(backup_out)

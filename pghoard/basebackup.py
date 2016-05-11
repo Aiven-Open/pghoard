@@ -175,6 +175,7 @@ class PGBaseBackup(Thread):
                     "start-time": start_time,
                     "start-wal-segment": self.start_wal_segment,
                     "original-file-size": original_input_size,
+                    "pg-version": self.pg_version_server,
                 },
                 "site": self.site,
                 "type": "UPLOAD",
