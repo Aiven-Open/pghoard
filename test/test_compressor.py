@@ -6,6 +6,7 @@ See LICENSE for details
 """
 # pylint: disable=attribute-defined-outside-init
 from .base import PGHoardTestCase, CONSTANT_TEST_RSA_PUBLIC_KEY, CONSTANT_TEST_RSA_PRIVATE_KEY
+from io import BytesIO
 from pghoard.compressor import CompressorThread
 from pghoard.rohmu import IO_BLOCK_SIZE
 from pghoard.rohmu.compressor import snappy
@@ -243,15 +244,18 @@ class Compression(PGHoardTestCase):
             assert fp.read() == self.random_file_contents
 
     def test_decompression_decrypt_event(self):
-        _, blob = self.compressor.compress_filepath_to_memory(
-            self.random_file_path,
-            compression_algorithm=self.config["compression"]["algorithm"],
-            compression_level=self.config["compression"]["level"],
-            rsa_public_key=CONSTANT_TEST_RSA_PUBLIC_KEY)
+        output_obj = BytesIO()
+        with open(self.random_file_path, "rb") as input_obj:
+            self.compressor.compress_fileobj(
+                input_obj=input_obj,
+                output_obj=output_obj,
+                compression_algorithm=self.config["compression"]["algorithm"],
+                compression_level=self.config["compression"]["level"],
+                rsa_public_key=CONSTANT_TEST_RSA_PUBLIC_KEY)
         callback_queue = Queue()
         local_filepath = os.path.join(self.temp_dir, "00000001000000000000000E")
         self.compression_queue.put({
-            "blob": blob,
+            "blob": output_obj.getvalue(),
             "callback_queue": callback_queue,
             "filetype": "xlog",
             "local_path": local_filepath,

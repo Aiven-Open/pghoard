@@ -8,6 +8,7 @@ from .common import (get_connection_info, set_stream_nonblocking, set_subprocess
                      terminate_subprocess)
 from pghoard.rohmu.compat import suppress
 from pghoard.rohmu.compressor import Compressor
+from tempfile import NamedTemporaryFile
 from threading import Thread
 import datetime
 import dateutil.parser
@@ -100,12 +101,16 @@ class PGBaseBackup(Thread):
         compression_algorithm = self.config["compression"]["algorithm"]
         self.log.debug("Compressing basebackup directly to file: %r", basebackup_path)
         set_stream_nonblocking(proc.stderr)
-        original_input_size, compressed_file_size = c.compress_filepath(
-            fileobj=proc.stdout,
-            stderr=proc.stderr,
-            compressed_filepath=basebackup_path,
-            compression_algorithm=compression_algorithm,
-            rsa_public_key=rsa_public_key)
+
+        with NamedTemporaryFile(prefix=basebackup_path, suffix=".tmp-compress") as output_obj:
+            original_input_size, compressed_file_size = c.compress_fileobj(
+                input_obj=proc.stdout,
+                stderr=proc.stderr,
+                output_obj=output_obj,
+                compression_algorithm=compression_algorithm,
+                rsa_public_key=rsa_public_key)
+            os.link(output_obj.name, basebackup_path)
+
         metadata = {
             "compression-algorithm": compression_algorithm,
             "encryption-key-id": encryption_key_id,
