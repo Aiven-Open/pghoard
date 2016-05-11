@@ -7,6 +7,9 @@ See LICENSE for details
 from . errors import InvalidConfigurationError
 
 
+IO_BLOCK_SIZE = 2 ** 20  # 1 MiB
+
+
 def get_transfer(storage_config, *, storage_type=None):
     # TODO: drop storage_type from the function signature, always read it from the config
     if "storage_type" in storage_config:

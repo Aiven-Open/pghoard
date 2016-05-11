@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pghoard import wal
-from pghoard.common import json_encode, TIMELINE_RE, XLOG_RE
+from pghoard.common import json_encode
 from pghoard.rohmu.compat import suppress
 from pghoard.rohmu.errors import Error, FileNotFoundFromStorageError
 from pghoard.version import __version__
@@ -156,9 +156,9 @@ class RequestHandler(BaseHTTPRequestHandler):
             # allow postgresql's archive_command and restore_command to just feed in files without providing
             # their types which isn't possible without a wrapper to add it.
             if obtype == "archive":
-                if XLOG_RE.match(path[2]):
+                if wal.XLOG_RE.match(path[2]):
                     obtype = "xlog"
-                elif TIMELINE_RE.match(path[2]):
+                elif wal.TIMELINE_RE.match(path[2]):
                     obtype = "timeline"
                 elif path[2] == "basebackup":
                     obtype = "basebackup"

@@ -5,7 +5,7 @@ Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
 from . import config, version, wal
-from .common import default_log_format_str, TIMELINE_RE, XLOG_RE
+from .common import default_log_format_str
 from .rohmu.errors import InvalidConfigurationError
 import argparse
 import logging
@@ -80,10 +80,10 @@ class ArchiveSync:
         need_archival = []
         for xlog_file in xlog_files:
             archive_type = None
-            if TIMELINE_RE.match(xlog_file):
+            if wal.TIMELINE_RE.match(xlog_file):
                 # We want all timeline files
                 archive_type = "TIMELINE"
-            elif not XLOG_RE.match(xlog_file):
+            elif not wal.XLOG_RE.match(xlog_file):
                 pass   # not a WAL or timeline file
             elif xlog_file == current_wal_file:
                 self.log.info("Skipping currently open WAL file %r", xlog_file)

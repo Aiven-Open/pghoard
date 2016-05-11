@@ -4,6 +4,7 @@ pghoard - compressor threads
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
+from pghoard import wal
 from pghoard.common import write_json_file
 from pghoard.rohmu.compressor import Compressor
 from queue import Empty
@@ -51,6 +52,7 @@ class CompressorThread(Thread, Compressor):
                 event = self.compression_queue.get(timeout=1.0)
             except Empty:
                 continue
+
             try:
                 if event["type"] == "QUIT":
                     break
@@ -60,38 +62,34 @@ class CompressorThread(Thread, Compressor):
                     filetype = self.get_event_filetype(event)
                     if not filetype:
                         if "callback_queue" in event and event["callback_queue"]:
-                            self.log.debug("Returning success for event: %r, even though we did nothing for it", event)
+                            self.log.debug("Returning success for unrecognized and ignored event: %r", event)
                             event["callback_queue"].put({"success": True, "opaque": event.get("opaque")})
                         continue
-                    else:
-                        self.handle_event(event, filetype)
-            except Exception as ex:
+
+                    self.handle_event(event, filetype)
+            except Exception as ex:  # pylint: disable=broad-except
                 if "blob" in event:
                     log_event = dict(event, blob="<{} bytes>".format(len(event["blob"])))
                 else:
                     log_event = event
                 self.log.exception("Problem handling: %r: %s: %s",
                                    log_event, ex.__class__.__name__, ex)
-                raise
+                if "callback_queue" in event and event["callback_queue"]:
+                    event["callback_queue"].put({"success": False, "exception": ex, "opaque": event.get("opaque")})
+
         self.log.debug("Quitting Compressor")
 
     def get_event_filetype(self, event):
-        filetype = None
-        # todo tighten these up by using a regexp
         if event["type"] == "CLOSE_WRITE" and os.path.basename(event["full_path"]) == "base.tar":
-            filetype = "basebackup"
-        elif event["type"] == "CLOSE_WRITE" and os.path.basename(event["full_path"]).endswith(".history"):
-            filetype = "timeline"
-        elif event["type"] == "CLOSE_WRITE" and os.path.basename(event["full_path"]) and \
-             len(os.path.basename(event["full_path"])) == 24:  # noqa
-            filetype = "xlog"
-        elif event["type"] == "MOVE" and event["src_path"].endswith(".partial") and \
-             len(os.path.basename(event["full_path"])) == 24:  # noqa
-            filetype = "xlog"
-        # todo check the form of timeline history file naming
-        elif event["type"] == "MOVE" and event["src_path"].endswith(".partial") and event["full_path"].endswith(".history"):
-            filetype = "timeline"
-        return filetype
+            return "basebackup"
+
+        if event["type"] == "CLOSE_WRITE" or (event["type"] == "MOVE" and event["src_path"].endswith(".partial")):
+            if wal.XLOG_RE.match(os.path.basename(event["full_path"])):
+                return "xlog"
+            if wal.TIMELINE_RE.match(os.path.basename(event["full_path"])):
+                return "timeline"
+
+        return None
 
     def handle_decompression_event(self, event):
         rsa_private_key = None
@@ -133,7 +131,7 @@ class CompressorThread(Thread, Compressor):
 
         metadata = event.get("metadata", {})
         metadata.update({
-            "pg-version": self.config["backup_sites"][site].get("pg_version", 90500),
+            "pg-version": self.config["backup_sites"][site].get("pg_version"),
             "compression-algorithm": self.config["compression"]["algorithm"],
             "compression-level": self.config["compression"]["level"],
             "original-file-size": original_file_size,

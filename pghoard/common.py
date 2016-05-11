@@ -17,10 +17,7 @@ import tempfile
 import time
 
 
-IO_BLOCK_SIZE = 2 ** 20  # 1 MiB
 LOG = logging.getLogger("pghoard.common")
-TIMELINE_RE = re.compile(r"^[A-F0-9]{8}\.history$")
-XLOG_RE = re.compile("^[A-F0-9]{24}$")
 
 
 default_log_format_str = "%(asctime)s\t%(name)s\t%(threadName)s\t%(levelname)s\t%(message)s"

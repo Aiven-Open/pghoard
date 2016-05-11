@@ -5,8 +5,8 @@ Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
 
-from pghoard.common import IO_BLOCK_SIZE
-from .encryptor import Encryptor, Decryptor, DecryptorFile
+from pghoard.rohmu import IO_BLOCK_SIZE
+from pghoard.rohmu.encryptor import Encryptor, Decryptor, DecryptorFile
 from pghoard.rohmu.errors import InvalidConfigurationError, MissingLibraryError
 import logging
 import lzma
@@ -44,7 +44,7 @@ class SnappyFile:
             return b""
 
         while True:
-            compressed = self._fp.read(2 ** 20)
+            compressed = self._fp.read(IO_BLOCK_SIZE)
             if not compressed:
                 self._done = True
                 output = self._comp.flush()

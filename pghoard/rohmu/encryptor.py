@@ -11,12 +11,12 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.hashes import SHA1, SHA256
 from cryptography.hazmat.primitives.hmac import HMAC
 from cryptography.hazmat.primitives import serialization
+from pghoard.rohmu import IO_BLOCK_SIZE
 import io
 import os
 import struct
 
 FILEMAGIC = b"pghoa1"
-IO_BLOCK_SIZE = 2 ** 20
 
 
 class EncryptorError(Exception):

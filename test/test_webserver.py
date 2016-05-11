@@ -9,12 +9,12 @@ from .base import CONSTANT_TEST_RSA_PUBLIC_KEY, CONSTANT_TEST_RSA_PRIVATE_KEY
 from .test_wal import wal_header_for_file
 from copy import deepcopy
 from http.client import HTTPConnection
-from pghoard import postgres_command
+from pghoard import postgres_command, wal
 from pghoard.archive_sync import ArchiveSync
-from pghoard.common import create_connection_string, TIMELINE_RE, XLOG_RE
-from pghoard.rohmu.encryptor import Encryptor
+from pghoard.common import create_connection_string
 from pghoard.postgres_command import archive_command, restore_command
 from pghoard.restore import HTTPRestore, Restore
+from pghoard.rohmu.encryptor import Encryptor
 from queue import Queue
 import os
 import psycopg2
@@ -125,9 +125,9 @@ class TestWebServer:
 
         def list_archive(folder):
             if folder == "timeline":
-                matcher = TIMELINE_RE.match
+                matcher = wal.TIMELINE_RE.match
             else:
-                matcher = XLOG_RE.match
+                matcher = wal.XLOG_RE.match
             for obj in store.list_path("{}/{}".format(pghoard.test_site, folder)):
                 fname = os.path.basename(obj["name"])
                 if matcher(fname):
@@ -142,7 +142,7 @@ class TestWebServer:
         # case other tests created them -- we share a single postresql
         # cluster between all tests)
         pg_xlog_dir = pghoard.config["backup_sites"][pghoard.test_site]["pg_xlog_directory"]
-        pg_xlogs = {f for f in os.listdir(pg_xlog_dir) if XLOG_RE.match(f) and f > start_xlog}
+        pg_xlogs = {f for f in os.listdir(pg_xlog_dir) if wal.XLOG_RE.match(f) and f > start_xlog}
         assert len(pg_xlogs) >= 4
 
         # create a couple of "recycled" xlog files that we must ignore
@@ -203,7 +203,7 @@ class TestWebServer:
         db.run_cmd("pg_ctl", "-D", db.pgdata, "promote")
         time.sleep(5)  # TODO: instead of sleeping, poll the db until ready
         # we should have a single timeline file in pg_xlog now
-        pg_xlog_timelines = {f for f in os.listdir(pg_xlog_dir) if TIMELINE_RE.match(f)}
+        pg_xlog_timelines = {f for f in os.listdir(pg_xlog_dir) if wal.TIMELINE_RE.match(f)}
         assert len(pg_xlog_timelines) > 0
         # but there should be nothing archived as archive_command wasn't setup
         archived_timelines = set(list_archive("timeline"))
