@@ -114,92 +114,62 @@ class Compressor:
             fsrc = SnappyFile(fsrc)  # pylint: disable=redefined-variable-type
         return fsrc
 
-    def compress_filepath(self, filepath=None, compressed_filepath=None,
-                          compression_algorithm=None, compression_level=0,
-                          rsa_public_key=None, fileobj=None, stderr=None):
+    def compress_fileobj(self, *, input_obj, output_obj, stderr=None,
+                         compression_algorithm, compression_level=0, rsa_public_key=None):
         start_time = time.monotonic()
-        action = "Compressed"
+
+        source_name = "UNKNOWN"
+        if hasattr(input_obj, "name"):
+            source_name = "open file {!r}".format(getattr(input_obj, "name"))
+        elif hasattr(input_obj, "args"):
+            source_name = "command {!r}".format(getattr(input_obj, "args")[0])
 
         compressor = self.compressor(compression_algorithm, compression_level)
-        encryptor = None
+        action = "Compressed"
+        if rsa_public_key:
+            encryptor = Encryptor(rsa_public_key)
+            action += " and encrypted"
+        else:
+            encryptor = None
 
         compressed_file_size = 0
         original_input_size = 0
 
-        if rsa_public_key:
-            encryptor = Encryptor(rsa_public_key)
-            action += " and encrypted"
-        tmp_target_file_path = compressed_filepath + ".tmp-compress"
-        if not fileobj:
-            fileobj = open(filepath, "rb")
-        with fileobj:
-            with open(tmp_target_file_path, "wb") as output_file:
-                while True:
-                    input_data = fileobj.read(IO_BLOCK_SIZE)
-                    if not input_data:
-                        break
-                    original_input_size += len(input_data)
-                    compressed_data = compressor.compress(input_data)
-                    if encryptor and compressed_data:
-                        compressed_data = encryptor.update(compressed_data)
-                    if compressed_data:
-                        compressed_file_size += len(compressed_data)
-                        output_file.write(compressed_data)
+        while True:
+            input_data = input_obj.read(IO_BLOCK_SIZE)
+            if not input_data:
+                break
+            original_input_size += len(input_data)
+            compressed_data = compressor.compress(input_data)
+            if encryptor and compressed_data:
+                compressed_data = encryptor.update(compressed_data)
+            if compressed_data:
+                compressed_file_size += len(compressed_data)
+                output_obj.write(compressed_data)
 
-                    # if fileobj is an actual process stderr can be passed
-                    # here as long as it's set to non-blocking mode in which
-                    # case we read from it to prevent the buffer from
-                    # filling up, and also log the output at debug level.
-                    if stderr:
-                        stderr_output = stderr.read()
-                        if stderr_output:
-                            self.log.debug(stderr_output)
+            # When input_obj is a process, stderr can be passed here as long as it's set to non-blocking mode
+            # in which case we read from it to prevent the buffer from filling up.  We'll also log the output
+            # at debug level.
+            # XXX: do something smarter than dump the stderr as-is to debug log
+            if stderr:
+                stderr_output = stderr.read()
+                if stderr_output:
+                    self.log.debug(stderr_output)
 
-                compressed_data = (compressor.flush() or b"")
-                if encryptor:
-                    if compressed_data:
-                        compressed_data = encryptor.update(compressed_data)
+        compressed_data = (compressor.flush() or b"")
+        if encryptor:
+            if compressed_data:
+                compressed_data = encryptor.update(compressed_data)
+            compressed_data += encryptor.finalize()
 
-                    compressed_data += encryptor.finalize()
+        if compressed_data:
+            output_obj.write(compressed_data)
+            compressed_file_size += len(compressed_data)
 
-                if compressed_data:
-                    output_file.write(compressed_data)
-                    compressed_file_size += len(compressed_data)
+        output_obj.flush()
 
-        os.rename(tmp_target_file_path, compressed_filepath)
-        source_name = "UNKNOWN"
-        if filepath:
-            source_name = "file {!r}".format(filepath)
-        elif fileobj:
-            if hasattr(fileobj, "name"):
-                source_name = "open file {!r}".format(getattr(fileobj, "name"))
-            elif hasattr(fileobj, "args"):
-                source_name = "command {!r}".format(getattr(fileobj, "args")[0])
         self.log.info("%s %d byte %s to %d bytes (%d%%), took: %.3fs",
                       action, original_input_size, source_name, compressed_file_size,
                       100 * compressed_file_size / (original_input_size or 1),
                       time.monotonic() - start_time)
         return original_input_size, compressed_file_size
-
-    def compress_filepath_to_memory(self, filepath, compression_algorithm, compression_level=0, rsa_public_key=None):
-        # This is meant to be used for smallish files, ie WAL and timeline files
-        start_time = time.monotonic()
-        action = "Compressed"
-        with open(filepath, "rb") as input_file:
-            data = input_file.read()
-        original_input_size = len(data)
-
-        compressor = self.compressor(compression_algorithm, compression_level)
-        compressed_data = compressor.compress(data)
-        compressed_data += (compressor.flush() or b"")  # snappy flush() is a stub
-        if rsa_public_key:
-            encryptor = Encryptor(rsa_public_key)
-            compressed_data = encryptor.update(compressed_data) + encryptor.finalize()
-            action += " and encrypted"
-        compressed_file_size = len(compressed_data)
-
-        self.log.info("%s %d byte file %r to %d bytes (%d%%), took: %.3fs",
-                      action, original_input_size, filepath, compressed_file_size,
-                      100 * compressed_file_size / (original_input_size or 1),
-                      time.monotonic() - start_time)
-        return original_input_size, compressed_data

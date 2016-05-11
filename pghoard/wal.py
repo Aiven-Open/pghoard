@@ -104,3 +104,26 @@ def get_current_wal_from_identify_system(conn_str):
 def get_current_wal_file(node_info):
     conn_str, _ = replication_connection_string_using_pgpass(node_info)
     return get_current_wal_from_identify_system(conn_str)
+
+
+def verify_wal(*, wal_name, fileobj=None, filepath=None):
+    try:
+        if fileobj:
+            pos = fileobj.tell()
+            header_bytes = fileobj.read(WAL_HEADER_LEN)
+            fileobj.seek(pos)
+            source_name = getattr(fileobj, "name", "<UNKNOWN>")
+        else:
+            source_name = filepath
+            with open(filepath, "rb") as fileobj:
+                header_bytes = fileobj.read(WAL_HEADER_LEN)
+
+        hdr = read_header(header_bytes)
+    except (KeyError, OSError, ValueError) as ex:
+        fmt = "WAL file {name!r} verification failed: {ex.__class__.__name__}: {ex}"
+        raise ValueError(fmt.format(name=source_name, ex=ex))
+
+    expected_lsn = lsn_from_name(wal_name)
+    if hdr.lsn != expected_lsn:
+        fmt = "Expected LSN {lsn!r} in WAL file {name!r}; found {found!r}"
+        raise ValueError(fmt.format(lsn=expected_lsn, name=source_name, found=hdr.lsn))

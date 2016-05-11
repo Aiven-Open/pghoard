@@ -4,10 +4,12 @@ pghoard - compressor threads
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
+from io import BytesIO
 from pghoard import wal
 from pghoard.common import write_json_file
 from pghoard.rohmu.compressor import Compressor
 from queue import Empty
+from tempfile import NamedTemporaryFile
 from threading import Thread
 import logging
 import os
@@ -102,29 +104,36 @@ class CompressorThread(Thread, Compressor):
             event["callback_queue"].put({"success": True, "opaque": event.get("opaque")})
 
     def handle_event(self, event, filetype):
+        # pylint: disable=redefined-variable-type
         rsa_public_key = None
         site = event.get("site", self.find_site_for_file(event["full_path"]))
         encryption_key_id = self.config["backup_sites"][site]["encryption_key_id"]
         if encryption_key_id:
             rsa_public_key = self.config["backup_sites"][site]["encryption_keys"][encryption_key_id]["public"]
 
-        if event.get("compress_to_memory", False):
-            original_file_size, compressed_blob = self.compress_filepath_to_memory(
-                filepath=event["full_path"],
-                compression_algorithm=self.config["compression"]["algorithm"],
-                compression_level=self.config["compression"]["level"],
-                rsa_public_key=rsa_public_key)
-            compressed_file_size = len(compressed_blob)
+        compressed_blob = None
+        if event.get("compress_to_memory"):
+            output_obj = BytesIO()
             compressed_filepath = None
         else:
-            compressed_blob = None
             compressed_filepath = self.get_compressed_file_path(site, filetype, event["full_path"])
-            original_file_size, compressed_file_size = self.compress_filepath(
-                filepath=event["full_path"],
-                compressed_filepath=compressed_filepath,
+            output_obj = NamedTemporaryFile(prefix=compressed_filepath, suffix=".tmp-compress")
+
+        with output_obj, open(event["full_path"], "rb") as input_obj:
+            if filetype == "xlog":
+                wal.verify_wal(wal_name=os.path.basename(event["full_path"]), fileobj=input_obj)
+
+            original_file_size, compressed_file_size = self.compress_fileobj(
+                input_obj=input_obj,
+                output_obj=output_obj,
                 compression_algorithm=self.config["compression"]["algorithm"],
                 compression_level=self.config["compression"]["level"],
                 rsa_public_key=rsa_public_key)
+
+            if compressed_filepath:
+                os.link(output_obj.name, compressed_filepath)
+            else:
+                compressed_blob = output_obj.getvalue()
 
         if event.get("delete_file_after_compression", True):
             os.unlink(event["full_path"])
@@ -155,11 +164,12 @@ class CompressorThread(Thread, Compressor):
             "site": site,
             "type": "UPLOAD",
         }
-        if event.get("compress_to_memory", False):
+        if compressed_filepath:
+            transfer_object["local_path"] = compressed_filepath
+        else:
             transfer_object["blob"] = compressed_blob
             transfer_object["local_path"] = event["full_path"]
-        else:
-            transfer_object["local_path"] = compressed_filepath
+
         self.transfer_queue.put(transfer_object)
         return True
 
