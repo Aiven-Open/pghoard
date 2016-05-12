@@ -4,8 +4,7 @@ pghoard: sync local WAL files to remote archive
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
-from . import config, version, wal
-from .common import default_log_format_str
+from . import config, logutil, version, wal
 from .rohmu.errors import InvalidConfigurationError
 import argparse
 import logging
@@ -181,7 +180,7 @@ class ArchiveSync:
 
 
 def main():
-    logging.basicConfig(level=logging.INFO, format=default_log_format_str)
+    logutil.configure_logging(level=logging.INFO)
     tool = ArchiveSync()
     try:
         return tool.run()

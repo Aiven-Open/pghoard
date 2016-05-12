@@ -4,9 +4,9 @@ pghoard - common utility functions
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
+from pghoard import pgutil
 from pghoard.rohmu.compat import suppress
 from pghoard.rohmu.errors import Error, InvalidConfigurationError
-from urllib.parse import urlparse, parse_qs
 import datetime
 import fcntl
 import json
@@ -20,89 +20,13 @@ import time
 LOG = logging.getLogger("pghoard.common")
 
 
-default_log_format_str = "%(asctime)s\t%(name)s\t%(threadName)s\t%(levelname)s\t%(message)s"
-short_log_format_str = "%(levelname)s\t%(message)s"
-syslog_format_str = "%(name)s %(threadName)s %(levelname)s: %(message)s"
-
-
-def create_connection_string(connection_info):
-    return " ".join("{}='{}'".format(k, str(v).replace("'", "\\'"))
-                    for k, v in sorted(connection_info.items()))
-
-
-def get_connection_info(info):
-    """turn a connection info object into a dict or return it if it was a
-    dict already.  supports both the traditional libpq format and the new
-    url format"""
-    if isinstance(info, dict):
-        return info.copy()
-    elif info.startswith("postgres://") or info.startswith("postgresql://"):
-        return parse_connection_string_url(info)
-    else:
-        return parse_connection_string_libpq(info)
-
-
-def parse_connection_string_url(url):
-    p = urlparse(url)
-    fields = {}
-    if p.hostname:
-        fields["host"] = p.hostname
-    if p.port:
-        fields["port"] = str(p.port)
-    if p.username:
-        fields["user"] = p.username
-    if p.password is not None:
-        fields["password"] = p.password
-    if p.path and p.path != "/":
-        fields["dbname"] = p.path[1:]
-    for k, v in parse_qs(p.query).items():
-        fields[k] = v[-1]
-    return fields
-
-
-def parse_connection_string_libpq(connection_string):
-    """parse a postgresql connection string as defined in
-    http://www.postgresql.org/docs/current/static/libpq-connect.html#LIBPQ-CONNSTRING"""
-    fields = {}
-    while True:
-        connection_string = connection_string.strip()
-        if not connection_string:
-            break
-        if "=" not in connection_string:
-            raise ValueError("expecting key=value format in connection_string fragment {!r}".format(connection_string))
-        key, rem = connection_string.split("=", 1)
-        if rem.startswith("'"):
-            asis, value = False, ""
-            for i in range(1, len(rem)):
-                if asis:
-                    value += rem[i]
-                    asis = False
-                elif rem[i] == "'":
-                    break  # end of entry
-                elif rem[i] == "\\":
-                    asis = True
-                else:
-                    value += rem[i]
-            else:
-                raise ValueError("invalid connection_string fragment {!r}".format(rem))
-            connection_string = rem[i + 1:]  # pylint: disable=undefined-loop-variable
-        else:
-            res = rem.split(None, 1)
-            if len(res) > 1:
-                value, connection_string = res
-            else:
-                value, connection_string = rem, ""
-        fields[key] = value
-    return fields
-
-
 def create_pgpass_file(connection_string_or_info):
     """Look up password from the given object which can be a dict or a
     string and write a possible password in a pgpass file;
     returns a connection_string without a password in it"""
-    info = get_connection_info(connection_string_or_info)
+    info = pgutil.get_connection_info(connection_string_or_info)
     if "password" not in info:
-        return create_connection_string(info)
+        return pgutil.create_connection_string(info)
     linekey = "{host}:{port}:{dbname}:{user}:".format(
         host=info.get("host", "localhost"),
         port=info.get("port", 5432),
@@ -125,7 +49,7 @@ def create_pgpass_file(connection_string_or_info):
             os.fchmod(fp.fileno(), 0o600)
             fp.write(content)
         LOG.debug("Wrote %r to %r", pwline, pgpass_path)
-    return create_connection_string(info)
+    return pgutil.create_connection_string(info)
 
 
 def replication_connection_string_using_pgpass(target_node_info):
@@ -144,19 +68,11 @@ def replication_connection_string_using_pgpass(target_node_info):
             target_node_info = target_node_info["connection_string"]
     # make sure it's a replication connection to the host
     # pointed by the key using the "replication" pseudo-db
-    connection_info = get_connection_info(target_node_info)
+    connection_info = pgutil.get_connection_info(target_node_info)
     connection_info["dbname"] = "replication"
     connection_info["replication"] = "true"
     connection_string = create_pgpass_file(connection_info)
     return connection_string, slot
-
-
-def set_syslog_handler(syslog_address, syslog_facility, logger):
-    syslog_handler = logging.handlers.SysLogHandler(address=syslog_address, facility=syslog_facility)
-    logger.addHandler(syslog_handler)
-    formatter = logging.Formatter(syslog_format_str)
-    syslog_handler.setFormatter(formatter)
-    return syslog_handler
 
 
 def set_stream_nonblocking(stream):

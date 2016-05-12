@@ -1,6 +1,9 @@
+# Copied from https://github.com/ohmu/ohmu_common_py version.py version 0.0.1-0-unknown-fa54b44
 """
-automatically maintains the latest git tag + revision info in a python file
+pghoard - version detection and version.py __version__ generation
 
+Copyright (c) 2015 Ohmu Ltd
+See LICENSE for details
 """
 
 import imp
@@ -23,17 +26,19 @@ def get_project_version(version_file):
     try:
         module = imp.load_source("verfile", version_file)
         file_ver = module.__version__
-    except:
+    except IOError:
         file_ver = None
 
     os.chdir(os.path.dirname(__file__) or ".")
     try:
         git_out = subprocess.check_output(["git", "describe", "--always"],
-                                          stderr=subprocess.DEVNULL)
-    except (FileNotFoundError, subprocess.CalledProcessError):
+                                          stderr=getattr(subprocess, "DEVNULL", None))
+    except (OSError, subprocess.CalledProcessError):
         pass
     else:
         git_ver = git_out.splitlines()[0].strip().decode("utf-8")
+        if "." not in git_ver:
+            git_ver = "0.0.1-0-unknown-{}".format(git_ver)
         if save_version(git_ver, file_ver, version_file):
             return git_ver
 

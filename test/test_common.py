@@ -9,7 +9,6 @@ from pghoard.common import (
     create_pgpass_file,
     convert_pg_command_version_to_number,
     default_json_serialization,
-    get_connection_info,
     json_encode,
     write_json_file,
 )
@@ -49,22 +48,6 @@ class TestCommon(PGHoardTestCase):
         pwl = create_pgpass_file("postgres://foo:xyz@localhost/replication")
         assert get_pgpass_contents() == b'localhost:5432:replication:another:bar\nlocalhost:5432:replication:foo:xyz\n'
         os.environ['HOME'] = original_home
-
-    def test_connection_info(self):
-        url = "postgres://hannu:secret@dbhost.local:5555/abc?replication=true&sslmode=foobar&sslmode=require"
-        cs = "host=dbhost.local user='hannu'   dbname='abc'\n" \
-             "replication=true   password=secret sslmode=require port=5555"
-        ci = {
-            "host": "dbhost.local",
-            "port": "5555",
-            "user": "hannu",
-            "password": "secret",
-            "dbname": "abc",
-            "replication": "true",
-            "sslmode": "require",
-            }
-        assert get_connection_info(ci) == get_connection_info(cs)
-        assert get_connection_info(ci) == get_connection_info(url)
 
     def test_pg_versions(self):
         assert convert_pg_command_version_to_number("foobar (PostgreSQL) 9.4.1") == 90401

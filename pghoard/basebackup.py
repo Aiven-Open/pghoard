@@ -4,8 +4,8 @@ pghoard - pg_basebackup handler
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
-from .common import (get_connection_info, set_stream_nonblocking, set_subprocess_stdout_and_stderr_nonblocking,
-                     terminate_subprocess)
+from .common import set_stream_nonblocking, set_subprocess_stdout_and_stderr_nonblocking, terminate_subprocess
+from .pgutil import get_connection_info
 from pghoard.rohmu.compat import suppress
 from pghoard.rohmu.compressor import Compressor
 from tempfile import NamedTemporaryFile

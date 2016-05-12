@@ -4,8 +4,8 @@ pghoard
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
-from pghoard import config, version
-from pghoard.common import default_log_format_str, get_object_storage_config
+from pghoard import config, logutil, version
+from pghoard.common import get_object_storage_config
 from pghoard.postgres_command import PGHOARD_HOST, PGHOARD_PORT
 from pghoard.rohmu import get_transfer
 from pghoard.rohmu.compressor import Compressor
@@ -338,7 +338,7 @@ class HTTPRestore(ObjectStore):
 
 
 def main():
-    logging.basicConfig(level=logging.INFO, format=default_log_format_str)
+    logutil.configure_logging(level=logging.INFO)
     try:
         restore = Restore()
         return restore.run()

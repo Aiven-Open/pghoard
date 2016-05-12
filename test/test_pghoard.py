@@ -6,8 +6,9 @@ See LICENSE for details
 """
 # pylint: disable=attribute-defined-outside-init
 from .base import PGHoardTestCase
-from pghoard.common import create_alert_file, create_connection_string, delete_alert_file, write_json_file
+from pghoard.common import create_alert_file, delete_alert_file, write_json_file
 from pghoard.pghoard import PGHoard
+from pghoard.pgutil import create_connection_string
 from unittest.mock import Mock, patch
 import datetime
 import json

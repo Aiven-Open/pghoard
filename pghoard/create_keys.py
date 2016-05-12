@@ -4,8 +4,8 @@ pghoard - encryption key generation tool
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
-from . import config, version
-from .common import default_log_format_str, write_json_file
+from . import config, logutil, version
+from .common import write_json_file
 from .rohmu.errors import InvalidConfigurationError
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -81,7 +81,7 @@ def save_keys(config_file, site, key_id, rsa_private_key, rsa_public_key):
 
 
 def main():
-    logging.basicConfig(level=logging.INFO, format=default_log_format_str)
+    logutil.configure_logging(level=logging.INFO)
     parser = argparse.ArgumentParser()
     parser.add_argument("--version", action="version", help="show program version",
                         version=version.__version__)
