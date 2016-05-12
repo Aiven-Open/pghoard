@@ -91,7 +91,6 @@ class PGBaseBackup(Thread):
             self.config["backup_sites"][self.site]["pg_basebackup_path"],
             "--format", "tar",
             "--label", BASEBACKUP_NAME,
-            "--progress",
             "--verbose",
             "--pgdata", output_name,
         ]
@@ -105,7 +104,10 @@ class PGBaseBackup(Thread):
                 command.extend(["--host", conn_info["host"]])
         else:
             connection_string, _ = replication_connection_string_and_slot_using_pgpass(self.connection_info)
-            command.extend(["--dbname", connection_string])
+            command.extend([
+                "--progress",
+                "--dbname", connection_string
+            ])
 
         return command
 
