@@ -5,6 +5,7 @@ Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
 # pylint: disable=import-error, no-name-in-module
+from contextlib import contextmanager
 from io import BytesIO, FileIO
 import dateutil.parser
 import httplib2
@@ -71,65 +72,79 @@ class GoogleTransfer(BaseTransfer):
     def __init__(self, project_id, bucket_name, credential_file=None, credentials=None, prefix=None):
         super().__init__(prefix=prefix)
         self.project_id = project_id
-        creds = get_credentials(credential_file=credential_file, credentials=credentials)
-        gs = None
-        start_time = time.time()
-        while gs is None:
-            try:
-                # sometimes fails: httplib2.ServerNotFoundError: Unable to find the server at www.googleapis.com
-                gs = build("storage", "v1", credentials=creds)
-            except httplib2.ServerNotFoundError:
-                if time.time() - start_time > 40.0:
-                    raise
-
-                # retry on DNS issues
-                time.sleep(1.0)
-
-        self.gs_buckets = gs.buckets()  # pylint: disable=no-member
-        self.gs_objects = gs.objects()  # pylint: disable=no-member
+        self.google_creds = get_credentials(credential_file=credential_file, credentials=credentials)
+        self.gs = self._init_google_client()
+        self.gs_object_client = None
         self.bucket_name = self.get_or_create_bucket(bucket_name)
         self.log.debug("GoogleTransfer initialized")
 
+    def _init_google_client(self):
+        start_time = time.monotonic()
+        while True:
+            try:
+                # sometimes fails: httplib2.ServerNotFoundError: Unable to find the server at www.googleapis.com
+                return build("storage", "v1", credentials=self.google_creds)
+            except httplib2.ServerNotFoundError:
+                if time.monotonic() - start_time > 40.0:
+                    raise
+
+            # retry on DNS issues
+            time.sleep(1.0)
+
+    @contextmanager
+    def _object_client(self, *, not_found=None):
+        """(Re-)initialize object client if required, handle 404 errors gracefully and reset the client on
+        server errors.  Server errors have been shown to be caused by invalid state in the client and do not
+        seem to be resolved without resetting."""
+        if self.gs_object_client is None:
+            if self.gs is None:
+                self.gs = self._init_google_client()
+            self.gs_object_client = self.gs.objects()  # pylint: disable=no-member
+
+        try:
+            yield self.gs_object_client
+        except HttpError as ex:
+            if ex.resp["status"] == "404" and not_found is not None:
+                raise FileNotFoundFromStorageError(not_found)
+            if ex.resp["status"] >= "500" and ex.resp["status"] <= "599":
+                self.log.error("Received server error %r, resetting Google API client", ex.resp["status"])
+                self.gs = None
+                self.gs_object_client = None
+            raise
+
     def get_metadata_for_key(self, key):
         key = self.format_key_for_backend(key)
-        return self._metadata_for_key(key)
+        with self._object_client(not_found=key) as clob:
+            return self._metadata_for_key(clob, key)
 
-    def _metadata_for_key(self, key):
-        req = self.gs_objects.get(bucket=self.bucket_name, object=key)
-        try:
-            obj = req.execute()
-        except HttpError as ex:
-            if ex.resp["status"] == "404":
-                raise FileNotFoundFromStorageError(key)
-            raise
+    def _metadata_for_key(self, clob, key):
+        req = clob.get(bucket=self.bucket_name, object=key)
+        obj = req.execute()
         return obj.get("metadata", {})
 
     def list_path(self, key):
         path = self.format_key_for_backend(key, trailing_slash=True)
         self.log.debug("Listing path %r", path)
         return_list = []
-        for item in unpaginate(self.gs_objects, lambda o: o.list(bucket=self.bucket_name, delimiter="/", prefix=path)):
-            if item["name"].endswith("/"):
-                continue  # skip directory level objects
+        with self._object_client() as clob:
+            for item in unpaginate(clob, lambda o: o.list(bucket=self.bucket_name, delimiter="/", prefix=path)):
+                if item["name"].endswith("/"):
+                    continue  # skip directory level objects
 
-            return_list.append({
-                "name": self.format_key_from_backend(item["name"]),
-                "size": int(item["size"]),
-                "last_modified": dateutil.parser.parse(item["updated"]),
-                "metadata": item.get("metadata", {}),
+                return_list.append({
+                    "name": self.format_key_from_backend(item["name"]),
+                    "size": int(item["size"]),
+                    "last_modified": dateutil.parser.parse(item["updated"]),
+                    "metadata": item.get("metadata", {}),
                 })
         return return_list
 
     def delete_key(self, key):
         key = self.format_key_for_backend(key)
         self.log.debug("Deleting key: %r", key)
-        request = self.gs_objects.delete(bucket=self.bucket_name, object=key)
-        try:
-            request.execute()
-        except HttpError as ex:
-            if ex.resp["status"] == "404":
-                raise FileNotFoundFromStorageError(key)
-            raise
+        with self._object_client(not_found=key) as clob:
+            req = clob.delete(bucket=self.bucket_name, object=key)
+            req.execute()
 
     def get_contents_to_file(self, key, filepath_to_store_to):
         fileobj = FileIO(filepath_to_store_to, mode="wb")
@@ -147,31 +162,23 @@ class GoogleTransfer(BaseTransfer):
     def get_contents_to_fileobj(self, key, fileobj_to_store_to):
         key = self.format_key_for_backend(key)
         self.log.debug("Starting to fetch the contents of: %r to %r", key, fileobj_to_store_to)
-        request = self.gs_objects.get_media(bucket=self.bucket_name, object=key)
-        download = MediaIoBaseDownload(fileobj_to_store_to, request, chunksize=CHUNK_SIZE)
-        done = False
-        while not done:
-            try:
+        with self._object_client(not_found=key) as clob:
+            req = clob.get_media(bucket=self.bucket_name, object=key)
+            download = MediaIoBaseDownload(fileobj_to_store_to, req, chunksize=CHUNK_SIZE)
+            done = False
+            while not done:
                 status, done = download.next_chunk()
-            except HttpError as ex:
-                if ex.resp["status"] == "404":
-                    raise FileNotFoundFromStorageError(key)
-                raise
-            if status:
-                self.log.debug("Download of %r: %d%%", key, status.progress() * 100)
-        return self._metadata_for_key(key)
+                if status:
+                    self.log.debug("Download of %r: %d%%", key, status.progress() * 100)
+            return self._metadata_for_key(clob, key)
 
     def get_contents_to_string(self, key):
         key = self.format_key_for_backend(key)
         self.log.debug("Starting to fetch the contents of: %r", key)
-        request = self.gs_objects.get_media(bucket=self.bucket_name, object=key)
-        try:
-            data = request.execute()
-        except HttpError as ex:
-            if ex.resp["status"] == "404":
-                raise FileNotFoundFromStorageError(key)
-            raise
-        return data, self._metadata_for_key(key)
+        with self._object_client(not_found=key) as clob:
+            req = clob.get_media(bucket=self.bucket_name, object=key)
+            data = req.execute()
+            return data, self._metadata_for_key(clob, key)
 
     def _upload(self, upload_type, local_object, key, metadata, extra_props):
         key = self.format_key_for_backend(key)
@@ -181,13 +188,14 @@ class GoogleTransfer(BaseTransfer):
         body = {"metadata": metadata}
         if extra_props:
             body.update(extra_props)
-        request = self.gs_objects.insert(bucket=self.bucket_name, name=key,
-                                         media_body=upload, body=body)
-        response = None
-        while response is None:
-            status, response = request.next_chunk()
-            if status:
-                self.log.debug("Upload of %r to %r: %d%%", local_object, key, status.progress() * 100)
+
+        with self._object_client() as clob:
+            req = clob.insert(bucket=self.bucket_name, name=key, media_body=upload, body=body)
+            response = None
+            while response is None:
+                status, response = req.next_chunk()
+                if status:
+                    self.log.debug("Upload of %r to %r: %d%%", local_object, key, status.progress() * 100)
 
     def store_file_from_memory(self, key, memstring, metadata=None, extra_props=None):  # pylint: disable=arguments-differ
         return self._upload(MediaIoBaseUpload, BytesIO(memstring), key, metadata, extra_props)
@@ -208,9 +216,9 @@ class GoogleTransfer(BaseTransfer):
         invalid bucket names ("Invalid bucket name") as well as for invalid
         project ("Invalid argument"), try to handle both gracefully."""
         start_time = time.time()
-
+        gs_buckets = self.gs.buckets()  # pylint: disable=no-member
         try:
-            self.gs_buckets.get(bucket=bucket_name).execute()
+            gs_buckets.get(bucket=bucket_name).execute()
             self.log.debug("Bucket: %r already exists, took: %.3fs", bucket_name, time.time() - start_time)
         except HttpError as ex:
             if ex.resp["status"] == "404":
@@ -223,7 +231,7 @@ class GoogleTransfer(BaseTransfer):
             return bucket_name
 
         try:
-            req = self.gs_buckets.insert(project=self.project_id, body={"name": bucket_name})
+            req = gs_buckets.insert(project=self.project_id, body={"name": bucket_name})
             req.execute()
             self.log.debug("Created bucket: %r successfully, took: %.3fs", bucket_name, time.time() - start_time)
         except HttpError as ex:
