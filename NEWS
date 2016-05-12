@@ -2,6 +2,7 @@ pghoard 1.3.0 (2016-xx-xx)
 ==========================
 
 * Make LZMA compression level configurable
+* Fix unprocessed file handling in receivexlog mode after restart
 * Miscellaneous bug fixes
 
 pghoard 1.2.0 (2016-04-28)

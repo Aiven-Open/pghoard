@@ -27,12 +27,9 @@ class TestPGHoard(PGHoardTestCase):
         write_json_file(config_path, self.config)
         os.makedirs(self.config["alert_file_dir"], exist_ok=True)
 
-        backup_site_path = os.path.join(self.config["backup_location"], self.test_site)
-        self.compressed_xlog_path = os.path.join(backup_site_path, "xlog")
-        os.makedirs(self.compressed_xlog_path)
-        self.basebackup_path = os.path.join(backup_site_path, "basebackup")
-        os.makedirs(self.basebackup_path)
         self.pghoard = PGHoard(config_path)
+        self.compressed_xlog_path, self.basebackup_path = self.pghoard.create_backup_site_paths(self.test_site)
+
         self.real_check_pg_server_version = self.pghoard.check_pg_server_version
         self.pghoard.check_pg_server_version = Mock(return_value=90404)
         self.real_check_pg_versions_ok = self.pghoard.check_pg_versions_ok
@@ -210,11 +207,34 @@ dbname|"""
         }
         assert empty_state == state
 
-    def test_startup_walk_for_missed_files(self):
+    def test_startup_walk_for_missed_compressed_files(self):
         with open(os.path.join(self.compressed_xlog_path, "000000010000000000000004"), "wb") as fp:
             fp.write(b"foo")
+        with open(os.path.join(self.compressed_xlog_path, "000000010000000000000004.metadata"), "wb") as fp:
+            fp.write(b"{}")
+        with open(os.path.join(self.compressed_xlog_path, "0000000F.history"), "wb") as fp:
+            fp.write(b"foo")
+        with open(os.path.join(self.compressed_xlog_path, "0000000F.history.metadata"), "wb") as fp:
+            fp.write(b"{}")
+        with open(os.path.join(self.compressed_xlog_path, "000000010000000000000004xyz"), "wb") as fp:
+            fp.write(b"foo")
+        with open(os.path.join(self.compressed_xlog_path, "000000010000000000000004xyz.metadata"), "wb") as fp:
+            fp.write(b"{}")
         self.pghoard.startup_walk_for_missed_files()
-        assert self.pghoard.compression_queue.qsize() == 1
+        assert self.pghoard.compression_queue.qsize() == 0
+        assert self.pghoard.transfer_queue.qsize() == 2
+
+    def test_startup_walk_for_missed_uncompressed_files(self):
+        uncompressed_xlog_path = self.compressed_xlog_path + "_incoming"
+        with open(os.path.join(uncompressed_xlog_path, "000000010000000000000004"), "wb") as fp:
+            fp.write(b"foo")
+        with open(os.path.join(uncompressed_xlog_path, "00000002.history"), "wb") as fp:
+            fp.write(b"foo")
+        with open(os.path.join(uncompressed_xlog_path, "000000010000000000000004xyz"), "wb") as fp:
+            fp.write(b"foo")
+        self.pghoard.startup_walk_for_missed_files()
+        assert self.pghoard.compression_queue.qsize() == 2
+        assert self.pghoard.transfer_queue.qsize() == 0
 
 
 class TestPGHoardWithPG:
