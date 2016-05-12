@@ -57,7 +57,6 @@ class PGBaseBackup(Thread):
             self.config["pg_basebackup_path"],
             "--format", "tar",
             "--label", "pghoard_base_backup",
-            "--progress",
             "--verbose",
             ]
         if self.pg_version_server < 90300:
@@ -69,7 +68,10 @@ class PGBaseBackup(Thread):
             if "host" in conn_info:
                 command.extend(["--host", conn_info["host"]])
         else:
-            command.extend(["--dbname", self.connection_string])
+            command.extend([
+                "--progress",
+                "--dbname", self.connection_string
+            ])
 
         if self.config["backup_sites"][self.site]["stream_compression"] is True:
             self.target_basebackup_path = final_basebackup_path
