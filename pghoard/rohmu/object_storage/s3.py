@@ -116,7 +116,7 @@ class S3Transfer(BaseTransfer):
         s3key = Key(self.bucket)
         s3key.key = self.format_key_for_backend(key)
         if metadata:
-            for k, v in metadata.items():
+            for k, v in self.sanitize_metadata(metadata).items():
                 s3key.set_metadata(k, v)
         s3key.set_contents_from_string(memstring, replace=True)
 
@@ -146,6 +146,7 @@ class S3Transfer(BaseTransfer):
     def store_file_from_disk(self, key, filepath, metadata=None, multipart=None):
         size = os.path.getsize(filepath)
         key = self.format_key_for_backend(key)
+        metadata = self.sanitize_metadata(metadata)
         if not multipart or size <= self.multipart_chunk_size:
             s3key = Key(self.bucket)
             s3key.key = key

@@ -181,7 +181,7 @@ class SwiftTransfer(BaseTransfer):
 
     def store_file_from_memory(self, key, memstring, metadata=None):
         key = self.format_key_for_backend(key)
-        metadata_to_send = self._metadata_to_headers(metadata) if metadata else {}
+        metadata_to_send = self._metadata_to_headers(self.sanitize_metadata(metadata))
         self.conn.put_object(self.container_name, key, contents=memstring, headers=metadata_to_send)
 
     def store_file_from_disk(self, key, filepath, metadata=None, multipart=None):
@@ -193,7 +193,7 @@ class SwiftTransfer(BaseTransfer):
             with suppress(FileNotFoundFromStorageError):
                 self.delete_key(key)
         key = self.format_key_for_backend(key)
-        headers = self._metadata_to_headers(metadata) if metadata else {}
+        headers = self._metadata_to_headers(self.sanitize_metadata(metadata))
         obsz = os.path.getsize(filepath)
         with open(filepath, "rb") as fp:
             if obsz <= self.segment_size:
