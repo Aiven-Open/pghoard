@@ -54,6 +54,11 @@ class BaseTransfer:
     def list_path(self, key):
         raise NotImplementedError
 
+    def sanitize_metadata(self, metadata):
+        """Convert non-string metadata values to strings and drop null values"""
+        return {str(k): str(v) for k, v in (metadata or {}).items()
+                if v is not None}
+
     def store_file_from_memory(self, key, memstring, metadata=None):
         raise NotImplementedError
 
