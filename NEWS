@@ -1,6 +1,7 @@
 pghoard 1.3.0 (2016-xx-xx)
 ==========================
 
+* Support for PostgreSQL 9.6
 * Make LZMA compression level configurable
 * Fix unprocessed file handling in receivexlog mode after restart
 * Miscellaneous bug fixes
@@ -41,6 +42,7 @@ pghoard 1.1.0 (2016-04-05)
 pghoard 1.0.0 (2016-03-16)
 ==========================
 
+* Support for PostgreSQL 9.3 - 9.5
 * Support compressing basebackups on the fly
 * Add archive_sync command to sync archive / check archive integrity
 * Support different recovery_targets

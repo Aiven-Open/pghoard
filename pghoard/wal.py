@@ -18,6 +18,7 @@ WAL_MAGIC = {
     0xD075: 90300,
     0xD07E: 90400,
     0xD087: 90500,
+    0xD091: 90600,
 }
 WAL_MAGIC_BY_VERSION = {value: key for key, value in WAL_MAGIC.items()}
 
