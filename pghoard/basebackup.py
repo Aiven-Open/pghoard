@@ -6,6 +6,7 @@ See LICENSE for details
 """
 from .common import set_stream_nonblocking, set_subprocess_stdout_and_stderr_nonblocking, terminate_subprocess
 from .pgutil import get_connection_info
+from collections import deque
 from pghoard.rohmu.compat import suppress
 from pghoard.rohmu.compressor import Compressor
 from tempfile import NamedTemporaryFile
@@ -18,6 +19,9 @@ import select
 import subprocess
 import tarfile
 import time
+
+
+LINES_OF_OUTPUT_TO_STORE = 100
 
 
 class PGBaseBackup(Thread):
@@ -95,6 +99,7 @@ class PGBaseBackup(Thread):
         return start_wal_segment, start_time
 
     def compress_directly_to_a_file(self, proc, basebackup_path):
+        stderr_deque = deque(maxlen=LINES_OF_OUTPUT_TO_STORE)
         rsa_public_key = None
         encryption_key_id = self.config["backup_sites"][self.site]["encryption_key_id"]
         if encryption_key_id:
@@ -110,28 +115,36 @@ class PGBaseBackup(Thread):
                 stderr=proc.stderr,
                 output_obj=output_obj,
                 compression_algorithm=compression_algorithm,
-                rsa_public_key=rsa_public_key)
+                rsa_public_key=rsa_public_key,
+                stderr_sink=stderr_deque.append)
             os.link(output_obj.name, basebackup_path)
 
         metadata = {
             "compression-algorithm": compression_algorithm,
             "encryption-key-id": encryption_key_id,
         }
-        return original_input_size, compressed_file_size, metadata
+        return original_input_size, compressed_file_size, metadata, stderr_deque
+
+    def read_stdout_stderr(self, proc, stderr_sink):
+        rlist, _, _ = select.select([proc.stdout, proc.stderr], [], [], 1.0)
+        for fd in rlist:
+            content = fd.read()
+            if content:
+                stderr_sink(content)
+                self.log.debug(content)
+                self.latest_activity = datetime.datetime.utcnow()
 
     def poll_until_uncompressed_basebackup_ready(self, proc):
+        stderr_deque = deque(maxlen=LINES_OF_OUTPUT_TO_STORE)
         set_subprocess_stdout_and_stderr_nonblocking(proc)
         while self.running:
-            rlist, _, _ = select.select([proc.stdout, proc.stderr], [], [], 1.0)
-            for fd in rlist:
-                content = fd.read()
-                if content:
-                    self.log.debug(content)
-                    self.latest_activity = datetime.datetime.utcnow()
+            self.read_stdout_stderr(proc, stderr_deque.append)
             if proc.poll() is not None:
+                self.read_stdout_stderr(proc, stderr_deque.append)
                 break
+        return stderr_deque
 
-    def _proc_success(self, proc, output_file):
+    def _proc_success(self, proc, output_file, stderr_deque):
         rc = terminate_subprocess(proc, log=self.log)
         msg = "Ran: {!r}, took: {:.3f}s to run, returncode: {}".format(
             proc.args, time.monotonic() - proc.basebackup_start_time, rc)
@@ -140,6 +153,12 @@ class PGBaseBackup(Thread):
             return True
 
         self.log.error(msg)
+        self.log.error("pg_basebackup failed: %r, logging last %r lines of output",
+                       self.config["backup_sites"][self.site]["stream_compression"],
+                       LINES_OF_OUTPUT_TO_STORE)
+        for entry in stderr_deque:
+            self.log.error(entry)
+
         if output_file:
             with suppress(FileNotFoundError):
                 os.unlink(output_file)
@@ -160,9 +179,9 @@ class PGBaseBackup(Thread):
 
         if self.config["backup_sites"][self.site]["stream_compression"] is True:
             stream_target = self.target_basebackup_path + ".tmp-stream"
-            original_input_size, compressed_file_size, metadata = \
+            original_input_size, compressed_file_size, metadata, stderr_deque = \
                 self.compress_directly_to_a_file(proc, stream_target)
-            if not self._proc_success(proc, stream_target):
+            if not self._proc_success(proc, stream_target, stderr_deque):
                 return
             os.rename(stream_target, self.target_basebackup_path)
             # Since we can't parse the backup label we cheat with the start-wal-segment and
@@ -190,8 +209,8 @@ class PGBaseBackup(Thread):
             transfer_object["metadata"].update(metadata)
             self.transfer_queue.put(transfer_object)
         else:
-            original_input_size = self.poll_until_uncompressed_basebackup_ready(proc)
-            if not self._proc_success(proc, self.target_basebackup_path):
+            stderr_deque = self.poll_until_uncompressed_basebackup_ready(proc)
+            if not self._proc_success(proc, self.target_basebackup_path, stderr_deque):
                 return
             start_wal_segment, start_time = self.parse_backup_label(self.target_basebackup_path)
             self.compression_queue.put({
