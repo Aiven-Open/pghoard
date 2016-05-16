@@ -114,8 +114,20 @@ class Compressor:
             fsrc = SnappyFile(fsrc)  # pylint: disable=redefined-variable-type
         return fsrc
 
+    def read_stderr_data(self, stderr, stderr_sink):
+        # When input_obj is a process, stderr can be passed here as long as it's set to non-blocking mode
+        # in which case we read from it to prevent the buffer from filling up.  We'll also log the output
+        # at debug level.
+        if stderr:
+            stderr_output = stderr.read()
+            if stderr_output:
+                if stderr_sink:
+                    stderr_sink(stderr_output)
+                self.log.debug(stderr_output)
+
     def compress_fileobj(self, *, input_obj, output_obj, stderr=None,
-                         compression_algorithm, compression_level=0, rsa_public_key=None):
+                         compression_algorithm, compression_level=0, rsa_public_key=None,
+                         stderr_sink=None):
         start_time = time.monotonic()
 
         source_name = "UNKNOWN"
@@ -138,6 +150,7 @@ class Compressor:
         while True:
             input_data = input_obj.read(IO_BLOCK_SIZE)
             if not input_data:
+                self.read_stderr_data(stderr, stderr_sink)
                 break
             original_input_size += len(input_data)
             compressed_data = compressor.compress(input_data)
@@ -146,15 +159,7 @@ class Compressor:
             if compressed_data:
                 compressed_file_size += len(compressed_data)
                 output_obj.write(compressed_data)
-
-            # When input_obj is a process, stderr can be passed here as long as it's set to non-blocking mode
-            # in which case we read from it to prevent the buffer from filling up.  We'll also log the output
-            # at debug level.
-            # XXX: do something smarter than dump the stderr as-is to debug log
-            if stderr:
-                stderr_output = stderr.read()
-                if stderr_output:
-                    self.log.debug(stderr_output)
+            self.read_stderr_data(stderr, stderr_sink)
 
         compressed_data = (compressor.flush() or b"")
         if encryptor:
