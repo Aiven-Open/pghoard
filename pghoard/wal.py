@@ -59,7 +59,7 @@ def get_previous_wal_on_same_timeline(seg, log, pg_version):
     if seg == 0:
         log -= 1
         # Pre 9.3 PG versions have a gap in their WAL ranges
-        if pg_version and pg_version < 90300:
+        if pg_version and int(pg_version) < 90300:
             seg = 0xFE
         else:
             seg = 0xFF
