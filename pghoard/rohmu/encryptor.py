@@ -12,6 +12,7 @@ from cryptography.hazmat.primitives.hashes import SHA1, SHA256
 from cryptography.hazmat.primitives.hmac import HMAC
 from cryptography.hazmat.primitives import serialization
 from pghoard.rohmu import IO_BLOCK_SIZE
+from pghoard.rohmu.filewrap import FileWrap
 import io
 import os
 import struct
@@ -121,16 +122,13 @@ class Decryptor:
         return result
 
 
-class DecryptorFile(io.BufferedIOBase):
-    def __init__(self, source_fp, rsa_private_key_pem):
-        super().__init__()
+class DecryptorFile(FileWrap):
+    def __init__(self, next_fp, rsa_private_key_pem):
+        super().__init__(next_fp)
         self.key = rsa_private_key_pem
-        self.source_fp = source_fp
         self.buffer = None
         self.buffer_offset = None
         self.decryptor = None
-        self.offset = None
-        self.state = None
         self._reset()
 
     def _reset(self):
@@ -140,9 +138,9 @@ class DecryptorFile(io.BufferedIOBase):
         self.offset = 0
         self.state = "OPEN"
 
-    def _check_not_closed(self):
-        if self.state == "CLOSED":
-            raise ValueError("I/O operation on closed file")
+    def close(self):
+        super().close()
+        self.decryptor = None
 
     def _get_buffer_blocks(self):
         if not self.buffer:
@@ -158,7 +156,7 @@ class DecryptorFile(io.BufferedIOBase):
     def _read_all(self):
         blocks = self._get_buffer_blocks()
         while self.decryptor:
-            data = self.source_fp.read(IO_BLOCK_SIZE)
+            data = self.next_fp.read(IO_BLOCK_SIZE)
             if not data:
                 data = self.decryptor.finalize()
                 self.decryptor = None
@@ -183,7 +181,7 @@ class DecryptorFile(io.BufferedIOBase):
 
         blocks = self._get_buffer_blocks()
         while self.decryptor and readylen < size:
-            data = self.source_fp.read(IO_BLOCK_SIZE)
+            data = self.next_fp.read(IO_BLOCK_SIZE)
             if not data:
                 data = self.decryptor.finalize()
                 self.decryptor = None
@@ -207,26 +205,6 @@ class DecryptorFile(io.BufferedIOBase):
                 self.state = "EOF"
         self.offset += len(retval)
         return retval
-
-    def close(self):
-        """Close stream"""
-        if self.state == "CLOSED":
-            return
-        self.decryptor = None
-        self.source_fp = None
-        self.state = "CLOSED"
-
-    @property
-    def closed(self):
-        """True if this stream is closed"""
-        return self.state == "CLOSED"
-
-    def fileno(self):
-        self._check_not_closed()
-        return self.source_fp.fileno()
-
-    def flush(self):
-        self._check_not_closed()
 
     def read(self, size=-1):
         """Read up to size decrypted bytes"""
@@ -255,7 +233,7 @@ class DecryptorFile(io.BufferedIOBase):
                 return self.offset
             elif self.offset > offset:
                 # simulate backward seek by restarting from the beginning
-                self.source_fp.seek(0)
+                self.next_fp.seek(0)
                 self._reset()
                 self._read_block(offset)
                 return self.offset
@@ -274,17 +252,4 @@ class DecryptorFile(io.BufferedIOBase):
     def seekable(self):
         """True if this stream supports random access"""
         self._check_not_closed()
-        return self.source_fp.seekable()
-
-    def tell(self):
-        self._check_not_closed()
-        return self.offset
-
-    def truncate(self):
-        self._check_not_closed()
-        raise io.UnsupportedOperation("Truncate not supported")
-
-    def writable(self):
-        """True if this stream supports writing"""
-        self._check_not_closed()
-        return False
+        return self.next_fp.seekable()
