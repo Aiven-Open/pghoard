@@ -26,7 +26,12 @@ class FileWrap(io.BufferedIOBase):
         if self.state == "CLOSED":
             return
         self.flush()
-        self.next_fp = None  # NOTE: next_fp is not closed
+        # We close the stack of rohmu file wrappers, but leave the underlying real io object open to allow the
+        # caller to do something useful with it if they like, for example reading the output out of a BytesIO
+        # object or linking a temporary file to another name, etc.
+        if isinstance(self.next_fp, FileWrap):
+            self.next_fp.close()
+        self.next_fp = None
         self.state = "CLOSED"
 
     @property

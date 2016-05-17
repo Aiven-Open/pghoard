@@ -62,6 +62,42 @@ class Encryptor:
         return ret
 
 
+class EncryptorFile(FileWrap):
+    def __init__(self, next_fp, rsa_public_key_pem):
+        super().__init__(next_fp)
+        self.key = rsa_public_key_pem
+        self.encryptor = Encryptor(self.key)
+        self.offset = 0
+        self.state = "OPEN"
+
+    def flush(self):
+        self._check_not_closed()
+        self.next_fp.flush()
+
+    def close(self):
+        if self.state == "CLOSED":
+            return
+        final = self.encryptor.finalize()
+        self.encryptor = None
+        self.next_fp.write(final)
+        super().close()
+
+    def writable(self):
+        """True if this stream supports writing"""
+        self._check_not_closed()
+        return True
+
+    def write(self, data):
+        """Encrypt and write the given bytes"""
+        self._check_not_closed()
+        if not data:
+            return 0
+        enc_data = self.encryptor.update(data)
+        self.next_fp.write(enc_data)
+        self.offset += len(data)
+        return len(data)
+
+
 class Decryptor:
     def __init__(self, rsa_private_key_pem):
         if not isinstance(rsa_private_key_pem, bytes):

@@ -5,7 +5,8 @@ Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
 from .base import CONSTANT_TEST_RSA_PUBLIC_KEY, CONSTANT_TEST_RSA_PRIVATE_KEY
-from pghoard.rohmu.encryptor import Decryptor, DecryptorFile, Encryptor, IO_BLOCK_SIZE
+from pghoard.rohmu import IO_BLOCK_SIZE
+from pghoard.rohmu.encryptor import Decryptor, DecryptorFile, Encryptor, EncryptorFile
 import io
 import json
 import os
@@ -124,3 +125,69 @@ def test_decryptorfile_for_tarfile(tmpdir):
             extracted_path = os.path.join(decout, "archived_content")
             with open(extracted_path, "rb") as ext_fp:
                 assert testdata == ext_fp.read()
+
+
+def test_encryptorfile(tmpdir):
+    # create a plaintext blob bigger than IO_BLOCK_SIZE
+    plaintext1 = b"rvdmfki6iudmx8bb25tx1sozex3f4u0nm7uba4eibscgda0ckledcydz089qw1p1"
+    repeat = int(1.5 * IO_BLOCK_SIZE / len(plaintext1))
+    plaintext = repeat * plaintext1
+
+    fn = tmpdir.join("data").strpath
+    with open(fn, "w+b") as plain_fp:
+        enc_fp = EncryptorFile(plain_fp, CONSTANT_TEST_RSA_PUBLIC_KEY)
+        assert enc_fp.fileno() == plain_fp.fileno()
+        assert enc_fp.readable() is False
+        with pytest.raises(io.UnsupportedOperation):
+            enc_fp.read(1)
+        assert enc_fp.seekable() is False
+        with pytest.raises(io.UnsupportedOperation):
+            enc_fp.seek(1, os.SEEK_CUR)
+        assert enc_fp.writable() is True
+
+        enc_fp.write(plaintext)
+        enc_fp.write(b"")
+        assert enc_fp.tell() == len(plaintext)
+        assert enc_fp.next_fp.tell() > len(plaintext)
+        enc_fp.close()
+        enc_fp.close()
+
+        plain_fp.seek(0)
+
+        dec_fp = DecryptorFile(plain_fp, CONSTANT_TEST_RSA_PRIVATE_KEY)
+        assert dec_fp.fileno() == plain_fp.fileno()
+        assert dec_fp.readable() is True
+        assert dec_fp.seekable() is True
+        assert dec_fp.writable() is False
+        with pytest.raises(io.UnsupportedOperation):
+            dec_fp.write(b"x")
+        dec_fp.flush()
+
+        result = dec_fp.read()
+        assert plaintext == result
+
+
+def test_encryptorfile_for_tarfile(tmpdir):
+    testdata = b"file contents"
+    data_tmp_name = tmpdir.join("plain.data").strpath
+    with open(data_tmp_name, mode="wb") as data_tmp:
+        data_tmp.write(testdata)
+
+    enc_tar_name = tmpdir.join("enc.tar.data").strpath
+    with open(enc_tar_name, "w+b") as plain_fp:
+        enc_fp = EncryptorFile(plain_fp, CONSTANT_TEST_RSA_PUBLIC_KEY)
+        with tarfile.open(name="foo", fileobj=enc_fp, mode="w") as tar:
+            tar.add(data_tmp_name, arcname="archived_content")
+        enc_fp.close()
+
+        plain_fp.seek(0)
+
+        dfile = DecryptorFile(plain_fp, CONSTANT_TEST_RSA_PRIVATE_KEY)
+        with tarfile.open(fileobj=dfile, mode="r") as tar:
+            info = tar.getmember("archived_content")
+            assert info.isfile() is True
+            assert info.size == len(testdata)
+            content_file = tar.extractfile("archived_content")
+            content = content_file.read()  # pylint: disable=no-member
+            content_file.close()  # pylint: disable=no-member
+            assert testdata == content
