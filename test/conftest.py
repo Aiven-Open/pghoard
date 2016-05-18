@@ -5,8 +5,8 @@ Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
 from pghoard import logutil
-from pghoard.rohmu.compressor import snappy
 from pghoard.pghoard import PGHoard
+from pghoard.rohmu.snappyfile import snappy
 from py import path as py_path  # pylint: disable=no-name-in-module
 import json
 import lzma

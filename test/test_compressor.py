@@ -1,5 +1,5 @@
 """
-pghoard
+pghoard - compressor tests
 
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
@@ -11,7 +11,7 @@ from io import BytesIO
 from pghoard import statsd
 from pghoard.compressor import CompressorThread
 from pghoard.rohmu import IO_BLOCK_SIZE
-from pghoard.rohmu.compressor import snappy
+from pghoard.rohmu.snappyfile import snappy, SnappyFile
 from queue import Queue
 import lzma
 import os
@@ -325,3 +325,22 @@ class TestSnappyCompression(Compression):
 
     def decompress(self, data):
         return snappy.StreamDecompressor().decompress(data)
+
+    def test_snappy_read(self, tmpdir):
+        comp = snappy.StreamCompressor()
+        # generate two chunks with their own framing
+        compressed = comp.compress(b"hello, ") + comp.compress(b"world")
+        file_path = tmpdir.join("foo").strpath
+        with open(file_path, "wb") as fp:
+            fp.write(compressed)
+
+        out = []
+        with SnappyFile(open(file_path, "rb"), "rb") as fp:
+            while True:
+                chunk = fp.read()
+                if not chunk:
+                    break
+                out.append(chunk)
+
+        full = b"".join(out)
+        assert full == b"hello, world"

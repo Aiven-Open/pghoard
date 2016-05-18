@@ -8,53 +8,11 @@ See LICENSE for details
 from pghoard.rohmu import IO_BLOCK_SIZE
 from pghoard.rohmu.encryptor import Encryptor, Decryptor, DecryptorFile
 from pghoard.rohmu.errors import InvalidConfigurationError, MissingLibraryError
+from pghoard.rohmu.snappyfile import snappy, SnappyFile
 import logging
 import lzma
 import os
 import time
-
-try:
-    import snappy
-except ImportError:
-    snappy = None
-
-
-class SnappyFile:
-    def __init__(self, fp):
-        self._comp = snappy.StreamDecompressor()
-        self._fp = fp
-        self._done = False
-        self._pos = 0
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, a, b, c):
-        pass
-
-    def tell(self):
-        return self._pos
-
-    def close(self):
-        pass
-
-    def read(self, byte_count=None):  # pylint: disable=unused-argument
-        # NOTE: byte_count arg is ignored, random size output is returned
-        if self._done:
-            return b""
-
-        while True:
-            compressed = self._fp.read(IO_BLOCK_SIZE)
-            if not compressed:
-                self._done = True
-                output = self._comp.flush()
-                self._pos += len(output)
-                return output
-
-            output = self._comp.decompress(compressed)
-            if output:
-                self._pos += len(output)
-                return output
 
 
 class Compressor:
@@ -111,7 +69,7 @@ class Compressor:
             # Wrap stream into LZMAFile object
             fsrc = lzma.open(fsrc, "r")  # pylint: disable=redefined-variable-type
         elif metadata.get("compression-algorithm") == "snappy":
-            fsrc = SnappyFile(fsrc)  # pylint: disable=redefined-variable-type
+            fsrc = SnappyFile(fsrc, "rb")  # pylint: disable=redefined-variable-type
         return fsrc
 
     def compress_fileobj(self, *, input_obj, output_obj, stderr=None,

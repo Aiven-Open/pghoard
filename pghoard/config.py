@@ -6,8 +6,8 @@ See LICENSE for details
 """
 from pghoard.common import convert_pg_command_version_to_number
 from pghoard.postgres_command import PGHOARD_HOST, PGHOARD_PORT
-from pghoard.rohmu.compressor import snappy
 from pghoard.rohmu.errors import InvalidConfigurationError
+from pghoard.rohmu.snappyfile import snappy
 import json
 import os
 import subprocess
