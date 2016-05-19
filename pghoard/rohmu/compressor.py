@@ -14,6 +14,20 @@ import lzma
 import time
 
 
+def CompressionFile(dst_fp, algorithm, level=0):
+    """This looks like a class to users, but is actually a function that instantiates a class based on algorithm."""
+    if algorithm == "lzma":
+        return lzma.open(dst_fp, "w", preset=level)
+
+    if algorithm == "snappy":
+        return SnappyFile(dst_fp, "wb")
+
+    if algorithm:
+        raise InvalidConfigurationError("invalid compression algorithm: {!r}".format(algorithm))
+
+    return dst_fp
+
+
 def DecompressionFile(src_fp, algorithm):
     """This looks like a class to users, but is actually a function that instantiates a class based on algorithm."""
     if algorithm == "lzma":
