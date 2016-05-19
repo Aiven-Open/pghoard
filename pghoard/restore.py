@@ -7,8 +7,7 @@ See LICENSE for details
 from pghoard import config, logutil, version
 from pghoard.common import get_object_storage_config
 from pghoard.postgres_command import PGHOARD_HOST, PGHOARD_PORT
-from pghoard.rohmu import get_transfer
-from pghoard.rohmu.compressor import Compressor
+from pghoard.rohmu import get_transfer, rohmufile
 from pghoard.rohmu.errors import Error, InvalidConfigurationError
 from psycopg2.extensions import adapt
 from requests import Session
@@ -250,17 +249,12 @@ class Restore:
         os.chmod(pgdata, 0o700)
         tmp = tempfile.TemporaryFile(dir=self.config["backup_location"], prefix="basebackup.", suffix=".pghoard")
         metadata = self.storage.get_basebackup_file_to_fileobj(basebackup, tmp)
+        tmp.seek(0)
 
-        rsa_private_key = None
-        key_id = metadata.get("encryption-key-id")
-        if key_id:
-            site_keys = self.config["backup_sites"][site]["encryption_keys"]
-            rsa_private_key = site_keys[key_id]["private"]
+        input_obj = rohmufile.file_reader(fileobj=tmp, metadata=metadata,
+                                          key_lookup=config.key_lookup_for_site(self.config, site))
 
-        c = Compressor()
-        tmp = c.decompress_from_fileobj_to_fileobj(tmp, metadata, rsa_private_key)
-
-        tar = tarfile.open(fileobj=tmp, mode="r|")  # "r|" prevents seek()ing
+        tar = tarfile.open(fileobj=input_obj, mode="r|")  # "r|" prevents seek()ing
         tar.extractall(pgdata)
         tar.close()
 

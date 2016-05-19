@@ -78,7 +78,7 @@ class PGHoard:
 
         for _ in range(self.config["compression"]["thread_count"]):
             compressor = CompressorThread(
-                config=self.config,
+                config_dict=self.config,
                 compression_queue=self.compression_queue,
                 transfer_queue=self.transfer_queue,
                 stats=self.stats)

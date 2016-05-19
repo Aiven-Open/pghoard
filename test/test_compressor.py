@@ -69,10 +69,11 @@ class Compression(PGHoardTestCase):
         os.makedirs(self.handled_path)
 
         self.compressor = CompressorThread(
-            config=self.config,
+            config_dict=self.config,
             compression_queue=self.compression_queue,
             transfer_queue=self.transfer_queue,
-            stats=statsd.StatsClient(host=None))
+            stats=statsd.StatsClient(host=None),
+        )
         self.compressor.start()
 
     def teardown_method(self, method):

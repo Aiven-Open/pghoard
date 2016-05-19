@@ -104,3 +104,10 @@ def get_site_from_config(config, site):
                                         .format(site, n_sites, sorted(config["backup_sites"])))
 
     return site
+
+
+def key_lookup_for_site(config, site):
+    def key_lookup(key_id):
+        return config["backup_sites"][site]["encryption_keys"][key_id]["private"]
+
+    return key_lookup

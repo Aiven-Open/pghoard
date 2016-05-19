@@ -5,8 +5,9 @@ Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
 from io import BytesIO
-from pghoard import wal
+from pghoard import config, wal
 from pghoard.common import write_json_file
+from pghoard.rohmu import rohmufile
 from pghoard.rohmu.compressor import Compressor
 from queue import Empty
 from tempfile import NamedTemporaryFile
@@ -16,10 +17,10 @@ import os
 
 
 class CompressorThread(Thread, Compressor):
-    def __init__(self, config, compression_queue, transfer_queue, stats):
+    def __init__(self, config_dict, compression_queue, transfer_queue, stats):
         super().__init__()
         self.log = logging.getLogger("Compressor")
-        self.config = config
+        self.config = config_dict
         self.stats = stats
         self.state = {}
         self.compression_queue = compression_queue
@@ -99,12 +100,15 @@ class CompressorThread(Thread, Compressor):
         return None
 
     def handle_decompression_event(self, event):
-        rsa_private_key = None
-        if "metadata" in event and "encryption-key-id" in event["metadata"]:
-            key_id = event["metadata"]["encryption-key-id"]
-            rsa_private_key = self.config["backup_sites"][event["site"]]["encryption_keys"][key_id]["private"]
+        with open(event["local_path"], "wb") as output_obj:
+            rohmufile.read_file(
+                input_obj=BytesIO(event["blob"]),
+                output_obj=output_obj,
+                metadata=event.get("metadata"),
+                key_lookup=config.key_lookup_for_site(self.config, event["site"]),
+                log_func=self.log.debug,
+            )
 
-        self.decompress_to_filepath(event, rsa_private_key)
         if "callback_queue" in event:
             event["callback_queue"].put({"success": True, "opaque": event.get("opaque")})
 

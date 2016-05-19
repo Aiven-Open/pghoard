@@ -6,13 +6,26 @@ See LICENSE for details
 """
 
 from pghoard.rohmu import IO_BLOCK_SIZE
-from pghoard.rohmu.encryptor import Encryptor, Decryptor, DecryptorFile
+from pghoard.rohmu.encryptor import Encryptor
 from pghoard.rohmu.errors import InvalidConfigurationError, MissingLibraryError
 from pghoard.rohmu.snappyfile import snappy, SnappyFile
 import logging
 import lzma
-import os
 import time
+
+
+def DecompressionFile(src_fp, algorithm):
+    """This looks like a class to users, but is actually a function that instantiates a class based on algorithm."""
+    if algorithm == "lzma":
+        return lzma.open(src_fp, "r")
+
+    if algorithm == "snappy":
+        return SnappyFile(src_fp, "rb")
+
+    if algorithm:
+        raise InvalidConfigurationError("invalid compression algorithm: {!r}".format(algorithm))
+
+    return src_fp
 
 
 class Compressor:
@@ -29,48 +42,6 @@ class Compressor:
         else:
             raise InvalidConfigurationError("invalid compression algorithm: {!r}".format(
                 compression_algorithm))
-
-    def decompressor(self, algorithm):
-        if algorithm is None:
-            return None
-        if algorithm == "lzma":
-            return lzma.LZMADecompressor()
-        elif algorithm == "snappy":
-            if not snappy:
-                raise MissingLibraryError("python-snappy is required when using snappy compression")
-            return snappy.StreamDecompressor()
-        else:
-            raise InvalidConfigurationError("invalid compression algorithm: {!r}".format(algorithm))
-
-    def decompress_to_filepath(self, event, rsa_private_key=None):
-        start_time = time.monotonic()
-        data = event["blob"]
-        if "metadata" in event and "encryption-key-id" in event["metadata"]:
-            decryptor = Decryptor(rsa_private_key)
-            data = decryptor.update(data) + decryptor.finalize()
-
-        decompressor = self.decompressor(algorithm=event.get("metadata", {}).get("compression-algorithm"))
-        if decompressor:
-            data = decompressor.decompress(data)
-
-        with open(event["local_path"], "wb") as fp:
-            fp.write(data)
-
-        self.log.debug("Decompressed %d byte file: %r to %d bytes, took: %.3fs",
-                       len(event["blob"]), event["local_path"], os.path.getsize(event["local_path"]),
-                       time.monotonic() - start_time)
-
-    def decompress_from_fileobj_to_fileobj(self, fsrc, metadata, rsa_private_key=None):
-        fsrc.seek(0)
-        if rsa_private_key:
-            fsrc = DecryptorFile(fsrc, rsa_private_key)  # pylint: disable=redefined-variable-type
-
-        if metadata.get("compression-algorithm") == "lzma":
-            # Wrap stream into LZMAFile object
-            fsrc = lzma.open(fsrc, "r")  # pylint: disable=redefined-variable-type
-        elif metadata.get("compression-algorithm") == "snappy":
-            fsrc = SnappyFile(fsrc, "rb")  # pylint: disable=redefined-variable-type
-        return fsrc
 
     def compress_fileobj(self, *, input_obj, output_obj, stderr=None,
                          compression_algorithm, compression_level=0, rsa_public_key=None):

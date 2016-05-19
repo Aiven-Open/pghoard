@@ -2,6 +2,7 @@ pghoard X.X.X (2016-XX-XX)
 ==========================
 
 * Support for Telegraf statsd
+* Revamped file transformation (encryption, compression) interfaces
 
 
 pghoard 1.3.0 (2016-05-30)
