@@ -5,9 +5,10 @@ Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
 
+from . import IO_BLOCK_SIZE
 from .compat import suppress
-from .compressor import DecompressionFile
-from .encryptor import DecryptorFile
+from .compressor import CompressionFile, DecompressionFile
+from .encryptor import DecryptorFile, EncryptorFile
 from .errors import InvalidConfigurationError
 import time
 
@@ -67,5 +68,55 @@ def read_file(*, input_obj, output_obj, metadata, key_lookup, progress_callback=
         log_func("%s %d bytes to %s bytes, took: %.3fs",
                  action, result_size, _fileobj_name(output_obj),
                  time.monotonic() - start_time)
+
+    return original_size, result_size
+
+
+def file_writer(*, fileobj, compression_algorithm=None, compression_level=0, rsa_public_key=None):
+    if rsa_public_key:
+        fileobj = EncryptorFile(fileobj, rsa_public_key)
+
+    if compression_algorithm:
+        fileobj = CompressionFile(fileobj, compression_algorithm, compression_level)
+
+    return fileobj
+
+
+def write_file(*, input_obj, output_obj, progress_callback=None,
+               compression_algorithm=None, compression_level=0,
+               rsa_public_key=None, log_func=None):
+    start_time = time.monotonic()
+
+    original_size = 0
+    with file_writer(fileobj=output_obj,
+                     compression_algorithm=compression_algorithm,
+                     compression_level=compression_level,
+                     rsa_public_key=rsa_public_key) as fp_out:
+        while True:
+            input_data = input_obj.read(IO_BLOCK_SIZE)
+            if not input_data:
+                break
+
+            fp_out.write(input_data)
+            original_size += len(input_data)
+            if progress_callback:
+                progress_callback()
+
+    result_size = output_obj.tell()
+
+    if log_func:
+        source_name = _fileobj_name(input_obj)
+        if original_size <= result_size:
+            action = "Stored"
+            ratio = ""
+        else:
+            action = "Compressed"
+            ratio = " ({:.0%})".format(result_size / original_size)
+        if rsa_public_key:
+            action += " and encrypted"
+
+        log_func("%s %d byte %s to %d bytes%s, took: %.3fs",
+                 action, original_size, source_name, result_size,
+                 ratio, time.monotonic() - start_time)
 
     return original_size, result_size

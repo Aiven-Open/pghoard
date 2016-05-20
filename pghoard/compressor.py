@@ -8,7 +8,6 @@ from io import BytesIO
 from pghoard import config, wal
 from pghoard.common import write_json_file
 from pghoard.rohmu import rohmufile
-from pghoard.rohmu.compressor import Compressor
 from queue import Empty
 from tempfile import NamedTemporaryFile
 from threading import Thread
@@ -16,7 +15,7 @@ import logging
 import os
 
 
-class CompressorThread(Thread, Compressor):
+class CompressorThread(Thread):
     def __init__(self, config_dict, compression_queue, transfer_queue, stats):
         super().__init__()
         self.log = logging.getLogger("Compressor")
@@ -132,12 +131,14 @@ class CompressorThread(Thread, Compressor):
             if filetype == "xlog":
                 wal.verify_wal(wal_name=os.path.basename(event["full_path"]), fileobj=input_obj)
 
-            original_file_size, compressed_file_size = self.compress_fileobj(
+            original_file_size, compressed_file_size = rohmufile.write_file(
                 input_obj=input_obj,
                 output_obj=output_obj,
                 compression_algorithm=self.config["compression"]["algorithm"],
                 compression_level=self.config["compression"]["level"],
-                rsa_public_key=rsa_public_key)
+                rsa_public_key=rsa_public_key,
+                log_func=self.log.info,
+            )
 
             if compressed_filepath:
                 os.link(output_obj.name, compressed_filepath)

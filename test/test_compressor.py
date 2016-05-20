@@ -9,11 +9,12 @@ from .base import PGHoardTestCase, CONSTANT_TEST_RSA_PUBLIC_KEY, CONSTANT_TEST_R
 from .test_wal import wal_header_for_file
 from pghoard import statsd
 from pghoard.compressor import CompressorThread
-from pghoard.rohmu import compressor, IO_BLOCK_SIZE
+from pghoard.rohmu import compressor, IO_BLOCK_SIZE, rohmufile
 from pghoard.rohmu.snappyfile import snappy, SnappyFile
 from queue import Queue
 import io
 import lzma
+import logging
 import os
 import pytest
 
@@ -46,6 +47,7 @@ class CompressionCase(PGHoardTestCase):
 
     def setup_method(self, method):
         super().setup_method(method)
+        self.log = logging.getLogger(str(method))
         self.config = self.config_template()
         self.config["backup_sites"][self.test_site] = {
             "encryption_key_id": None,
@@ -120,13 +122,15 @@ class CompressionCase(PGHoardTestCase):
         }
         assert self.compressor.get_event_filetype(event) == "basebackup"
 
-    def test_compress_fileobj(self):
+    def test_write_file(self):
         ifile = TestXlog(self.incoming_path, "00000001000000000000000C", "random")
         with open(ifile.path, "rb") as input_obj, io.BytesIO() as output_obj:
-            orig_len, compr_len = self.compressor.compress_fileobj(
+            orig_len, compr_len = rohmufile.write_file(
                 input_obj=input_obj,
                 output_obj=output_obj,
-                compression_algorithm=self.algorithm)
+                compression_algorithm=self.algorithm,
+                log_func=self.log.info,
+            )
             assert output_obj.tell() == compr_len
             assert len(output_obj.getvalue()) == compr_len
             assert orig_len == ifile.size
@@ -191,7 +195,9 @@ class CompressionCase(PGHoardTestCase):
         for key, value in expected.items():
             assert transfer_event[key] == value
 
-        assert self.decompress(transfer_event["blob"]) == ifile.contents
+        result = self.decompress(transfer_event["blob"])
+        assert result[:100] == ifile.contents[:100]
+        assert result == ifile.contents
 
     def test_compress_encrypt_to_memory(self):
         ifile = TestXlog(self.incoming_path, "00000001000000000000000C", "random")
@@ -272,18 +278,22 @@ class CompressionCase(PGHoardTestCase):
         callback_queue.get(timeout=1.0)
         assert os.path.exists(local_filepath) is True
         with open(local_filepath, "rb") as fp:
-            assert fp.read() == ifile.contents
+            fdata = fp.read()
+        assert fdata[:100] == ifile.contents[:100]
+        assert fdata == ifile.contents
 
     def test_decompression_decrypt_event(self):
         ifile = TestXlog(self.incoming_path, "00000001000000000000000E", "random")
         output_obj = io.BytesIO()
         with open(ifile.path, "rb") as input_obj:
-            self.compressor.compress_fileobj(
+            rohmufile.write_file(
                 input_obj=input_obj,
                 output_obj=output_obj,
                 compression_algorithm=self.config["compression"]["algorithm"],
                 compression_level=self.config["compression"]["level"],
-                rsa_public_key=CONSTANT_TEST_RSA_PUBLIC_KEY)
+                rsa_public_key=CONSTANT_TEST_RSA_PUBLIC_KEY,
+                log_func=self.log.info,
+            )
         callback_queue = Queue()
         local_filepath = os.path.join(self.temp_dir, "00000001000000000000000E")
         self.compression_queue.put({
@@ -304,7 +314,9 @@ class CompressionCase(PGHoardTestCase):
         callback_queue.get(timeout=1.0)
         assert os.path.exists(local_filepath) is True
         with open(local_filepath, "rb") as fp:
-            assert fp.read() == ifile.contents
+            fdata = fp.read()
+        assert fdata[:100] == ifile.contents[:100]
+        assert fdata == ifile.contents
 
     def test_compress_decompress_fileobj(self, tmpdir):
         plaintext = TestXlog(self.incoming_path, "00000001000000000000000E", "random").contents
