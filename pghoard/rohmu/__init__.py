@@ -23,7 +23,7 @@ def get_transfer(storage_config, *, storage_type=None):
         from .object_storage.google import GoogleTransfer
         return GoogleTransfer(**storage_config)
     elif storage_type == "local":
-        from pghoard.rohmu.object_storage.local import LocalTransfer
+        from .object_storage.local import LocalTransfer
         return LocalTransfer(**storage_config)
     elif storage_type == "s3":
         from .object_storage.s3 import S3Transfer

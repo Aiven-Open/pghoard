@@ -5,14 +5,14 @@ Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
 
+from . import IO_BLOCK_SIZE
+from .filewrap import FileWrap
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.hashes import SHA1, SHA256
 from cryptography.hazmat.primitives.hmac import HMAC
 from cryptography.hazmat.primitives import serialization
-from pghoard.rohmu import IO_BLOCK_SIZE
-from pghoard.rohmu.filewrap import FileWrap
 import io
 import os
 import struct

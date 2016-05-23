@@ -5,8 +5,8 @@ Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
 
-from pghoard.rohmu import IO_BLOCK_SIZE
-from pghoard.rohmu.filewrap import FileWrap
+from . import IO_BLOCK_SIZE
+from .filewrap import FileWrap
 import io
 
 try:
