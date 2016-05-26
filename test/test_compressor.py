@@ -131,20 +131,33 @@ class Compression(PGHoardTestCase):
             assert len(output_obj.getvalue()) == compr_len
             assert orig_len == self.random_file_size
 
-    def test_compress_to_file(self):
+    def test_compress_to_file_xlog(self):
+        self._test_compress_to_file("xlog", self.random_file_size, self.random_file_path, self.random_file_path_partial)
+
+    def test_compress_to_file_history(self):
+        file_path = os.path.join(self.incoming_path, "0000000F.history")
+        contents = "\n".join("# FOOBAR {}".format(n) for n in range(10)) + "\n"
+        contents = contents.encode("ascii")
+        with open(file_path, "wb") as out:
+            out.write(contents)
+            file_size = out.tell()
+
+        self._test_compress_to_file("timeline", file_size, file_path, file_path + ".partial")
+
+    def _test_compress_to_file(self, filetype, file_size, file_path, file_path_partial):
         self.compression_queue.put({
             "type": "MOVE",
-            "src_path": self.random_file_path_partial,
-            "full_path": self.random_file_path,
+            "src_path": file_path_partial,
+            "full_path": file_path,
         })
         transfer_event = self.transfer_queue.get(timeout=1.0)
         expected = {
-            "filetype": "xlog",
-            "local_path": self.random_file_path.replace(self.incoming_path, self.handled_path),
+            "filetype": filetype,
+            "local_path": file_path.replace(self.incoming_path, self.handled_path),
             "metadata": {
                 "compression-algorithm": self.algorithm,
                 "compression-level": 0,
-                "original-file-size": self.random_file_size,
+                "original-file-size": file_size,
                 "pg-version": 90500,
             },
             "site": self.test_site,
