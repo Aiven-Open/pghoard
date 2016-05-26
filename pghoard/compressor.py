@@ -16,10 +16,11 @@ import os
 
 
 class CompressorThread(Thread, Compressor):
-    def __init__(self, config, compression_queue, transfer_queue):
+    def __init__(self, config, compression_queue, transfer_queue, stats):
         super().__init__()
         self.log = logging.getLogger("Compressor")
         self.config = config
+        self.stats = stats
         self.state = {}
         self.compression_queue = compression_queue
         self.transfer_queue = transfer_queue
@@ -76,6 +77,7 @@ class CompressorThread(Thread, Compressor):
                     log_event = event
                 self.log.exception("Problem handling: %r: %s: %s",
                                    log_event, ex.__class__.__name__, ex)
+                self.stats.unexpected_exception(ex, where="compressor_run")
                 if "callback_queue" in event and event["callback_queue"]:
                     event["callback_queue"].put({"success": False, "exception": ex, "opaque": event.get("opaque")})
 

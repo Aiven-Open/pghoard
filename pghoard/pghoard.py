@@ -5,7 +5,7 @@ Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
 from contextlib import closing
-from pghoard import config, logutil, version, wal
+from pghoard import config, logutil, statsd, version, wal
 from pghoard.basebackup import PGBaseBackup
 from pghoard.common import (
     create_alert_file,
@@ -38,6 +38,7 @@ import time
 
 class PGHoard:
     def __init__(self, config_path):
+        self.stats = None
         self.log = logging.getLogger("pghoard")
         self.log_level = None
         self.running = True
@@ -76,11 +77,19 @@ class PGHoard:
             self.transfer_queue)
 
         for _ in range(self.config["compression"]["thread_count"]):
-            compressor = CompressorThread(self.config, self.compression_queue, self.transfer_queue)
+            compressor = CompressorThread(
+                config=self.config,
+                compression_queue=self.compression_queue,
+                transfer_queue=self.transfer_queue,
+                stats=self.stats)
             self.compressors.append(compressor)
 
         for _ in range(self.config["transfer"]["thread_count"]):
-            ta = TransferAgent(self.config, self.compression_queue, self.transfer_queue)
+            ta = TransferAgent(
+                config=self.config,
+                compression_queue=self.compression_queue,
+                transfer_queue=self.transfer_queue,
+                stats=self.stats)
             self.transfer_agents.append(ta)
 
         logutil.notify_systemd("READY=1")
@@ -144,7 +153,8 @@ class PGHoard:
                 create_alert_file(self.config, "authentication_error")
             else:
                 create_alert_file(self.config, "configuration_error")
-        except Exception:  # log all errors and return None; pylint: disable=broad-except
+        except Exception as ex:  # log all errors and return None; pylint: disable=broad-except
+            self.stats.unexpected_exception(ex, where="check_pg_server_version")
             self.log.exception("Problem in getting PG server version")
         return pg_version
 
@@ -214,7 +224,8 @@ class PGHoard:
                 tli -= 1
                 self.log.info("Could not delete wal_file: %r, trying the same segment on a previous "
                               "timeline (%s)", wal_path, wal.name_for_tli_log_seg(tli, log, seg))
-            except:  # FIXME: don't catch all exceptions; pylint: disable=bare-except
+            except Exception as ex:  # FIXME: don't catch all exceptions; pylint: disable=broad-except
+                self.stats.unexpected_exception(ex, where="delete_remote_wal_before")
                 self.log.exception("Problem deleting: %r", wal_path)
 
     def delete_remote_basebackup(self, site, basebackup):
@@ -224,7 +235,8 @@ class PGHoard:
             storage.delete_key(obj_key)
         except FileNotFoundFromStorageError:
             self.log.info("Tried to delete non-existent basebackup %r", obj_key)
-        except:  # FIXME: don't catch all exceptions; pylint: disable=bare-except
+        except Exception as ex:  # FIXME: don't catch all exceptions; pylint: disable=broad-except
+            self.stats.unexpected_exception(ex, where="delete_remote_basebackup")
             self.log.exception("Problem deleting: %r", obj_key)
 
     def get_remote_basebackups_info(self, site):
@@ -400,7 +412,8 @@ class PGHoard:
                 self.write_backup_state_to_json_file()
             except subprocess.CalledProcessError as ex:
                 self.log.error("%s: %s", ex.__class__.__name__, ex)
-            except:  # pylint: disable=bare-except
+            except Exception as ex:  # pylint: disable=broad-except
+                self.stats.unexpected_exception(ex, where="pghoard_run")
                 self.log.exception("Unexpected exception in PGHoard main loop")
             time.sleep(5.0)
 
@@ -454,6 +467,12 @@ class PGHoard:
             logging.getLogger().setLevel(self.log_level)
         except ValueError:
             self.log.exception("Problem with log_level: %r", self.log_level)
+
+        # statsd settings may have changed
+        stats = self.config.get("statsd", {})
+        self.stats = statsd.StatsClient(host=stats.get("host"), port=stats.get("port"),
+                                        tags=stats.get("tags"))
+
         self.log.debug("Loaded config: %r from: %r", self.config, self.config_path)
 
     def quit(self, _signal=None, _frame=None):  # pylint: disable=unused-argument
