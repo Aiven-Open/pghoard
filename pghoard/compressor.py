@@ -30,10 +30,13 @@ class CompressorThread(Thread, Compressor):
         if filetype == "basebackup":
             rest, _ = os.path.split(original_path)
             rest, backupname = os.path.split(rest)
+            folder_for_type = "basebackup"
         else:
             backupname = os.path.basename(original_path)
+            folder_for_type = "xlog"
 
-        cfp = os.path.join(self.config["backup_location"], self.config["path_prefix"], site, filetype, backupname)
+        cfp = os.path.join(self.config["backup_location"], self.config["path_prefix"],
+                           site, folder_for_type, backupname)
         self.log.debug("compressed_file_path for %r is %r", original_path, cfp)
         return cfp
 
