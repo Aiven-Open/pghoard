@@ -99,6 +99,7 @@ class PGBaseBackup(Thread):
             rsa_public_key = self.config["backup_sites"][self.site]["encryption_keys"][encryption_key_id]["public"]
         c = Compressor()
         compression_algorithm = self.config["compression"]["algorithm"]
+        compression_level = self.config["compression"]["level"]
         self.log.debug("Compressing basebackup directly to file: %r", basebackup_path)
         set_stream_nonblocking(proc.stderr)
 
@@ -108,6 +109,7 @@ class PGBaseBackup(Thread):
                 stderr=proc.stderr,
                 output_obj=output_obj,
                 compression_algorithm=compression_algorithm,
+                compression_level=compression_level,
                 rsa_public_key=rsa_public_key)
             os.link(output_obj.name, basebackup_path)
 
