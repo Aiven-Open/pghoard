@@ -6,6 +6,7 @@ See LICENSE for details
 """
 # pylint: disable=attribute-defined-outside-init
 from .base import PGHoardTestCase
+from pghoard import statsd
 from pghoard.rohmu.errors import StorageError
 from pghoard.transfer import TransferAgent
 from queue import Empty, Queue
@@ -49,7 +50,11 @@ class TestTransferAgent(PGHoardTestCase):
 
         self.compression_queue = Queue()
         self.transfer_queue = Queue()
-        self.transfer_agent = TransferAgent(self.config, self.compression_queue, self.transfer_queue)
+        self.transfer_agent = TransferAgent(
+            config=self.config,
+            compression_queue=self.compression_queue,
+            transfer_queue=self.transfer_queue,
+            stats=statsd.StatsClient(host=None))
         self.transfer_agent.start()
 
     def teardown_method(self, method):

@@ -8,6 +8,7 @@ See LICENSE for details
 from .base import PGHoardTestCase, CONSTANT_TEST_RSA_PUBLIC_KEY, CONSTANT_TEST_RSA_PRIVATE_KEY
 from .test_wal import wal_header_for_file
 from io import BytesIO
+from pghoard import statsd
 from pghoard.compressor import CompressorThread
 from pghoard.rohmu import IO_BLOCK_SIZE
 from pghoard.rohmu.compressor import snappy
@@ -67,9 +68,11 @@ class Compression(PGHoardTestCase):
         self.handled_path = os.path.join(self.config["backup_location"], self.test_site, "xlog")
         os.makedirs(self.handled_path)
 
-        self.compressor = CompressorThread(config=self.config,
-                                           compression_queue=self.compression_queue,
-                                           transfer_queue=self.transfer_queue)
+        self.compressor = CompressorThread(
+            config=self.config,
+            compression_queue=self.compression_queue,
+            transfer_queue=self.transfer_queue,
+            stats=statsd.StatsClient(host=None))
         self.compressor.start()
 
     def teardown_method(self, method):
