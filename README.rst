@@ -487,6 +487,27 @@ Number of files to prefetch when performing archive recovery.  The default
 is the lower of Compression or Transfer Agent threads minus one to perform
 all operations in parallel when a single backup site is used.
 
+``statsd`` (default: disabled)
+
+Enables metrics sending to a statsd daemon that supports the StatsD /
+Telegraf syntax with tags.
+
+The value is a JSON object::
+
+  {
+      "host": "<statsd address>",
+      "port": "<statsd port>",
+      "tags": {
+          "<tag>": "<value>"
+      }
+  }
+
+The ``tags`` setting can be used to enter optional tag values for the metrics.
+
+Metrics sending follows the `Telegraf spec`_.
+
+.. _`Telegraf spec`: https://github.com/influxdata/telegraf/tree/master/plugins/inputs/statsd
+
 ``syslog`` (default ``false``)
 
 Determines whether syslog logging should be turned on or not.

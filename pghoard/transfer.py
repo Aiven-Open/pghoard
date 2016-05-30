@@ -19,10 +19,11 @@ import time
 
 
 class TransferAgent(Thread):
-    def __init__(self, config, compression_queue, transfer_queue):
+    def __init__(self, config, compression_queue, transfer_queue, stats):
         super().__init__()
         self.log = logging.getLogger("TransferAgent")
         self.config = config
+        self.stats = stats
         self.compression_queue = compression_queue
         self.transfer_queue = transfer_queue
         self.running = True
@@ -179,7 +180,8 @@ class TransferAgent(Thread):
                     metadata_path = file_to_transfer["local_path"] + ".metadata"
                     with suppress(FileNotFoundError):
                         os.unlink(metadata_path)
-                except:  # pylint: disable=bare-except
+                except Exception as ex:  # pylint: disable=broad-except
+                    self.stats.unexpected_exception(ex, where="upload_unlink")
                     self.log.exception("Problem in deleting file: %r", file_to_transfer["local_path"])
             return {"success": True, "opaque": file_to_transfer.get("opaque")}
         except Exception as ex:  # pylint: disable=broad-except
