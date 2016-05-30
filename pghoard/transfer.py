@@ -146,11 +146,12 @@ class TransferAgent(Thread):
             items = storage.list_path(key)
             file_to_transfer["file_size"] = len(repr(items))  # approx
             return {"success": True, "items": items, "opaque": file_to_transfer.get("opaque")}
+        except FileNotFoundFromStorageError as ex:
+            self.log.warning("%r not found from storage", key)
+            return {"success": False, "exception": ex, "opaque": file_to_transfer.get("opaque")}
         except Exception as ex:  # pylint: disable=broad-except
-            if isinstance(ex, FileNotFoundFromStorageError):
-                self.log.warning("%r not found from storage", key)
-            else:
-                self.log.exception("Problem happened when retrieving metadata: %r, %r", key, file_to_transfer)
+            self.log.exception("Problem happened when retrieving metadata: %r, %r", key, file_to_transfer)
+            self.stats.unexpected_exception(ex, where="handle_list")
             return {"success": False, "exception": ex, "opaque": file_to_transfer.get("opaque")}
 
     def handle_metadata(self, site, key, file_to_transfer):
@@ -159,11 +160,12 @@ class TransferAgent(Thread):
             metadata = storage.get_metadata_for_key(key)
             file_to_transfer["file_size"] = len(repr(metadata))  # approx
             return {"success": True, "metadata": metadata, "opaque": file_to_transfer.get("opaque")}
+        except FileNotFoundFromStorageError as ex:
+            self.log.warning("%r not found from storage", key)
+            return {"success": False, "exception": ex, "opaque": file_to_transfer.get("opaque")}
         except Exception as ex:  # pylint: disable=broad-except
-            if isinstance(ex, FileNotFoundFromStorageError):
-                self.log.warning("%r not found from storage", key)
-            else:
-                self.log.exception("Problem happened when retrieving metadata: %r, %r", key, file_to_transfer)
+            self.log.exception("Problem happened when retrieving metadata: %r, %r", key, file_to_transfer)
+            self.stats.unexpected_exception(ex, where="handle_metadata")
             return {"success": False, "exception": ex, "opaque": file_to_transfer.get("opaque")}
 
     def handle_download(self, site, key, file_to_transfer):
@@ -183,11 +185,12 @@ class TransferAgent(Thread):
                 "type": "DECOMPRESSION",
             })
             return {"success": True, "call_callback": False}
+        except FileNotFoundFromStorageError as ex:
+            self.log.warning("%r not found from storage", key)
+            return {"success": False, "exception": ex, "opaque": file_to_transfer.get("opaque")}
         except Exception as ex:  # pylint: disable=broad-except
-            if isinstance(ex, FileNotFoundFromStorageError):
-                self.log.warning("%r not found from storage", key)
-            else:
-                self.log.exception("Problem happened when downloading: %r, %r", key, file_to_transfer)
+            self.log.exception("Problem happened when downloading: %r, %r", key, file_to_transfer)
+            self.stats.unexpected_exception(ex, where="handle_download")
             return {"success": False, "exception": ex, "opaque": file_to_transfer.get("opaque")}
 
     def handle_upload(self, site, key, file_to_transfer):
@@ -216,11 +219,12 @@ class TransferAgent(Thread):
                     with suppress(FileNotFoundError):
                         os.unlink(metadata_path)
                 except Exception as ex:  # pylint: disable=broad-except
-                    self.stats.unexpected_exception(ex, where="upload_unlink")
                     self.log.exception("Problem in deleting file: %r", file_to_transfer["local_path"])
+                    self.stats.unexpected_exception(ex, where="handle_upload_unlink")
             return {"success": True, "opaque": file_to_transfer.get("opaque")}
         except Exception as ex:  # pylint: disable=broad-except
             self.log.exception("Problem in moving file: %r, need to retry", file_to_transfer["local_path"])
+            self.stats.unexpected_exception(ex, where="handle_upload")
             # Sleep for a bit to avoid busy looping
             time.sleep(0.5)
 
