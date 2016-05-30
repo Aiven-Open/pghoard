@@ -121,7 +121,7 @@ and eventually after the setup section, you can just run::
 
 Python/Other::
 
-  easy_install dist/pghoard-1.2.0-py3.4.egg
+  easy_install dist/pghoard-1.3.0-py3.4.egg
 
 On systems without ``systemd`` it is recommended that you run ``pghoard``
 under Supervisor_ or other similar process control system.
