@@ -54,7 +54,8 @@ class TestTransferAgent(PGHoardTestCase):
             config=self.config,
             compression_queue=self.compression_queue,
             transfer_queue=self.transfer_queue,
-            stats=statsd.StatsClient(host=None))
+            stats=statsd.StatsClient(host=None),
+            shared_state_dict={})
         self.transfer_agent.start()
 
     def teardown_method(self, method):

@@ -19,7 +19,8 @@ import time
 
 
 class TransferAgent(Thread):
-    def __init__(self, config, compression_queue, transfer_queue, stats):
+    def __init__(self, config, compression_queue, transfer_queue, stats,
+                 shared_state_dict):
         super().__init__()
         self.log = logging.getLogger("TransferAgent")
         self.config = config
@@ -27,18 +28,23 @@ class TransferAgent(Thread):
         self.compression_queue = compression_queue
         self.transfer_queue = transfer_queue
         self.running = True
-        self.state = {}
+        self.state = shared_state_dict
         self.site_transfers = {}
         self.log.debug("TransferAgent initialized")
 
     def set_state_defaults_for_site(self, site):
         if site not in self.state:
-            EMPTY = {"data": 0, "count": 0, "time_taken": 0.0, "failures": 0}
+            EMPTY = {"data": 0, "count": 0, "time_taken": 0.0, "failures": 0,
+                     "xlogs_since_basebackup": 0}
+
+            def defaults():
+                return {"basebackup": EMPTY.copy(), "xlog": EMPTY.copy(), "timeline": EMPTY.copy()}
+
             self.state[site] = {
-                "upload": {"basebackup": EMPTY.copy(), "xlog": EMPTY.copy(), "timeline": EMPTY.copy()},
-                "download": {"basebackup": EMPTY.copy(), "xlog": EMPTY.copy(), "timeline": EMPTY.copy()},
-                "metadata": {"basebackup": EMPTY.copy(), "xlog": EMPTY.copy(), "timeline": EMPTY.copy()},
-                "list": {"basebackup": EMPTY.copy(), "xlog": EMPTY.copy(), "timeline": EMPTY.copy()},
+                "upload": defaults(),
+                "download": defaults(),
+                "metadata": defaults(),
+                "list": defaults(),
             }
 
     def get_object_storage(self, site_name):
@@ -87,12 +93,41 @@ class TransferAgent(Thread):
             oper_size = file_to_transfer.get("file_size", 0)
             if result["success"]:
                 filename = os.path.basename(file_to_transfer["local_path"])
+                if oper == "upload":
+                    if filetype == "xlog":
+                        self.state[site][oper]["xlog"]["xlogs_since_basebackup"] += 1
+                    elif filetype == "basebackup":
+                        # reset corresponding xlog stats at basebackup
+                        self.state[site][oper]["xlog"]["xlogs_since_basebackup"] = 0
+
+                    self.stats.gauge(
+                        "pghoard.xlogs_since_basebackup",
+                        self.state[site][oper]["xlog"]["xlogs_since_basebackup"],
+                        tags={"site": site})
+
                 self.state[site][oper][filetype]["count"] += 1
                 self.state[site][oper][filetype]["data"] += oper_size
+                self.stats.gauge(
+                    "pghoard.total_upload_size",
+                    self.state[site][oper][filetype]["data"],
+                    tags={
+                        "type": filetype,
+                        "site": site,
+                    })
                 self.state[site][oper][filetype]["time_taken"] += time.time() - start_time
                 self.state[site][oper][filetype]["latest_filename"] = filename
             else:
                 self.state[site][oper][filetype]["failures"] += 1
+
+            if oper == "upload":
+                self.stats.increase(
+                    "pghoard.upload_size",
+                    inc_value=oper_size,
+                    tags={
+                        "result": "ok" if result["success"] else "failed",
+                        "type": filetype,
+                        "site": site,
+                    })
 
             # push result to callback_queue if provided
             if result.get("call_callback", True) and file_to_transfer.get("callback_queue"):

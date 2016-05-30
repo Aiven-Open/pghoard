@@ -84,12 +84,14 @@ class PGHoard:
                 stats=self.stats)
             self.compressors.append(compressor)
 
+        compressor_state = {}  # shared among transfer agents
         for _ in range(self.config["transfer"]["thread_count"]):
             ta = TransferAgent(
                 config=self.config,
                 compression_queue=self.compression_queue,
                 transfer_queue=self.transfer_queue,
-                stats=self.stats)
+                stats=self.stats,
+                shared_state_dict=compressor_state)
             self.transfer_agents.append(ta)
 
         logutil.notify_systemd("READY=1")
