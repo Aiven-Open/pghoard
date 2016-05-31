@@ -12,10 +12,13 @@ from pghoard.rohmu.errors import (
 )
 from pghoard.rohmu import get_transfer
 from queue import Empty
-from threading import Thread
+from threading import Thread, Lock
 import logging
 import os
 import time
+
+_STATS_LOCK = Lock()
+_last_stats_transmit_time = 0
 
 
 class TransferAgent(Thread):
@@ -35,7 +38,7 @@ class TransferAgent(Thread):
     def set_state_defaults_for_site(self, site):
         if site not in self.state:
             EMPTY = {"data": 0, "count": 0, "time_taken": 0.0, "failures": 0,
-                     "xlogs_since_basebackup": 0}
+                     "xlogs_since_basebackup": 0, "last_success": None}
 
             def defaults():
                 return {"basebackup": EMPTY.copy(), "xlog": EMPTY.copy(), "timeline": EMPTY.copy()}
@@ -64,8 +67,32 @@ class TransferAgent(Thread):
                             file_to_transfer["filetype"],
                             name)
 
+    def transmit_statsd_metrics(self):
+        """
+        Keep statsd updated about how long time ago each filetype was successfully uploaded.
+        Transmits max once per ten seconds, regardless of how many threads are running.
+        """
+        global _last_stats_transmit_time  # pylint: disable=global-statement
+        with _STATS_LOCK:
+            if time.time() - _last_stats_transmit_time < 10.0:
+                return
+
+            for site in self.state:
+                for filetype, prop in self.state[site]["upload"].items():
+                    if prop["last_success"]:
+                        self.stats.gauge(
+                            "pghoard.last_upload_age",
+                            time.time() - prop["last_success"],
+                            tags={
+                                "site": site,
+                                "type": filetype,
+                            }
+                        )
+            _last_stats_transmit_time = time.time()
+
     def run(self):
         while self.running:
+            self.transmit_statsd_metrics()
             try:
                 file_to_transfer = self.transfer_queue.get(timeout=1.0)
             except Empty:
@@ -105,6 +132,7 @@ class TransferAgent(Thread):
                         self.state[site][oper]["xlog"]["xlogs_since_basebackup"],
                         tags={"site": site})
 
+                self.state[site][oper][filetype]["last_success"] = time.time()
                 self.state[site][oper][filetype]["count"] += 1
                 self.state[site][oper][filetype]["data"] += oper_size
                 self.stats.gauge(
