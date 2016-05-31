@@ -139,7 +139,8 @@ class PGHoard:
             transfer_queue=self.transfer_queue,
             callback_queue=callback_queue,
             start_wal_segment=current_xlog,
-            pg_version_server=pg_version_server)
+            pg_version_server=pg_version_server,
+            stats=self.stats)
         thread.start()
         self.basebackups[site] = thread
 

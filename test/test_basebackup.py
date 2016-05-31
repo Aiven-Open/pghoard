@@ -5,6 +5,7 @@ Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
 from copy import deepcopy
+from pghoard import statsd
 from pghoard.basebackup import PGBaseBackup
 from pghoard.pgutil import create_connection_string
 from pghoard.restore import Restore, RestoreError
@@ -31,7 +32,8 @@ LABEL: pg_basebackup base backup
 ''')
             tfile.add(os.path.join(td, "backup_label"), arcname="backup_label")
         pgb = PGBaseBackup(config=None, site="foosite", connection_string=None,
-                           basebackup_path=None, compression_queue=None, transfer_queue=None)
+                           basebackup_path=None, compression_queue=None, transfer_queue=None,
+                           stats=statsd.StatsClient(host=None))
         start_wal_segment, start_time = pgb.parse_backup_label(fn)
         assert start_wal_segment == "000000010000000000000004"
         assert start_time == "2015-02-12T14:07:19+00:00"
