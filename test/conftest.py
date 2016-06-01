@@ -113,7 +113,7 @@ def pghoard(db, tmpdir, request):  # pylint: disable=redefined-outer-name
     test_site = request.function.__name__
     config = {
         "alert_file_dir": os.path.join(str(tmpdir), "alerts"),
-        "backup_location": os.path.join(str(tmpdir), "backups"),
+        "backup_location": os.path.join(str(tmpdir), "backupspool"),
         "backup_sites": {
             test_site: {
                 "basebackup_count": 2,

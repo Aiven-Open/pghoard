@@ -52,7 +52,7 @@ def set_config_defaults(config, *, check_commands=True):
 
     # defaults for sites
     config.setdefault("backup_sites", {})
-    for site_config in config["backup_sites"].values():
+    for site_name, site_config in config["backup_sites"].items():
         site_config.setdefault("active", True)
         site_config.setdefault("active_backup_mode", "pg_receivexlog")
         site_config.setdefault("basebackup_count", 2)
@@ -62,10 +62,14 @@ def set_config_defaults(config, *, check_commands=True):
         site_config.setdefault("pg_xlog_directory", "/var/lib/pgsql/data/pg_xlog")
         site_config.setdefault("stream_compression", False)
         obj_store = site_config["object_storage"] or {}
-        if obj_store.get("type") == "local" and obj_store.get("directory") == config.get("backup_location"):
+        if not obj_store:
+            pass
+        elif "storage_type" not in obj_store:
+            raise InvalidConfigurationError("Site {!r}: storage_type not defined for object_storage".format(site_name))
+        elif obj_store["storage_type"] == "local" and obj_store.get("directory") == config.get("backup_location"):
             raise InvalidConfigurationError(
-                "Invalid 'local' target directory {!r}, must be different from 'backup_location'".format(
-                    config.get("backup_location")))
+                "Site {!r}: invalid 'local' target directory {!r}, must be different from 'backup_location'".format(
+                    site_name, config.get("backup_location")))
 
     return config
 

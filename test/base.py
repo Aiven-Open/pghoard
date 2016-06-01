@@ -49,7 +49,7 @@ class PGHoardTestCase:
         bindir = TestPG.find_pgbin()
         config = {
             "alert_file_dir": os.path.join(str(self.temp_dir), "alerts"),
-            "backup_location": os.path.join(str(self.temp_dir), "backups"),
+            "backup_location": os.path.join(str(self.temp_dir), "backupspool"),
             "backup_sites": {
                 self.test_site: {
                     "object_storage": {
