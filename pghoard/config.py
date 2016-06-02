@@ -6,6 +6,7 @@ See LICENSE for details
 """
 from pghoard.common import convert_pg_command_version_to_number
 from pghoard.postgres_command import PGHOARD_HOST, PGHOARD_PORT
+from pghoard.rohmu import get_class_for_transfer
 from pghoard.rohmu.errors import InvalidConfigurationError
 from pghoard.rohmu.snappyfile import snappy
 import json
@@ -70,6 +71,12 @@ def set_config_defaults(config, *, check_commands=True):
             raise InvalidConfigurationError(
                 "Site {!r}: invalid 'local' target directory {!r}, must be different from 'backup_location'".format(
                     site_name, config.get("backup_location")))
+        else:
+            try:
+                get_class_for_transfer(obj_store["storage_type"])
+            except ImportError as ex:
+                raise InvalidConfigurationError(
+                    "Site {0!r} object_storage: {1.__class__.__name__!s}: {1!s}".format(site_name, ex))
 
     return config
 
