@@ -84,12 +84,14 @@ class PGHoard:
                 stats=self.stats)
             self.compressors.append(compressor)
 
+        compressor_state = {}  # shared among transfer agents
         for _ in range(self.config["transfer"]["thread_count"]):
             ta = TransferAgent(
                 config=self.config,
                 compression_queue=self.compression_queue,
                 transfer_queue=self.transfer_queue,
-                stats=self.stats)
+                stats=self.stats,
+                shared_state_dict=compressor_state)
             self.transfer_agents.append(ta)
 
         logutil.notify_systemd("READY=1")
@@ -137,7 +139,8 @@ class PGHoard:
             transfer_queue=self.transfer_queue,
             callback_queue=callback_queue,
             start_wal_segment=current_xlog,
-            pg_version_server=pg_version_server)
+            pg_version_server=pg_version_server,
+            stats=self.stats)
         thread.start()
         self.basebackups[site] = thread
 
@@ -154,8 +157,8 @@ class PGHoard:
             else:
                 create_alert_file(self.config, "configuration_error")
         except Exception as ex:  # log all errors and return None; pylint: disable=broad-except
-            self.stats.unexpected_exception(ex, where="check_pg_server_version")
             self.log.exception("Problem in getting PG server version")
+            self.stats.unexpected_exception(ex, where="check_pg_server_version")
         return pg_version
 
     def receivexlog_listener(self, site, xlog_location, connection_string, slot):
@@ -225,8 +228,8 @@ class PGHoard:
                 self.log.info("Could not delete wal_file: %r, trying the same segment on a previous "
                               "timeline (%s)", wal_path, wal.name_for_tli_log_seg(tli, log, seg))
             except Exception as ex:  # FIXME: don't catch all exceptions; pylint: disable=broad-except
-                self.stats.unexpected_exception(ex, where="delete_remote_wal_before")
                 self.log.exception("Problem deleting: %r", wal_path)
+                self.stats.unexpected_exception(ex, where="delete_remote_wal_before")
 
     def delete_remote_basebackup(self, site, basebackup):
         storage = self.site_transfers.get(site)
@@ -236,8 +239,8 @@ class PGHoard:
         except FileNotFoundFromStorageError:
             self.log.info("Tried to delete non-existent basebackup %r", obj_key)
         except Exception as ex:  # FIXME: don't catch all exceptions; pylint: disable=broad-except
-            self.stats.unexpected_exception(ex, where="delete_remote_basebackup")
             self.log.exception("Problem deleting: %r", obj_key)
+            self.stats.unexpected_exception(ex, where="delete_remote_basebackup")
 
     def get_remote_basebackups_info(self, site):
         storage = self.site_transfers.get(site)
@@ -413,8 +416,8 @@ class PGHoard:
             except subprocess.CalledProcessError as ex:
                 self.log.error("%s: %s", ex.__class__.__name__, ex)
             except Exception as ex:  # pylint: disable=broad-except
-                self.stats.unexpected_exception(ex, where="pghoard_run")
                 self.log.exception("Unexpected exception in PGHoard main loop")
+                self.stats.unexpected_exception(ex, where="pghoard_run")
             time.sleep(5.0)
 
     def write_backup_state_to_json_file(self):

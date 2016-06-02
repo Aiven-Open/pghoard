@@ -22,7 +22,7 @@ import time
 
 class PGBaseBackup(Thread):
     def __init__(self, config, site, connection_string, basebackup_path,
-                 compression_queue, transfer_queue=None,
+                 compression_queue, stats, transfer_queue=None,
                  callback_queue=None, start_wal_segment=None, pg_version_server=None):
         super().__init__()
         self.log = logging.getLogger("PGBaseBackup")
@@ -32,6 +32,7 @@ class PGBaseBackup(Thread):
         self.basebackup_path = basebackup_path
         self.callback_queue = callback_queue
         self.compression_queue = compression_queue
+        self.stats = stats
         self.transfer_queue = transfer_queue
         self.start_wal_segment = start_wal_segment
         self.target_basebackup_path = None
@@ -112,6 +113,16 @@ class PGBaseBackup(Thread):
                 compression_level=compression_level,
                 rsa_public_key=rsa_public_key)
             os.link(output_obj.name, basebackup_path)
+
+        if original_input_size:
+            size_ratio = compressed_file_size / original_input_size
+            self.stats.gauge(
+                "pghoard.compressed_size_ratio", size_ratio,
+                tags={
+                    "algorithm": compression_algorithm,
+                    "site": self.site,
+                    "type": "basebackup",
+                })
 
         metadata = {
             "compression-algorithm": compression_algorithm,

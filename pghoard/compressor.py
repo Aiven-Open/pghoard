@@ -160,6 +160,15 @@ class CompressorThread(Thread, Compressor):
         self.state[site][filetype]["original_data"] += original_file_size
         self.state[site][filetype]["compressed_data"] += compressed_file_size
         self.state[site][filetype]["count"] += 1
+        if original_file_size:
+            size_ratio = compressed_file_size / original_file_size
+            self.stats.gauge(
+                "pghoard.compressed_size_ratio", size_ratio,
+                tags={
+                    "algorithm": self.config["compression"]["algorithm"],
+                    "site": site,
+                    "type": filetype,
+                })
         transfer_object = {
             "callback_queue": event.get("callback_queue"),
             "file_size": compressed_file_size,
