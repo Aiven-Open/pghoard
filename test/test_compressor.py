@@ -1,5 +1,5 @@
 """
-pghoard
+pghoard - compressor tests
 
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
@@ -7,13 +7,14 @@ See LICENSE for details
 # pylint: disable=attribute-defined-outside-init
 from .base import PGHoardTestCase, CONSTANT_TEST_RSA_PUBLIC_KEY, CONSTANT_TEST_RSA_PRIVATE_KEY
 from .test_wal import wal_header_for_file
-from io import BytesIO
 from pghoard import statsd
 from pghoard.compressor import CompressorThread
-from pghoard.rohmu import IO_BLOCK_SIZE
-from pghoard.rohmu.compressor import snappy
+from pghoard.rohmu import compressor, IO_BLOCK_SIZE, rohmufile
+from pghoard.rohmu.snappyfile import snappy, SnappyFile
 from queue import Queue
+import io
 import lzma
+import logging
 import os
 import pytest
 
@@ -35,7 +36,7 @@ class TestXlog:
             self.size = out.tell()
 
 
-class Compression(PGHoardTestCase):
+class CompressionCase(PGHoardTestCase):
     algorithm = None
 
     def compress(self, data):
@@ -46,6 +47,7 @@ class Compression(PGHoardTestCase):
 
     def setup_method(self, method):
         super().setup_method(method)
+        self.log = logging.getLogger(str(method))
         self.config = self.config_template()
         self.config["backup_sites"][self.test_site] = {
             "encryption_key_id": None,
@@ -69,10 +71,11 @@ class Compression(PGHoardTestCase):
         os.makedirs(self.handled_path)
 
         self.compressor = CompressorThread(
-            config=self.config,
+            config_dict=self.config,
             compression_queue=self.compression_queue,
             transfer_queue=self.transfer_queue,
-            stats=statsd.StatsClient(host=None))
+            stats=statsd.StatsClient(host=None),
+        )
         self.compressor.start()
 
     def teardown_method(self, method):
@@ -119,13 +122,15 @@ class Compression(PGHoardTestCase):
         }
         assert self.compressor.get_event_filetype(event) == "basebackup"
 
-    def test_compress_fileobj(self):
+    def test_write_file(self):
         ifile = TestXlog(self.incoming_path, "00000001000000000000000C", "random")
-        with open(ifile.path, "rb") as input_obj, BytesIO() as output_obj:
-            orig_len, compr_len = self.compressor.compress_fileobj(
+        with open(ifile.path, "rb") as input_obj, io.BytesIO() as output_obj:
+            orig_len, compr_len = rohmufile.write_file(
                 input_obj=input_obj,
                 output_obj=output_obj,
-                compression_algorithm=self.algorithm)
+                compression_algorithm=self.algorithm,
+                log_func=self.log.info,
+            )
             assert output_obj.tell() == compr_len
             assert len(output_obj.getvalue()) == compr_len
             assert orig_len == ifile.size
@@ -190,7 +195,9 @@ class Compression(PGHoardTestCase):
         for key, value in expected.items():
             assert transfer_event[key] == value
 
-        assert self.decompress(transfer_event["blob"]) == ifile.contents
+        result = self.decompress(transfer_event["blob"])
+        assert result[:100] == ifile.contents[:100]
+        assert result == ifile.contents
 
     def test_compress_encrypt_to_memory(self):
         ifile = TestXlog(self.incoming_path, "00000001000000000000000C", "random")
@@ -271,18 +278,22 @@ class Compression(PGHoardTestCase):
         callback_queue.get(timeout=1.0)
         assert os.path.exists(local_filepath) is True
         with open(local_filepath, "rb") as fp:
-            assert fp.read() == ifile.contents
+            fdata = fp.read()
+        assert fdata[:100] == ifile.contents[:100]
+        assert fdata == ifile.contents
 
     def test_decompression_decrypt_event(self):
         ifile = TestXlog(self.incoming_path, "00000001000000000000000E", "random")
-        output_obj = BytesIO()
+        output_obj = io.BytesIO()
         with open(ifile.path, "rb") as input_obj:
-            self.compressor.compress_fileobj(
+            rohmufile.write_file(
                 input_obj=input_obj,
                 output_obj=output_obj,
                 compression_algorithm=self.config["compression"]["algorithm"],
                 compression_level=self.config["compression"]["level"],
-                rsa_public_key=CONSTANT_TEST_RSA_PUBLIC_KEY)
+                rsa_public_key=CONSTANT_TEST_RSA_PUBLIC_KEY,
+                log_func=self.log.info,
+            )
         callback_queue = Queue()
         local_filepath = os.path.join(self.temp_dir, "00000001000000000000000E")
         self.compression_queue.put({
@@ -303,10 +314,51 @@ class Compression(PGHoardTestCase):
         callback_queue.get(timeout=1.0)
         assert os.path.exists(local_filepath) is True
         with open(local_filepath, "rb") as fp:
-            assert fp.read() == ifile.contents
+            fdata = fp.read()
+        assert fdata[:100] == ifile.contents[:100]
+        assert fdata == ifile.contents
+
+    def test_compress_decompress_fileobj(self, tmpdir):
+        plaintext = TestXlog(self.incoming_path, "00000001000000000000000E", "random").contents
+        output_file = tmpdir.join("data.out").strpath
+        with open(output_file, "w+b") as plain_fp:
+            cmp_fp = compressor.CompressionFile(plain_fp, self.algorithm)
+
+            assert cmp_fp.fileno() == plain_fp.fileno()
+            assert cmp_fp.readable() is False
+            with pytest.raises(io.UnsupportedOperation):
+                cmp_fp.read(1)
+            assert cmp_fp.seekable() is False
+            with pytest.raises(io.UnsupportedOperation):
+                cmp_fp.seek(1, os.SEEK_CUR)
+            assert cmp_fp.writable() is True
+
+            cmp_fp.write(plaintext)
+            cmp_fp.write(b"")
+            assert cmp_fp.tell() == len(plaintext)
+            cmp_fp.close()
+            cmp_fp.close()
+
+            plain_fp.seek(0)
+
+            dec_fp = compressor.DecompressionFile(plain_fp, self.algorithm)
+            assert dec_fp.fileno() == plain_fp.fileno()
+            assert dec_fp.readable() is True
+            assert dec_fp.writable() is False
+            with pytest.raises(io.UnsupportedOperation):
+                dec_fp.write(b"x")
+            dec_fp.flush()
+
+            # TODO: snappy returns random amounts of output per read call
+            chunks = []
+            while chunks == [] or chunks[-1] != b"":
+                chunks.append(dec_fp.read())
+            result = b"".join(chunks)
+
+            assert plaintext == result
 
 
-class TestLzmaCompression(Compression):
+class TestLzmaCompression(CompressionCase):
     algorithm = "lzma"
 
     def compress(self, data):
@@ -317,7 +369,7 @@ class TestLzmaCompression(Compression):
 
 
 @pytest.mark.skipif(not snappy, reason="snappy not installed")
-class TestSnappyCompression(Compression):
+class TestSnappyCompression(CompressionCase):
     algorithm = "snappy"
 
     def compress(self, data):
@@ -325,3 +377,22 @@ class TestSnappyCompression(Compression):
 
     def decompress(self, data):
         return snappy.StreamDecompressor().decompress(data)
+
+    def test_snappy_read(self, tmpdir):
+        comp = snappy.StreamCompressor()
+        # generate two chunks with their own framing
+        compressed = comp.compress(b"hello, ") + comp.compress(b"world")
+        file_path = tmpdir.join("foo").strpath
+        with open(file_path, "wb") as fp:
+            fp.write(compressed)
+
+        out = []
+        with SnappyFile(open(file_path, "rb"), "rb") as fp:
+            while True:
+                chunk = fp.read()
+                if not chunk:
+                    break
+                out.append(chunk)
+
+        full = b"".join(out)
+        assert full == b"hello, world"

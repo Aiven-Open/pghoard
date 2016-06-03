@@ -6,8 +6,9 @@ See LICENSE for details
 """
 from pghoard.common import convert_pg_command_version_to_number
 from pghoard.postgres_command import PGHOARD_HOST, PGHOARD_PORT
-from pghoard.rohmu.compressor import snappy
+from pghoard.rohmu import get_class_for_transfer
 from pghoard.rohmu.errors import InvalidConfigurationError
+from pghoard.rohmu.snappyfile import snappy
 import json
 import os
 import subprocess
@@ -52,7 +53,7 @@ def set_config_defaults(config, *, check_commands=True):
 
     # defaults for sites
     config.setdefault("backup_sites", {})
-    for site_config in config["backup_sites"].values():
+    for site_name, site_config in config["backup_sites"].items():
         site_config.setdefault("active", True)
         site_config.setdefault("active_backup_mode", "pg_receivexlog")
         site_config.setdefault("basebackup_count", 2)
@@ -62,10 +63,20 @@ def set_config_defaults(config, *, check_commands=True):
         site_config.setdefault("pg_xlog_directory", "/var/lib/pgsql/data/pg_xlog")
         site_config.setdefault("stream_compression", False)
         obj_store = site_config["object_storage"] or {}
-        if obj_store.get("type") == "local" and obj_store.get("directory") == config.get("backup_location"):
+        if not obj_store:
+            pass
+        elif "storage_type" not in obj_store:
+            raise InvalidConfigurationError("Site {!r}: storage_type not defined for object_storage".format(site_name))
+        elif obj_store["storage_type"] == "local" and obj_store.get("directory") == config.get("backup_location"):
             raise InvalidConfigurationError(
-                "Invalid 'local' target directory {!r}, must be different from 'backup_location'".format(
-                    config.get("backup_location")))
+                "Site {!r}: invalid 'local' target directory {!r}, must be different from 'backup_location'".format(
+                    site_name, config.get("backup_location")))
+        else:
+            try:
+                get_class_for_transfer(obj_store["storage_type"])
+            except ImportError as ex:
+                raise InvalidConfigurationError(
+                    "Site {0!r} object_storage: {1.__class__.__name__!s}: {1!s}".format(site_name, ex))
 
     return config
 
@@ -104,3 +115,10 @@ def get_site_from_config(config, site):
                                         .format(site, n_sites, sorted(config["backup_sites"])))
 
     return site
+
+
+def key_lookup_for_site(config, site):
+    def key_lookup(key_id):
+        return config["backup_sites"][site]["encryption_keys"][key_id]["private"]
+
+    return key_lookup

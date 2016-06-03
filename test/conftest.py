@@ -5,8 +5,8 @@ Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
 from pghoard import logutil
-from pghoard.rohmu.compressor import snappy
 from pghoard.pghoard import PGHoard
+from pghoard.rohmu.snappyfile import snappy
 from py import path as py_path  # pylint: disable=no-name-in-module
 import json
 import lzma
@@ -113,7 +113,7 @@ def pghoard(db, tmpdir, request):  # pylint: disable=redefined-outer-name
     test_site = request.function.__name__
     config = {
         "alert_file_dir": os.path.join(str(tmpdir), "alerts"),
-        "backup_location": os.path.join(str(tmpdir), "backups"),
+        "backup_location": os.path.join(str(tmpdir), "backupspool"),
         "backup_sites": {
             test_site: {
                 "basebackup_count": 2,

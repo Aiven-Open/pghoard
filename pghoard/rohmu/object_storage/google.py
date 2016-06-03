@@ -5,6 +5,11 @@ Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
 # pylint: disable=import-error, no-name-in-module
+
+# NOTE: this import is not needed per-se, but it's imported here first to point the
+# user to the most important possible missing dependency
+import googleapiclient  # noqa pylint: disable=unused-import
+
 from contextlib import contextmanager
 from io import BytesIO, FileIO
 import dateutil.parser

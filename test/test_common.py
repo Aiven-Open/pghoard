@@ -12,7 +12,6 @@ from pghoard.common import (
     json_encode,
     write_json_file,
 )
-from pghoard.rohmu.compressor import snappy, SnappyFile
 from pghoard.rohmu.errors import Error
 import datetime
 import json
@@ -90,23 +89,3 @@ class TestCommon(PGHoardTestCase):
         ob2_ = json.loads(output_data)
 
         assert ob2 == ob2_
-
-    @pytest.mark.skipif(not snappy, reason="snappy not installed")
-    def test_snappy_read(self, tmpdir):
-        comp = snappy.StreamCompressor()
-        # generate two chunks with their own framing
-        compressed = comp.compress(b"hello, ") + comp.compress(b"world")
-        file_path = str(tmpdir.join("foo"))
-        with open(file_path, "wb") as fp:
-            fp.write(compressed)
-
-        out = []
-        with SnappyFile(open(file_path, "rb")) as fp:
-            while True:
-                chunk = fp.read()
-                if not chunk:
-                    break
-                out.append(chunk)
-
-        full = b"".join(out)
-        assert full == b"hello, world"

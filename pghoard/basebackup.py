@@ -6,8 +6,8 @@ See LICENSE for details
 """
 from .common import set_stream_nonblocking, set_subprocess_stdout_and_stderr_nonblocking, terminate_subprocess
 from .pgutil import get_connection_info
+from pghoard.rohmu import rohmufile
 from pghoard.rohmu.compat import suppress
-from pghoard.rohmu.compressor import Compressor
 from tempfile import NamedTemporaryFile
 from threading import Thread
 import datetime
@@ -98,20 +98,27 @@ class PGBaseBackup(Thread):
         encryption_key_id = self.config["backup_sites"][self.site]["encryption_key_id"]
         if encryption_key_id:
             rsa_public_key = self.config["backup_sites"][self.site]["encryption_keys"][encryption_key_id]["public"]
-        c = Compressor()
+
         compression_algorithm = self.config["compression"]["algorithm"]
         compression_level = self.config["compression"]["level"]
         self.log.debug("Compressing basebackup directly to file: %r", basebackup_path)
         set_stream_nonblocking(proc.stderr)
 
         with NamedTemporaryFile(prefix=basebackup_path, suffix=".tmp-compress") as output_obj:
-            original_input_size, compressed_file_size = c.compress_fileobj(
+            def progress_callback():
+                stderr_data = proc.stderr.read()
+                if stderr_data:
+                    self.log.debug("pg_basebackup stderr: %r", stderr_data)
+
+            original_input_size, compressed_file_size = rohmufile.write_file(
                 input_obj=proc.stdout,
-                stderr=proc.stderr,
                 output_obj=output_obj,
                 compression_algorithm=compression_algorithm,
                 compression_level=compression_level,
-                rsa_public_key=rsa_public_key)
+                rsa_public_key=rsa_public_key,
+                progress_callback=progress_callback,
+                log_func=self.log.info,
+            )
             os.link(output_obj.name, basebackup_path)
 
         if original_input_size:
