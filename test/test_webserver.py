@@ -16,6 +16,7 @@ from pghoard.postgres_command import archive_command, restore_command
 from pghoard.restore import HTTPRestore, Restore
 from pghoard.rohmu.encryptor import Encryptor
 from queue import Queue
+import logging
 import os
 import psycopg2
 import pytest
@@ -121,6 +122,7 @@ class TestWebServer:
         return start_xlog, end_xlog
 
     def test_archive_sync(self, db, pghoard):
+        log = logging.getLogger("test_archive_sync")
         store = pghoard.transfer_agents[0].get_object_storage(pghoard.test_site)
 
         def list_archive(folder):
@@ -128,10 +130,17 @@ class TestWebServer:
                 matcher = wal.TIMELINE_RE.match
             else:
                 matcher = wal.XLOG_RE.match
-            for obj in store.list_path("{}/{}".format(pghoard.test_site, folder)):
+
+            path_to_list = "{}/{}".format(pghoard.test_site, folder)
+            files_found, files_total = 0, 0
+            for obj in store.list_path(path_to_list):
                 fname = os.path.basename(obj["name"])
+                files_total += 1
                 if matcher(fname):
+                    files_found += 1
                     yield fname
+
+            log.info("Listed %r, %r out of %r matched %r pattern",  path_to_list, files_found, files_total, folder)
 
         # create a basebackup to start with
         self._run_and_wait_basebackup(pghoard, db)
@@ -213,6 +222,7 @@ class TestWebServer:
         # now we should have an archived timeline
         archived_timelines = set(list_archive("timeline"))
         assert archived_timelines.issuperset(pg_xlog_timelines)
+        assert "00000002.history" in archived_timelines
 
         # let's take a new basebackup
         self._run_and_wait_basebackup(pghoard, db)
@@ -226,10 +236,11 @@ class TestWebServer:
         arsy.run(["--site", pghoard.test_site, "--config", pghoard.config_path])
 
         archived_xlogs = set(list_archive("xlog"))
-        # assume the same timeline file as before and at one or more wal files (but not more than three)
+        # assume the same timeline file as before and one to three wal files
         assert len(archived_xlogs) >= 1
         assert len(archived_xlogs) <= 3
-        assert list(list_archive("timeline")) == ["00000002.history"]
+        archived_timelines = set(list_archive("timeline"))
+        assert list(archived_timelines) == ["00000002.history"]
 
     def test_archive_command_with_invalid_file(self, pghoard):
         # only xlog and timeline (.history) files can be archived

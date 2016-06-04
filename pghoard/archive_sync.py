@@ -74,8 +74,12 @@ class ArchiveSync:
         # collecting a list we start archiving them from oldest to newest.
         # This is done so we don't break our missing archive detection logic
         # if sync is interrupted for some reason.
+        # Sort all timeline files first to make sure they're always
+        # archived, otherwise the timeline files are processed only after
+        # all xlog files for a given timeline have been handled.
         xlog_dir = self.backup_site["pg_xlog_directory"]
-        xlog_files = sorted(os.listdir(xlog_dir), reverse=True)
+        xlog_files = os.listdir(xlog_dir)
+        xlog_files.sort(key=lambda f: (f.endswith(".history"), f), reverse=True)
         need_archival = []
         for xlog_file in xlog_files:
             archive_type = None
