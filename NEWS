@@ -2,6 +2,8 @@ pghoard X.X.X (2016-XX-XX)
 ==========================
 
 * Support for Telegraf statsd
+* New `basebackup_mode` option: `local-tar` to collect files directly from
+  `$PGDATA` instead of running pg_basebackup
 * Basebackup handling was refactored to more cleanly handle the different
   operation modes: pipe data directly from pg_basebackup's stdout to PGHoard
   compression or collect the temporary tar files first that pg_basebackup

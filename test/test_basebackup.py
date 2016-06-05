@@ -9,6 +9,7 @@ from pghoard import statsd
 from pghoard.basebackup import PGBaseBackup
 from pghoard.restore import Restore, RestoreError
 from queue import Queue
+from subprocess import check_call
 import os
 import pytest
 import tarfile
@@ -37,18 +38,16 @@ LABEL: pg_basebackup base backup
         assert start_wal_segment == "000000010000000000000004"
         assert start_time == "2015-02-12T14:07:19+00:00"
 
-    def test_basebackups(self, capsys, db, pghoard, tmpdir):
+    def _test_basebackups(self, capsys, db, pghoard, tmpdir, mode):
         pghoard.create_backup_site_paths(pghoard.test_site)
         basebackup_path = os.path.join(pghoard.config["backup_location"], pghoard.test_site, "basebackup")
         q = Queue()
+
+        pghoard.config["backup_sites"][pghoard.test_site]["basebackup_mode"] = mode
         pghoard.create_basebackup(pghoard.test_site, db.user, basebackup_path, q)
         result = q.get(timeout=60)
         assert result["success"]
 
-        pghoard.config["backup_sites"][pghoard.test_site]["basebackup_mode"] = "pipe"
-        pghoard.create_basebackup(pghoard.test_site, db.user, basebackup_path, q)
-        result = q.get(timeout=60)
-        assert result["success"]
         # make sure it shows on the list
         Restore().run([
             "list-basebackups",
@@ -77,7 +76,17 @@ LABEL: pg_basebackup base backup
             "--target-dir", backup_out,
             "--overwrite",
         ])
+        check_call([os.path.join(db.pgbin, "pg_controldata"), backup_out])
         # TODO: check that the backup is valid
+
+    def test_basebackups_basic(self, capsys, db, pghoard, tmpdir):
+        self._test_basebackups(capsys, db, pghoard, tmpdir, "basic")
+
+    def test_basebackups_local_tar(self, capsys, db, pghoard, tmpdir):
+        self._test_basebackups(capsys, db, pghoard, tmpdir, "local-tar")
+
+    def test_basebackups_pipe(self, capsys, db, pghoard, tmpdir):
+        self._test_basebackups(capsys, db, pghoard, tmpdir, "pipe")
 
     def test_handle_site(self, pghoard):
         site_config = deepcopy(pghoard.config["backup_sites"][pghoard.test_site])

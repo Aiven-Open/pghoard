@@ -6,6 +6,7 @@ See LICENSE for details
 """
 from . import wal
 from .common import (
+    connection_string_using_pgpass,
     replication_connection_string_and_slot_using_pgpass,
     set_stream_nonblocking,
     set_subprocess_stdout_and_stderr_nonblocking,
@@ -19,10 +20,13 @@ import datetime
 import dateutil.parser
 import logging
 import os
+import psycopg2
 import select
 import subprocess
 import tarfile
 import time
+
+BASEBACKUP_NAME = "pghoard_base_backup"
 
 
 class PGBaseBackup(Thread):
@@ -49,6 +53,8 @@ class PGBaseBackup(Thread):
             basebackup_mode = self.config["backup_sites"][self.site]["basebackup_mode"]
             if basebackup_mode == "basic":
                 self.run_basic_basebackup()
+            elif basebackup_mode == "local-tar":
+                self.run_local_tar_basebackup()
             elif basebackup_mode == "pipe":
                 self.run_piped_basebackup()
             else:
@@ -76,7 +82,7 @@ class PGBaseBackup(Thread):
         command = [
             self.config["pg_basebackup_path"],
             "--format", "tar",
-            "--label", "pghoard_base_backup",
+            "--label", BASEBACKUP_NAME,
             "--progress",
             "--verbose",
             "--pgdata", output_name,
@@ -256,4 +262,117 @@ class PGBaseBackup(Thread):
                 "start-wal-segment": start_wal_segment,
             },
             "type": "CLOSE_WRITE",
+        })
+
+    def write_files_to_tar(self, *, pgdata, tar):
+        # Iterate over top-level $PGDATA, files first, directories last.  As a bit of a hack, sort directories
+        # in reverse alphabetical order to try to grab everything else but the biggest base/ directory first.
+        entries_to_backup = set(os.listdir(pgdata))
+        files_to_backup = {f for f in entries_to_backup if not os.path.isdir(os.path.join(pgdata, f))}
+        entries_to_backup = sorted(files_to_backup) + sorted(entries_to_backup - files_to_backup, reverse=True)
+        for fn in entries_to_backup:
+            local_path = os.path.join(pgdata, fn)
+            archive_path = fn
+
+            # Skip temporary / runtime files such as postmaster.pid, postmaster.opts and files ending with ~,
+            # .tmp or .old or starting with .s. or pgsql_tmp.  These are some of the filename matches and patterns
+            # PostgreSQL own replication code recognizes.  We also skip tablespace_map since we have our own
+            # logic for handling it.
+            # TODO: ignore contents of pg_log and other files that look like backups or don't match our
+            # top-level whitelist?
+            if fn == "postmaster.opts" or \
+                    fn == "postmaster.pid" or \
+                    fn.endswith(".old") or \
+                    fn.endswith(".tmp") or \
+                    fn.endswith("~") or \
+                    fn.startswith(".s.") or \
+                    fn.startswith("pgsql_tmp"):
+                continue
+
+            # Skip contents of various directories, but create the empty directories themselves
+            if fn == "pg_log" or \
+                    fn == "pg_replslot" or \
+                    fn == "pg_stat_tmp" or \
+                    fn == "pg_xlog":
+                tar.add(local_path, arcname=archive_path, recursive=False)
+                # in case of pg_xlog, add an empty archive_status directory
+                if fn == "pg_xlog":
+                    ti = tar.gettarinfo(name=local_path, arcname=os.path.join(archive_path, "archive_status"))
+                    tar.addfile(ti)
+                continue
+
+            # Recursively add everything else
+            self.latest_activity = datetime.datetime.utcnow()
+            tar.add(local_path, arcname=archive_path, recursive=True)
+
+        # Finally backup the latest version of pg_control
+        self.latest_activity = datetime.datetime.utcnow()
+        local_path = os.path.join(pgdata, "global", "pg_control")
+        archive_path = os.path.join("global", "pg_control")
+        tar.add(local_path, arcname=archive_path)
+
+    def run_local_tar_basebackup(self):
+        _, compressed_basebackup = self.get_paths_for_backup(self.basebackup_path)
+
+        compression_algorithm = self.config["compression"]["algorithm"]
+        compression_level = self.config["compression"]["level"]
+
+        rsa_public_key = None
+        encryption_key_id = self.config["backup_sites"][self.site]["encryption_key_id"]
+        if encryption_key_id:
+            rsa_public_key = self.config["backup_sites"][self.site]["encryption_keys"][encryption_key_id]["public"]
+
+        self.log.debug("Connecting to database to start backup process")
+        connection_string = connection_string_using_pgpass(self.connection_info)
+        with psycopg2.connect(connection_string) as db_conn:
+            cursor = db_conn.cursor()
+            cursor.execute("SELECT pg_start_backup(%s)", [BASEBACKUP_NAME])
+            try:
+                cursor.execute("SELECT setting FROM pg_settings WHERE name='data_directory'")
+                pgdata = cursor.fetchone()[0]
+
+                with open(os.path.join(pgdata, "backup_label"), "rb") as fp:
+                    start_wal_segment, backup_start_time = self.parse_backup_label(fp.read())
+
+                self.log.info("Starting to backup %r to %r", pgdata, compressed_basebackup)
+                start_time = time.monotonic()
+                with NamedTemporaryFile(prefix=compressed_basebackup, suffix=".tmp-compress") as raw_output_obj:
+                    with rohmufile.file_writer(fileobj=raw_output_obj,
+                                               compression_algorithm=compression_algorithm,
+                                               compression_level=compression_level,
+                                               rsa_public_key=rsa_public_key) as output_obj:
+                        with tarfile.open(fileobj=output_obj, mode="w|") as output_tar:
+                            self.write_files_to_tar(pgdata=pgdata, tar=output_tar)
+                        input_size = output_obj.tell()
+
+                    os.link(raw_output_obj.name, compressed_basebackup)
+                    result_size = raw_output_obj.tell()
+
+                rohmufile.log_compression_result(
+                    elapsed=time.monotonic() - start_time,
+                    encrypted=True if rsa_public_key else False,
+                    log_func=self.log.info,
+                    original_size=input_size,
+                    result_size=result_size,
+                    source_name=pgdata,
+                )
+            finally:
+                db_conn.rollback()
+                cursor.execute("SELECT pg_stop_backup()")
+
+        self.transfer_queue.put({
+            "callback_queue": self.callback_queue,
+            "file_size": result_size,
+            "filetype": "basebackup",
+            "local_path": compressed_basebackup,
+            "metadata": {
+                "compression-algorithm": compression_algorithm,
+                "encryption-key-id": encryption_key_id,
+                "original-file-size": input_size,
+                "pg-version": self.pg_version_server,
+                "start-time": backup_start_time,
+                "start-wal-segment": start_wal_segment,
+            },
+            "site": self.site,
+            "type": "UPLOAD",
         })

@@ -52,14 +52,11 @@ def create_pgpass_file(connection_string_or_info):
     return pgutil.create_connection_string(info)
 
 
-def replication_connection_string_and_slot_using_pgpass(target_node_info):
+def connection_info_and_slot(target_node_info):
     """Process the input `target_node_info` entry which may be a libpq
     connection string or uri, or a dict containing key:value pairs of
     connection info entries or just the connection string with a replication
-    slot name.  Create a pgpass entry for this in case it contains a
-    password and return a libpq-format connection string for a replication
-    connection without the password in it and a possible replication
-    slot."""
+    slot name.  Return the connection info dict and a possible slot."""
     slot = None
     if isinstance(target_node_info, dict):
         target_node_info = target_node_info.copy()
@@ -67,9 +64,25 @@ def replication_connection_string_and_slot_using_pgpass(target_node_info):
         if list(target_node_info) == ["connection_string"]:
             # if the dict only contains the `connection_string` key use it as-is
             target_node_info = target_node_info["connection_string"]
-    # make sure it's a replication connection to the host
-    # pointed by the key using the "replication" pseudo-db
     connection_info = pgutil.get_connection_info(target_node_info)
+    return connection_info, slot
+
+
+def connection_string_using_pgpass(target_node_info):
+    """Process the input `target_node_info` entry which may be a libpq
+    connection string or uri, or a dict containing key:value pairs of
+    connection info entries or just the connection string with a
+    replication slot name.  Create a pgpass entry for this in case it
+    contains a password and return a libpq-format connection string
+    without the password in it and a possible replication slot."""
+    connection_info, _ = connection_info_and_slot(target_node_info)
+    return create_pgpass_file(connection_info)
+
+
+def replication_connection_string_and_slot_using_pgpass(target_node_info):
+    """Like `connection_string_and_slot_using_pgpass` but returns a
+    connection string for a replication connection."""
+    connection_info, slot = connection_info_and_slot(target_node_info)
     connection_info["dbname"] = "replication"
     connection_info["replication"] = "true"
     connection_string = create_pgpass_file(connection_info)
