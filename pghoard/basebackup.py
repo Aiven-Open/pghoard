@@ -5,8 +5,12 @@ Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
 from . import wal
-from .common import set_stream_nonblocking, set_subprocess_stdout_and_stderr_nonblocking, terminate_subprocess
-from .pgutil import get_connection_info
+from .common import (
+    replication_connection_string_and_slot_using_pgpass,
+    set_stream_nonblocking,
+    set_subprocess_stdout_and_stderr_nonblocking,
+    terminate_subprocess,
+)
 from pghoard.rohmu import errors, rohmufile
 from pghoard.rohmu.compat import suppress
 from tempfile import NamedTemporaryFile
@@ -22,14 +26,14 @@ import time
 
 
 class PGBaseBackup(Thread):
-    def __init__(self, config, site, connection_string, basebackup_path,
+    def __init__(self, config, site, connection_info, basebackup_path,
                  compression_queue, stats, transfer_queue=None,
                  callback_queue=None, pg_version_server=None):
         super().__init__()
         self.log = logging.getLogger("PGBaseBackup")
         self.config = config
         self.site = site
-        self.connection_string = connection_string
+        self.connection_info = connection_info
         self.basebackup_path = basebackup_path
         self.callback_queue = callback_queue
         self.compression_queue = compression_queue
@@ -78,7 +82,7 @@ class PGBaseBackup(Thread):
             "--pgdata", output_name,
         ]
         if self.pg_version_server < 90300:
-            conn_info = get_connection_info(self.connection_string)
+            conn_info = self.connection_info
             if "user" in conn_info:
                 command.extend(["--user", conn_info["user"]])
             if "port" in conn_info:
@@ -86,7 +90,8 @@ class PGBaseBackup(Thread):
             if "host" in conn_info:
                 command.extend(["--host", conn_info["host"]])
         else:
-            command.extend(["--dbname", self.connection_string])
+            connection_string, _ = replication_connection_string_and_slot_using_pgpass(self.connection_info)
+            command.extend(["--dbname", connection_string])
 
         return command
 
@@ -158,7 +163,8 @@ class PGBaseBackup(Thread):
         # an incorrect start-wal-time since the pg_basebackup from pghoard will not generate a new checkpoint.
         # This means that this xlog information would not be the oldest required to restore from this
         # basebackup.
-        start_wal_segment = wal.get_current_wal_from_identify_system(self.connection_string)
+        connection_string, _ = replication_connection_string_and_slot_using_pgpass(self.connection_info)
+        start_wal_segment = wal.get_current_wal_from_identify_system(connection_string)
 
         _, compressed_basebackup = self.get_paths_for_backup(self.basebackup_path)
         command = self.get_command_line("-")

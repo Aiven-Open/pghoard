@@ -7,7 +7,6 @@ See LICENSE for details
 # pylint: disable=attribute-defined-outside-init
 from .base import CONSTANT_TEST_RSA_PUBLIC_KEY, CONSTANT_TEST_RSA_PRIVATE_KEY
 from .test_wal import wal_header_for_file
-from copy import deepcopy
 from http.client import HTTPConnection
 from pghoard import postgres_command, wal
 from pghoard.archive_sync import ArchiveSync
@@ -63,14 +62,10 @@ class TestWebServer:
             backups_before = set()
         else:
             backups_before = set(f for f in os.listdir(backup_dir) if not f.endswith(".metadata"))
-        r_conn = deepcopy(db.user)
-        r_conn["dbname"] = "replication"
-        r_conn["replication"] = True
-        conn_str = create_connection_string(r_conn)
         basebackup_path = os.path.join(pghoard.config["backup_location"], pghoard.test_site, "basebackup")
         q = Queue()
         pghoard.config["backup_sites"][pghoard.test_site]["basebackup_mode"] = mode
-        pghoard.create_basebackup(pghoard.test_site, conn_str, basebackup_path, q)
+        pghoard.create_basebackup(pghoard.test_site, db.user, basebackup_path, q)
         result = q.get(timeout=60)
         assert result["success"]
         backups_after = set(f for f in os.listdir(backup_dir) if not f.endswith(".metadata"))

@@ -52,13 +52,14 @@ def create_pgpass_file(connection_string_or_info):
     return pgutil.create_connection_string(info)
 
 
-def replication_connection_string_using_pgpass(target_node_info):
+def replication_connection_string_and_slot_using_pgpass(target_node_info):
     """Process the input `target_node_info` entry which may be a libpq
     connection string or uri, or a dict containing key:value pairs of
-    connection info entries or just the connection string with a
-    replication slot name.  Create a pgpass entry for this in case it
-    contains a password and return a libpq-format connection string
-    without the password in it and a possible replication slot."""
+    connection info entries or just the connection string with a replication
+    slot name.  Create a pgpass entry for this in case it contains a
+    password and return a libpq-format connection string for a replication
+    connection without the password in it and a possible replication
+    slot."""
     slot = None
     if isinstance(target_node_info, dict):
         target_node_info = target_node_info.copy()

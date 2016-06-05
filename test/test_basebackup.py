@@ -7,7 +7,6 @@ See LICENSE for details
 from copy import deepcopy
 from pghoard import statsd
 from pghoard.basebackup import PGBaseBackup
-from pghoard.pgutil import create_connection_string
 from pghoard.restore import Restore, RestoreError
 from queue import Queue
 import os
@@ -31,7 +30,7 @@ START TIME: 2015-02-12 14:07:19 GMT
 LABEL: pg_basebackup base backup
 ''')
             tfile.add(os.path.join(td, "backup_label"), arcname="backup_label")
-        pgb = PGBaseBackup(config=None, site="foosite", connection_string=None,
+        pgb = PGBaseBackup(config=None, site="foosite", connection_info=None,
                            basebackup_path=None, compression_queue=None, transfer_queue=None,
                            stats=statsd.StatsClient(host=None))
         start_wal_segment, start_time = pgb.parse_backup_label_in_tar(fn)
@@ -40,18 +39,14 @@ LABEL: pg_basebackup base backup
 
     def test_basebackups(self, capsys, db, pghoard, tmpdir):
         pghoard.create_backup_site_paths(pghoard.test_site)
-        r_conn = deepcopy(db.user)
-        r_conn["dbname"] = "replication"
-        r_conn["replication"] = True
-        conn_str = create_connection_string(r_conn)
         basebackup_path = os.path.join(pghoard.config["backup_location"], pghoard.test_site, "basebackup")
         q = Queue()
-        pghoard.create_basebackup(pghoard.test_site, conn_str, basebackup_path, q)
+        pghoard.create_basebackup(pghoard.test_site, db.user, basebackup_path, q)
         result = q.get(timeout=60)
         assert result["success"]
 
         pghoard.config["backup_sites"][pghoard.test_site]["basebackup_mode"] = "pipe"
-        pghoard.create_basebackup(pghoard.test_site, conn_str, basebackup_path, q)
+        pghoard.create_basebackup(pghoard.test_site, db.user, basebackup_path, q)
         result = q.get(timeout=60)
         assert result["success"]
         # make sure it shows on the list
