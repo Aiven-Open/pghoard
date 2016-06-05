@@ -55,23 +55,31 @@ class TestWebServer:
         out, _ = capsys.readouterr()
         assert pghoard.test_site in out
 
-    def _run_and_wait_basebackup(self, pghoard, db):
+    def _run_and_wait_basebackup(self, pghoard, db, mode):
         pghoard.create_backup_site_paths(pghoard.test_site)
+        backup_dir = os.path.join(pghoard.config["backup_sites"][pghoard.test_site]["object_storage"]["directory"],
+                                  pghoard.test_site, "basebackup")
+        if not os.path.exists(backup_dir):
+            backups_before = set()
+        else:
+            backups_before = set(f for f in os.listdir(backup_dir) if not f.endswith(".metadata"))
         r_conn = deepcopy(db.user)
         r_conn["dbname"] = "replication"
         r_conn["replication"] = True
         conn_str = create_connection_string(r_conn)
         basebackup_path = os.path.join(pghoard.config["backup_location"], pghoard.test_site, "basebackup")
         q = Queue()
-        pghoard.config["backup_sites"][pghoard.test_site]["stream_compression"] = True
+        pghoard.config["backup_sites"][pghoard.test_site]["basebackup_mode"] = mode
         pghoard.create_basebackup(pghoard.test_site, conn_str, basebackup_path, q)
         result = q.get(timeout=60)
         assert result["success"]
-        return pghoard.basebackups[pghoard.test_site].target_basebackup_path
+        backups_after = set(f for f in os.listdir(backup_dir) if not f.endswith(".metadata"))
+        new_backups = backups_after - backups_before
+        assert len(new_backups) == 1
+        return new_backups.pop()
 
-    def test_basebackups(self, capsys, db, http_restore, pghoard, tmpdir):  # pylint: disable=redefined-outer-name
-        tmpdir = str(tmpdir)
-        final_location = self._run_and_wait_basebackup(pghoard, db)
+    def test_basebackups(self, capsys, db, http_restore, pghoard):  # pylint: disable=redefined-outer-name
+        final_location = self._run_and_wait_basebackup(pghoard, db, "pipe")
         backups = http_restore.list_basebackups()
         assert len(backups) == 1
         assert backups[0]["size"] > 0
@@ -81,11 +89,6 @@ class TestWebServer:
         out, _ = capsys.readouterr()
         assert "{} MB".format(int(backups[0]["metadata"]["original-file-size"]) // (1024 ** 2)) in out
         assert backups[0]["name"] in out
-        # TODO: add support for downloading basebackups through the webserver
-        # http_restore.get_archive_file(backups[0]["name"], target_path="dltest", target_path_prefix=tmpdir)
-        # assert set(metadata) == {"compression-algorithm", "original-file-size", "start-time", "start-wal-segment"}
-        # assert metadata["compression-algorithm"] == pghoard.config["compression"]["algorithm"]
-        # TODO: check that we can restore the backup
 
     def test_archiving(self, pghoard):
         store = pghoard.transfer_agents[0].get_object_storage(pghoard.test_site)
@@ -140,10 +143,10 @@ class TestWebServer:
                     files_found += 1
                     yield fname
 
-            log.info("Listed %r, %r out of %r matched %r pattern",  path_to_list, files_found, files_total, folder)
+            log.info("Listed %r, %r out of %r matched %r pattern", path_to_list, files_found, files_total, folder)
 
         # create a basebackup to start with
-        self._run_and_wait_basebackup(pghoard, db)
+        self._run_and_wait_basebackup(pghoard, db, "pipe")
 
         # force a couple of wal segment switches
         start_xlog, _ = self._switch_xlog(db, 4)
@@ -225,7 +228,7 @@ class TestWebServer:
         assert "00000002.history" in archived_timelines
 
         # let's take a new basebackup
-        self._run_and_wait_basebackup(pghoard, db)
+        self._run_and_wait_basebackup(pghoard, db, "basic")
         # nuke archives and resync them
         for name in list_archive(folder="timeline"):
             store.delete_key(os.path.join(pghoard.test_site, "timeline", name))

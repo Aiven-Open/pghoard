@@ -34,7 +34,7 @@ LABEL: pg_basebackup base backup
         pgb = PGBaseBackup(config=None, site="foosite", connection_string=None,
                            basebackup_path=None, compression_queue=None, transfer_queue=None,
                            stats=statsd.StatsClient(host=None))
-        start_wal_segment, start_time = pgb.parse_backup_label(fn)
+        start_wal_segment, start_time = pgb.parse_backup_label_in_tar(fn)
         assert start_wal_segment == "000000010000000000000004"
         assert start_time == "2015-02-12T14:07:19+00:00"
 
@@ -50,12 +50,10 @@ LABEL: pg_basebackup base backup
         result = q.get(timeout=60)
         assert result["success"]
 
-        pghoard.config["backup_sites"][pghoard.test_site]["stream_compression"] = True
+        pghoard.config["backup_sites"][pghoard.test_site]["basebackup_mode"] = "pipe"
         pghoard.create_basebackup(pghoard.test_site, conn_str, basebackup_path, q)
         result = q.get(timeout=60)
         assert result["success"]
-        if not pghoard.config["backup_sites"][pghoard.test_site]["object_storage"]:
-            assert os.path.exists(pghoard.basebackups[pghoard.test_site].target_basebackup_path)
         # make sure it shows on the list
         Restore().run([
             "list-basebackups",

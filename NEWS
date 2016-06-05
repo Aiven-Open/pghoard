@@ -2,6 +2,12 @@ pghoard X.X.X (2016-XX-XX)
 ==========================
 
 * Support for Telegraf statsd
+* Basebackup handling was refactored to more cleanly handle the different
+  operation modes: pipe data directly from pg_basebackup's stdout to PGHoard
+  compression or collect the temporary tar files first that pg_basebackup
+  writes itself.  This introduced a new configuration option per site:
+  `basebackup_mode` which supersedes the old `stream_compression` config
+  option
 * Revamped file transformation (encryption, compression) interfaces
 * Make sure object storage modules are importable when reading configuration
   instead of only checking it when they are used

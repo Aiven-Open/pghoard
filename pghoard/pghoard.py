@@ -122,14 +122,6 @@ class PGHoard:
                 callback_queue.put({"success": False})
             return None
 
-        # Note that this xlog file value will only be correct if no other basebackups are run
-        # in parallel. PGHoard itself will never do this itself but if the user starts
-        # one on his own, and if tablespaces are set to False we'll get an incorrect
-        # start-wal-time since the pg_basebackup from pghoard will not generate a
-        # new checkpoint. This means that this xlog information would not be the oldest
-        # required to restore from this basebackup.
-        current_xlog = wal.get_current_wal_from_identify_system(connection_string)
-
         thread = PGBaseBackup(
             config=self.config,
             site=site,
@@ -138,7 +130,6 @@ class PGHoard:
             compression_queue=self.compression_queue,
             transfer_queue=self.transfer_queue,
             callback_queue=callback_queue,
-            start_wal_segment=current_xlog,
             pg_version_server=pg_version_server,
             stats=self.stats)
         thread.start()
