@@ -10,7 +10,7 @@ from pghoard.basebackup import PGBaseBackup
 from pghoard.common import (
     create_alert_file,
     get_object_storage_config,
-    replication_connection_string_using_pgpass,
+    replication_connection_string_and_slot_using_pgpass,
     write_json_file,
 )
 from pghoard.compressor import CompressorThread
@@ -113,7 +113,8 @@ class PGHoard:
             return False
         return True
 
-    def create_basebackup(self, site, connection_string, basebackup_path, callback_queue=None):
+    def create_basebackup(self, site, connection_info, basebackup_path, callback_queue=None):
+        connection_string, _ = replication_connection_string_and_slot_using_pgpass(connection_info)
         pg_version_server = self.check_pg_server_version(connection_string)
         if pg_version_server:
             self.config["backup_sites"][site]["pg_version"] = pg_version_server
@@ -122,23 +123,14 @@ class PGHoard:
                 callback_queue.put({"success": False})
             return None
 
-        # Note that this xlog file value will only be correct if no other basebackups are run
-        # in parallel. PGHoard itself will never do this itself but if the user starts
-        # one on his own, and if tablespaces are set to False we'll get an incorrect
-        # start-wal-time since the pg_basebackup from pghoard will not generate a
-        # new checkpoint. This means that this xlog information would not be the oldest
-        # required to restore from this basebackup.
-        current_xlog = wal.get_current_wal_from_identify_system(connection_string)
-
         thread = PGBaseBackup(
             config=self.config,
             site=site,
-            connection_string=connection_string,
+            connection_info=connection_info,
             basebackup_path=basebackup_path,
             compression_queue=self.compression_queue,
             transfer_queue=self.transfer_queue,
             callback_queue=callback_queue,
-            start_wal_segment=current_xlog,
             pg_version_server=pg_version_server,
             stats=self.stats)
         thread.start()
@@ -161,18 +153,19 @@ class PGHoard:
             self.stats.unexpected_exception(ex, where="check_pg_server_version")
         return pg_version
 
-    def receivexlog_listener(self, site, xlog_location, connection_string, slot):
+    def receivexlog_listener(self, site, connection_info, xlog_directory):
+        connection_string, slot = replication_connection_string_and_slot_using_pgpass(connection_info)
         pg_version_server = self.check_pg_server_version(connection_string)
         if pg_version_server:
             self.config["backup_sites"][site]["pg_version"] = pg_version_server
         if not self.check_pg_versions_ok(pg_version_server, "pg_receivexlog"):
             return
 
-        self.inotify.add_watch(xlog_location)
+        self.inotify.add_watch(xlog_directory)
         thread = PGReceiveXLog(
             config=self.config,
             connection_string=connection_string,
-            xlog_location=xlog_location,
+            xlog_location=xlog_directory,
             slot=slot,
             pg_version_server=pg_version_server)
         thread.start()
@@ -359,8 +352,7 @@ class PGHoard:
         chosen_backup_node = random.choice(site_config["nodes"])
 
         if site not in self.receivexlogs and site_config["active_backup_mode"] == "pg_receivexlog":
-            connection_string, slot = replication_connection_string_using_pgpass(chosen_backup_node)
-            self.receivexlog_listener(site, xlog_path + "_incoming", connection_string, slot)
+            self.receivexlog_listener(site, chosen_backup_node, xlog_path + "_incoming")
 
         if site not in self.time_of_last_backup_check or \
                 time.monotonic() - self.time_of_last_backup_check[site] > 300:
@@ -401,9 +393,8 @@ class PGHoard:
                 new_backup_needed = True
 
         if new_backup_needed:
-            connection_string, slot = replication_connection_string_using_pgpass(chosen_backup_node)
             self.basebackups_callbacks[site] = Queue()
-            self.create_basebackup(site, connection_string, basebackup_path, self.basebackups_callbacks[site])
+            self.create_basebackup(site, chosen_backup_node, basebackup_path, self.basebackups_callbacks[site])
 
     def run(self):
         self.start_threads_on_startup()

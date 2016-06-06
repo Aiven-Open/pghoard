@@ -7,9 +7,9 @@ See LICENSE for details
 from copy import deepcopy
 from pghoard import statsd
 from pghoard.basebackup import PGBaseBackup
-from pghoard.pgutil import create_connection_string
 from pghoard.restore import Restore, RestoreError
 from queue import Queue
+from subprocess import check_call
 import os
 import pytest
 import tarfile
@@ -31,31 +31,23 @@ START TIME: 2015-02-12 14:07:19 GMT
 LABEL: pg_basebackup base backup
 ''')
             tfile.add(os.path.join(td, "backup_label"), arcname="backup_label")
-        pgb = PGBaseBackup(config=None, site="foosite", connection_string=None,
+        pgb = PGBaseBackup(config=None, site="foosite", connection_info=None,
                            basebackup_path=None, compression_queue=None, transfer_queue=None,
                            stats=statsd.StatsClient(host=None))
-        start_wal_segment, start_time = pgb.parse_backup_label(fn)
+        start_wal_segment, start_time = pgb.parse_backup_label_in_tar(fn)
         assert start_wal_segment == "000000010000000000000004"
         assert start_time == "2015-02-12T14:07:19+00:00"
 
-    def test_basebackups(self, capsys, db, pghoard, tmpdir):
+    def _test_create_basebackup(self, capsys, db, pghoard, mode):
         pghoard.create_backup_site_paths(pghoard.test_site)
-        r_conn = deepcopy(db.user)
-        r_conn["dbname"] = "replication"
-        r_conn["replication"] = True
-        conn_str = create_connection_string(r_conn)
         basebackup_path = os.path.join(pghoard.config["backup_location"], pghoard.test_site, "basebackup")
         q = Queue()
-        pghoard.create_basebackup(pghoard.test_site, conn_str, basebackup_path, q)
+
+        pghoard.config["backup_sites"][pghoard.test_site]["basebackup_mode"] = mode
+        pghoard.create_basebackup(pghoard.test_site, db.user, basebackup_path, q)
         result = q.get(timeout=60)
         assert result["success"]
 
-        pghoard.config["backup_sites"][pghoard.test_site]["stream_compression"] = True
-        pghoard.create_basebackup(pghoard.test_site, conn_str, basebackup_path, q)
-        result = q.get(timeout=60)
-        assert result["success"]
-        if not pghoard.config["backup_sites"][pghoard.test_site]["object_storage"]:
-            assert os.path.exists(pghoard.basebackups[pghoard.test_site].target_basebackup_path)
         # make sure it shows on the list
         Restore().run([
             "list-basebackups",
@@ -66,9 +58,18 @@ LABEL: pg_basebackup base backup
         out, _ = capsys.readouterr()
         assert pghoard.test_site in out
         assert "pg-version" in out
-        # try downloading it
-        backup_out = str(tmpdir.join("test-restore"))
+
+    def _test_restore_basebackup(self, db, pghoard, tmpdir):
+        backup_out = tmpdir.join("test-restore").strpath
+        # Restoring to empty directory works
         os.makedirs(backup_out)
+        Restore().run([
+            "get-basebackup",
+            "--config", pghoard.config_path,
+            "--site", pghoard.test_site,
+            "--target-dir", backup_out,
+        ])
+        # Restoring on top of another $PGDATA doesn't
         with pytest.raises(RestoreError) as excinfo:
             Restore().run([
                 "get-basebackup",
@@ -77,6 +78,7 @@ LABEL: pg_basebackup base backup
                 "--target-dir", backup_out,
             ])
         assert "--overwrite not specified" in str(excinfo.value)
+        # Until we use the --overwrite flag
         Restore().run([
             "get-basebackup",
             "--config", pghoard.config_path,
@@ -84,7 +86,21 @@ LABEL: pg_basebackup base backup
             "--target-dir", backup_out,
             "--overwrite",
         ])
+        check_call([os.path.join(db.pgbin, "pg_controldata"), backup_out])
         # TODO: check that the backup is valid
+
+    def _test_basebackups(self, capsys, db, pghoard, tmpdir, mode):
+        self._test_create_basebackup(capsys, db, pghoard, mode)
+        self._test_restore_basebackup(db, pghoard, tmpdir)
+
+    def test_basebackups_basic(self, capsys, db, pghoard, tmpdir):
+        self._test_basebackups(capsys, db, pghoard, tmpdir, "basic")
+
+    def test_basebackups_local_tar(self, capsys, db, pghoard, tmpdir):
+        self._test_basebackups(capsys, db, pghoard, tmpdir, "local-tar")
+
+    def test_basebackups_pipe(self, capsys, db, pghoard, tmpdir):
+        self._test_basebackups(capsys, db, pghoard, tmpdir, "pipe")
 
     def test_handle_site(self, pghoard):
         site_config = deepcopy(pghoard.config["backup_sites"][pghoard.test_site])

@@ -105,18 +105,29 @@ def write_file(*, input_obj, output_obj, progress_callback=None,
     result_size = output_obj.tell()
 
     if log_func:
-        source_name = _fileobj_name(input_obj)
-        if original_size <= result_size:
-            action = "Stored"
-            ratio = ""
-        else:
-            action = "Compressed"
-            ratio = " ({:.0%})".format(result_size / original_size)
-        if rsa_public_key:
-            action += " and encrypted"
-
-        log_func("%s %d byte %s to %d bytes%s, took: %.3fs",
-                 action, original_size, source_name, result_size,
-                 ratio, time.monotonic() - start_time)
+        log_compression_result(
+            elapsed=time.monotonic() - start_time,
+            encrypted=True if rsa_public_key else False,
+            log_func=log_func,
+            original_size=original_size,
+            result_size=result_size,
+            source_name=_fileobj_name(input_obj),
+        )
 
     return original_size, result_size
+
+
+def log_compression_result(*, log_func, source_name, original_size, result_size, encrypted, elapsed):
+    if original_size <= result_size:
+        action = "Stored"
+        ratio = ""
+    else:
+        action = "Compressed"
+        ratio = " ({:.0%})".format(result_size / original_size)
+
+    if encrypted:
+        action += " and encrypted"
+
+    log_func("%s %d byte %s to %d bytes%s, took: %.3fs",
+             action, original_size, source_name, result_size,
+             ratio, elapsed)

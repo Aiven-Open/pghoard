@@ -58,10 +58,11 @@ def set_config_defaults(config, *, check_commands=True):
         site_config.setdefault("active_backup_mode", "pg_receivexlog")
         site_config.setdefault("basebackup_count", 2)
         site_config.setdefault("basebackup_interval_hours", 24)
+        site_config.setdefault("basebackup_mode",
+                               "pipe" if site_config.get("stream_compression") else "basic")
         site_config.setdefault("encryption_key_id", None)
         site_config.setdefault("object_storage", None)
         site_config.setdefault("pg_xlog_directory", "/var/lib/pgsql/data/pg_xlog")
-        site_config.setdefault("stream_compression", False)
         obj_store = site_config["object_storage"] or {}
         if not obj_store:
             pass

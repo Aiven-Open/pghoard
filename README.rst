@@ -346,6 +346,25 @@ the faster your recovery will be, but the more CPU/IO usage is required from
 the servers it takes the basebackup from.  If set to a null value basebackups
 are not automatically taken at all.
 
+``basebackup_mode`` (default ``"basic"``)
+
+The way basebackups should be created.  The default mode, ``basic`` runs
+``pg_basebackup`` and waits for it to write an uncompressed tar file on the
+disk before compressing and optionally encrypting it.  The alternative mode
+``pipe`` pipes the data directly from ``pg_basebackup`` to PGHoard's
+compression and encryption processing reducing the amount of temporary disk
+space that's required.  PGHoard version 1.3.0 and older implemented this
+mode with the now deprecated config option ``stream_compression`` which is
+still recognized and used unless ``basebackup_mode`` is given.
+
+Neither ``basic`` nor ``pipe`` modes support multiple tablespaces.
+
+Setting ``basebackup_mode`` to ``local-tar`` avoids using ``pg_basebackup``
+entirely when ``pghoard`` is running on the same host as the database.
+PGHoard reads the files directly from ``$PGDATA`` in this mode and
+compresses and optionally encrypts them.  This mode does not support
+multiple tablespaces either.
+
 ``encryption_key_id`` (no default)
 
 Specifies the encryption key used when storing encrypted backups. If this
@@ -385,18 +404,6 @@ Determines log level of ``pghoard``.
 ``maintenance_mode_file`` (default ``"/tmp/pghoard_maintenance_mode_file"``)
 
 If a file exists in this location, no new backup actions will be started.
-
-``stream_compression`` (default ``false``)
-
-If you set this to true ``pghoard`` will use an optimized way of taking
-a basebackup directly in a compressed and encrypted form saving
-diskspace. The downside is that you can't create have any tablespaces
-other than the default ones and you cannot take other basebackups at
-the same time as ``pghoard`` is taking its own. As guidance few
-installations use extra tablespaces and if you already use ``pghoard`` to
-take basebackups, you will not need to take other basebackups yourself
-meaning this option is probably safe to use but you need to opt in
-explicitly in order to benefit from it.
 
 ``upload_retries_warning_limit`` (default ``3``)
 

@@ -1,5 +1,5 @@
 """
-pghoard
+pghoard - list and restore basebackups
 
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
@@ -177,18 +177,23 @@ class Restore:
         site = config.get_site_from_config(self.config, arg.site)
         try:
             self.storage = self._get_object_storage(site, arg.target_dir)
-            self._get_basebackup(arg.target_dir, arg.basebackup, site,
-                                 primary_conninfo=arg.primary_conninfo,
-                                 recovery_end_command=arg.recovery_end_command,
-                                 recovery_target_action=arg.recovery_target_action,
-                                 recovery_target_name=arg.recovery_target_name,
-                                 recovery_target_time=arg.recovery_target_time,
-                                 recovery_target_xid=arg.recovery_target_xid,
-                                 restore_to_master=arg.restore_to_master,
-                                 overwrite=arg.overwrite)
+            self._get_basebackup(
+                pgdata=arg.target_dir,
+                basebackup=arg.basebackup,
+                site=site,
+                primary_conninfo=arg.primary_conninfo,
+                recovery_end_command=arg.recovery_end_command,
+                recovery_target_action=arg.recovery_target_action,
+                recovery_target_name=arg.recovery_target_name,
+                recovery_target_time=arg.recovery_target_time,
+                recovery_target_xid=arg.recovery_target_xid,
+                restore_to_master=arg.restore_to_master,
+                overwrite=arg.overwrite,
+            )
         except RestoreError:
             raise
         except Exception as ex:
+            self.log.debug("Unexpected _get_basebackup failure", exc_info=True)
             raise RestoreError("{}: {}".format(ex.__class__.__name__, ex))
 
     def _find_nearest_basebackup(self, recovery_target_time=None):
@@ -239,24 +244,49 @@ class Restore:
         elif basebackup == "latest":
             basebackup = self._find_nearest_basebackup()
 
-        if os.path.exists(pgdata):
-            if overwrite:
-                shutil.rmtree(pgdata)
-            else:
-                raise RestoreError("Target directory '{}' exists and --overwrite not specified, aborting.".format(pgdata))
+        # Grab basebackup metadata to make sure it exists
+        metadata = self.storage.get_basebackup_metadata(basebackup)
 
-        os.makedirs(pgdata)
-        os.chmod(pgdata, 0o700)
-        tmp = tempfile.TemporaryFile(dir=self.config["backup_location"], prefix="basebackup.", suffix=".pghoard")
-        metadata = self.storage.get_basebackup_file_to_fileobj(basebackup, tmp)
-        tmp.seek(0)
+        # Make sure we have a proper place to write the $PGDATA
+        dirs_to_create = []
+        dirs_to_recheck = []
+        dirs_to_wipe = []
 
-        input_obj = rohmufile.file_reader(fileobj=tmp, metadata=metadata,
-                                          key_lookup=config.key_lookup_for_site(self.config, site))
+        if not os.path.exists(pgdata):
+            dirs_to_create.append(pgdata)
+        elif overwrite:
+            dirs_to_create.append(pgdata)
+            dirs_to_wipe.append(pgdata)
+        elif os.listdir(pgdata) in ([], ["lost+found"]):
+            # Allow empty directories as well as ext3/4 mount points to be used, but check that we can write to them
+            dirs_to_recheck.append(pgdata)
+        else:
+            raise RestoreError("$PGDATA target directory {!r} exists, is not empty and --overwrite not specified, aborting."
+                               .format(pgdata))
 
-        tar = tarfile.open(fileobj=input_obj, mode="r|")  # "r|" prevents seek()ing
-        tar.extractall(pgdata)
-        tar.close()
+        # First check that the existing (empty) directories are writable, then possibly wipe any directories as
+        # requested by --overwrite and finally create the new dirs
+        for dirname in dirs_to_recheck:
+            try:
+                tempfile.TemporaryFile(dir=dirname).close()
+            except PermissionError:
+                raise RestoreError("$PGDATA target directory {!r} is empty, but not writable, aborting."
+                                   .format(dirname))
+
+        for dirname in dirs_to_wipe:
+            shutil.rmtree(dirname)
+        for dirname in dirs_to_create:
+            os.makedirs(dirname)
+            os.chmod(dirname, 0o700)
+
+        with tempfile.TemporaryFile(dir=self.config["backup_location"], prefix="basebackup.", suffix=".pghoard") as tmp:
+            self.storage.get_basebackup_file_to_fileobj(basebackup, tmp)
+            tmp.seek(0)
+
+            with rohmufile.file_reader(fileobj=tmp, metadata=metadata,
+                                       key_lookup=config.key_lookup_for_site(self.config, site)) as input_obj:
+                with tarfile.open(fileobj=input_obj, mode="r|") as tar:  # "r|" prevents seek()ing
+                    tar.extractall(pgdata)
 
         create_recovery_conf(
             dirpath=pgdata,
@@ -271,7 +301,7 @@ class Restore:
             restore_to_master=restore_to_master,
         )
 
-        print("Basebackup complete.")
+        print("Basebackup restoration complete.")
         print("You can start PostgreSQL by running pg_ctl -D %s start" % pgdata)
         print("On systemd based systems you can run systemctl start postgresql")
         print("On SYSV Init based systems you can run /etc/init.d/postgresql start")
@@ -306,10 +336,11 @@ class ObjectStore:
         caption = "Available %r basebackups:" % self.site
         print_basebackup_list(result, caption=caption, verbose=verbose)
 
+    def get_basebackup_metadata(self, basebackup):
+        return self.storage.get_metadata_for_key(basebackup)
+
     def get_basebackup_file_to_fileobj(self, basebackup, fileobj):
-        metadata = self.storage.get_metadata_for_key(basebackup)
         self.storage.get_contents_to_fileobj(basebackup, fileobj)
-        return metadata
 
 
 class HTTPRestore(ObjectStore):
