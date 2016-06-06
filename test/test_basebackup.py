@@ -38,7 +38,7 @@ LABEL: pg_basebackup base backup
         assert start_wal_segment == "000000010000000000000004"
         assert start_time == "2015-02-12T14:07:19+00:00"
 
-    def _test_basebackups(self, capsys, db, pghoard, tmpdir, mode):
+    def _test_create_basebackup(self, capsys, db, pghoard, mode):
         pghoard.create_backup_site_paths(pghoard.test_site)
         basebackup_path = os.path.join(pghoard.config["backup_location"], pghoard.test_site, "basebackup")
         q = Queue()
@@ -58,9 +58,18 @@ LABEL: pg_basebackup base backup
         out, _ = capsys.readouterr()
         assert pghoard.test_site in out
         assert "pg-version" in out
-        # try downloading it
-        backup_out = str(tmpdir.join("test-restore"))
+
+    def _test_restore_basebackup(self, db, pghoard, tmpdir):
+        backup_out = tmpdir.join("test-restore").strpath
+        # Restoring to empty directory works
         os.makedirs(backup_out)
+        Restore().run([
+            "get-basebackup",
+            "--config", pghoard.config_path,
+            "--site", pghoard.test_site,
+            "--target-dir", backup_out,
+        ])
+        # Restoring on top of another $PGDATA doesn't
         with pytest.raises(RestoreError) as excinfo:
             Restore().run([
                 "get-basebackup",
@@ -69,6 +78,7 @@ LABEL: pg_basebackup base backup
                 "--target-dir", backup_out,
             ])
         assert "--overwrite not specified" in str(excinfo.value)
+        # Until we use the --overwrite flag
         Restore().run([
             "get-basebackup",
             "--config", pghoard.config_path,
@@ -78,6 +88,10 @@ LABEL: pg_basebackup base backup
         ])
         check_call([os.path.join(db.pgbin, "pg_controldata"), backup_out])
         # TODO: check that the backup is valid
+
+    def _test_basebackups(self, capsys, db, pghoard, tmpdir, mode):
+        self._test_create_basebackup(capsys, db, pghoard, mode)
+        self._test_restore_basebackup(db, pghoard, tmpdir)
 
     def test_basebackups_basic(self, capsys, db, pghoard, tmpdir):
         self._test_basebackups(capsys, db, pghoard, tmpdir, "basic")
