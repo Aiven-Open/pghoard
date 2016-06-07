@@ -54,6 +54,8 @@ class TestPG:
         time.sleep(1.0)  # let pg start
 
     def kill(self, force=True):
+        if self.pg is None:
+            return
         os.kill(self.pg.pid, signal.SIGKILL if force else signal.SIGTERM)
         timeout = time.time() + 10
         while (self.pg.poll() is None) and (time.time() < timeout):
