@@ -362,8 +362,8 @@ Neither ``basic`` nor ``pipe`` modes support multiple tablespaces.
 Setting ``basebackup_mode`` to ``local-tar`` avoids using ``pg_basebackup``
 entirely when ``pghoard`` is running on the same host as the database.
 PGHoard reads the files directly from ``$PGDATA`` in this mode and
-compresses and optionally encrypts them.  This mode does not support
-multiple tablespaces either.
+compresses and optionally encrypts them.  This mode allows backing up user
+tablespaces.
 
 ``encryption_key_id`` (no default)
 

@@ -5,7 +5,7 @@ Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
 from io import BytesIO
-from ..compat import suppress
+from ..compat import makedirs, suppress
 from ..errors import FileNotFoundFromStorageError, LocalFileIsRemoteFileError
 from . base import BaseTransfer
 import datetime
@@ -102,7 +102,7 @@ class LocalTransfer(BaseTransfer):
 
     def store_file_from_memory(self, key, memstring, metadata=None):
         target_path = self.format_key_for_backend(key.strip("/"))
-        os.makedirs(os.path.dirname(target_path), exist_ok=True)
+        makedirs(os.path.dirname(target_path), exist_ok=True)
         with open(target_path, "wb") as fp:
             fp.write(memstring)
         self._save_metadata(target_path, metadata)
@@ -115,6 +115,6 @@ class LocalTransfer(BaseTransfer):
             if dst_stat.st_dev == src_stat.st_dev and dst_stat.st_ino == src_stat.st_ino:
                 self._save_metadata(target_path, metadata)
                 raise LocalFileIsRemoteFileError(target_path)
-        os.makedirs(os.path.dirname(target_path), exist_ok=True)
+        makedirs(os.path.dirname(target_path), exist_ok=True)
         shutil.copyfile(filepath, target_path)
         self._save_metadata(target_path, metadata)

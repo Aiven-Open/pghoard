@@ -4,7 +4,7 @@ pghoard - pg_basebackup handler
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
-from . import wal
+from . import version, wal
 from .common import (
     connection_string_using_pgpass,
     replication_connection_string_and_slot_using_pgpass,
@@ -18,6 +18,8 @@ from tempfile import NamedTemporaryFile
 from threading import Thread
 import datetime
 import dateutil.parser
+import io
+import json
 import logging
 import os
 import psycopg2
@@ -264,24 +266,42 @@ class PGBaseBackup(Thread):
             "type": "CLOSE_WRITE",
         })
 
-    def write_files_to_tar(self, *, pgdata, tar):
+    def write_files_to_tar(self, *, pgdata, tablespaces, tar):
+        # Write a pghoard metadata file with tablespace mapping
+        # This also acts as a marker saying this is a new-style backup with possible tablespaces
+        metadata = {
+            "pghoard_version": version.__version__,
+            "pghoard_object": "basebackup",
+            "tablespaces": tablespaces,
+        }
+        metadata_io = io.BytesIO(json.dumps(metadata).encode("ascii"))
+        metadata_ti = tarfile.TarInfo(name=".pghoard_tar_metadata.json")
+        metadata_ti.size = len(metadata_io.getbuffer())
+        metadata_ti.mtime = time.time()
+        tar.addfile(metadata_ti, metadata_io)
+
         # Iterate over top-level $PGDATA, files first, directories last.  As a bit of a hack, sort directories
         # in reverse alphabetical order to try to grab everything else but the biggest base/ directory first.
+        tar.addfile(tar.gettarinfo(name=pgdata, arcname="pgdata"))
         entries_to_backup = set(os.listdir(pgdata))
         files_to_backup = {f for f in entries_to_backup if not os.path.isdir(os.path.join(pgdata, f))}
         entries_to_backup = sorted(files_to_backup) + sorted(entries_to_backup - files_to_backup, reverse=True)
         for fn in entries_to_backup:
             local_path = os.path.join(pgdata, fn)
-            archive_path = fn
+            archive_path = os.path.join("pgdata", fn)
 
             # Skip temporary / runtime files such as postmaster.pid, postmaster.opts and files ending with ~,
             # .tmp or .old or starting with .s. or pgsql_tmp.  These are some of the filename matches and patterns
             # PostgreSQL own replication code recognizes.  We also skip tablespace_map since we have our own
             # logic for handling it.
+            # NOTE: We also ignore tablespace_map because we store tablespace information elsewhere and
+            # reconstruct tablespace links in restore.py using our custom metadata and/or user supplied
+            # options.
             # TODO: ignore contents of pg_log and other files that look like backups or don't match our
             # top-level whitelist?
             if fn == "postmaster.opts" or \
                     fn == "postmaster.pid" or \
+                    fn == "tablespace_map" or \
                     fn.endswith(".old") or \
                     fn.endswith(".tmp") or \
                     fn.endswith("~") or \
@@ -293,6 +313,7 @@ class PGBaseBackup(Thread):
             if fn == "pg_log" or \
                     fn == "pg_replslot" or \
                     fn == "pg_stat_tmp" or \
+                    fn == "pg_tblspc" or \
                     fn == "pg_xlog":
                 tar.add(local_path, arcname=archive_path, recursive=False)
                 # in case of pg_xlog, add an empty archive_status directory
@@ -305,10 +326,18 @@ class PGBaseBackup(Thread):
             self.latest_activity = datetime.datetime.utcnow()
             tar.add(local_path, arcname=archive_path, recursive=True)
 
+        # Add a "tablespaces" directory with same metadata as $PGDATA
+        tar.addfile(tar.gettarinfo(name=pgdata, arcname="tablespaces"))
+        for spcname, spcinfo in tablespaces.items():
+            self.latest_activity = datetime.datetime.utcnow()
+            local_path = spcinfo["path"]
+            archive_path = os.path.join("tablespaces", spcname)
+            tar.add(local_path, arcname=archive_path, recursive=True)
+
         # Finally backup the latest version of pg_control
         self.latest_activity = datetime.datetime.utcnow()
         local_path = os.path.join(pgdata, "global", "pg_control")
-        archive_path = os.path.join("global", "pg_control")
+        archive_path = os.path.join("pgdata", "global", "pg_control")
         tar.add(local_path, arcname=archive_path)
 
     def run_local_tar_basebackup(self):
@@ -330,6 +359,15 @@ class PGBaseBackup(Thread):
             try:
                 cursor.execute("SELECT setting FROM pg_settings WHERE name='data_directory'")
                 pgdata = cursor.fetchone()[0]
+                # Look up tablespaces and resolve their current filesystem locations
+                cursor.execute("SELECT oid, spcname FROM pg_tablespace WHERE spcname NOT IN ('pg_default', 'pg_global')")
+                tablespaces = {
+                    spcname: {
+                        "path": os.readlink(os.path.join(pgdata, "pg_tblspc", str(oid))),
+                        "oid": oid,
+                    }
+                    for oid, spcname in cursor.fetchall()
+                }
 
                 with open(os.path.join(pgdata, "backup_label"), "rb") as fp:
                     start_wal_segment, backup_start_time = self.parse_backup_label(fp.read())
@@ -342,7 +380,7 @@ class PGBaseBackup(Thread):
                                                compression_level=compression_level,
                                                rsa_public_key=rsa_public_key) as output_obj:
                         with tarfile.open(fileobj=output_obj, mode="w|") as output_tar:
-                            self.write_files_to_tar(pgdata=pgdata, tar=output_tar)
+                            self.write_files_to_tar(pgdata=pgdata, tablespaces=tablespaces, tar=output_tar)
                         input_size = output_obj.tell()
 
                     os.link(raw_output_obj.name, compressed_basebackup)
@@ -360,19 +398,25 @@ class PGBaseBackup(Thread):
                 db_conn.rollback()
                 cursor.execute("SELECT pg_stop_backup()")
 
+        metadata = {
+            "compression-algorithm": compression_algorithm,
+            "encryption-key-id": encryption_key_id,
+            "format": "pghoard-bb-v1",
+            "original-file-size": input_size,
+            "pg-version": self.pg_version_server,
+            "start-time": backup_start_time,
+            "start-wal-segment": start_wal_segment,
+        }
+        for spcname, spcinfo in tablespaces.items():
+            metadata["tablespace-name-{}".format(spcinfo["oid"])] = spcname
+            metadata["tablespace-path-{}".format(spcinfo["oid"])] = spcinfo["path"]
+
         self.transfer_queue.put({
             "callback_queue": self.callback_queue,
             "file_size": result_size,
             "filetype": "basebackup",
             "local_path": compressed_basebackup,
-            "metadata": {
-                "compression-algorithm": compression_algorithm,
-                "encryption-key-id": encryption_key_id,
-                "original-file-size": input_size,
-                "pg-version": self.pg_version_server,
-                "start-time": backup_start_time,
-                "start-wal-segment": start_wal_segment,
-            },
+            "metadata": metadata,
             "site": self.site,
             "type": "UPLOAD",
         })

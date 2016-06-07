@@ -2,6 +2,8 @@
 #
 # Code mostly copied from Python 3.4.3 under the Python license.
 
+# suppress: call or simulate Pyhon 3.4 contextlib.suppress
+
 try:
     from contextlib import suppress  # pylint: disable=import-error, no-name-in-module, unused-import
 except ImportError:
@@ -33,3 +35,22 @@ except ImportError:
             #
             # See http://bugs.python.org/issue12029 for more details
             return exctype is not None and issubclass(exctype, self._exceptions)
+
+
+# makedirs: call or simulate Pyhon 3.4.1 os.makedirs
+# Earlier Python versions raise an error if exist_ok flag is set and the
+# directory exists with different permissions.
+
+import os
+import sys
+
+if sys.version_info >= (3, 4, 1):
+    makedirs = os.makedirs
+else:
+    def makedirs(path, mode=0o777, exist_ok=False):
+        if not exist_ok:
+            return os.makedirs(path, mode)
+        try:
+            return os.makedirs(path, mode)
+        except FileExistsError:
+            pass

@@ -7,15 +7,17 @@ See LICENSE for details
 from pghoard import config, logutil, version
 from pghoard.common import get_object_storage_config
 from pghoard.postgres_command import PGHOARD_HOST, PGHOARD_PORT
-from pghoard.rohmu import get_transfer, rohmufile
+from pghoard.rohmu import compat, get_transfer, rohmufile
 from pghoard.rohmu.errors import Error, InvalidConfigurationError
 from psycopg2.extensions import adapt
 from requests import Session
 import argparse
 import datetime
 import dateutil.parser
+import json
 import logging
 import os
+import re
 import shutil
 import sys
 import tarfile
@@ -97,6 +99,8 @@ def print_basebackup_list(basebackups, *, caption="Available basebackups", verbo
 
 
 class Restore:
+    log_tracebacks = False
+
     def __init__(self):
         self.config = None
         self.log = logging.getLogger("PGHoardRestore")
@@ -133,6 +137,9 @@ class Restore:
             cmd.add_argument("--target-dir", help="pghoard restore target 'pgdata' dir", required=True)
             cmd.add_argument("--overwrite", help="overwrite existing target directory",
                              default=False, action="store_true")
+            cmd.add_argument("--tablespace-dir", metavar="NAME=DIRECTORY", action="append",
+                             help="map the given tablespace to an existing empty directory; "
+                                  "this option can be used multiple times to map multiple tablespaces")
             cmd.add_argument("--recovery-end-command", help="PostgreSQL recovery_end_command", metavar="COMMAND")
             cmd.add_argument("--recovery-target-action", help="PostgreSQL recovery_target_action",
                              choices=["pause", "promote", "shutdown"])
@@ -173,6 +180,14 @@ class Restore:
 
     def get_basebackup(self, arg):
         """Download a basebackup from an object store"""
+        if not arg.tablespace_dir:
+            tablespace_mapping = {}
+        else:
+            try:
+                tablespace_mapping = dict(v.split("=", 1) for v in arg.tablespace_dir)
+            except ValueError:
+                raise RestoreError("Invalid tablespace mapping {!r}".format(arg.tablespace_dir))
+
         self.config = config.read_json_config_file(arg.config, check_commands=False)
         site = config.get_site_from_config(self.config, arg.site)
         try:
@@ -189,11 +204,13 @@ class Restore:
                 recovery_target_xid=arg.recovery_target_xid,
                 restore_to_master=arg.restore_to_master,
                 overwrite=arg.overwrite,
+                tablespace_mapping=tablespace_mapping,
             )
         except RestoreError:
             raise
         except Exception as ex:
-            self.log.debug("Unexpected _get_basebackup failure", exc_info=True)
+            if self.log_tracebacks:
+                self.log.exception("Unexpected _get_basebackup failure")
             raise RestoreError("{}: {}".format(ex.__class__.__name__, ex))
 
     def _find_nearest_basebackup(self, recovery_target_time=None):
@@ -220,6 +237,60 @@ class Restore:
         print("\nSelecting {!r} for restore".format(selected))
         return selected
 
+    def _extract_pghoard_bb_v1(self, fileobj, pgdata, tablespaces):
+        directories = []
+        tar_meta = None
+        with tarfile.open(fileobj=fileobj, mode="r|") as tar:  # "r|" prevents seek()ing
+            for tarinfo in tar:
+                if tarinfo.name == ".pghoard_tar_metadata.json":
+                    tar_meta_bytes = tar.extractfile(tarinfo).read()
+                    tar_meta = json.loads(tar_meta_bytes.decode("utf-8"))
+                    continue
+
+                if tarinfo.name == "pgdata" or tarinfo.name == "tablespaces":
+                    continue  # ignore these directory entries
+                if tarinfo.name.startswith("pgdata/"):
+                    target_name = os.path.join(pgdata, tarinfo.name[7:])
+                elif tarinfo.name.startswith("tablespaces/"):
+                    tscomponents = tarinfo.name.split("/", 2)
+                    tsname = tscomponents[1]
+                    tspath = tablespaces[tsname]["path"]
+
+                    if len(tscomponents) == 2 and tarinfo.isdir():
+                        # Create tablespace entry
+                        assert tar_meta["tablespaces"][tsname]["oid"] == tablespaces[tsname]["oid"]
+                        linkname = os.path.join(pgdata, "pg_tblspc", str(tablespaces[tsname]["oid"]))
+                        os.symlink(tspath, linkname)
+                        directories.append([tspath, tarinfo])
+                        continue
+
+                    target_name = os.path.join(tspath, tscomponents[2])
+                else:
+                    raise Exception("Unrecognized path {!r} in tar".format(tarinfo.name))
+
+                if tarinfo.isdir():
+                    directories.append([target_name, tarinfo])
+                    compat.makedirs(target_name, exist_ok=True)
+                elif tarinfo.isreg():
+                    target_dir = os.path.dirname(target_name)
+                    if not os.path.exists(target_dir):
+                        compat.makedirs(target_dir, exist_ok=True)
+                    tar.makefile(tarinfo, target_name)
+                    tar.chmod(tarinfo, target_name)
+                    tar.utime(tarinfo, target_name)
+                elif tarinfo.issym():
+                    os.symlink(tarinfo.linkname, target_name)
+                else:
+                    raise Exception("Unrecognized file type for file {!r} in tar".format(tarinfo.name))
+
+        for target_name, tarinfo in directories:
+            tar.chmod(tarinfo, target_name)
+            tar.utime(tarinfo, target_name)
+
+    def _extract_basic(self, fileobj, pgdata):
+        with tarfile.open(fileobj=fileobj, mode="r|") as tar:  # "r|" prevents seek()ing
+            tar.extractall(pgdata)
+
     def _get_basebackup(self, pgdata, basebackup, site,
                         primary_conninfo=None,
                         recovery_end_command=None,
@@ -228,7 +299,8 @@ class Restore:
                         recovery_target_time=None,
                         recovery_target_xid=None,
                         restore_to_master=None,
-                        overwrite=False):
+                        overwrite=False,
+                        tablespace_mapping=None):
         targets = [recovery_target_name, recovery_target_time, recovery_target_xid]
         if sum(0 if flag is None else 1 for flag in targets) > 1:
             raise RestoreError("Specify at most one of recovery_target_name, "
@@ -244,10 +316,10 @@ class Restore:
         elif basebackup == "latest":
             basebackup = self._find_nearest_basebackup()
 
-        # Grab basebackup metadata to make sure it exists
+        # Grab basebackup metadata to make sure it exists and to look up tablespace requirements
         metadata = self.storage.get_basebackup_metadata(basebackup)
 
-        # Make sure we have a proper place to write the $PGDATA
+        # Make sure we have a proper place to write the $PGDATA and possible tablespaces
         dirs_to_create = []
         dirs_to_recheck = []
         dirs_to_wipe = []
@@ -259,19 +331,49 @@ class Restore:
             dirs_to_wipe.append(pgdata)
         elif os.listdir(pgdata) in ([], ["lost+found"]):
             # Allow empty directories as well as ext3/4 mount points to be used, but check that we can write to them
-            dirs_to_recheck.append(pgdata)
+            dirs_to_recheck.append(["$PGDATA", pgdata])
         else:
             raise RestoreError("$PGDATA target directory {!r} exists, is not empty and --overwrite not specified, aborting."
                                .format(pgdata))
 
+        tablespaces = {}
+        tsmetare = re.compile("^tablespace-name-([0-9]+)$")
+        for kw, value in metadata.items():
+            match = tsmetare.match(kw)
+            if not match:
+                continue
+            tsoid = match.group(1)
+            tsname = value
+            tspath = tablespace_mapping.pop(tsname, metadata["tablespace-path-{}".format(tsoid)])
+            if not os.path.exists(tspath):
+                raise RestoreError("Tablespace {!r} target directory {!r} does not exist, aborting."
+                                   .format(tsname, tspath))
+            if os.listdir(tspath) not in ([], ["lost+found"]):
+                # Allow empty directories as well as ext3/4 mount points to be used, but check that we can write to them
+                raise RestoreError("Tablespace {!r} target directory {!r} exists but is not empty, aborting."
+                                   .format(tsname, tspath))
+
+            print("Using existing empty directory {!r} for tablespace {!r}".format(tspath, tsname))
+            tablespaces[tsname] = {
+                "oid": int(tsoid),
+                "path": tspath,
+            }
+            dirs_to_recheck.append(["Tablespace {!r}".format(tsname), tspath])
+
+        # We .pop() the elements of tablespace_mapping above - if mappings are given they must all exist or the
+        # user probably made a typo with tablespace names, abort in that case.
+        if tablespace_mapping:
+            raise RestoreError("Tablespace mapping for {} was requested, but the tablespaces are not present in the backup"
+                               .format(sorted(tablespace_mapping)))
+
         # First check that the existing (empty) directories are writable, then possibly wipe any directories as
         # requested by --overwrite and finally create the new dirs
-        for dirname in dirs_to_recheck:
+        for diruse, dirname in dirs_to_recheck:
             try:
                 tempfile.TemporaryFile(dir=dirname).close()
             except PermissionError:
-                raise RestoreError("$PGDATA target directory {!r} is empty, but not writable, aborting."
-                                   .format(dirname))
+                raise RestoreError("{} target directory {!r} is empty, but not writable, aborting."
+                                   .format(diruse, dirname))
 
         for dirname in dirs_to_wipe:
             shutil.rmtree(dirname)
@@ -285,8 +387,10 @@ class Restore:
 
             with rohmufile.file_reader(fileobj=tmp, metadata=metadata,
                                        key_lookup=config.key_lookup_for_site(self.config, site)) as input_obj:
-                with tarfile.open(fileobj=input_obj, mode="r|") as tar:  # "r|" prevents seek()ing
-                    tar.extractall(pgdata)
+                if metadata.get("format") == "pghoard-bb-v1":
+                    self._extract_pghoard_bb_v1(input_obj, pgdata, tablespaces)
+                else:
+                    self._extract_basic(input_obj, pgdata)
 
         create_recovery_conf(
             dirpath=pgdata,

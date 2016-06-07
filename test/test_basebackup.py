@@ -1,19 +1,25 @@
 """
-pghoard
+pghoard - basebackup tests
 
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
+from .conftest import TestPG
 from copy import deepcopy
-from pghoard import statsd
+from pghoard import pgutil, statsd
 from pghoard.basebackup import PGBaseBackup
 from pghoard.restore import Restore, RestoreError
+from pghoard.rohmu.compat import makedirs
 from queue import Queue
 from subprocess import check_call
 import os
+import psycopg2
 import pytest
 import tarfile
 import time
+
+
+Restore.log_tracebacks = True
 
 
 class TestPGBaseBackup:
@@ -101,6 +107,143 @@ LABEL: pg_basebackup base backup
 
     def test_basebackups_pipe(self, capsys, db, pghoard, tmpdir):
         self._test_basebackups(capsys, db, pghoard, tmpdir, "pipe")
+
+    def test_basebackups_tablespaces(self, capsys, db, pghoard, tmpdir):
+        # Create a test tablespace for this instance, but make sure we drop it at the end of the test as the
+        # database we use is shared by all test cases, and tablespaces are a global concept so the test
+        # tablespace could interfere with other tests
+        tspath = tmpdir.join("extra-ts").strpath
+        os.makedirs(tspath)
+        conn_str = pgutil.create_connection_string(db.user)
+        conn = psycopg2.connect(conn_str)
+        conn.autocommit = True
+        cursor = conn.cursor()
+        cursor.execute("CREATE TABLESPACE tstest LOCATION %s", [tspath])
+        r_db, r_conn = None, None
+        try:
+            cursor.execute("CREATE TABLE tstest (id BIGSERIAL PRIMARY KEY) TABLESPACE tstest")
+            cursor.execute("INSERT INTO tstest (id) VALUES (default)")
+            cursor.execute("SELECT oid, pg_tablespace_location(oid) FROM pg_tablespace WHERE spcname = 'tstest'")
+            res = cursor.fetchone()
+            assert res[1] == tspath
+
+            # Start receivexlog since we want the WALs to be able to restore later on
+            xlog_directory = os.path.join(pghoard.config["backup_location"], pghoard.test_site, "xlog_incoming")
+            makedirs(xlog_directory, exist_ok=True)
+            pghoard.receivexlog_listener(pghoard.test_site, db.user, xlog_directory)
+            self._test_create_basebackup(capsys, db, pghoard, "local-tar")
+            cursor.execute("SELECT txid_current(), pg_switch_xlog()")
+
+            backup_out = tmpdir.join("test-restore").strpath
+            backup_ts_out = tmpdir.join("test-restore-tstest").strpath
+
+            # Tablespaces are extracted to their previous absolute paths by default, but the path must be empty
+            # and it isn't as it's still used by the running PG
+            with pytest.raises(RestoreError) as excinfo:
+                Restore().run([
+                    "get-basebackup",
+                    "--config", pghoard.config_path,
+                    "--site", pghoard.test_site,
+                    "--target-dir", backup_out,
+                ])
+            assert "Tablespace 'tstest' target directory" in str(excinfo.value)
+            assert "not empty" in str(excinfo.value)
+            # We can't restore tablespaces to non-existent directories either
+            with pytest.raises(RestoreError) as excinfo:
+                Restore().run([
+                    "get-basebackup",
+                    "--config", pghoard.config_path,
+                    "--site", pghoard.test_site,
+                    "--target-dir", backup_out,
+                    "--tablespace-dir", "tstest={}".format(backup_ts_out),
+                ])
+            assert "Tablespace 'tstest' target directory" in str(excinfo.value)
+            assert "does not exist" in str(excinfo.value)
+            os.makedirs(backup_ts_out)
+            # We can't restore if the directory isn't writable
+            os.chmod(backup_ts_out, 0o500)
+            with pytest.raises(RestoreError) as excinfo:
+                Restore().run([
+                    "get-basebackup",
+                    "--config", pghoard.config_path,
+                    "--site", pghoard.test_site,
+                    "--target-dir", backup_out,
+                    "--tablespace-dir", "tstest={}".format(backup_ts_out),
+                ])
+            assert "Tablespace 'tstest' target directory" in str(excinfo.value)
+            assert "empty, but not writable" in str(excinfo.value)
+            os.chmod(backup_ts_out, 0o700)
+            # We can't proceed if we request mappings for non-existent tablespaces
+            backup_other_out = tmpdir.join("test-restore-other").strpath
+            os.makedirs(backup_other_out)
+            with pytest.raises(RestoreError) as excinfo:
+                Restore().run([
+                    "get-basebackup",
+                    "--config", pghoard.config_path,
+                    "--site", pghoard.test_site,
+                    "--target-dir", backup_out,
+                    "--tablespace-dir", "tstest={}".format(backup_ts_out),
+                    "--tablespace-dir", "other={}".format(backup_other_out),
+                ])
+            assert "Tablespace mapping for ['other'] was requested, but" in str(excinfo.value)
+
+            # Now, finally, everything should be valid and we can proceed with restore
+            Restore().run([
+                "get-basebackup",
+                "--config", pghoard.config_path,
+                "--site", pghoard.test_site,
+                "--restore-to-master",
+                "--target-dir", backup_out,
+                "--tablespace-dir", "tstest={}".format(backup_ts_out),
+            ])
+
+            # Adjust the generated recovery.conf to point pghoard_postgres_command to our instance
+            new_cmd = "PYTHONPATH={} python3 -m pghoard.postgres_command".format(os.path.dirname(os.path.dirname(__file__)))
+            with open(os.path.join(backup_out, "recovery.conf"), "r+") as fp:
+                rconf = fp.read()
+                rconf = rconf.replace("pghoard_postgres_command", new_cmd)
+                fp.seek(0)
+                fp.write(rconf)
+
+            r_db = TestPG(backup_out)
+            r_db.user = dict(db.user, host=backup_out)
+            r_db.run_pg()
+            r_conn_str = pgutil.create_connection_string(r_db.user)
+
+            # Wait for PG to start up
+            start_time = time.monotonic()
+            while True:
+                try:
+                    r_conn = psycopg2.connect(r_conn_str)
+                    break
+                except psycopg2.OperationalError as ex:
+                    if "starting up" in str(ex):
+                        assert time.monotonic() - start_time <= 10
+                        time.sleep(1)
+                    else:
+                        raise
+
+            r_cursor = r_conn.cursor()
+            # Make sure the tablespace is defined and points to the right (new) path
+            r_cursor.execute("SELECT oid, pg_tablespace_location(oid) FROM pg_tablespace WHERE spcname = 'tstest'")
+            r_res = r_cursor.fetchone()
+            assert r_res[1] == backup_ts_out
+
+            # We should be able to read from the table in the tablespace and the values should match what we stored before
+            r_cursor.execute("SELECT id FROM tstest")
+            r_res = r_cursor.fetchall()
+            cursor.execute("SELECT id FROM tstest")
+            orig_res = cursor.fetchall()
+            assert r_res == orig_res
+
+        finally:
+            if r_conn:
+                r_conn.close()
+            if r_db:
+                r_db.kill(force=True)
+            cursor.execute("DROP TABLE IF EXISTS tstest")
+            cursor.execute("DROP TABLESPACE tstest")
+            conn.close()
 
     def test_handle_site(self, pghoard):
         site_config = deepcopy(pghoard.config["backup_sites"][pghoard.test_site])

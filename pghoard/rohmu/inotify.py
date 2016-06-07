@@ -69,6 +69,7 @@ class InotifyWatcher(Thread):
             mask |= v
         watch = self.libc.inotify_add_watch(self.fd, c_char_p(path.encode("utf8")), c_uint32(mask))
         if watch < 0:
+            self.log.warning("Failed to add inotify watch for %r: %r", path, watch)
             return
         self.watch_to_path[watch] = path
         self.log.debug("Added watch for path: %r", path)
