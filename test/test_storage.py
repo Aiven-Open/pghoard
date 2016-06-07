@@ -6,7 +6,7 @@ See LICENSE for details
 """
 from io import BytesIO
 from pghoard.common import get_object_storage_config
-from pghoard.rohmu import errors, get_transfer
+from pghoard.rohmu import compat, errors, get_transfer
 import datetime
 import hashlib
 import os
@@ -21,7 +21,7 @@ except ImportError:
 
 def _test_storage(st, driver, tmpdir):
     scratch = tmpdir.join("scratch")
-    os.makedirs(str(scratch), exist_ok=True)
+    compat.makedirs(str(scratch), exist_ok=True)
 
     # File not found cases
     with pytest.raises(errors.FileNotFoundFromStorageError):

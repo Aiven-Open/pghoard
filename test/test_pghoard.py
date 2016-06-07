@@ -9,6 +9,7 @@ from .base import PGHoardTestCase
 from pghoard.common import create_alert_file, delete_alert_file, write_json_file
 from pghoard.pghoard import PGHoard
 from pghoard.pgutil import create_connection_string
+from pghoard.rohmu import compat
 from unittest.mock import Mock, patch
 import datetime
 import json
@@ -26,7 +27,7 @@ class TestPGHoard(PGHoardTestCase):
         })
         config_path = os.path.join(self.temp_dir, "pghoard.json")
         write_json_file(config_path, self.config)
-        os.makedirs(self.config["alert_file_dir"], exist_ok=True)
+        compat.makedirs(self.config["alert_file_dir"], exist_ok=True)
 
         self.pghoard = PGHoard(config_path)
         # This is the "final storage location" when using "local" storage type
