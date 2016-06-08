@@ -341,6 +341,13 @@ class PGBaseBackup(Thread):
         tar.add(local_path, arcname=archive_path)
 
     def run_local_tar_basebackup(self):
+        pgdata = self.config["backup_sites"][self.site].get("pg_data_directory")
+        if not pgdata:
+            raise errors.InvalidConfigurationError("pg_data_directory must be set in site "
+                                                   "configuration to use `local-tar` backup mode")
+        if not os.path.isdir(pgdata):
+            raise errors.InvalidConfigurationError("pg_data_directory {!r} does not exist".format(pgdata))
+
         _, compressed_basebackup = self.get_paths_for_backup(self.basebackup_path)
 
         compression_algorithm = self.config["compression"]["algorithm"]
@@ -357,8 +364,6 @@ class PGBaseBackup(Thread):
             cursor = db_conn.cursor()
             cursor.execute("SELECT pg_start_backup(%s)", [BASEBACKUP_NAME])
             try:
-                cursor.execute("SELECT setting FROM pg_settings WHERE name='data_directory'")
-                pgdata = cursor.fetchone()[0]
                 # Look up tablespaces and resolve their current filesystem locations
                 cursor.execute("SELECT oid, spcname FROM pg_tablespace WHERE spcname NOT IN ('pg_default', 'pg_global')")
                 tablespaces = {

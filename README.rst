@@ -479,6 +479,12 @@ Determines the path where to find the correct ``pg_basebackup`` binary.
 
 Determines the path where to find the correct ``pg_receivexlog`` binary.
 
+``pg_data_directory`` (no default)
+
+This is used when the ``local-tar`` ``basebackup_mode`` is used.  The data
+directory must point to PostgreSQL's ``$PGDATA`` and must be readable by the
+``pghoard`` daemon.
+
 ``pg_xlog_directory`` (default ``"/var/lib/pgsql/data/pg_xlog"``)
 
 This is used when ``pghoard_postgres_command`` is used as PostgreSQL's
