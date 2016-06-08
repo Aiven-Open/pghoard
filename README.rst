@@ -1,4 +1,4 @@
-pghoard |BuildStatus|_
+PGHoard |BuildStatus|_
 ======================
 
 .. |BuildStatus| image:: https://travis-ci.org/ohmu/pghoard.png?branch=master
@@ -40,40 +40,83 @@ PostgreSQL Point In Time Replication (PITR) consists of a having a database
 basebackup and changes after that point go into WAL log files that can be
 replayed to get to the desired replication point.
 
-``pghoard`` supports multiple operating models. The basic mode where you have a
-separate backup machine, ``pghoard`` can simply connect with ``pg_receivexlog`` to
-receive WAL files from the database as they're written.  Another model is to
-use ``pghoard_postgres_command`` as a PostgreSQL ``archive_command``.
+PGHoard supports multiple operating models.  The basic mode where you have a
+separate backup machine, ``pghoard`` can simply connect with
+``pg_receivexlog`` to receive WAL files from the database as they're
+written.  Another model is to use ``pghoard_postgres_command`` as a
+PostgreSQL ``archive_command``.
 
-With both modes of operations ``pghoard`` creates basebackups using
-pg_basebackup that is run against the database in question.
+With both modes of operations PGHoard creates periodic basebackups using
+``pg_basebackup`` that is run against the database in question.
 
-``pghoard`` compresses the received WAL logs and basebackups with Snappy (default)
-or LZMA (configurable, level 0 by default) in order to ensure good compression speed
-and relatively smallbackup size. For performance critical applications it is
-recommended to test both compression algorithms to find the most suitable trade-off
-for the particular use-case (snappy is much faster but yields larger compressed files).
+The PostgreSQL write-ahead log (WAL) and basebackups are compressed with
+Snappy (default) or LZMA (configurable, level 0 by default) in order to
+ensure good compression speed and relatively small backup size.  For
+performance critical applications it is recommended to test both compression
+algorithms to find the most suitable trade-off for the particular use-case:
+snappy is much faster but yields larger compressed files.
 
-Optionally, ``pghoard`` can encrypt backed up data at rest. Each individual
+Optionally, PGHoard can encrypt backed up data at rest. Each individual
 file is encrypted and authenticated with file specific keys. The file
 specific keys are included in the backup in turn encrypted with a master
 RSA private/public key pair.
 
-``pghoard`` also supports backing up and restoring from either a local machine
+PGHoard supports backing up and restoring from either a local filesystem
 or from various object stores (AWS S3, Azure (experimental), Ceph, Google
 Cloud and OpenStack Swift.)
 
 In case you just have a single database machine, it is heavily recommended
-to let ``pghoard`` backup the files into an object storage service, so in case
-the machine where it's running is incapacitated, there's still access to the
-database backups.
+to utilize one of the object storage services to allow backup recovery even
+if the host running PGHoard is incapacitated.
+
+
+Requirements
+============
+
+PGHoard can backup and restore PostgreSQL versions 9.2 and above.  The
+daemon is implemented in Python and works with CPython version 3.3 or newer.
+The following Python modules are required:
+
+* psycopg2_ to look up transaction log metadata
+* requests_ for the internal client-server architecture
+
+.. _`psycopg2`: http://initd.org/psycopg/
+.. _`requests`: http://www.python-requests.org/en/latest/
+
+Optional requirements include:
+
+* azure_ for Microsoft Azure object storage
+* boto_ for AWS S3 (or Ceph-S3) object storage
+* google-api-client_ for Google Cloud object storage
+* cryptography_ for backup encryption and decryption (version 0.8 or newer required)
+* snappy_ for Snappy compression and decompression
+* systemd_ for systemd integration
+* swiftclient_ for OpenStack Swift object storage
+
+.. _`azure`: https://github.com/Azure/azure-sdk-for-python
+.. _`boto`: https://github.com/boto/boto
+.. _`google-api-client`: https://github.com/google/google-api-python-client
+.. _`cryptography`: https://cryptography.io/
+.. _`snappy`: https://github.com/andrix/python-snappy
+.. _`systemd`: https://github.com/systemd/python-systemd
+.. _`swiftclient`: https://github.com/openstack/python-swiftclient
+
+Developing and testing PGHoard also requires the following utilities:
+flake8_, pylint_ and pytest_.
+
+.. _`flake8`: https://flake8.readthedocs.io/
+.. _`pylint`: https://www.pylint.org/
+.. _`pytest`: http://pytest.org/
+
+PGHoard has been developed and tested on modern Linux x86-64 systems, but
+should work on other platforms that provide the required modules.
 
 
 Building
 ========
 
 To build an installation package for your distribution, go to the root
-directory of a ``pghoard`` Git checkout and then run:
+directory of a PGHoard Git checkout and run:
 
 Debian::
 
@@ -93,8 +136,6 @@ Python/Other::
   python setup.py bdist_egg
 
 This will produce an egg file into a dist directory within the same folder.
-
-``pghoard`` requires Python 3.3 or newer and PostgreSQL 9.2 or newer.
 
 
 Installation
@@ -272,7 +313,7 @@ PostgreSQL server. To see other possible restoration options please run::
 Commands
 ========
 
-If correctly installed, ``pghoard`` comes with five executables, ``pghoard``,
+If correctly installed, PGHoard comes with five executables, ``pghoard``,
 ``pghoard_archive_sync``, ``pghoard_create_keys`` and
 ``pghoard_postgres_command`` and ``pghoard_restore``
 
@@ -572,9 +613,9 @@ out why and to delete the alert once the situation has been fixed.
 
 ``version_mismatch_error``
 
-Your local PostgreSQL client versions of pg_basebackup or ``pg_receivexlog`` do
-not match with the servers PostgreSQL version.  You need to update them to
-be on the same version level.
+Your local PostgreSQL client versions of ``pg_basebackup`` or
+``pg_receivexlog`` do not match with the servers PostgreSQL version.  You
+need to update them to be on the same version level.
 
 ``version_unsupported_error``
 
@@ -584,7 +625,7 @@ Server PostgreSQL version is not supported.
 License
 =======
 
-``pghoard`` is licensed under the Apache License, Version 2.0. Full license text
+PGHoard is licensed under the Apache License, Version 2.0. Full license text
 is available in the ``LICENSE`` file and at
 http://www.apache.org/licenses/LICENSE-2.0.txt
 
@@ -592,7 +633,7 @@ http://www.apache.org/licenses/LICENSE-2.0.txt
 Credits
 =======
 
-``pghoard`` was created by Hannu Valtonen <hannu.valtonen@ohmu.fi> for
+PGHoard was created by Hannu Valtonen <hannu.valtonen@ohmu.fi> for
 `Aiven Cloud Database`_ and is now maintained by `Ohmu Ltd`_ hackers and
 Aiven developers <pghoard@ohmu.fi>.
 
