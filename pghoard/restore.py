@@ -4,10 +4,10 @@ pghoard - list and restore basebackups
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
-from pghoard import config, logutil, version
-from pghoard.common import get_object_storage_config
-from pghoard.postgres_command import PGHOARD_HOST, PGHOARD_PORT
-from pghoard.rohmu import compat, get_transfer, rohmufile
+from . import common, config, logutil, version
+from .patchedtarfile import tarfile
+from .postgres_command import PGHOARD_HOST, PGHOARD_PORT
+from pghoard.rohmu import compat, get_transfer, IO_BLOCK_SIZE, rohmufile
 from pghoard.rohmu.errors import Error, InvalidConfigurationError
 from psycopg2.extensions import adapt
 from requests import Session
@@ -20,7 +20,6 @@ import os
 import re
 import shutil
 import sys
-import tarfile
 import tempfile
 
 
@@ -167,7 +166,7 @@ class Restore:
         self.storage.show_basebackup_list(verbose=arg.verbose)
 
     def _get_object_storage(self, site, pgdata):
-        storage_config = get_object_storage_config(self.config, site)
+        storage_config = common.get_object_storage_config(self.config, site)
         storage = get_transfer(storage_config)
         return ObjectStore(storage, self.config["path_prefix"], site, pgdata)
 
@@ -240,7 +239,9 @@ class Restore:
     def _extract_pghoard_bb_v1(self, fileobj, pgdata, tablespaces):
         directories = []
         tar_meta = None
-        with tarfile.open(fileobj=fileobj, mode="r|") as tar:  # "r|" prevents seek()ing
+        # | in mode to use tarfile's internal stream buffer manager, currently required because our SnappyFile
+        # interface doesn't do proper buffering for reads
+        with tarfile.open(fileobj=fileobj, mode="r|", bufsize=IO_BLOCK_SIZE) as tar:
             for tarinfo in tar:
                 if tarinfo.name == ".pghoard_tar_metadata.json":
                     tar_meta_bytes = tar.extractfile(tarinfo).read()
@@ -288,7 +289,9 @@ class Restore:
             tar.utime(tarinfo, target_name)
 
     def _extract_basic(self, fileobj, pgdata):
-        with tarfile.open(fileobj=fileobj, mode="r|") as tar:  # "r|" prevents seek()ing
+        # | in mode to use tarfile's internal stream buffer manager, currently required because our SnappyFile
+        # interface doesn't do proper buffering for reads
+        with tarfile.open(fileobj=fileobj, mode="r|", bufsize=IO_BLOCK_SIZE) as tar:
             tar.extractall(pgdata)
 
     def _get_basebackup(self, pgdata, basebackup, site,
