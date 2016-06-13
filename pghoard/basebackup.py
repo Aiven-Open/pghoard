@@ -12,6 +12,7 @@ from .common import (
     set_subprocess_stdout_and_stderr_nonblocking,
     terminate_subprocess,
 )
+from .patchedtarfile import tarfile
 from pghoard.rohmu import errors, rohmufile
 from pghoard.rohmu.compat import suppress
 from tempfile import NamedTemporaryFile
@@ -25,7 +26,6 @@ import os
 import psycopg2
 import select
 import subprocess
-import tarfile
 import time
 
 BASEBACKUP_NAME = "pghoard_base_backup"
@@ -225,7 +225,7 @@ class PGBaseBackup(Thread):
         return start_wal_segment, start_time
 
     def parse_backup_label_in_tar(self, basebackup_path):
-        with tarfile.open(basebackup_path) as tar:
+        with tarfile.TarFile(name=basebackup_path, mode="r") as tar:
             content = tar.extractfile("backup_label").read()  # pylint: disable=no-member
         return self.parse_backup_label(content)
 
@@ -384,7 +384,7 @@ class PGBaseBackup(Thread):
                                                compression_algorithm=compression_algorithm,
                                                compression_level=compression_level,
                                                rsa_public_key=rsa_public_key) as output_obj:
-                        with tarfile.open(fileobj=output_obj, mode="w|") as output_tar:
+                        with tarfile.TarFile(fileobj=output_obj, mode="w") as output_tar:
                             self.write_files_to_tar(pgdata=pgdata, tablespaces=tablespaces, tar=output_tar)
                         input_size = output_obj.tell()
 
