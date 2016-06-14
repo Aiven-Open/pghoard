@@ -174,7 +174,7 @@ class PGBaseBackup(Thread):
         connection_string, _ = replication_connection_string_and_slot_using_pgpass(self.connection_info)
         start_wal_segment = wal.get_current_wal_from_identify_system(connection_string)
 
-        _, compressed_basebackup = self.get_paths_for_backup(self.basebackup_path)
+        temp_basebackup_dir, compressed_basebackup = self.get_paths_for_backup(self.basebackup_path)
         command = self.get_command_line("-")
         self.log.debug("Starting to run: %r", command)
         proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -184,7 +184,7 @@ class PGBaseBackup(Thread):
         self.log.info("Started: %r, running as PID: %r, basebackup_location: %r",
                       command, self.pid, compressed_basebackup)
 
-        stream_target = compressed_basebackup + ".tmp-stream"
+        stream_target = os.path.join(temp_basebackup_dir, "data.tmp")
         original_input_size, compressed_file_size, metadata = \
             self.basebackup_compression_pipe(proc, stream_target)
         if not self.get_command_success(proc, stream_target):
@@ -345,7 +345,7 @@ class PGBaseBackup(Thread):
         if not os.path.isdir(pgdata):
             raise errors.InvalidConfigurationError("pg_data_directory {!r} does not exist".format(pgdata))
 
-        _, compressed_basebackup = self.get_paths_for_backup(self.basebackup_path)
+        temp_basebackup_dir, compressed_basebackup = self.get_paths_for_backup(self.basebackup_path)
 
         compression_algorithm = self.config["compression"]["algorithm"]
         compression_level = self.config["compression"]["level"]
@@ -376,7 +376,7 @@ class PGBaseBackup(Thread):
 
                 self.log.info("Starting to backup %r to %r", pgdata, compressed_basebackup)
                 start_time = time.monotonic()
-                with NamedTemporaryFile(prefix=compressed_basebackup, suffix=".tmp-compress") as raw_output_obj:
+                with NamedTemporaryFile(dir=temp_basebackup_dir, prefix="data.", suffix=".tmp-compress") as raw_output_obj:
                     with rohmufile.file_writer(fileobj=raw_output_obj,
                                                compression_algorithm=compression_algorithm,
                                                compression_level=compression_level,
