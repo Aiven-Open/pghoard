@@ -341,10 +341,7 @@ class PGBaseBackup(Thread):
         tar.add(local_path, arcname=archive_path)
 
     def run_local_tar_basebackup(self):
-        pgdata = self.config["backup_sites"][self.site].get("pg_data_directory")
-        if not pgdata:
-            raise errors.InvalidConfigurationError("pg_data_directory must be set in site "
-                                                   "configuration to use `local-tar` backup mode")
+        pgdata = self.config["backup_sites"][self.site]["pg_data_directory"]
         if not os.path.isdir(pgdata):
             raise errors.InvalidConfigurationError("pg_data_directory {!r} does not exist".format(pgdata))
 

@@ -62,7 +62,22 @@ def set_config_defaults(config, *, check_commands=True):
                                "pipe" if site_config.get("stream_compression") else "basic")
         site_config.setdefault("encryption_key_id", None)
         site_config.setdefault("object_storage", None)
-        site_config.setdefault("pg_xlog_directory", "/var/lib/pgsql/data/pg_xlog")
+
+        # NOTE: pg_data_directory doesn't have a default value
+        data_dir = site_config.get("pg_data_directory")
+        if not data_dir and site_config["basebackup_mode"] == "local-tar":
+            raise InvalidConfigurationError(
+                "Site {!r}: pg_data_directory must be set to use `local-tar` backup mode".format(site_name))
+
+        # FIXME: pg_xlog_directory has historically had a default value, but we should probably get rid of it
+        # as an incorrect value here will have unfortunate consequences.  Also, since we now have a
+        # pg_data_directory configuration option we should just generate pg_xlog directory based on it.  But
+        # while we have a separate pg_xlog directory, and while we have a default value for it, we'll still
+        # base it on pg_data_directory if it was set.
+        if not data_dir:
+            data_dir = "/var/lib/pgsql/data"
+        site_config.setdefault("pg_xlog_directory", os.path.join(data_dir, "pg_xlog"))
+
         obj_store = site_config["object_storage"] or {}
         if not obj_store:
             pass

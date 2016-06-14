@@ -6,6 +6,10 @@ pghoard X.X.X (2016-XX-XX)
 * New `basebackup_mode` option: `local-tar` to collect files directly from
   `$PGDATA` instead of running pg_basebackup.  The `local-tar` mode allows
   backing up user tablespaces
+* New site-specific configuration option ``pg_data_directory`` is required
+  to use the new ``local-tar`` mode, but it's also recommended in other
+  configurations as the ``pg_xlog_directory`` option is now deprecated and
+  will be removed in a future release
 * Basebackup handling was refactored to more cleanly handle the different
   operation modes: pipe data directly from pg_basebackup's stdout to PGHoard
   compression or collect the temporary tar files first that pg_basebackup
