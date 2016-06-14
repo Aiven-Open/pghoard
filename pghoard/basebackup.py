@@ -82,7 +82,7 @@ class PGBaseBackup(Thread):
 
     def get_command_line(self, output_name):
         command = [
-            self.config["pg_basebackup_path"],
+            self.config["backup_sites"][self.site]["pg_basebackup_path"],
             "--format", "tar",
             "--label", BASEBACKUP_NAME,
             "--progress",

@@ -19,14 +19,13 @@
                 "bucket_name": "pgbackups",
                 "region": "eu-central-1",
                 "storage_type": "s3"
-            }
+            },
+            "pg_bin_directory": "/usr/bin"
         }
     },
     "http_address": "127.0.0.1",
     "http_port": 16000,
     "log_level": "INFO",
-    "pg_basebackup_path": "/usr/bin/pg_basebackup",
-    "pg_receivexlog_path": "/usr/bin/pg_receivexlog",
     "syslog": false,
     "syslog_address": "/dev/log",
     "syslog_facility": "local2"

@@ -10,6 +10,14 @@ pghoard X.X.X (2016-XX-XX)
   to use the new ``local-tar`` mode, but it's also recommended in other
   configurations as the ``pg_xlog_directory`` option is now deprecated and
   will be removed in a future release
+* New site-specific configuration option ``pg_bin_directory`` replaces the
+  previous global ``pg_basebackup_path`` and ``pg_receivexlog_path``
+  configuration options.  This allows handling multiple versions in a single
+  pghoard configuration and simplifies configuration as a single option is
+  needed instead of two.  Also, if a pg_data_directory exists the binary
+  directory is automatically looked up from various well-known paths,
+  removing the requirement of setting this option when using PGDG Debian,
+  RHEL or Fedora packages.
 * Basebackup handling was refactored to more cleanly handle the different
   operation modes: pipe data directly from pg_basebackup's stdout to PGHoard
   compression or collect the temporary tar files first that pg_basebackup
