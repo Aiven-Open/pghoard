@@ -550,7 +550,7 @@ The value is a JSON object::
 
   {
       "host": "<statsd address>",
-      "port": "<statsd port>",
+      "port": <statsd port>,
       "tags": {
           "<tag>": "<value>"
       }
