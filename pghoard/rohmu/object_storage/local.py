@@ -69,7 +69,7 @@ class LocalTransfer(BaseTransfer):
             })
         return return_list
 
-    def get_contents_to_file(self, key, filepath_to_store_to):
+    def get_contents_to_file(self, key, filepath_to_store_to, *, progress_callback=None):
         source_path = self.format_key_for_backend(key.strip("/"))
         try:
             src_stat = os.stat(source_path)
@@ -80,14 +80,18 @@ class LocalTransfer(BaseTransfer):
             if dst_stat.st_dev == src_stat.st_dev and dst_stat.st_ino == src_stat.st_ino:
                 raise LocalFileIsRemoteFileError(source_path)
         shutil.copyfile(source_path, filepath_to_store_to)
+        if progress_callback:
+            progress_callback(1, 1)
         return self.get_metadata_for_key(key)
 
-    def get_contents_to_fileobj(self, key, fileobj_to_store_to):
+    def get_contents_to_fileobj(self, key, fileobj_to_store_to, *, progress_callback=None):
         source_path = self.format_key_for_backend(key.strip("/"))
         if not os.path.exists(source_path):
             raise FileNotFoundFromStorageError(key)
         with open(source_path, "rb") as fp:
             shutil.copyfileobj(fp, fileobj_to_store_to)
+        if progress_callback:
+            progress_callback(1, 1)
         return self.get_metadata_for_key(key)
 
     def get_contents_to_string(self, key):

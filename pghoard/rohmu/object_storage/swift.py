@@ -141,18 +141,18 @@ class SwiftTransfer(BaseTransfer):
         else:
             self._delete_object_plain(key)
 
-    def get_contents_to_file(self, key, filepath_to_store_to):
+    def get_contents_to_file(self, key, filepath_to_store_to, *, progress_callback=None):
         temp_filepath = "{}~".format(filepath_to_store_to)
         with open(temp_filepath, "wb") as fp:
             try:
-                metadata = self.get_contents_to_fileobj(key, fp)
+                metadata = self.get_contents_to_fileobj(key, fp, progress_callback=progress_callback)
                 os.rename(temp_filepath, filepath_to_store_to)
             finally:
                 with suppress(FileNotFoundError):
                     os.unlink(filepath_to_store_to)
         return metadata
 
-    def get_contents_to_fileobj(self, key, fileobj_to_store_to):
+    def get_contents_to_fileobj(self, key, fileobj_to_store_to, *, progress_callback=None):
         key = self.format_key_for_backend(key)
         try:
             headers, data_gen = self.conn.get_object(self.container_name, key, resp_chunk_size=CHUNK_SIZE)
@@ -161,8 +161,17 @@ class SwiftTransfer(BaseTransfer):
                 raise FileNotFoundFromStorageError(key)
             raise
 
+        content_len = int(headers.get('content-length') or 0)
+        current_pos = 0
         for chunk in data_gen:
             fileobj_to_store_to.write(chunk)
+            if progress_callback:
+                if not content_len:
+                    # if content length is not known we'll always say we're half-way there
+                    progress_callback(1, 2)
+                else:
+                    current_pos += len(chunk)
+                    progress_callback(current_pos, content_len)
 
         return self._headers_to_metadata(headers)
 

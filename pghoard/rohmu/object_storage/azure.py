@@ -53,15 +53,21 @@ class AzureTransfer(BaseTransfer):
         self.log.debug("Deleting key: %r", key)
         return self.conn.delete_blob(self.container_name, key)
 
-    def get_contents_to_file(self, key, filepath_to_store_to):
+    def get_contents_to_file(self, key, filepath_to_store_to, *, progress_callback=None):
         key = self.format_key_for_backend(key)
         self.log.debug("Starting to fetch the contents of: %r to: %r", key, filepath_to_store_to)
-        return self.conn.get_blob_to_path(self.container_name, key, filepath_to_store_to)
+        meta = self.conn.get_blob_to_path(self.container_name, key, filepath_to_store_to)
+        if progress_callback:
+            progress_callback(1, 1)
+        return meta
 
-    def get_contents_to_fileobj(self, key, fileobj_to_store_to):
+    def get_contents_to_fileobj(self, key, fileobj_to_store_to, *, progress_callback=None):
         key = self.format_key_for_backend(key)
         self.log.debug("Starting to fetch the contents of: %r", key)
-        return self.conn.get_blob_to_file(self.container_name, key, fileobj_to_store_to)
+        meta = self.conn.get_blob_to_file(self.container_name, key, fileobj_to_store_to)
+        if progress_callback:
+            progress_callback(1, 1)
+        return meta
 
     def get_contents_to_string(self, key):
         key = self.format_key_for_backend(key)
