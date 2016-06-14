@@ -384,8 +384,12 @@ class Restore:
             os.makedirs(dirname)
             os.chmod(dirname, 0o700)
 
+        def download_progress(current_pos, expected_max, end=""):
+            print("\rDownload progress: {:.2%}".format(current_pos / expected_max), end=end)
+
         with tempfile.TemporaryFile(dir=self.config["backup_location"], prefix="basebackup.", suffix=".pghoard") as tmp:
-            self.storage.get_basebackup_file_to_fileobj(basebackup, tmp)
+            self.storage.get_basebackup_file_to_fileobj(basebackup, tmp, progress_callback=download_progress)
+            download_progress(1, 1, end="\n")
             tmp.seek(0)
 
             with rohmufile.file_reader(fileobj=tmp, metadata=metadata,
@@ -446,8 +450,8 @@ class ObjectStore:
     def get_basebackup_metadata(self, basebackup):
         return self.storage.get_metadata_for_key(basebackup)
 
-    def get_basebackup_file_to_fileobj(self, basebackup, fileobj):
-        self.storage.get_contents_to_fileobj(basebackup, fileobj)
+    def get_basebackup_file_to_fileobj(self, basebackup, fileobj, *, progress_callback=None):
+        self.storage.get_contents_to_fileobj(basebackup, fileobj, progress_callback=progress_callback)
 
 
 class HTTPRestore(ObjectStore):
