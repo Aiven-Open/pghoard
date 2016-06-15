@@ -10,10 +10,11 @@ import socket
 
 
 class StatsClient(object):
-    def __init__(self, host="127.0.0.1", port=8125, tags=None):
+    def __init__(self, host="127.0.0.1", port=8125, tags=None, message_format=None):
         self._dest_addr = (host, port)
         self._socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self._tags = tags or {}
+        self._message_format = message_format or "telegraf"
 
     def gauge(self, metric, value, tags=None):
         self._send(metric, b"g", value, tags)
@@ -37,11 +38,26 @@ class StatsClient(object):
             # stats sending is disabled
             return
 
-        # format: "user.logins,service=payroll,region=us-west:1|c"
+        # telegraf format: "user.logins,service=payroll,region=us-west:1|c"
+        # datadog format: metric.name:value|type|@sample_rate|#tag1:value,tag2
+        #                 http://docs.datadoghq.com/guides/dogstatsd/#datagram-format
+
         parts = [metric.encode("utf-8"), b":", str(value).encode("utf-8"), b"|", metric_type]
         send_tags = self._tags.copy()
         send_tags.update(tags or {})
-        for tag, value in send_tags.items():
-            parts.insert(1, ",{}={}".format(tag, value).encode("utf-8"))
+        if self._message_format == "datadog":
+            for index, (tag, value) in enumerate(send_tags.items()):
+                if index == 0:
+                    separator = "|#"
+                else:
+                    separator = ","
+                if value is None:
+                    pattern = "{}{}"
+                else:
+                    pattern = "{}{}:{}"
+                parts.append(pattern.format(separator, tag, value).encode("utf-8"))
+        else:
+            for tag, value in send_tags.items():
+                parts.insert(1, ",{}={}".format(tag, value).encode("utf-8"))
 
         self._socket.sendto(b"".join(parts), self._dest_addr)

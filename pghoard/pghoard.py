@@ -465,7 +465,7 @@ class PGHoard:
         # statsd settings may have changed
         stats = self.config.get("statsd", {})
         self.stats = statsd.StatsClient(host=stats.get("host"), port=stats.get("port"),
-                                        tags=stats.get("tags"))
+                                        tags=stats.get("tags"), message_format=stats.get("format"))
 
         self.log.debug("Loaded config: %r from: %r", self.config, self.config_path)
 
