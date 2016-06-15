@@ -370,6 +370,7 @@ class PGBaseBackup(Thread):
                     }
                     for oid, spcname in cursor.fetchall()
                 }
+                db_conn.commit()
 
                 with open(os.path.join(pgdata, "backup_label"), "rb") as fp:
                     start_wal_segment, backup_start_time = self.parse_backup_label(fp.read())
@@ -399,6 +400,7 @@ class PGBaseBackup(Thread):
             finally:
                 db_conn.rollback()
                 cursor.execute("SELECT pg_stop_backup()")
+                db_conn.commit()
 
         metadata = {
             "compression-algorithm": compression_algorithm,
