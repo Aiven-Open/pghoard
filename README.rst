@@ -503,7 +503,7 @@ The following object storage types are supported:
  * ``auth_url`` for Swift authentication URL
  * ``container_name`` name of the data container
 
- * Optional configuration keys fro Swift:
+ * Optional configuration keys for Swift:
 
   * ``auth_version`` - defaults to ``2.0`` for keystone, use ``1.0`` with
     Ceph Rados GW.
@@ -512,12 +512,23 @@ The following object storage types are supported:
     installations require large files (usually 5 gigabytes) to be segmented.
   * ``tenant_name``
 
+``pg_bin_directory`` (default: find binaries from well-known directories)
+
+Site-specific option for finding ``pg_basebackup`` and ``pg_receivexlog``
+commands matching the given backup site's PostgreSQL version.  If a value is
+not supplied PGHoard will attepmt to find matching binaries from various
+well-known locations.  In case ``pg_data_directory`` is set and points to a
+valid data directory the lookup is restricted to the version contained in
+the given data directory.
+
 ``pg_basebackup_path`` (default ``"/usr/bin/pg_basebackup"``)
 
+Deprecated.  Use site-specific ``pg_bin_directory`` instead.
 Determines the path where to find the correct ``pg_basebackup`` binary.
 
 ``pg_receivexlog_path`` (default ``"/usr/bin/pg_receivexlog"``)
 
+Deprecated.  Use site-specific ``pg_bin_directory`` instead.
 Determines the path where to find the correct ``pg_receivexlog`` binary.
 
 ``pg_data_directory`` (no default)
@@ -526,7 +537,12 @@ This is used when the ``local-tar`` ``basebackup_mode`` is used.  The data
 directory must point to PostgreSQL's ``$PGDATA`` and must be readable by the
 ``pghoard`` daemon.
 
+If ``pg_data_directory`` is set the ``pg_xlog_directory`` option is not
+needed.
+
 ``pg_xlog_directory`` (default ``"/var/lib/pgsql/data/pg_xlog"``)
+
+Deprecated.  Set ``pg_data_directory`` instead.
 
 This is used when ``pghoard_postgres_command`` is used as PostgreSQL's
 ``archive_command`` or ``restore_command``.  It should be set to the

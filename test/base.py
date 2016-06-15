@@ -5,8 +5,7 @@ Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
 # pylint: disable=attribute-defined-outside-init
-from .conftest import TestPG
-from pghoard.config import set_config_defaults
+from pghoard.config import find_pg_binary, set_config_defaults
 from shutil import rmtree
 from tempfile import mkdtemp
 import logging
@@ -46,7 +45,10 @@ class PGHoardTestCase:
         cls.log = logging.getLogger(cls.__name__)
 
     def config_template(self):
-        bindir = TestPG.find_pgbin()
+        # NOTE: we set pg_receivexlog_path and pg_basebackup_path per site and globally mostly to verify that
+        # it works, the config keys are deprecated and will be removed in a future release at which point we'll
+        # switch to using pg_bin_directory config.
+        bindir = find_pg_binary("")
         config = {
             "alert_file_dir": os.path.join(str(self.temp_dir), "alerts"),
             "backup_location": os.path.join(str(self.temp_dir), "backupspool"),
@@ -56,11 +58,11 @@ class PGHoardTestCase:
                         "storage_type": "local",
                         "directory": os.path.join(self.temp_dir, "backups"),
                     },
+                    "pg_receivexlog_path": os.path.join(bindir, "pg_receivexlog"),
                 },
             },
             "json_state_file_path": os.path.join(self.temp_dir, "state.json"),
             "pg_basebackup_path": os.path.join(bindir, "pg_basebackup"),
-            "pg_receivexlog_path": os.path.join(bindir, "pg_receivexlog"),
         }
         return set_config_defaults(config)
 

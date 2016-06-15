@@ -151,12 +151,12 @@ class GoogleTransfer(BaseTransfer):
             req = clob.delete(bucket=self.bucket_name, object=key)
             req.execute()
 
-    def get_contents_to_file(self, key, filepath_to_store_to):
+    def get_contents_to_file(self, key, filepath_to_store_to, *, progress_callback=None):
         fileobj = FileIO(filepath_to_store_to, mode="wb")
         done = False
         metadata = {}
         try:
-            metadata = self.get_contents_to_fileobj(key, fileobj)
+            metadata = self.get_contents_to_fileobj(key, fileobj, progress_callback=progress_callback)
             done = True
         finally:
             fileobj.close()
@@ -164,9 +164,10 @@ class GoogleTransfer(BaseTransfer):
                 os.unlink(filepath_to_store_to)
         return metadata
 
-    def get_contents_to_fileobj(self, key, fileobj_to_store_to):
+    def get_contents_to_fileobj(self, key, fileobj_to_store_to, *, progress_callback=None):
         key = self.format_key_for_backend(key)
         self.log.debug("Starting to fetch the contents of: %r to %r", key, fileobj_to_store_to)
+        next_prog_report = 0
         with self._object_client(not_found=key) as clob:
             req = clob.get_media(bucket=self.bucket_name, object=key)
             download = MediaIoBaseDownload(fileobj_to_store_to, req, chunksize=CHUNK_SIZE)
@@ -174,7 +175,11 @@ class GoogleTransfer(BaseTransfer):
             while not done:
                 status, done = download.next_chunk()
                 if status:
-                    self.log.debug("Download of %r: %d%%", key, status.progress() * 100)
+                    progress_pct = status.progress() * 100
+                    self.log.debug("Download of %r: %d%%", key, progress_pct)
+                    if progress_callback and progress_pct > next_prog_report:
+                        progress_callback(progress_pct, 100)
+                        next_prog_report = progress_pct + 0.1
             return self._metadata_for_key(clob, key)
 
     def get_contents_to_string(self, key):

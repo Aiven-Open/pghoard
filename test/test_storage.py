@@ -151,8 +151,17 @@ def _test_storage(st, driver, tmpdir):
     meta = st.get_metadata_for_key("test1/30m")
     assert meta == expected_meta
 
+    progress_reports = []
+
+    def dl_progress(current_pos, expected_max):
+        progress_reports.append((current_pos, expected_max))
+
     with open(test_file, "wb") as fp:
-        assert st.get_contents_to_fileobj("test1/30m", fp) == expected_meta
+        assert st.get_contents_to_fileobj("test1/30m", fp, progress_callback=dl_progress) == expected_meta
+
+    assert len(progress_reports) > 0
+    assert progress_reports[-1][0] == progress_reports[-1][1]
+
     test_hash = hashlib.sha256()
     test_size_rec = 0
     with open(test_file, "rb") as fp:

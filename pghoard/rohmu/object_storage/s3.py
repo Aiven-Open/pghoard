@@ -89,20 +89,20 @@ class S3Transfer(BaseTransfer):
             })
         return result
 
-    def get_contents_to_file(self, key, filepath_to_store_to):
+    def get_contents_to_file(self, key, filepath_to_store_to, *, progress_callback=None):
         key = self.format_key_for_backend(key)
         item = self.bucket.get_key(key)
         if item is None:
             raise FileNotFoundFromStorageError(key)
-        item.get_contents_to_filename(filepath_to_store_to)
+        item.get_contents_to_filename(filepath_to_store_to, cb=progress_callback, num_cb=1000)
         return item.metadata
 
-    def get_contents_to_fileobj(self, key, fileobj_to_store_to):
+    def get_contents_to_fileobj(self, key, fileobj_to_store_to, *, progress_callback=None):
         key = self.format_key_for_backend(key)
         item = self.bucket.get_key(key)
         if item is None:
             raise FileNotFoundFromStorageError(key)
-        item.get_contents_to_file(fileobj_to_store_to)
+        item.get_contents_to_file(fileobj_to_store_to, cb=progress_callback, num_cb=1000)
         return item.metadata
 
     def get_contents_to_string(self, key):

@@ -4,7 +4,7 @@ pghoard: fixtures for tests
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
-from pghoard import logutil
+from pghoard import config as pghconfig, logutil
 from pghoard.pghoard import PGHoard
 from pghoard.rohmu.snappyfile import snappy
 from py import path as py_path  # pylint: disable=no-name-in-module
@@ -24,30 +24,19 @@ logutil.configure_logging()
 
 class TestPG:
     def __init__(self, pgdata):
-        self.pgbin = self.find_pgbin()
+        self.pgbin = pghconfig.find_pg_binary("")
         self.pgdata = pgdata
         self.pg = None
         self.user = None
 
-    @staticmethod
-    def find_pgbin():
-        versions = ["9.5", "9.4", "9.3", "9.2"]
-        pathformats = ["/usr/pgsql-{ver}/bin", "/usr/lib/postgresql/{ver}/bin"]
-        for ver in versions:
-            for pathfmt in pathformats:
-                pgbin = pathfmt.format(ver=ver)
-                if os.path.exists(pgbin):
-                    return pgbin
-        return "/usr/bin"
-
     def run_cmd(self, cmd, *args):
-        argv = ["{}/{}".format(self.pgbin, cmd)]
+        argv = [os.path.join(self.pgbin, cmd)]
         argv.extend(args)
         subprocess.check_call(argv)
 
     def run_pg(self):
         self.pg = subprocess.Popen([
-            "{}/postgres".format(self.pgbin),
+            os.path.join(self.pgbin, "postgres"),
             "-D", self.pgdata, "-k", self.pgdata,
             "-p", self.user["port"], "-c", "listen_addresses=",
         ])
@@ -120,6 +109,7 @@ def pghoard(db, tmpdir, request):  # pylint: disable=redefined-outer-name
             test_site: {
                 "basebackup_count": 2,
                 "basebackup_interval_hours": 24,
+                "pg_bin_directory": db.pgbin,
                 "pg_data_directory": db.pgdata,
                 "pg_xlog_directory": os.path.join(db.pgdata, "pg_xlog"),
                 "nodes": [db.user],
@@ -131,8 +121,6 @@ def pghoard(db, tmpdir, request):  # pylint: disable=redefined-outer-name
         },
         "http_address": "127.0.0.1",
         "http_port": random.randint(1024, 32000),
-        "pg_basebackup_path": os.path.join(db.pgbin, "pg_basebackup"),
-        "pg_receivexlog_path": os.path.join(db.pgbin, "pg_receivexlog"),
         "compression": {
             "algorithm": "snappy" if snappy else "lzma",
         }

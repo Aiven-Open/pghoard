@@ -14,6 +14,19 @@ import os
 import subprocess
 
 
+SUPPORTED_VERSIONS = ["9.6", "9.5", "9.4", "9.3", "9.2"]
+
+
+def find_pg_binary(program, versions=None):
+    pathformats = ["/usr/pgsql-{ver}/bin/{prog}", "/usr/lib/postgresql/{ver}/bin/{prog}"]
+    for ver in versions or SUPPORTED_VERSIONS:
+        for pathfmt in pathformats:
+            pgbin = pathfmt.format(ver=ver, prog=program)
+            if os.path.exists(pgbin):
+                return pgbin
+    return os.path.join("/usr/bin", program)
+
+
 def set_config_defaults(config, *, check_commands=True):
     # TODO: consider implementing a real configuration schema at some point
     # misc global defaults
@@ -25,16 +38,6 @@ def set_config_defaults(config, *, check_commands=True):
     config.setdefault("log_level", "INFO")
     config.setdefault("path_prefix", "")
     config.setdefault("upload_retries_warning_limit", 3)
-
-    # set command paths and check their versions
-    for command in ["pg_basebackup", "pg_receivexlog"]:
-        command_path = config.setdefault(command + "_path", "/usr/bin/" + command)
-        if check_commands:
-            version_output = subprocess.check_output([command_path, "--version"])
-            version_string = version_output.decode("ascii").strip()
-            config[command + "_version"] = convert_pg_command_version_to_number(version_string)
-        else:
-            config[command + "_version"] = None
 
     # default to 5 compression and transfer threads
     config.setdefault("compression", {}).setdefault("thread_count", 5)
@@ -62,7 +65,29 @@ def set_config_defaults(config, *, check_commands=True):
                                "pipe" if site_config.get("stream_compression") else "basic")
         site_config.setdefault("encryption_key_id", None)
         site_config.setdefault("object_storage", None)
-        site_config.setdefault("pg_xlog_directory", "/var/lib/pgsql/data/pg_xlog")
+
+        # NOTE: pg_data_directory doesn't have a default value
+        data_dir = site_config.get("pg_data_directory")
+        if not data_dir and site_config["basebackup_mode"] == "local-tar":
+            raise InvalidConfigurationError(
+                "Site {!r}: pg_data_directory must be set to use `local-tar` backup mode".format(site_name))
+
+        version_file = os.path.join(data_dir, "PG_VERSION") if data_dir else None
+        if version_file and os.path.exists(version_file):
+            with open(version_file, "r") as fp:
+                site_config["pg_data_directory_version"] = fp.read().strip()
+        else:
+            site_config["pg_data_directory_version"] = None
+
+        # FIXME: pg_xlog_directory has historically had a default value, but we should probably get rid of it
+        # as an incorrect value here will have unfortunate consequences.  Also, since we now have a
+        # pg_data_directory configuration option we should just generate pg_xlog directory based on it.  But
+        # while we have a separate pg_xlog directory, and while we have a default value for it, we'll still
+        # base it on pg_data_directory if it was set.
+        if not data_dir:
+            data_dir = "/var/lib/pgsql/data"
+        site_config.setdefault("pg_xlog_directory", os.path.join(data_dir, "pg_xlog"))
+
         obj_store = site_config["object_storage"] or {}
         if not obj_store:
             pass
@@ -78,6 +103,32 @@ def set_config_defaults(config, *, check_commands=True):
             except ImportError as ex:
                 raise InvalidConfigurationError(
                     "Site {0!r} object_storage: {1.__class__.__name__!s}: {1!s}".format(site_name, ex))
+
+        # Set command paths and check their versions per site.  We use a configured value if one was provided
+        # (either at top level or per site), if it wasn't provided but we have a valid pg_data_directory with
+        # PG_VERSION in it we'll look for commands for that version from the expected paths for Debian and
+        # RHEL/Fedora PGDG packages or otherwise fall back to iterating over the available versions.
+        # Instead of setting paths explicitly for both commands, it's also possible to just set the
+        # pg_bin_directory to point to the version-specific bin directory.
+        bin_dir = site_config.get("pg_bin_directory")
+        for command in ["pg_basebackup", "pg_receivexlog"]:
+            command_key = "{}_path".format(command)
+            command_path = site_config.get(command_key) or config.get(command_key)
+            if not command_path:
+                command_path = os.path.join(bin_dir, command) if bin_dir else None
+                if not command_path or not os.path.exists(command_path):
+                    pg_version = site_config["pg_data_directory_version"]
+                    command_path = find_pg_binary(command, [pg_version] if pg_version else None)
+            site_config[command_key] = command_path
+
+            if check_commands and site_config["active"]:
+                if not command_path or not os.path.exists(command_path):
+                    raise InvalidConfigurationError("Site {!r} command {!r} not found".format(site_name, command))
+                version_output = subprocess.check_output([command_path, "--version"])
+                version_string = version_output.decode("ascii").strip()
+                site_config[command + "_version"] = convert_pg_command_version_to_number(version_string)
+            else:
+                site_config[command + "_version"] = None
 
     return config
 

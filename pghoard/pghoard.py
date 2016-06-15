@@ -97,7 +97,7 @@ class PGHoard:
         logutil.notify_systemd("READY=1")
         self.log.info("pghoard initialized, own_hostname: %r, cwd: %r", socket.gethostname(), os.getcwd())
 
-    def check_pg_versions_ok(self, pg_version_server, command):
+    def check_pg_versions_ok(self, site, pg_version_server, command):
         if pg_version_server is None:
             # remote pg version not available, don't create version alert in this case
             return False
@@ -105,7 +105,7 @@ class PGHoard:
             self.log.error("pghoard does not support versions earlier than 9.2, found: %r", pg_version_server)
             create_alert_file(self.config, "version_unsupported_error")
             return False
-        pg_version_client = self.config[command + "_version"]
+        pg_version_client = self.config["backup_sites"][site][command + "_version"]
         if pg_version_server // 100 != pg_version_client // 100:
             self.log.error("Server version: %r does not match %s version: %r",
                            pg_version_server, self.config[command + "_path"], pg_version_client)
@@ -118,7 +118,7 @@ class PGHoard:
         pg_version_server = self.check_pg_server_version(connection_string)
         if pg_version_server:
             self.config["backup_sites"][site]["pg_version"] = pg_version_server
-        if not self.check_pg_versions_ok(pg_version_server, "pg_basebackup"):
+        if not self.check_pg_versions_ok(site, pg_version_server, "pg_basebackup"):
             if callback_queue:
                 callback_queue.put({"success": False})
             return None
@@ -158,7 +158,7 @@ class PGHoard:
         pg_version_server = self.check_pg_server_version(connection_string)
         if pg_version_server:
             self.config["backup_sites"][site]["pg_version"] = pg_version_server
-        if not self.check_pg_versions_ok(pg_version_server, "pg_receivexlog"):
+        if not self.check_pg_versions_ok(site, pg_version_server, "pg_receivexlog"):
             return
 
         self.inotify.add_watch(xlog_directory)
@@ -166,6 +166,7 @@ class PGHoard:
             config=self.config,
             connection_string=connection_string,
             xlog_location=xlog_directory,
+            site=site,
             slot=slot,
             pg_version_server=pg_version_server)
         thread.start()
