@@ -559,24 +559,33 @@ all operations in parallel when a single backup site is used.
 
 ``statsd`` (default: disabled)
 
-Enables metrics sending to a statsd daemon that supports the StatsD /
-Telegraf syntax with tags.
+Enables metrics sending to a statsd daemon that supports Telegraf
+or DataDog syntax with tags.
 
 The value is a JSON object::
 
   {
       "host": "<statsd address>",
       "port": <statsd port>,
+      "format": "<statsd message format>",
       "tags": {
           "<tag>": "<value>"
       }
   }
 
-The ``tags`` setting can be used to enter optional tag values for the metrics.
+``format`` (default: ``"telegraf"``)
 
-Metrics sending follows the `Telegraf spec`_.
+Determines statsd message format. Following formats are supported:
+
+* ``telegraf`` `Telegraf spec`_
 
 .. _`Telegraf spec`: https://github.com/influxdata/telegraf/tree/master/plugins/inputs/statsd
+
+* ``datadog`` `DataDog spec`_
+
+.. _`DataDog spec`: http://docs.datadoghq.com/guides/dogstatsd/#datagram-format
+
+The ``tags`` setting can be used to enter optional tag values for the metrics.
 
 ``syslog`` (default ``false``)
 
