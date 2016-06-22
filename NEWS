@@ -1,6 +1,7 @@
 pghoard X.X.X (2016-XX-XX)
 ==========================
 
+* Add ability to get state file from webserver using GET /status
 * Support for Telegraf and DataDog statsd
 * Basebackup restoration now shows download progress
 * New `basebackup_mode` option: `local-tar` to collect files directly from
