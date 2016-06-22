@@ -138,6 +138,9 @@ class RequestHandler(BaseHTTPRequestHandler):
         self.wfile.write(bmsg)
 
     def _parse_request(self, path):
+        if path[0] == "status":
+            return (None, "status", None)
+
         if len(path) < 2:
             raise HttpResponse("Invalid path {!r}".format(path), status=400)
 
@@ -313,6 +316,25 @@ class RequestHandler(BaseHTTPRequestHandler):
                 with suppress(Exception):
                     os.unlink(tmp_target_path)
 
+    def get_status(self, site):
+        try:
+            state_file_path = self.server.config["json_state_file_path"]
+            if site is None:
+                if os.path.exists(state_file_path):
+                    with open(state_file_path, 'r') as fp:
+                        state_json_data = fp.read()
+                    fp.close()
+                    raise HttpResponse(state_json_data, status=200)
+                else:
+                    raise HttpResponse(status=404)  # Not Found
+            else:
+                # TODO: Handle site specific status
+                # I suggest sending 406 if the site doesn't exist.
+                # Right now we will return 400 because this isn't implmented yet
+                raise HttpResponse(status=400)  # Bad Request
+        except (IOError, OSError, TypeError):
+            raise HttpResponse(status=500)
+
     def get_wal_or_timeline_file(self, site, filename, filetype):
         target_path = self.headers.get("x-pghoard-target-path")
         if not target_path:
@@ -416,5 +438,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             site, obtype, obname = self._parse_request(path)
             if obtype == "basebackup":
                 self.list_basebackups(site)
+            elif obtype == "status":
+                self.get_status(site)
             else:
                 self.get_wal_or_timeline_file(site, obname, obtype)
