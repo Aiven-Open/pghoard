@@ -167,7 +167,7 @@ class GoogleTransfer(BaseTransfer):
     def get_contents_to_fileobj(self, key, fileobj_to_store_to, *, progress_callback=None):
         key = self.format_key_for_backend(key)
         self.log.debug("Starting to fetch the contents of: %r to %r", key, fileobj_to_store_to)
-        next_prog_report = 0
+        next_prog_report = 0.0
         with self._object_client(not_found=key) as clob:
             req = clob.get_media(bucket=self.bucket_name, object=key)
             download = MediaIoBaseDownload(fileobj_to_store_to, req, chunksize=CHUNK_SIZE)
