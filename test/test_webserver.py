@@ -35,7 +35,7 @@ class TestWebServer:
         conn = HTTPConnection(host="127.0.0.1", port=pghoard.config["http_port"])
         response = conn.request("GET", "/status")
         response = conn.getresponse()
-        response_parsed = json.loads(response.readall().decode('utf-8'))
+        response_parsed = json.loads(response.read().decode('utf-8'))
         assert response.status == 200
         # "startup_time": "2016-06-23T14:53:25.840787",
         assert response_parsed['startup_time'] is not None
