@@ -9,6 +9,7 @@ from pghoard.postgres_command import PGHOARD_HOST, PGHOARD_PORT
 from pghoard.rohmu import get_class_for_transfer
 from pghoard.rohmu.errors import InvalidConfigurationError
 from pghoard.rohmu.snappyfile import snappy
+from distutils.spawn import find_executable
 import json
 import os
 import subprocess
@@ -18,13 +19,27 @@ SUPPORTED_VERSIONS = ["9.6", "9.5", "9.4", "9.3", "9.2"]
 
 
 def find_pg_binary(program, versions=None):
-    pathformats = ["/usr/pgsql-{ver}/bin/{prog}", "/usr/lib/postgresql/{ver}/bin/{prog}"]
-    for ver in versions or SUPPORTED_VERSIONS:
-        for pathfmt in pathformats:
-            pgbin = pathfmt.format(ver=ver, prog=program)
-            if os.path.exists(pgbin):
-                return pgbin
+    if not program:
+        return find_pg_binary_directory(versions)
+    else:
+        pathformats = ["/usr/pgsql-{ver}/bin/{prog}", "/usr/lib/postgresql/{ver}/bin/{prog}"]
+        for ver in versions or SUPPORTED_VERSIONS:
+            for pathfmt in pathformats:
+                pgbin = pathfmt.format(ver=ver, prog=program)
+                if os.path.exists(pgbin):
+                    return pgbin
+
+        pgbin = find_executable(program)
+        if os.path.exists(pgbin):
+            return pgbin
+
     return os.path.join("/usr/bin", program)
+
+
+def find_pg_binary_directory(versions=None):
+    bin_standin = "pg_basebackup"
+    bin_standin_path = find_pg_binary(bin_standin, versions)
+    return os.path.dirname(bin_standin_path)
 
 
 def set_config_defaults(config, *, check_commands=True):
