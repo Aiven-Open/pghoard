@@ -9,7 +9,7 @@ from pghoard.postgres_command import PGHOARD_HOST, PGHOARD_PORT
 from pghoard.rohmu import get_class_for_transfer
 from pghoard.rohmu.errors import InvalidConfigurationError
 from pghoard.rohmu.snappyfile import snappy
-from distutils.spawn import find_executable # pylint: disable=no-member
+from distutils.spawn import find_executable # pylint: disable=import-error,no-name-in-module
 import json
 import os
 import subprocess
