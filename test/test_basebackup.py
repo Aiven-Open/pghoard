@@ -44,6 +44,99 @@ LABEL: pg_basebackup base backup
         assert start_wal_segment == "000000010000000000000004"
         assert start_time == "2015-02-12T14:07:19+00:00"
 
+    def test_find_files(self, db):
+        top1 = os.path.join(db.pgdata, "top1.test")
+        top2 = os.path.join(db.pgdata, "top2.test")
+        sub1 = os.path.join(db.pgdata, "global", "sub1.test")
+        sub2 = os.path.join(db.pgdata, "global", "sub2.test")
+        sub3 = os.path.join(db.pgdata, "global", "sub3.test")
+
+        def create_test_files():
+            # Create two temporary files on top level and one in global/ that we'll unlink while iterating
+            with open(top1, "w") as t1, open(top2, "w") as t2, \
+                    open(sub1, "w") as s1, open(sub2, "w") as s2, open(sub3, "w") as s3:
+                t1.write("t1\n")
+                t2.write("t2\n")
+                s1.write("s1\n")
+                s2.write("s2\n")
+                s3.write("s3\n")
+
+        pgb = PGBaseBackup(config=None, site="foosite", connection_info=None,
+                           basebackup_path=None, compression_queue=None, transfer_queue=None,
+                           stats=statsd.StatsClient(host=None))
+        create_test_files()
+        files = pgb.find_files_to_backup(pgdata=db.pgdata, tablespaces={})
+        first_file = next(files)
+        os.unlink(top1)
+        os.unlink(top2)
+        os.unlink(sub1)
+        os.unlink(sub2)
+
+        # Missing files are not accepted at top level
+        with pytest.raises(FileNotFoundError):
+            list(files)
+
+        # Recreate test files and unlink just the one from a subdirectory
+        create_test_files()
+        files = pgb.find_files_to_backup(pgdata=db.pgdata, tablespaces={})
+        first_file = next(files)
+        os.unlink(sub1)
+        # Missing files in sub directories are ok
+        ftbu = [first_file] + list(files)
+
+        # Check that missing_ok flag is not set for top-level items
+        for bu_path, local_path, missing_ok in ftbu:
+            if os.path.dirname(bu_path) == "pgdata":
+                assert missing_ok is False, (bu_path, local_path, missing_ok)
+            else:
+                assert missing_ok is True, (bu_path, local_path, missing_ok)
+
+        # files to backup should include both top level items and two sub-level items
+        bunameset = set(item[0] for item in ftbu)
+        assert len(bunameset) == len(ftbu)
+        assert "pgdata/top1.test" in bunameset
+        assert "pgdata/top2.test" in bunameset
+        assert "pgdata/global/sub1.test" not in bunameset
+        assert "pgdata/global/sub2.test" in bunameset
+        assert "pgdata/global/sub3.test" in bunameset
+
+        # Now delete a file on the top level before we have a chance of tarring anything
+        os.unlink(top2)
+
+        class FakeTar:
+            def __init__(self):
+                self.items = []
+
+            def add(self, local_path, *, arcname):
+                self.items.append((local_path, arcname, os.stat(local_path)))
+
+        # This will fail because top-level items may not be missing
+        faketar = FakeTar()
+        with pytest.raises(FileNotFoundError):
+            pgb.write_files_to_tar(files=ftbu, tar=faketar)
+
+        # Recreate test files and unlink just a subdirectory item
+        create_test_files()
+        os.unlink(sub2)
+
+        # Now adding files should work and we should end up with every file except for sub2 in the archive
+        faketar = FakeTar()
+        pgb.write_files_to_tar(files=ftbu, tar=faketar)
+        arcnameset = set(item[1] for item in faketar.items)
+        assert len(arcnameset) == len(faketar.items)
+        expected_items = bunameset - {"pgdata/global/sub2.test"}
+        assert arcnameset == expected_items
+        assert "pgdata/global/sub1.test" not in arcnameset  # not in set of files to backup
+        assert "pgdata/global/sub2.test" not in arcnameset  # acceptable loss
+        assert "pgdata/global/sub3.test" in arcnameset  # acceptable
+
+        # Add final entries (ie pg_control)
+        pgb.write_final_entries_to_tar(pgdata=db.pgdata, tar=faketar)
+        arcnameset = set(item[1] for item in faketar.items)
+        assert len(arcnameset) == len(faketar.items)
+        expected_items = (bunameset | {"pgdata/global/pg_control"}) - {"pgdata/global/sub2.test"}
+        assert arcnameset == expected_items
+
     def _test_create_basebackup(self, capsys, db, pghoard, mode):
         pghoard.create_backup_site_paths(pghoard.test_site)
         basebackup_path = os.path.join(pghoard.config["backup_location"], pghoard.test_site, "basebackup")

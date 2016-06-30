@@ -4,6 +4,7 @@ pghoard - pg_basebackup handler
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
+# pylint: disable=superfluous-parens
 from . import version, wal
 from .common import (
     connection_string_using_pgpass,
@@ -25,10 +26,15 @@ import logging
 import os
 import psycopg2
 import select
+import stat
 import subprocess
 import time
 
 BASEBACKUP_NAME = "pghoard_base_backup"
+
+
+class NoException(BaseException):
+    """Exception that's never raised, used in conditional except blocks"""
 
 
 class PGBaseBackup(Thread):
@@ -266,12 +272,15 @@ class PGBaseBackup(Thread):
             "type": "CLOSE_WRITE",
         })
 
-    def write_files_to_tar(self, *, pgdata, tablespaces, tar):
+    def write_init_entries_to_tar(self, *, pgdata, tablespaces, tar):
         # Write a pghoard metadata file with tablespace mapping
-        # This also acts as a marker saying this is a new-style backup with possible tablespaces
+        self.latest_activity = datetime.datetime.utcnow()
+
+        # This acts as a marker saying this is a new-style backup with possible tablespaces
         metadata = {
-            "pghoard_version": version.__version__,
+            "pgdata": pgdata,
             "pghoard_object": "basebackup",
+            "pghoard_version": version.__version__,
             "tablespaces": tablespaces,
         }
         metadata_io = io.BytesIO(json.dumps(metadata).encode("ascii"))
@@ -280,27 +289,84 @@ class PGBaseBackup(Thread):
         metadata_ti.mtime = time.time()
         tar.addfile(metadata_ti, metadata_io)
 
-        # Iterate over top-level $PGDATA, files first, directories last.  As a bit of a hack, sort directories
-        # in reverse alphabetical order to try to grab everything else but the biggest base/ directory first.
-        tar.addfile(tar.gettarinfo(name=pgdata, arcname="pgdata"))
-        entries_to_backup = set(os.listdir(pgdata))
-        files_to_backup = {f for f in entries_to_backup if not os.path.isdir(os.path.join(pgdata, f))}
-        entries_to_backup = sorted(files_to_backup) + sorted(entries_to_backup - files_to_backup, reverse=True)
-        for fn in entries_to_backup:
+        # Add backup_label early on
+        local_path = os.path.join(pgdata, "backup_label")
+        archive_path = os.path.join("pgdata", "backup_label")
+        tar.add(local_path, arcname=archive_path)
+
+        # Create directory entries for empty directories with attributes of the pgdata "global" directory
+        empty_dirs = ["pg_log", "pg_replslot", "pg_stat_tmp", "pg_tblspc", "pg_xlog", "pg_xlog/archive_status"]
+        global_dir = os.path.join(pgdata, "global")
+        for dirname in empty_dirs:
+            ti = tar.gettarinfo(name=global_dir, arcname=os.path.join("pgdata", dirname))
+            tar.addfile(ti)
+
+    def write_final_entries_to_tar(self, *, pgdata, tar):
+        # Finally backup the latest version of pg_control
+        self.latest_activity = datetime.datetime.utcnow()
+        local_path = os.path.join(pgdata, "global", "pg_control")
+        archive_path = os.path.join("pgdata", "global", "pg_control")
+        tar.add(local_path, arcname=archive_path)
+
+    def write_files_to_tar(self, *, files, tar):
+        for archive_path, local_path, missing_ok in files:
+            try:
+                tar.add(local_path, arcname=archive_path)
+            except (FileNotFoundError if missing_ok else NoException):
+                self.log.warning("File %r went away while writing to tar, ignoring", local_path)
+
+    def find_files_to_backup(self, *, pgdata, tablespaces):
+        def add_directory(archive_parent, local_parent, *, missing_ok):
+            # Scan and add a single directory
+            try:
+                contents = os.listdir(local_parent)
+            except (FileNotFoundError if missing_ok else NoException):
+                self.log.warning("Directory %r went away while scanning, ignoring", local_parent)
+                return
+
+            for fn in contents:
+                # Ignore all temporary files and directories as well as well
+                # as pg_control, we'll grab the latest version of pg_control
+                # after everything else has been copied.
+                if fn == "pg_control" or fn.startswith("pgsql_tmp"):
+                    continue
+                local_path = os.path.join(local_parent, fn)
+                archive_path = os.path.join(archive_parent, fn)
+                yield from add_entry(archive_path, local_path, missing_ok=missing_ok)
+
+        def add_entry(archive_path, local_path, *, missing_ok):
+            # Recursively add files and directories
+            try:
+                st_mode = os.stat(local_path).st_mode
+            except (FileNotFoundError if missing_ok else NoException):
+                self.log.warning("File %r went away while scanning, ignoring", local_path)
+                return
+
+            if stat.S_ISREG(st_mode) or stat.S_ISLNK(st_mode):
+                yield archive_path, local_path, missing_ok
+            elif stat.S_ISDIR(st_mode):
+                yield archive_path, local_path, missing_ok
+                # Everything but top-level items are allowed to be missing
+                yield from add_directory(archive_path, local_path, missing_ok=True)
+            else:
+                self.log.error("File %r is not a directory, file or symlink, ignoring", local_path)
+
+        # Iterate over top-level $PGDATA
+        for fn in os.listdir(pgdata):
             local_path = os.path.join(pgdata, fn)
             archive_path = os.path.join("pgdata", fn)
 
             # Skip temporary / runtime files such as postmaster.pid, postmaster.opts and files ending with ~,
             # .tmp or .old or starting with .s. or pgsql_tmp.  These are some of the filename matches and patterns
-            # PostgreSQL own replication code recognizes.  We also skip tablespace_map since we have our own
-            # logic for handling it.
+            # PostgreSQL own replication code recognizes.
+            # NOTE: backup_label is handled by write_init_entries_to_tar
             # NOTE: We also ignore tablespace_map because we store tablespace information elsewhere and
             # reconstruct tablespace links in restore.py using our custom metadata and/or user supplied
             # options.
-            # TODO: ignore contents of pg_log and other files that look like backups or don't match our
-            # top-level whitelist?
+            # TODO: Use a top-level whitelist?
             if fn == "postmaster.opts" or \
                     fn == "postmaster.pid" or \
+                    fn == "backup_label" or \
                     fn == "tablespace_map" or \
                     fn.endswith(".old") or \
                     fn.endswith(".tmp") or \
@@ -315,30 +381,16 @@ class PGBaseBackup(Thread):
                     fn == "pg_stat_tmp" or \
                     fn == "pg_tblspc" or \
                     fn == "pg_xlog":
-                tar.add(local_path, arcname=archive_path, recursive=False)
-                # in case of pg_xlog, add an empty archive_status directory
-                if fn == "pg_xlog":
-                    ti = tar.gettarinfo(name=local_path, arcname=os.path.join(archive_path, "archive_status"))
-                    tar.addfile(ti)
                 continue
 
-            # Recursively add everything else
-            self.latest_activity = datetime.datetime.utcnow()
-            tar.add(local_path, arcname=archive_path, recursive=True)
+            yield from add_entry(archive_path, local_path, missing_ok=False)
 
         # Add a "tablespaces" directory with same metadata as $PGDATA
-        tar.addfile(tar.gettarinfo(name=pgdata, arcname="tablespaces"))
         for spcname, spcinfo in tablespaces.items():
-            self.latest_activity = datetime.datetime.utcnow()
             local_path = spcinfo["path"]
             archive_path = os.path.join("tablespaces", spcname)
-            tar.add(local_path, arcname=archive_path, recursive=True)
-
-        # Finally backup the latest version of pg_control
-        self.latest_activity = datetime.datetime.utcnow()
-        local_path = os.path.join(pgdata, "global", "pg_control")
-        archive_path = os.path.join("pgdata", "global", "pg_control")
-        tar.add(local_path, arcname=archive_path)
+            yield archive_path, local_path, False
+            yield from add_directory(archive_path, local_path, missing_ok=False)
 
     def run_local_tar_basebackup(self):
         pgdata = self.config["backup_sites"][self.site]["pg_data_directory"]
@@ -383,7 +435,10 @@ class PGBaseBackup(Thread):
                                                compression_level=compression_level,
                                                rsa_public_key=rsa_public_key) as output_obj:
                         with tarfile.TarFile(fileobj=output_obj, mode="w") as output_tar:
-                            self.write_files_to_tar(pgdata=pgdata, tablespaces=tablespaces, tar=output_tar)
+                            self.write_init_entries_to_tar(pgdata=pgdata, tablespaces=tablespaces, tar=output_tar)
+                            files = self.find_files_to_backup(pgdata=pgdata, tablespaces=tablespaces)  # NOTE: generator
+                            self.write_files_to_tar(files=files, tar=output_tar)
+                            self.write_final_entries_to_tar(pgdata=pgdata, tar=output_tar)
                         input_size = output_obj.tell()
 
                     os.link(raw_output_obj.name, compressed_basebackup)
