@@ -322,6 +322,9 @@ class PGBaseBackup(Thread):
 
     def write_files_to_tar(self, *, files, tar):
         for archive_path, local_path, missing_ok in files:
+            if not self.running:
+                raise BackupFailure("thread termination requested")
+
             try:
                 tar.add(local_path, arcname=archive_path, recursive=False)
             except (FileNotFoundError if missing_ok else NoException):
