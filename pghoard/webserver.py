@@ -323,7 +323,6 @@ class RequestHandler(BaseHTTPRequestHandler):
                 if os.path.exists(state_file_path):
                     with open(state_file_path, 'r') as fp:
                         state_json_data = fp.read()
-                    fp.close()
                     raise HttpResponse(state_json_data, status=200)
                 else:
                     raise HttpResponse(status=404)  # Not Found
