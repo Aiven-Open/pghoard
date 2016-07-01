@@ -332,6 +332,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                 # Right now we will return 400 because this isn't implmented yet
                 raise HttpResponse(status=400)  # Bad Request
         except (IOError, OSError, TypeError):
+            self.log.exception("unexpected exception handling status request")
             raise HttpResponse(status=500)
 
     def get_wal_or_timeline_file(self, site, filename, filetype):
