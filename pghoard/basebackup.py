@@ -304,7 +304,7 @@ class PGBaseBackup(Thread):
         # Add backup_label early on
         local_path = os.path.join(pgdata, "backup_label")
         archive_path = os.path.join("pgdata", "backup_label")
-        tar.add(local_path, arcname=archive_path)
+        tar.add(local_path, arcname=archive_path, recursive=False)
 
         # Create directory entries for empty directories with attributes of the pgdata "global" directory
         empty_dirs = ["pg_log", "pg_replslot", "pg_stat_tmp", "pg_tblspc", "pg_xlog", "pg_xlog/archive_status"]
@@ -318,12 +318,12 @@ class PGBaseBackup(Thread):
         self.latest_activity = datetime.datetime.utcnow()
         local_path = os.path.join(pgdata, "global", "pg_control")
         archive_path = os.path.join("pgdata", "global", "pg_control")
-        tar.add(local_path, arcname=archive_path)
+        tar.add(local_path, arcname=archive_path, recursive=False)
 
     def write_files_to_tar(self, *, files, tar):
         for archive_path, local_path, missing_ok in files:
             try:
-                tar.add(local_path, arcname=archive_path)
+                tar.add(local_path, arcname=archive_path, recursive=False)
             except (FileNotFoundError if missing_ok else NoException):
                 self.log.warning("File %r went away while writing to tar, ignoring", local_path)
 
