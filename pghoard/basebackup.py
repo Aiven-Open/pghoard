@@ -33,6 +33,10 @@ import time
 BASEBACKUP_NAME = "pghoard_base_backup"
 
 
+class BackupFailure(Exception):
+    """Backup failed - post a failure to callback_queue and allow the thread to terminate"""
+
+
 class NoException(BaseException):
     """Exception that's never raised, used in conditional except blocks"""
 
@@ -67,6 +71,18 @@ class PGBaseBackup(Thread):
                 self.run_piped_basebackup()
             else:
                 raise errors.InvalidConfigurationError("Unsupported basebackup_mode {!r}".format(basebackup_mode))
+
+        except Exception as ex:  # pylint: disable=broad-except
+            if isinstance(ex, (BackupFailure, errors.InvalidConfigurationError)):
+                self.log.error(str(ex))
+            else:
+                self.log.exception("Backup unexpectedly failed")
+                self.stats.unexpected_exception(ex, where="PGBaseBackup")
+
+            if self.callback_queue:
+                # post a failure event
+                self.callback_queue.put({"success": False})
+
         finally:
             self.running = False
 
@@ -91,7 +107,6 @@ class PGBaseBackup(Thread):
             self.config["backup_sites"][self.site]["pg_basebackup_path"],
             "--format", "tar",
             "--label", BASEBACKUP_NAME,
-            "--progress",
             "--verbose",
             "--pgdata", output_name,
         ]
@@ -105,11 +120,14 @@ class PGBaseBackup(Thread):
                 command.extend(["--host", conn_info["host"]])
         else:
             connection_string, _ = replication_connection_string_and_slot_using_pgpass(self.connection_info)
-            command.extend(["--dbname", connection_string])
+            command.extend([
+                "--progress",
+                "--dbname", connection_string
+            ])
 
         return command
 
-    def get_command_success(self, proc, output_file):
+    def check_command_success(self, proc, output_file):
         rc = terminate_subprocess(proc, log=self.log)
         msg = "Ran: {!r}, took: {:.3f}s to run, returncode: {}".format(
             proc.args, time.monotonic() - proc.basebackup_start_time, rc)
@@ -117,14 +135,10 @@ class PGBaseBackup(Thread):
             self.log.info(msg)
             return True
 
-        self.log.error(msg)
         if output_file:
             with suppress(FileNotFoundError):
                 os.unlink(output_file)
-        if self.callback_queue:
-            # post a failure event
-            self.callback_queue.put({"success": False})
-        self.running = False
+        raise BackupFailure(msg)
 
     def basebackup_compression_pipe(self, proc, basebackup_path):
         rsa_public_key = None
@@ -193,8 +207,7 @@ class PGBaseBackup(Thread):
         stream_target = os.path.join(temp_basebackup_dir, "data.tmp")
         original_input_size, compressed_file_size, metadata = \
             self.basebackup_compression_pipe(proc, stream_target)
-        if not self.get_command_success(proc, stream_target):
-            return
+        self.check_command_success(proc, stream_target)
         os.rename(stream_target, compressed_basebackup)
         # Since we can't parse the backup label we cheat with the start-wal-segment and
         # start-time a bit. The start-wal-segment is the segment currently being written before
@@ -258,8 +271,7 @@ class PGBaseBackup(Thread):
                     self.latest_activity = datetime.datetime.utcnow()
             if proc.poll() is not None:
                 break
-        if not self.get_command_success(proc, basebackup_tar_file):
-            return
+        self.check_command_success(proc, basebackup_tar_file)
 
         start_wal_segment, start_time = self.parse_backup_label_in_tar(basebackup_tar_file)
         self.compression_queue.put({
@@ -292,7 +304,7 @@ class PGBaseBackup(Thread):
         # Add backup_label early on
         local_path = os.path.join(pgdata, "backup_label")
         archive_path = os.path.join("pgdata", "backup_label")
-        tar.add(local_path, arcname=archive_path)
+        tar.add(local_path, arcname=archive_path, recursive=False)
 
         # Create directory entries for empty directories with attributes of the pgdata "global" directory
         empty_dirs = ["pg_log", "pg_replslot", "pg_stat_tmp", "pg_tblspc", "pg_xlog", "pg_xlog/archive_status"]
@@ -306,12 +318,15 @@ class PGBaseBackup(Thread):
         self.latest_activity = datetime.datetime.utcnow()
         local_path = os.path.join(pgdata, "global", "pg_control")
         archive_path = os.path.join("pgdata", "global", "pg_control")
-        tar.add(local_path, arcname=archive_path)
+        tar.add(local_path, arcname=archive_path, recursive=False)
 
     def write_files_to_tar(self, *, files, tar):
         for archive_path, local_path, missing_ok in files:
+            if not self.running:
+                raise BackupFailure("thread termination requested")
+
             try:
-                tar.add(local_path, arcname=archive_path)
+                tar.add(local_path, arcname=archive_path, recursive=False)
             except (FileNotFoundError if missing_ok else NoException):
                 self.log.warning("File %r went away while writing to tar, ignoring", local_path)
 

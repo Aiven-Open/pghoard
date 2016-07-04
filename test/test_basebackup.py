@@ -107,7 +107,8 @@ LABEL: pg_basebackup base backup
             def __init__(self):
                 self.items = []
 
-            def add(self, local_path, *, arcname):
+            def add(self, local_path, *, arcname, recursive):
+                assert recursive is False
                 self.items.append((local_path, arcname, os.stat(local_path)))
 
         # This will fail because top-level items may not be missing
