@@ -1,7 +1,7 @@
 pghoard X.X.X (2016-XX-XX)
 ==========================
 
-* Support for Telegraf statsd
+* Support for Telegraf and DataDog statsd
 * Basebackup restoration now shows download progress
 * New `basebackup_mode` option: `local-tar` to collect files directly from
   `$PGDATA` instead of running pg_basebackup.  The `local-tar` mode allows
@@ -27,6 +27,7 @@ pghoard X.X.X (2016-XX-XX)
 * Revamped file transformation (encryption, compression) interfaces
 * Make sure object storage modules are importable when reading configuration
   instead of only checking it when they are used
+* Improved PostgreSQL 9.2, 9.6 beta and Python 3.3 compatibility
 
 pghoard 1.3.0 (2016-05-30)
 ==========================
