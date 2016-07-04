@@ -118,7 +118,11 @@ class RequestHandler(BaseHTTPRequestHandler):
             resp = HttpResponse("no response generated", status=500)
 
         if resp.error:
-            self.server.log.warning(str(resp))
+            # Not Found errors are not too interesting, no need to log anything more about them
+            if resp.status == 404:
+                self.server.log.debug(str(resp))
+            else:
+                self.server.log.error(str(resp))
             resp.headers.setdefault("content-type", "text/plain")
         else:
             self.server.log.debug(str(resp))

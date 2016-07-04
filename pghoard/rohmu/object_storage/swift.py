@@ -28,7 +28,7 @@ def swift_exception_logger(err):
     if getattr(err, "http_status", None) is None:
         return orig_swift_exception_logger(err)
     if err.http_status == 404 and err.msg.startswith("Object GET failed"):
-        client.logger.warning("GET %r FAILED: %r", err.http_path, err.http_status)
+        client.logger.debug("GET %r FAILED: %r", err.http_path, err.http_status)
     else:
         client.logger.error(str(err))
 
