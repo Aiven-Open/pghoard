@@ -9,8 +9,8 @@ PGHoard |BuildStatus|_
 Features:
 
 * Automatic periodic basebackups
-* Automatic transaction log (WAL/xlog) backups (using either ``pg_receivexlog``
-  or ``archive_command``)
+* Automatic transaction log (WAL/xlog) backups (using either ``pg_receivexlog``,
+  ``archive_command`` or experimental PG native replication protocol support with ``walreceiver``)
 * Cloud object storage support (AWS S3, Google Cloud, OpenStack Swift, Azure, Ceph)
 * Backup restoration directly from object storage, compressed and encrypted
 * Point-in-time-recovery (PITR)
@@ -44,7 +44,9 @@ PGHoard supports multiple operating models.  The basic mode where you have a
 separate backup machine, ``pghoard`` can simply connect with
 ``pg_receivexlog`` to receive WAL files from the database as they're
 written.  Another model is to use ``pghoard_postgres_command`` as a
-PostgreSQL ``archive_command``.
+PostgreSQL ``archive_command``. There is also experimental support for PGHoard to
+use PostgreSQL's native replication protocol with the experimental
+``walreceiver`` mode.
 
 With both modes of operations PGHoard creates periodic basebackups using
 ``pg_basebackup`` that is run against the database in question.
@@ -179,7 +181,7 @@ installation.
 0.  Make sure PostgreSQL is configured to allow WAL archival and retrieval.
     ``postgresql.conf`` should have ``wal_level`` set to ``archive`` or
     higher and ``max_wal_senders`` set to at least ``1`` (``archive_command`` mode)
-    or at least ``2`` (``pg_receivexlog`` mode), for example::
+    or at least ``2`` (``pg_receivexlog`` and ``walreceiver`` modes), for example::
 
         wal_level = archive
         max_wal_senders = 4
@@ -354,7 +356,11 @@ of new backups and to stop the deletion of old ones.
 Can be either ``pg_receivexlog`` or ``archive_command``. If set to
 ``pg_receivexlog``, ``pghoard`` will start up a ``pg_receivexlog`` process to be
 run against the database server.  If ``archive_command`` is set, we rely on the
-user setting the correct ``archive_command`` in ``postgresql.conf``.
+user setting the correct ``archive_command`` in
+``postgresql.conf``. You can also set this to the experimental ``walreceiver`` mode
+whereby pghoard will start communicating directly with PostgreSQL
+through the replication protocol. (Note requires an unreleased version
+of psycopg2 library)
 
 ``alert_file_dir`` (default ``os.getcwd()``)
 
