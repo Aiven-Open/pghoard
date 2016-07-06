@@ -31,6 +31,16 @@ import subprocess
 import time
 
 BASEBACKUP_NAME = "pghoard_base_backup"
+EMPTY_DIRS = [
+    "pg_dynshmem",
+    "pg_log",
+    "pg_replslot",
+    "pg_snapshot",
+    "pg_stat_tmp",
+    "pg_tblspc",
+    "pg_xlog",
+    "pg_xlog/archive_status",
+]
 
 
 class BackupFailure(Exception):
@@ -302,9 +312,8 @@ class PGBaseBackup(Thread):
         tar.addfile(metadata_ti, metadata_io)
 
         # Create directory entries for empty directories with attributes of the pgdata "global" directory
-        empty_dirs = ["pg_log", "pg_replslot", "pg_stat_tmp", "pg_tblspc", "pg_xlog", "pg_xlog/archive_status"]
         global_dir = os.path.join(pgdata, "global")
-        for dirname in empty_dirs:
+        for dirname in EMPTY_DIRS:
             ti = tar.gettarinfo(name=global_dir, arcname=os.path.join("pgdata", dirname))
             tar.addfile(ti)
 
@@ -377,12 +386,13 @@ class PGBaseBackup(Thread):
             # Skip temporary / runtime files such as postmaster.pid, postmaster.opts and files ending with ~,
             # .tmp or .old or starting with .s. or pgsql_tmp.  These are some of the filename matches and patterns
             # PostgreSQL own replication code recognizes.
-            # NOTE: backup_label is handled by write_init_entries_to_tar
+            # NOTE: backup_label and various empty directories are handled by write_init_entries_to_tar
             # NOTE: We also ignore tablespace_map because we store tablespace information elsewhere and
             # reconstruct tablespace links in restore.py using our custom metadata and/or user supplied
             # options.
             # TODO: Use a top-level whitelist?
-            if fn == "postmaster.opts" or \
+            if fn in EMPTY_DIRS or \
+                    fn == "postmaster.opts" or \
                     fn == "postmaster.pid" or \
                     fn == "backup_label" or \
                     fn == "tablespace_map" or \
@@ -391,14 +401,6 @@ class PGBaseBackup(Thread):
                     fn.endswith("~") or \
                     fn.startswith(".s.") or \
                     fn.startswith("pgsql_tmp"):
-                continue
-
-            # Skip contents of various directories, but create the empty directories themselves
-            if fn == "pg_log" or \
-                    fn == "pg_replslot" or \
-                    fn == "pg_stat_tmp" or \
-                    fn == "pg_tblspc" or \
-                    fn == "pg_xlog":
                 continue
 
             yield from add_entry(archive_path, local_path, missing_ok=False)
