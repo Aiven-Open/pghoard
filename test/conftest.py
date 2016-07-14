@@ -102,11 +102,18 @@ def db():
 @pytest.yield_fixture  # pylint: disable=redefined-outer-name
 def pghoard(db, tmpdir, request):  # pylint: disable=redefined-outer-name
     test_site = request.function.__name__
+
+    if os.environ.get("pghoard_test_walreceiver"):
+        active_backup_mode = "walreceiver"
+    else:
+        active_backup_mode = "pg_receivexlog"
+
     config = {
         "alert_file_dir": os.path.join(str(tmpdir), "alerts"),
         "backup_location": os.path.join(str(tmpdir), "backupspool"),
         "backup_sites": {
             test_site: {
+                "active_backup_mode": active_backup_mode,
                 "basebackup_count": 2,
                 "basebackup_interval_hours": 24,
                 "pg_bin_directory": db.pgbin,

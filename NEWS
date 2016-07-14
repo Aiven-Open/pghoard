@@ -29,6 +29,9 @@ pghoard X.X.X (2016-XX-XX)
 * Make sure object storage modules are importable when reading configuration
   instead of only checking it when they are used
 * Improved PostgreSQL 9.2, 9.6 beta and Python 3.3 compatibility
+* Experimental support for new mode walreceiver which uses the PostgreSQL
+  replication protocol. Much faster and less resource consuming WAL replication
+  than when using active_backup_mode: pg_receivexlog.
 
 pghoard 1.3.0 (2016-05-30)
 ==========================

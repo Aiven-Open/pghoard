@@ -10,6 +10,7 @@ from shutil import rmtree
 from tempfile import mkdtemp
 import logging
 import os
+import psycopg2.extras
 
 
 CONSTANT_TEST_RSA_PUBLIC_KEY = """\
@@ -49,11 +50,18 @@ class PGHoardTestCase:
         # it works, the config keys are deprecated and will be removed in a future release at which point we'll
         # switch to using pg_bin_directory config.
         bindir = find_pg_binary("")
+
+        if hasattr(psycopg2.extras, "PhysicalReplicationConnection"):
+            active_backup_mode = "walreceiver"
+        else:
+            active_backup_mode = "pg_receivexlog"
+
         config = {
             "alert_file_dir": os.path.join(str(self.temp_dir), "alerts"),
             "backup_location": os.path.join(str(self.temp_dir), "backupspool"),
             "backup_sites": {
                 self.test_site: {
+                    "active_backup_mode": active_backup_mode,
                     "object_storage": {
                         "storage_type": "local",
                         "directory": os.path.join(self.temp_dir, "backups"),

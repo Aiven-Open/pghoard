@@ -72,6 +72,21 @@ def name_for_tli_log_seg(tli, log, seg):
     return "{:08X}{:08X}{:08X}".format(tli, log, seg)
 
 
+def convert_integer_to_lsn(value):
+    log = value >> 32
+    pos = value & 0xFFFFFFFF
+    seg = pos // XLOG_SEG_SIZE
+    return log, pos, seg
+
+
+def get_lsn_from_start_of_wal_file(lsn):
+    log_hex, seg_hex = lsn.split("/", 1)
+    log = int(log_hex, 16)
+    seg = int(seg_hex, 16) >> 24
+    pos = seg * XLOG_SEG_SIZE
+    return "{:X}/{:X}".format(log, pos)
+
+
 def lsn_from_name(name):
     _, log, seg = name_to_tli_log_seg(name)
     pos = seg * XLOG_SEG_SIZE

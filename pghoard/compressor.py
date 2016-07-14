@@ -114,7 +114,10 @@ class CompressorThread(Thread):
     def handle_event(self, event, filetype):
         # pylint: disable=redefined-variable-type
         rsa_public_key = None
-        site = event.get("site", self.find_site_for_file(event["full_path"]))
+        site = event.get("site")
+        if not site:
+            site = self.find_site_for_file(event["full_path"])
+
         encryption_key_id = self.config["backup_sites"][site]["encryption_key_id"]
         if encryption_key_id:
             rsa_public_key = self.config["backup_sites"][site]["encryption_keys"][encryption_key_id]["public"]
@@ -127,7 +130,10 @@ class CompressorThread(Thread):
             compressed_filepath = self.get_compressed_file_path(site, filetype, event["full_path"])
             output_obj = NamedTemporaryFile(prefix=compressed_filepath, suffix=".tmp-compress")
 
-        with output_obj, open(event["full_path"], "rb") as input_obj:
+        input_obj = event.get("input_data")
+        if not input_obj:
+            input_obj = open(event["full_path"], "rb")
+        with output_obj, input_obj:
             if filetype == "xlog":
                 wal.verify_wal(wal_name=os.path.basename(event["full_path"]), fileobj=input_obj)
 

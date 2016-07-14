@@ -1,3 +1,4 @@
+
 """
 pghoard - main pghoard daemon
 
@@ -11,6 +12,7 @@ from pghoard.common import (
     create_alert_file,
     get_object_storage_config,
     replication_connection_string_and_slot_using_pgpass,
+    suppress,
     write_json_file,
 )
 from pghoard.compressor import CompressorThread
@@ -34,6 +36,12 @@ import socket
 import subprocess
 import sys
 import time
+
+# Imported this way because WALReceiver requires an unreleased version of psycopg2
+try:
+    from pghoard.walreceiver import WALReceiver
+except ImportError:
+    WALReceiver = None
 
 
 class PGHoard:
@@ -66,6 +74,7 @@ class PGHoard:
         self.basebackups_callbacks = {}
         self.receivexlogs = {}
         self.compressors = []
+        self.walreceivers = {}
         self.transfer_agents = []
         self.requested_basebackup_sites = set()
 
@@ -171,6 +180,27 @@ class PGHoard:
             pg_version_server=pg_version_server)
         thread.start()
         self.receivexlogs[site] = thread
+
+    def start_walreceiver(self, site, chosen_backup_node, last_flushed_lsn):
+        connection_string, slot = replication_connection_string_and_slot_using_pgpass(chosen_backup_node)
+        pg_version_server = self.check_pg_server_version(connection_string)
+        if pg_version_server:
+            self.config["backup_sites"][site]["pg_version"] = pg_version_server
+        if not WALReceiver:
+            self.log.error("Could not import WALReceiver, incorrect psycopg2 version?")
+            return
+
+        thread = WALReceiver(
+            config=self.config,
+            connection_string=connection_string,
+            compression_queue=self.compression_queue,
+            replication_slot=slot,
+            pg_version_server=pg_version_server,
+            site=site,
+            last_flushed_lsn=last_flushed_lsn,
+            stats=self.stats)
+        thread.start()
+        self.walreceivers[site] = thread
 
     def create_backup_site_paths(self, site):
         site_path = os.path.join(self.config["backup_location"], self.config["path_prefix"], site)
@@ -352,8 +382,20 @@ class PGHoard:
 
         chosen_backup_node = random.choice(site_config["nodes"])
 
-        if site not in self.receivexlogs and site_config["active_backup_mode"] == "pg_receivexlog":
-            self.receivexlog_listener(site, chosen_backup_node, xlog_path + "_incoming")
+        if site not in self.receivexlogs and site not in self.walreceivers:
+            if site_config["active_backup_mode"] == "pg_receivexlog":
+                self.receivexlog_listener(site, chosen_backup_node, xlog_path + "_incoming")
+            elif site_config["active_backup_mode"] == "walreceiver":
+                state_file_path = self.config["json_state_file_path"]
+                walreceiver_state = {}
+                with suppress(FileNotFoundError):
+                    with open(state_file_path, "r") as fp:
+                        old_state_file = json.load(fp)
+                        walreceiver_state = old_state_file.get("walreceivers", {}).get(site, {})
+                self.start_walreceiver(
+                    site=site,
+                    chosen_backup_node=chosen_backup_node,
+                    last_flushed_lsn=walreceiver_state.get("last_flushed_lsn"))
 
         if site not in self.time_of_last_backup_check or \
                 time.monotonic() - self.time_of_last_backup_check[site] > 300:
@@ -416,6 +458,11 @@ class PGHoard:
         """Periodically write a JSON state file to disk"""
         start_time = time.time()
         state_file_path = self.config["json_state_file_path"]
+        self.state["walreceivers"] = {
+            key: {"latest_activity": value.latest_activity, "running": value.running,
+                  "last_flushed_lsn": value.last_flushed_lsn}
+            for key, value in self.walreceivers.items()
+        }
         self.state["pg_receivexlogs"] = {
             key: {"latest_activity": value.latest_activity, "running": value.running}
             for key, value in self.receivexlogs.items()
@@ -477,10 +524,13 @@ class PGHoard:
         all_threads = [self.webserver]
         all_threads.extend(self.basebackups.values())
         all_threads.extend(self.receivexlogs.values())
+        all_threads.extend(self.walreceivers.values())
         all_threads.extend(self.compressors)
         all_threads.extend(self.transfer_agents)
         for t in all_threads:
             t.running = False
+        # Write state file in the end so we get the last known state
+        self.write_backup_state_to_json_file()
         for t in all_threads:
             if t.is_alive():
                 t.join()
