@@ -150,7 +150,7 @@ class S3Transfer(BaseTransfer):
         size = os.path.getsize(filepath)
         key = self.format_key_for_backend(key)
         metadata = self.sanitize_metadata(metadata)
-        if not multipart or size <= self.multipart_chunk_size:
+        if not multipart and size <= self.multipart_chunk_size:
             s3key = Key(self.bucket)
             s3key.key = key
             if metadata:

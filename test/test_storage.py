@@ -4,9 +4,11 @@ pghoard - rohmu object storage interface tests
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
+from boto.s3.multipart import MultiPartUpload
 from io import BytesIO
 from pghoard.common import get_object_storage_config
 from pghoard.rohmu import compat, errors, get_transfer
+from unittest.mock import patch
 import datetime
 import hashlib
 import os
@@ -124,23 +126,25 @@ def _test_storage(st, driver, tmpdir):
     test_hash_send = test_hash.hexdigest()
 
     if driver == "s3":
+        original_upload_part_from_file = MultiPartUpload.upload_part_from_file
+
         # inject a failure in multipart uploads
-        def failing_new_key(key_name):  # pylint: disable=unused-argument
-            # fail after the second call, restore functionality after the third
+        def failing_upload_part_from_file(*args, **kwargs):
+            # Fail for three calls, work on the fourth.
             fail_calls[0] += 1
             if fail_calls[0] > 3:
-                st.bucket.new_key = orig_new_key
-            if fail_calls[0] > 2:
+                return original_upload_part_from_file(*args, **kwargs)
+            else:
                 raise Exception("multipart upload failure!")
 
         fail_calls = [0]
-        orig_new_key = st.bucket.new_key
-        st.bucket.new_key = failing_new_key
 
-        st.store_file_from_disk("test1/30m", test_file, multipart=True,
-                                metadata={"30m": "data", "size": test_size_send})
+        with patch.object(MultiPartUpload, 'upload_part_from_file',
+                          failing_upload_part_from_file):
+            st.store_file_from_disk("test1/30m", test_file, multipart=True,
+                                    metadata={"30m": "data", "size": test_size_send})
 
-        assert fail_calls[0] > 3
+        assert fail_calls[0] == 4
     else:
         st.store_file_from_disk("test1/30m", test_file, multipart=True,
                                 metadata={"30m": "data", "size": test_size_send})
