@@ -81,10 +81,13 @@ class S3Transfer(BaseTransfer):
         for item in self.bucket.list(path, "/"):
             if not hasattr(item, "last_modified"):
                 continue  # skip objects with no last_modified: not regular objects
+            name = self.format_key_from_backend(item.name)
+            if name == path:
+                continue  # skip the path itself
             result.append({
                 "last_modified": dateutil.parser.parse(item.last_modified),
                 "metadata": self._metadata_for_key(item.name),
-                "name": self.format_key_from_backend(item.name),
+                "name": name,
                 "size": item.size,
             })
         return result
