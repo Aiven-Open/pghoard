@@ -123,7 +123,7 @@ class S3Transfer(BaseTransfer):
         if metadata:
             for k, v in self.sanitize_metadata(metadata).items():
                 s3key.set_metadata(k, v)
-        s3key.set_contents_from_string(memstring, replace=True)
+        s3key.set_contents_from_string(memstring, replace=True, encrypt_key=self.encrypted)
 
     def _store_multipart_upload(self, mp, fp, part_num, filepath):
         attempt = 0
@@ -158,13 +158,15 @@ class S3Transfer(BaseTransfer):
             if metadata:
                 for k, v in metadata.items():
                     s3key.set_metadata(k, v)
-            s3key.set_contents_from_filename(filepath, replace=True)
+            s3key.set_contents_from_filename(filepath, replace=True,
+                                             encrypt_key=self.encrypted)
         else:
             start_of_multipart_upload = time.monotonic()
             chunks = math.ceil(size / self.multipart_chunk_size)
             self.log.debug("Starting to upload multipart file: %r, size: %r, chunks: %d",
                            key, size, chunks)
-            mp = self.bucket.initiate_multipart_upload(key, metadata=metadata)
+            mp = self.bucket.initiate_multipart_upload(key, metadata=metadata,
+                                                       encrypt_key=self.encrypted)
 
             with open(filepath, "rb") as fp:
                 part_num = 0
