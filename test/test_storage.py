@@ -21,7 +21,7 @@ except ImportError:
     test_storage_configs = object()
 
 
-def _test_storage(st, driver, tmpdir):
+def _test_storage(st, driver, tmpdir, storage_config):
     scratch = tmpdir.join("scratch")
     compat.makedirs(str(scratch), exist_ok=True)
 
@@ -57,6 +57,10 @@ def _test_storage(st, driver, tmpdir):
     assert st.get_contents_to_fileobj("test1/x1", out) == {}
     assert out.getvalue() == b"from disk"
 
+    if driver == "s3":
+        key = st.bucket.get_key(st.format_key_for_backend("test1/x1"))
+        assert bool(key.encrypted) == bool(storage_config.get('encrypted'))
+
     st.store_file_from_memory("test1/x1", b"dummy", {"k": "v"})
     out = BytesIO()
     assert st.get_contents_to_fileobj("test1/x1", out) == {"k": "v"}
@@ -68,6 +72,10 @@ def _test_storage(st, driver, tmpdir):
     st.store_file_from_memory("test1/td", b"to disk", {"to-disk": "42"})
     to_disk_file = str(scratch.join("b"))
     assert st.get_contents_to_file("test1/td", to_disk_file) == {"to-disk": "42"}
+
+    if driver == "s3":
+        key = st.bucket.get_key(st.format_key_for_backend("test1/td"))
+        assert bool(key.encrypted) == bool(storage_config.get('encrypted'))
 
     assert st.list_path("") == []  # nothing at top level (directories not listed)
     if driver == "local":
@@ -145,6 +153,10 @@ def _test_storage(st, driver, tmpdir):
                                     metadata={"30m": "data", "size": test_size_send})
 
         assert fail_calls[0] == 4
+
+        if driver == "s3":
+            key = st.bucket.get_key(st.format_key_for_backend("test1/30m"))
+            assert bool(key.encrypted) == bool(storage_config.get('encrypted'))
     else:
         st.store_file_from_disk("test1/30m", test_file, multipart=True,
                                 metadata={"30m": "data", "size": test_size_send})
@@ -207,7 +219,7 @@ def _test_storage(st, driver, tmpdir):
         assert st.list_path("test1_segments/30m") == []
 
 
-def _test_storage_init(storage_type, with_prefix, tmpdir):
+def _test_storage_init(storage_type, with_prefix, tmpdir, config_overrides=None):
     if storage_type == "local":
         storage_config = {"directory": str(tmpdir.join("rohmu"))}
     else:
@@ -228,8 +240,12 @@ def _test_storage_init(storage_type, with_prefix, tmpdir):
     if with_prefix:
         storage_config["prefix"] = uuid.uuid4().hex
 
+    if config_overrides:
+        storage_config = storage_config.copy()
+        storage_config.update(config_overrides)
+
     st = get_transfer(storage_config)
-    _test_storage(st, driver, tmpdir)
+    _test_storage(st, driver, tmpdir, storage_config)
 
 
 def test_storage_aws_s3_no_prefix(tmpdir):
@@ -238,6 +254,11 @@ def test_storage_aws_s3_no_prefix(tmpdir):
 
 def test_storage_aws_s3_with_prefix(tmpdir):
     _test_storage_init("aws_s3", True, tmpdir)
+
+
+def test_storage_aws_s3_no_prefix_with_encryption(tmpdir):
+    _test_storage_init("aws_s3", False, tmpdir,
+                       config_overrides={'encrypted': True})
 
 
 def test_storage_azure_no_prefix(tmpdir):

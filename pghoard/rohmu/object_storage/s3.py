@@ -38,7 +38,8 @@ class S3Transfer(BaseTransfer):
                  host=None,
                  port=None,
                  is_secure=False,
-                 segment_size=MULTIPART_CHUNK_SIZE):
+                 segment_size=MULTIPART_CHUNK_SIZE,
+                 encrypted=False):
         super().__init__(prefix=prefix)
         self.region = region
         self.location = _location_for_region(region)
@@ -53,6 +54,7 @@ class S3Transfer(BaseTransfer):
                                                   aws_secret_access_key=aws_secret_access_key)
         self.bucket = self.get_or_create_bucket(self.bucket_name)
         self.multipart_chunk_size = segment_size
+        self.encrypted = encrypted
         self.log.debug("S3Transfer initialized")
 
     def get_metadata_for_key(self, key):
