@@ -484,6 +484,10 @@ The following object storage types are supported:
  * ``region`` S3 region of the bucket
  * ``bucket_name`` name of the S3 bucket
 
+Optional keys for Amazon Web Services S3:
+
+ * ``encryption`` if True, use server-side encryption. Default is False.
+
 * ``s3`` for other S3 compatible services such as Ceph, required
   configuration keys:
 
