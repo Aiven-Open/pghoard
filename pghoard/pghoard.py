@@ -12,7 +12,6 @@ from pghoard.common import (
     create_alert_file,
     get_object_storage_config,
     replication_connection_string_and_slot_using_pgpass,
-    suppress,
     write_json_file,
 )
 from pghoard.compressor import CompressorThread
@@ -20,6 +19,7 @@ from pghoard.rohmu.inotify import InotifyWatcher
 from pghoard.transfer import TransferAgent
 from pghoard.receivexlog import PGReceiveXLog
 from pghoard.rohmu import get_transfer
+from pghoard.rohmu.compat import suppress
 from pghoard.rohmu.errors import FileNotFoundFromStorageError, InvalidConfigurationError
 from pghoard.webserver import WebServer
 from queue import Empty, Queue

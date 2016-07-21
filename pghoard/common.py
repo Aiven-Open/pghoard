@@ -5,8 +5,8 @@ Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
 from pghoard import pgutil
+from pghoard.rohmu.compat import suppress
 from pghoard.rohmu.errors import Error, InvalidConfigurationError
-import contextlib
 import datetime
 import fcntl
 import json
@@ -16,16 +16,6 @@ import re
 import tempfile
 import time
 
-try:
-    from contextlib import suppress
-except ImportError:
-    # For pre Python3.4
-    @contextlib.contextmanager
-    def suppress(*exceptions):
-        try:
-            yield
-        except exceptions:
-            pass
 
 LOG = logging.getLogger("pghoard.common")
 
