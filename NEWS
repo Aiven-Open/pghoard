@@ -1,4 +1,4 @@
-pghoard X.X.X (2016-XX-XX)
+pghoard 1.4.0 (2016-07-22)
 ==========================
 
 * Add ability to get state file from webserver using GET /status
