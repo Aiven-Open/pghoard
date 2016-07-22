@@ -110,7 +110,7 @@ def get_current_wal_from_identify_system(conn_str):
     # unfortunately psycopg2's available versions don't support
     # replication protocol so we'll just have to execute psql to figure
     # out the current WAL position.
-    out = subprocess.check_output(["psql", "-Aqxc", "IDENTIFY_SYSTEM", conn_str])
+    out = subprocess.check_output(["psql", "--no-psqlrc", "-Aqxc", "IDENTIFY_SYSTEM", conn_str])
     sysinfo = dict(line.split("|", 1) for line in out.decode("ascii").splitlines())
     # construct the currently open WAL file name using sysinfo, we need
     # everything older than that
