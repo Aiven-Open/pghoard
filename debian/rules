@@ -5,3 +5,5 @@ export PYBUILD_NAME=pghoard
 %:
 	dh $@ --with python3 --buildsystem=pybuild
 
+override_dh_auto_test:
+	$(MAKE) flake8 unittest
