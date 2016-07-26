@@ -29,6 +29,11 @@ class TestPG:
         self.pg = None
         self.user = None
 
+    @property
+    def pgver(self):
+        with open(os.path.join(self.pgdata, "PG_VERSION"), "r") as fp:
+            return fp.read().strip()
+
     def run_cmd(self, cmd, *args):
         argv = [os.path.join(self.pgbin, cmd)]
         argv.extend(args)

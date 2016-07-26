@@ -1,3 +1,10 @@
+pghoard X.X.X (2016-XX-XX)
+==========================
+
+* Support for `local-tar` backups of a replica on PostgreSQL 9.6 and newer
+  using the new non-exclusive backup mechanism
+
+
 pghoard 1.4.0 (2016-07-22)
 ==========================
 

@@ -301,11 +301,6 @@ class PGBaseBackup(Thread):
         metadata_ti.mtime = time.time()
         tar.addfile(metadata_ti, metadata_io)
 
-        # Add backup_label early on
-        local_path = os.path.join(pgdata, "backup_label")
-        archive_path = os.path.join("pgdata", "backup_label")
-        tar.add(local_path, arcname=archive_path, recursive=False)
-
         # Create directory entries for empty directories with attributes of the pgdata "global" directory
         empty_dirs = ["pg_log", "pg_replslot", "pg_stat_tmp", "pg_tblspc", "pg_xlog", "pg_xlog/archive_status"]
         global_dir = os.path.join(pgdata, "global")
@@ -313,12 +308,20 @@ class PGBaseBackup(Thread):
             ti = tar.gettarinfo(name=global_dir, arcname=os.path.join("pgdata", dirname))
             tar.addfile(ti)
 
-    def write_final_entries_to_tar(self, *, pgdata, tar):
-        # Finally backup the latest version of pg_control
+    def write_pg_control_to_tar(self, *, pgdata, tar):
+        # Backup the latest version of pg_control
         self.latest_activity = datetime.datetime.utcnow()
         local_path = os.path.join(pgdata, "global", "pg_control")
         archive_path = os.path.join("pgdata", "global", "pg_control")
         tar.add(local_path, arcname=archive_path, recursive=False)
+
+    def write_backup_label_to_tar(self, *, tar, backup_label):
+        # Add the given backup_label to the tar after calling pg_stop_backup()
+        label_io = io.BytesIO(backup_label)
+        label_ti = tarfile.TarInfo(name=os.path.join("pgdata", "backup_label"))
+        label_ti.size = len(label_io.getbuffer())
+        label_ti.mtime = time.time()
+        tar.addfile(label_ti, label_io)
 
     def write_files_to_tar(self, *, files, tar):
         for archive_path, local_path, missing_ok in files:
@@ -426,7 +429,25 @@ class PGBaseBackup(Thread):
         connection_string = connection_string_using_pgpass(self.connection_info)
         with psycopg2.connect(connection_string) as db_conn:
             cursor = db_conn.cursor()
-            cursor.execute("SELECT pg_start_backup(%s)", [BASEBACKUP_NAME])
+
+            if self.pg_version_server >= 90600:
+                # We'll always use the the non-exclusive backup mode on 9.6 and newer
+                cursor.execute("SELECT pg_start_backup(%s, false, false)", [BASEBACKUP_NAME])
+                backup_label = None
+                backup_mode = "non-exclusive"
+            else:
+                # On older versions, abort if we're in recovery, otherwise use the exclusive backup method
+                cursor.execute("SELECT pg_is_in_recovery()")
+                in_recovery = cursor.fetchone()[0]
+                if in_recovery:
+                    raise errors.InvalidConfigurationError("exclusive `local-tar` backups can't be taken from a replica")
+                else:
+                    cursor.execute("SELECT pg_start_backup(%s)", [BASEBACKUP_NAME])
+                    with open(os.path.join(pgdata, "backup_label"), "r") as fp:
+                        backup_label = fp.read()
+                    backup_mode = "legacy"
+
+            backup_stopped = False
             try:
                 # Look up tablespaces and resolve their current filesystem locations
                 cursor.execute("SELECT oid, spcname FROM pg_tablespace WHERE spcname NOT IN ('pg_default', 'pg_global')")
@@ -439,9 +460,6 @@ class PGBaseBackup(Thread):
                 }
                 db_conn.commit()
 
-                with open(os.path.join(pgdata, "backup_label"), "rb") as fp:
-                    start_wal_segment, backup_start_time = self.parse_backup_label(fp.read())
-
                 self.log.info("Starting to backup %r to %r", pgdata, compressed_basebackup)
                 start_time = time.monotonic()
                 with NamedTemporaryFile(dir=temp_basebackup_dir, prefix="data.", suffix=".tmp-compress") as raw_output_obj:
@@ -453,7 +471,20 @@ class PGBaseBackup(Thread):
                             self.write_init_entries_to_tar(pgdata=pgdata, tablespaces=tablespaces, tar=output_tar)
                             files = self.find_files_to_backup(pgdata=pgdata, tablespaces=tablespaces)  # NOTE: generator
                             self.write_files_to_tar(files=files, tar=output_tar)
-                            self.write_final_entries_to_tar(pgdata=pgdata, tar=output_tar)
+                            self.write_pg_control_to_tar(pgdata=pgdata, tar=output_tar)
+
+                            # Call the stop backup functions now to get backup label for 9.6+ non-exclusive backups
+                            if backup_mode == "non-exclusive":
+                                cursor.execute("SELECT labelfile FROM pg_stop_backup(false)")
+                                backup_label = cursor.fetchone()[0]
+                            else:
+                                cursor.execute("SELECT pg_stop_backup()")
+                            db_conn.commit()
+                            backup_stopped = True
+
+                            backup_label_data = backup_label.encode("utf-8")
+                            self.write_backup_label_to_tar(tar=output_tar, backup_label=backup_label_data)
+
                         input_size = output_obj.tell()
 
                     os.link(raw_output_obj.name, compressed_basebackup)
@@ -469,9 +500,14 @@ class PGBaseBackup(Thread):
                 )
             finally:
                 db_conn.rollback()
-                cursor.execute("SELECT pg_stop_backup()")
+                if not backup_stopped:
+                    if backup_mode == "non-exclusive":
+                        cursor.execute("SELECT pg_stop_backup(false)")
+                    else:
+                        cursor.execute("SELECT pg_stop_backup()")
                 db_conn.commit()
 
+        start_wal_segment, backup_start_time = self.parse_backup_label(backup_label_data)
         metadata = {
             "compression-algorithm": compression_algorithm,
             "encryption-key-id": encryption_key_id,
