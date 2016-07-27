@@ -436,11 +436,21 @@ class PGBaseBackup(Thread):
                 backup_label = None
                 backup_mode = "non-exclusive"
             else:
-                # On older versions, abort if we're in recovery, otherwise use the exclusive backup method
-                cursor.execute("SELECT pg_is_in_recovery()")
-                in_recovery = cursor.fetchone()[0]
-                if in_recovery:
-                    raise errors.InvalidConfigurationError("exclusive `local-tar` backups can't be taken from a replica")
+                # On older versions, first check if we're in recovery, and find out the version of a possibly
+                # installed pgespresso extension.  We use pgespresso's backup control functions when they're
+                # available, and require them in case we're running on a replica.  We also make sure the
+                # extension version is 1.2 or newer to prevent crashing when using tablespaces.
+                cursor.execute("SELECT pg_is_in_recovery(), "
+                               "       (SELECT extversion FROM pg_extension WHERE extname = 'pgespresso')")
+                in_recovery, pgespresso_version = cursor.fetchone()
+                if in_recovery and (not pgespresso_version or pgespresso_version < "1.2"):
+                    raise errors.InvalidConfigurationError("pgespresso version 1.2 or higher must be installed "
+                                                           "to take `local-tar` backups from a replica")
+
+                if pgespresso_version and pgespresso_version >= "1.2":
+                    cursor.execute("SELECT pgespresso_start_backup(%s, false)", [BASEBACKUP_NAME])
+                    backup_label = cursor.fetchone()[0]
+                    backup_mode = "pgespresso"
                 else:
                     cursor.execute("SELECT pg_start_backup(%s)", [BASEBACKUP_NAME])
                     with open(os.path.join(pgdata, "backup_label"), "r") as fp:
@@ -477,6 +487,8 @@ class PGBaseBackup(Thread):
                             if backup_mode == "non-exclusive":
                                 cursor.execute("SELECT labelfile FROM pg_stop_backup(false)")
                                 backup_label = cursor.fetchone()[0]
+                            elif backup_mode == "pgespresso":
+                                cursor.execute("SELECT pgespresso_stop_backup(%s)", [backup_label])
                             else:
                                 cursor.execute("SELECT pg_stop_backup()")
                             db_conn.commit()
@@ -503,6 +515,8 @@ class PGBaseBackup(Thread):
                 if not backup_stopped:
                     if backup_mode == "non-exclusive":
                         cursor.execute("SELECT pg_stop_backup(false)")
+                    elif backup_mode == "pgespresso":
+                        cursor.execute("SELECT pgespresso_stop_backup(%s)", [backup_label])
                     else:
                         cursor.execute("SELECT pg_stop_backup()")
                 db_conn.commit()

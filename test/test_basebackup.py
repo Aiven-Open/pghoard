@@ -206,6 +206,20 @@ LABEL: pg_basebackup base backup
             pytest.skip("PostgreSQL < 9.6 required for exclusive backup tests")
         self._test_basebackups(capsys, db, pghoard, tmpdir, "local-tar")
 
+    def test_basebackups_local_tar_pgespresso(self, capsys, db, pghoard, tmpdir):
+        conn_str = pgutil.create_connection_string(db.user)
+        with psycopg2.connect(conn_str) as conn:
+            conn.autocommit = True
+            cursor = conn.cursor()
+            cursor.execute("SELECT 1 FROM pg_available_extensions WHERE name = 'pgespresso' AND default_version >= '1.2'")
+            if not cursor.fetchone():
+                pytest.skip("pgespresso not available")
+            try:
+                cursor.execute("CREATE EXTENSION pgespresso")
+                self._test_basebackups(capsys, db, pghoard, tmpdir, "local-tar")
+            finally:
+                cursor.execute("DROP EXTENSION pgespresso")
+
     def test_basebackups_pipe(self, capsys, db, pghoard, tmpdir):
         self._test_basebackups(capsys, db, pghoard, tmpdir, "pipe")
 

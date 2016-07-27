@@ -2,7 +2,10 @@ pghoard X.X.X (2016-XX-XX)
 ==========================
 
 * Support for `local-tar` backups of a replica on PostgreSQL 9.6 and newer
-  using the new non-exclusive backup mechanism
+  using the new non-exclusive backup mechanism.  Previous PostgreSQL
+  versions require the pgespresso extension to take backups of replicas
+  using the `local-tar` method, the pg_basebackup utilizing (default)
+  methods have always supported backups of replicas.
 
 
 pghoard 1.4.0 (2016-07-22)
