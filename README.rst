@@ -412,6 +412,9 @@ PGHoard reads the files directly from ``$PGDATA`` in this mode and
 compresses and optionally encrypts them.  This mode allows backing up user
 tablespaces.
 
+Note that the ``local-tar`` backup mode can not be used on replica servers
+prior to PostgreSQL 9.6 unless the pgespresso extension is installed.
+
 ``encryption_key_id`` (no default)
 
 Specifies the encryption key used when storing encrypted backups. If this

@@ -1,3 +1,10 @@
+pghoard (1.4.0) unstable; urgency=low
+
+  * Conflict with pgespresso < 1.2: older versions crash PostgreSQL
+    when tablespaces are used
+
+ -- Oskari Saarenmaa <os@ohmu.fi>  Tue, 26 Jul 2016 18:48:03 +0300
+
 pghoard (1.0.0) unstable; urgency=low
 
   * Release version 1.0.0

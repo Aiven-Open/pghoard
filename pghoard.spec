@@ -5,10 +5,10 @@ Url:            http://github.com/ohmu/pghoard
 Summary:        PostgreSQL streaming backup service
 License:        ASL 2.0
 Source0:        pghoard-rpm-src.tar
-Requires(pre):  shadow-utils
 Requires:       postgresql-server, systemd
 Requires:       python3-boto, python3-cryptography >= 0.8, python3-dateutil
 Requires:       python3-psycopg2, python3-requests, python3-snappy
+Conflicts:      pgespresso92 < 1.2, pgespresso93 < 1.2, pgespresso94 < 1.2, pgespresso95 < 1.2
 BuildRequires:  python3-flake8, python3-pytest, python3-pylint, python3-devel
 BuildArch:      noarch
 
@@ -44,6 +44,10 @@ make test
 
 
 %changelog
+* Tue Jul 26 2016 Oskari Saarenmaa <os@ohmu.fi> - 1.4.0
+- Conflict with pgespresso < 1.2: older versions crash PostgreSQL
+  when tablespaces are used
+
 * Mon Dec 14 2015 Oskari Saarenmaa <os@ohmu.fi> - 0.9.0
 - We're Python 3 only now
 

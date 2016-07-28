@@ -131,8 +131,8 @@ LABEL: pg_basebackup base backup
         assert "pgdata/global/sub2.test" not in arcnameset  # acceptable loss
         assert "pgdata/global/sub3.test" in arcnameset  # acceptable
 
-        # Add final entries (ie pg_control)
-        pgb.write_final_entries_to_tar(pgdata=db.pgdata, tar=faketar)
+        # Add pg_control
+        pgb.write_pg_control_to_tar(pgdata=db.pgdata, tar=faketar)
         arcnameset = set(item[1] for item in faketar.items)
         assert len(arcnameset) == len(faketar.items)
         expected_items = (bunameset | {"pgdata/global/pg_control"}) - {"pgdata/global/sub2.test"}
@@ -196,8 +196,29 @@ LABEL: pg_basebackup base backup
     def test_basebackups_basic(self, capsys, db, pghoard, tmpdir):
         self._test_basebackups(capsys, db, pghoard, tmpdir, "basic")
 
-    def test_basebackups_local_tar(self, capsys, db, pghoard, tmpdir):
+    def test_basebackups_local_tar_nonexclusive(self, capsys, db, pghoard, tmpdir):
+        if db.pgver < "9.6":
+            pytest.skip("PostgreSQL 9.6+ required for non-exclusive backups")
         self._test_basebackups(capsys, db, pghoard, tmpdir, "local-tar")
+
+    def test_basebackups_local_tar_legacy(self, capsys, db, pghoard, tmpdir):
+        if db.pgver >= "9.6":
+            pytest.skip("PostgreSQL < 9.6 required for exclusive backup tests")
+        self._test_basebackups(capsys, db, pghoard, tmpdir, "local-tar")
+
+    def test_basebackups_local_tar_pgespresso(self, capsys, db, pghoard, tmpdir):
+        conn_str = pgutil.create_connection_string(db.user)
+        with psycopg2.connect(conn_str) as conn:
+            conn.autocommit = True
+            cursor = conn.cursor()
+            cursor.execute("SELECT 1 FROM pg_available_extensions WHERE name = 'pgespresso' AND default_version >= '1.2'")
+            if not cursor.fetchone():
+                pytest.skip("pgespresso not available")
+            try:
+                cursor.execute("CREATE EXTENSION pgespresso")
+                self._test_basebackups(capsys, db, pghoard, tmpdir, "local-tar")
+            finally:
+                cursor.execute("DROP EXTENSION pgespresso")
 
     def test_basebackups_pipe(self, capsys, db, pghoard, tmpdir):
         self._test_basebackups(capsys, db, pghoard, tmpdir, "pipe")
@@ -225,7 +246,9 @@ LABEL: pg_basebackup base backup
             xlog_directory = os.path.join(pghoard.config["backup_location"], pghoard.test_site, "xlog_incoming")
             makedirs(xlog_directory, exist_ok=True)
             pghoard.receivexlog_listener(pghoard.test_site, db.user, xlog_directory)
+            cursor.execute("SELECT txid_current(), pg_switch_xlog()")
             self._test_create_basebackup(capsys, db, pghoard, "local-tar")
+            cursor.execute("SELECT txid_current(), pg_switch_xlog()")
             cursor.execute("SELECT txid_current(), pg_switch_xlog()")
 
             backup_out = tmpdir.join("test-restore").strpath
