@@ -47,10 +47,15 @@ class TestPG:
         ])
         time.sleep(1.0)  # let pg start
 
-    def kill(self, force=True):
+    def kill(self, force=True, immediate=True):
         if self.pg is None:
             return
-        os.kill(self.pg.pid, signal.SIGKILL if force else signal.SIGTERM)
+        if force:
+            os.kill(self.pg.pid, signal.SIGKILL)
+        elif immediate:
+            os.kill(self.pg.pid, signal.SIGQUIT)
+        else:
+            os.kill(self.pg.pid, signal.SIGTERM)
         timeout = time.time() + 10
         while (self.pg.poll() is None) and (time.time() < timeout):
             time.sleep(0.1)
@@ -89,6 +94,11 @@ def db():
             "max_wal_senders = 2\n"
             "wal_keep_segments = 100\n"
             "wal_level = archive\n"
+            # disable fsync and synchronous_commit to speed up the tests a bit
+            "fsync = off\n"
+            "synchronous_commit = off\n"
+            # don't need to wait for autovacuum workers when shutting down
+            "autovacuum = off\n"
         )
     db.run_pg()
     try:
