@@ -11,6 +11,7 @@ from queue import Queue
 from unittest import SkipTest
 import os
 import platform
+import pytest
 
 
 class TestInotify(PGHoardTestCase):
@@ -49,3 +50,7 @@ class TestInotify(PGHoardTestCase):
         assert event["type"] == "MOVE"
         assert event["src_path"] == self.foo_path
         assert event["full_path"] == os.path.join(self.temp_dir, "foo2")
+
+    def test_invalid(self):
+        with pytest.raises(FileNotFoundError):
+            self.inotify.add_watch(self.temp_dir + "NA")

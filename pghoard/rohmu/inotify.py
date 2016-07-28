@@ -54,7 +54,7 @@ class InotifyWatcher(Thread):
         super().__init__()
         # use the newer form for future-proofness
         self.log = logging.getLogger("PGHoardInotify")
-        self.libc = ctypes.CDLL("libc.so.6")
+        self.libc = ctypes.CDLL("libc.so.6", use_errno=True)
         self.fd = self.libc.inotify_init()
         self.watch_to_path = {}
         self.cookies = {}
@@ -69,8 +69,8 @@ class InotifyWatcher(Thread):
             mask |= v
         watch = self.libc.inotify_add_watch(self.fd, c_char_p(path.encode("utf8")), c_uint32(mask))
         if watch < 0:
-            self.log.warning("Failed to add inotify watch for %r: %r", path, watch)
-            return
+            errno = ctypes.get_errno()
+            raise OSError(errno, os.strerror(errno))
         self.watch_to_path[watch] = path
         self.log.debug("Added watch for path: %r", path)
 
