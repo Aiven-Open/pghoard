@@ -508,7 +508,7 @@ The following object storage types are supported:
 * ``swift`` for OpenStack Swift, required configuration keys:
 
  * ``user`` for the Swift user ('subuser' in Ceph RadosGW)
- * ``key"`` for the Swift secret_key
+ * ``key`` for the Swift secret_key
  * ``auth_url`` for Swift authentication URL
  * ``container_name`` name of the data container
 
