@@ -41,12 +41,17 @@ logging.getLogger("swiftclient").setLevel(logging.WARNING)
 class SwiftTransfer(BaseTransfer):
     def __init__(self, *, user, key, container_name, auth_url,
                  auth_version="2.0", tenant_name=None, prefix=None,
-                 segment_size=SEGMENT_SIZE):
+                 segment_size=SEGMENT_SIZE, region_name=None):
         prefix = prefix.lstrip("/") if prefix else ""
         super().__init__(prefix=prefix)
         self.container_name = container_name
+        if region_name is not None:
+            os_options = {'region_name': region_name}
+        else:
+            os_options = None
         self.conn = client.Connection(user=user, key=key, authurl=auth_url,
-                                      tenant_name=tenant_name, auth_version=auth_version)
+                                      tenant_name=tenant_name, auth_version=auth_version,
+                                      os_options=os_options)
         self.container = self.get_or_create_container(self.container_name)
         self.segment_size = segment_size
         self.log.debug("SwiftTransfer initialized")
