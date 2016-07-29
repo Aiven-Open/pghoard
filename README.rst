@@ -520,6 +520,7 @@ The following object storage types are supported:
     than this will be split into multiple segments on upload.  Many Swift
     installations require large files (usually 5 gigabytes) to be segmented.
   * ``tenant_name``
+  * ``region_name``
 
 ``pg_bin_directory`` (default: find binaries from well-known directories)
 
