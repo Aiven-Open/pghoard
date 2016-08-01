@@ -17,7 +17,7 @@ class BaseTransfer:
             prefix += "/"
         self.prefix = prefix
 
-    def format_key_for_backend(self, key, trailing_slash=False):
+    def format_key_for_backend(self, key, remove_slash_prefix=False, trailing_slash=False):
         """Add a possible prefix to the key before sending it to the backend"""
         path = self.prefix + key
         if trailing_slash:
@@ -25,6 +25,8 @@ class BaseTransfer:
                 path += "/"
         else:
             path = path.rstrip("/")
+        if remove_slash_prefix:  # Azure defines slashes in the beginning as "dirs" for listing purposes
+            path = path.lstrip("/")
         return path
 
     def format_key_from_backend(self, key):
@@ -63,10 +65,10 @@ class BaseTransfer:
     def list_path(self, key):
         raise NotImplementedError
 
-    def sanitize_metadata(self, metadata):
+    def sanitize_metadata(self, metadata, replace_hyphen_with="-"):
         """Convert non-string metadata values to strings and drop null values"""
-        return {str(k): str(v) for k, v in (metadata or {}).items()
-                if v is not None}
+        return {str(k).replace("-", replace_hyphen_with): str(v)
+                for k, v in (metadata or {}).items() if v is not None}
 
     def store_file_from_memory(self, key, memstring, metadata=None):
         raise NotImplementedError

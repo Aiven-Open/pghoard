@@ -502,7 +502,7 @@ The following object storage types are supported:
 
  * ``account_name`` for the name of the Azure Storage account
  * ``account_key`` for the secret key of the Azure Storage account
- * ``container_name`` for the name of Azure Storage container used to store
+ * ``bucket_name`` for the name of Azure Storage container used to store
    objects
 
 * ``swift`` for OpenStack Swift, required configuration keys:

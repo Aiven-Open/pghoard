@@ -138,16 +138,16 @@ def _test_storage(st, driver, tmpdir):
         st.bucket.new_key = failing_new_key
 
         st.store_file_from_disk("test1/30m", test_file, multipart=True,
-                                metadata={"30m": "data", "size": test_size_send})
+                                metadata={"thirtymeg": "data", "size": test_size_send, "key": "value-with-a-hyphen"})
 
         assert fail_calls[0] > 3
     else:
         st.store_file_from_disk("test1/30m", test_file, multipart=True,
-                                metadata={"30m": "data", "size": test_size_send})
+                                metadata={"thirtymeg": "data", "size": test_size_send, "key": "value-with-a-hyphen"})
 
     os.unlink(test_file)
 
-    expected_meta = {"30m": "data", "size": str(test_size_send)}
+    expected_meta = {"thirtymeg": "data", "size": str(test_size_send), "key": "value-with-a-hyphen"}
     meta = st.get_metadata_for_key("test1/30m")
     assert meta == expected_meta
 
