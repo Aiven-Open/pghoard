@@ -15,7 +15,7 @@ import os
 import time
 
 CHUNK_SIZE = 1024 * 1024 * 5  # 5 Mi
-SEGMENT_SIZE = 1024 * 1024 * 1024  # 1 Gi
+SEGMENT_SIZE = 1024 * 1024 * 1024 * 3  # 3 Gi
 
 
 # Swift client logs excessively at INFO level, outputting things like a curl
