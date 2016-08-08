@@ -6,6 +6,9 @@ pghoard X.X.X (2016-XX-XX)
   versions require the pgespresso extension to take backups of replicas
   using the `local-tar` method, the pg_basebackup utilizing (default)
   methods have always supported backups of replicas.
+* Upgrade Azure object storage work with the latest python-azure-storage.
+  The previous version of the Azure storage driver no longer worked with
+  the latest version of python-azure-storage driver.
 
 
 pghoard 1.4.0 (2016-07-22)
