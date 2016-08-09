@@ -222,8 +222,8 @@ class PGHoard:
         return xlog_path, basebackup_path
 
     def delete_remote_wal_before(self, wal_segment, site, pg_version):
-        self.log.debug("Starting WAL deletion from: %r before: %r, pg_version: %r",
-                       site, wal_segment, pg_version)
+        self.log.info("Starting WAL deletion from: %r before: %r, pg_version: %r",
+                      site, wal_segment, pg_version)
         storage = self.site_transfers.get(site)
         valid_timeline = True
         tli, log, seg = wal.name_to_tli_log_seg(wal_segment)
