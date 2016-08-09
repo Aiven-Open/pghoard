@@ -60,6 +60,9 @@ def _test_storage(st, driver, tmpdir):
     assert st.get_contents_to_fileobj("test1/x1", out) == {"k": "v"}
     assert out.getvalue() == b"dummy"
 
+    st.store_file_from_memory("test1/x1", b"l", {"fancymetadata": "value"})
+    assert st.get_contents_to_string("test1/x1") == (b"l", {"fancymetadata": "value"})
+
     st.store_file_from_memory("test1/x1", b"1", None)
     assert st.get_contents_to_string("test1/x1") == (b"1", {})
 
