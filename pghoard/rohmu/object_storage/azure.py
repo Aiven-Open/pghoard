@@ -96,7 +96,7 @@ class AzureTransfer(BaseTransfer):
         self.log.debug("Starting to fetch the contents of: %r", key)
         try:
             blob = self.conn.get_blob_to_bytes(self.container_name, key)
-            return blob.content, blob.metadata
+            return blob.content, self._metadata_for_key(key)
         except azure.common.AzureMissingResourceHttpError as ex:
             raise FileNotFoundFromStorageError(key) from ex
 
