@@ -251,8 +251,13 @@ class TransferAgent(Thread):
                     self.stats.unexpected_exception(ex, where="handle_upload_unlink")
             return {"success": True, "opaque": file_to_transfer.get("opaque")}
         except Exception as ex:  # pylint: disable=broad-except
-            self.log.exception("Problem in moving file: %r, need to retry", file_to_transfer["local_path"])
-            self.stats.unexpected_exception(ex, where="handle_upload")
+            if file_to_transfer.get("retries", 0) > 0:
+                self.log.exception("Problem in moving file: %r, need to retry", file_to_transfer["local_path"])
+                # Ignore the exception the first time round as some object stores have frequent Internal Errors
+                # and the upload usually goes through without any issues the second time round
+                self.stats.unexpected_exception(ex, where="handle_upload")
+            else:
+                self.log.warning("Problem in moving file: %r need to retry", file_to_transfer["local_path"])
             # Sleep for a bit to avoid busy looping
             time.sleep(0.5)
 
