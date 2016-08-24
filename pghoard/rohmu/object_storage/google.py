@@ -24,10 +24,21 @@ from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload, MediaIoBaseUpload, MediaIoBaseDownload
 from oauth2client import GOOGLE_TOKEN_URI
 from oauth2client.client import GoogleCredentials
+
 try:
     from oauth2client.service_account import ServiceAccountCredentials
+    ServiceAccountCredentials_from_dict = ServiceAccountCredentials.from_json_keyfile_dict
 except ImportError:
-    from oauth2client.service_account import _ServiceAccountCredentials as ServiceAccountCredentials
+    from oauth2client.service_account import _ServiceAccountCredentials
+
+    def ServiceAccountCredentials_from_dict(credentials):
+        return _ServiceAccountCredentials(
+            service_account_id=credentials["client_id"],
+            service_account_email=credentials["client_email"],
+            private_key_id=credentials["private_key_id"],
+            private_key_pkcs8_text=credentials["private_key"],
+            scopes=[])
+
 
 from ..errors import FileNotFoundFromStorageError, InvalidConfigurationError
 from .base import BaseTransfer
@@ -53,12 +64,7 @@ def get_credentials(credential_file=None, credentials=None):
         return GoogleCredentials.from_stream(credential_file)
 
     if credentials and credentials["type"] == "service_account":
-        return ServiceAccountCredentials(
-            service_account_id=credentials["client_id"],
-            service_account_email=credentials["client_email"],
-            private_key_id=credentials["private_key_id"],
-            private_key_pkcs8_text=credentials["private_key"],
-            scopes=[])
+        return ServiceAccountCredentials_from_dict(credentials)
 
     if credentials and credentials["type"] == "authorized_user":
         return GoogleCredentials(
