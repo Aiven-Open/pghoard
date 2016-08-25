@@ -4,6 +4,7 @@ rohmu - azure object store interface
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
+# pylint: disable=import-error, no-name-in-module
 from azure.storage.blob import BlockBlobService
 from azure.storage.blob.models import BlobPrefix
 from .base import BaseTransfer
