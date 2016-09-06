@@ -1,6 +1,7 @@
 *.pyc
 *.pyo
 *~
+/.cache
 /.coverage
 /.project
 /.pydevproject

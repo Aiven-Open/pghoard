@@ -38,7 +38,8 @@ class S3Transfer(BaseTransfer):
                  host=None,
                  port=None,
                  is_secure=False,
-                 segment_size=MULTIPART_CHUNK_SIZE):
+                 segment_size=MULTIPART_CHUNK_SIZE,
+                 encrypted=False):
         super().__init__(prefix=prefix)
         self.region = region
         self.location = _location_for_region(region)
@@ -53,6 +54,7 @@ class S3Transfer(BaseTransfer):
                                                   aws_secret_access_key=aws_secret_access_key)
         self.bucket = self.get_or_create_bucket(self.bucket_name)
         self.multipart_chunk_size = segment_size
+        self.encrypted = encrypted
         self.log.debug("S3Transfer initialized")
 
     def get_metadata_for_key(self, key):
@@ -81,10 +83,13 @@ class S3Transfer(BaseTransfer):
         for item in self.bucket.list(path, "/"):
             if not hasattr(item, "last_modified"):
                 continue  # skip objects with no last_modified: not regular objects
+            name = self.format_key_from_backend(item.name)
+            if name == path:
+                continue  # skip the path itself
             result.append({
                 "last_modified": dateutil.parser.parse(item.last_modified),
                 "metadata": self._metadata_for_key(item.name),
-                "name": self.format_key_from_backend(item.name),
+                "name": name,
                 "size": item.size,
             })
         return result
@@ -118,7 +123,7 @@ class S3Transfer(BaseTransfer):
         if metadata:
             for k, v in self.sanitize_metadata(metadata).items():
                 s3key.set_metadata(k, v)
-        s3key.set_contents_from_string(memstring, replace=True)
+        s3key.set_contents_from_string(memstring, replace=True, encrypt_key=self.encrypted)
 
     def _store_multipart_upload(self, mp, fp, part_num, filepath):
         attempt = 0
@@ -153,13 +158,15 @@ class S3Transfer(BaseTransfer):
             if metadata:
                 for k, v in metadata.items():
                     s3key.set_metadata(k, v)
-            s3key.set_contents_from_filename(filepath, replace=True)
+            s3key.set_contents_from_filename(filepath, replace=True,
+                                             encrypt_key=self.encrypted)
         else:
             start_of_multipart_upload = time.monotonic()
             chunks = math.ceil(size / self.multipart_chunk_size)
             self.log.debug("Starting to upload multipart file: %r, size: %r, chunks: %d",
                            key, size, chunks)
-            mp = self.bucket.initiate_multipart_upload(key, metadata=metadata)
+            mp = self.bucket.initiate_multipart_upload(key, metadata=metadata,
+                                                       encrypt_key=self.encrypted)
 
             with open(filepath, "rb") as fp:
                 part_num = 0
