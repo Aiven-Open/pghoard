@@ -618,7 +618,7 @@ Determines syslog log facility. (requires syslog to be true as well)
 
  * ``algorithm`` default ``"snappy"`` if available, otherwise ``"lzma"``
  * ``level`` default ``"0"`` compression level for ``"lzma"`` compression
-* ``thread_count`` (default ``5``) number of parallel compression threads
+ * ``thread_count`` (default ``5``) number of parallel compression threads
 
 * ``transfer`` WAL/basebackup transfer parameters
 
