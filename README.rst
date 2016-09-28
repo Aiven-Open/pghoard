@@ -63,9 +63,9 @@ file is encrypted and authenticated with file specific keys. The file
 specific keys are included in the backup in turn encrypted with a master
 RSA private/public key pair.
 
-PGHoard supports backing up and restoring from either a local filesystem
-or from various object stores (AWS S3, Azure (experimental), Ceph, Google
-Cloud and OpenStack Swift.)
+PGHoard supports backing up and restoring from either a local filesystem or
+from various object stores (AWS S3, Azure, Ceph, Google Cloud and OpenStack
+Swift.)
 
 In case you just have a single database machine, it is heavily recommended
 to utilize one of the object storage services to allow backup recovery even

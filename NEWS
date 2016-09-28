@@ -1,16 +1,17 @@
 pghoard X.X.X (2016-XX-XX)
 ==========================
 
+* Azure object storage updated to work with the latest python-azure-storage
+  module and promoted to production ready status
+* Google object storage compatibility with Google oauth2client version 1.5+
+* S3 driver now supports server side encryption
+* Swift driver now supports the region_name configuration option
 * Support for `local-tar` backups of a replica on PostgreSQL 9.6 and newer
   using the new non-exclusive backup mechanism.  Previous PostgreSQL
   versions require the pgespresso extension to take backups of replicas
   using the `local-tar` method, the pg_basebackup utilizing (default)
   methods have always supported backups of replicas.
-* Google object storage compatibility with Google oauth2client version 1.5+
-* Upgrade Azure object storage work with the latest python-azure-storage.
-  The previous version of the Azure storage driver no longer worked with
-  the latest version of python-azure-storage driver.
-
+* Miscellaneous bug fixes
 
 pghoard 1.4.0 (2016-07-22)
 ==========================
