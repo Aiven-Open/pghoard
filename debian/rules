@@ -5,5 +5,12 @@ export PYBUILD_NAME=pghoard
 %:
 	dh $@ --with python3 --buildsystem=pybuild
 
+override_dh_install:
+	dh_install
+	install -d debian/pghoard/lib/systemd/system/
+	install -m 644 pghoard.unit debian/pghoard/lib/systemd/system/pghoard.service
+	mkdir -p debian/pghoard/var/lib/pghoard
+	chown -R postgres:postgres debian/pghoard/var/lib/pghoard
+
 override_dh_auto_test:
 	$(MAKE) flake8 unittest

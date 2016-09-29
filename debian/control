@@ -15,7 +15,7 @@ Package: pghoard
 Architecture: all
 Depends: ${misc:Depends}, ${python3:Depends},
  python3-cryptography (>= 0.8), python3-dateutil, python3-psycopg2,
- python3-requests, python3-snappy
+ python3-requests, python3-snappy, postgresql-common
 Breaks: postgresql-9.2-pgespresso (< 1.2), postgresql-9.3-pgespresso (< 1.2),
  postgresql-9.4-pgespresso (< 1.2), postgresql-9.5-pgespresso (< 1.2)
 Description: PostgreSQL streaming backup service
