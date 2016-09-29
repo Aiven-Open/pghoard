@@ -4,7 +4,7 @@ set -e
 
 #DEBHELPER#
 
-if [ "$1" = triggered ]; then
+if [ "$1" = configure ]; then
     chown postgres:postgres /var/lib/pghoard
     exit 0
 fi
