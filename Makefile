@@ -33,7 +33,7 @@ rpm: $(generated)
 
 build-dep-fed:
 	sudo dnf -y install postgresql-server \
-		python3-boto python3-cryptography python3-dateutil \
+		python3-boto python3-cryptography python3-dateutil python3-devel \
 		python3-flake8 python3-psycopg2 python3-pylint python3-pytest \
 		python3-pytest-cov python3-requests python3-snappy \
 		rpm-build
