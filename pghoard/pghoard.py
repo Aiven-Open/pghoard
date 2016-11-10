@@ -11,7 +11,7 @@ from pghoard.basebackup import PGBaseBackup
 from pghoard.common import (
     create_alert_file,
     get_object_storage_config,
-    replication_connection_string_and_slot_using_pgpass,
+    replication_connection_string_and_slot_for_node,
     write_json_file,
 )
 from pghoard.compressor import CompressorThread
@@ -123,7 +123,7 @@ class PGHoard:
         return True
 
     def create_basebackup(self, site, connection_info, basebackup_path, callback_queue=None):
-        connection_string, _ = replication_connection_string_and_slot_using_pgpass(connection_info)
+        connection_string, _ = replication_connection_string_and_slot_for_node(connection_info)
         pg_version_server = self.check_pg_server_version(connection_string)
         if pg_version_server:
             self.config["backup_sites"][site]["pg_version"] = pg_version_server
@@ -163,7 +163,7 @@ class PGHoard:
         return pg_version
 
     def receivexlog_listener(self, site, connection_info, xlog_directory):
-        connection_string, slot = replication_connection_string_and_slot_using_pgpass(connection_info)
+        connection_string, slot = replication_connection_string_and_slot_for_node(connection_info)
         pg_version_server = self.check_pg_server_version(connection_string)
         if pg_version_server:
             self.config["backup_sites"][site]["pg_version"] = pg_version_server
@@ -182,7 +182,7 @@ class PGHoard:
         self.receivexlogs[site] = thread
 
     def start_walreceiver(self, site, chosen_backup_node, last_flushed_lsn):
-        connection_string, slot = replication_connection_string_and_slot_using_pgpass(chosen_backup_node)
+        connection_string, slot = replication_connection_string_and_slot_for_node(chosen_backup_node)
         pg_version_server = self.check_pg_server_version(connection_string)
         if pg_version_server:
             self.config["backup_sites"][site]["pg_version"] = pg_version_server

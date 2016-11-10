@@ -4,7 +4,7 @@ pghoard: inspect WAL files
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
-from .common import replication_connection_string_and_slot_using_pgpass
+from .common import replication_connection_string_and_slot_for_node
 from collections import namedtuple
 import re
 import struct
@@ -118,7 +118,7 @@ def get_current_wal_from_identify_system(conn_str):
 
 
 def get_current_wal_file(node_info):
-    conn_str, _ = replication_connection_string_and_slot_using_pgpass(node_info)
+    conn_str, _ = replication_connection_string_and_slot_for_node(node_info)
     return get_current_wal_from_identify_system(conn_str)
 
 

@@ -7,8 +7,8 @@ See LICENSE for details
 # pylint: disable=superfluous-parens
 from . import version, wal
 from .common import (
-    connection_string_using_pgpass,
-    replication_connection_string_and_slot_using_pgpass,
+    connection_string_for_node,
+    replication_connection_string_and_slot_for_node,
     set_stream_nonblocking,
     set_subprocess_stdout_and_stderr_nonblocking,
     terminate_subprocess,
@@ -129,7 +129,7 @@ class PGBaseBackup(Thread):
             if "host" in conn_info:
                 command.extend(["--host", conn_info["host"]])
         else:
-            connection_string, _ = replication_connection_string_and_slot_using_pgpass(self.connection_info)
+            connection_string, _ = replication_connection_string_and_slot_for_node(self.connection_info)
             command.extend([
                 "--progress",
                 "--dbname", connection_string
@@ -201,7 +201,7 @@ class PGBaseBackup(Thread):
         # an incorrect start-wal-time since the pg_basebackup from pghoard will not generate a new checkpoint.
         # This means that this xlog information would not be the oldest required to restore from this
         # basebackup.
-        connection_string, _ = replication_connection_string_and_slot_using_pgpass(self.connection_info)
+        connection_string, _ = replication_connection_string_and_slot_for_node(self.connection_info)
         start_wal_segment = wal.get_current_wal_from_identify_system(connection_string)
 
         temp_basebackup_dir, compressed_basebackup = self.get_paths_for_backup(self.basebackup_path)
@@ -428,7 +428,7 @@ class PGBaseBackup(Thread):
             rsa_public_key = self.config["backup_sites"][self.site]["encryption_keys"][encryption_key_id]["public"]
 
         self.log.debug("Connecting to database to start backup process")
-        connection_string = connection_string_using_pgpass(self.connection_info)
+        connection_string = connection_string_for_node(self.connection_info)
         with psycopg2.connect(connection_string) as db_conn:
             cursor = db_conn.cursor()
 
