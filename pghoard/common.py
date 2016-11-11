@@ -20,38 +20,6 @@ import time
 LOG = logging.getLogger("pghoard.common")
 
 
-def create_pgpass_file(connection_string_or_info):
-    """Look up password from the given object which can be a dict or a
-    string and write a possible password in a pgpass file;
-    returns a connection_string without a password in it"""
-    info = pgutil.get_connection_info(connection_string_or_info)
-    if "password" not in info:
-        return pgutil.create_connection_string(info)
-    linekey = "{host}:{port}:{dbname}:{user}:".format(
-        host=info.get("host", "localhost"),
-        port=info.get("port", 5432),
-        user=info.get("user", ""),
-        dbname=info.get("dbname", "*"))
-    pwline = "{linekey}{password}".format(linekey=linekey, password=info.pop("password"))
-    pgpass_path = os.path.join(os.environ.get("HOME"), ".pgpass")
-    if os.path.exists(pgpass_path):
-        with open(pgpass_path, "r") as fp:
-            pgpass_lines = fp.read().splitlines()
-    else:
-        pgpass_lines = []
-    if pwline in pgpass_lines:
-        LOG.debug("Not adding authentication data to: %s since it's already there", pgpass_path)
-    else:
-        # filter out any existing lines with our linekey and add the new line
-        pgpass_lines = [line for line in pgpass_lines if not line.startswith(linekey)] + [pwline]
-        content = "\n".join(pgpass_lines) + "\n"
-        with open(pgpass_path, "w") as fp:
-            os.fchmod(fp.fileno(), 0o600)
-            fp.write(content)
-        LOG.debug("Wrote %r to %r", pwline, pgpass_path)
-    return pgutil.create_connection_string(info)
-
-
 def connection_info_and_slot(target_node_info):
     """Process the input `target_node_info` entry which may be a libpq
     connection string or uri, or a dict containing key:value pairs of
@@ -68,7 +36,7 @@ def connection_info_and_slot(target_node_info):
     return connection_info, slot
 
 
-def connection_string_using_pgpass(target_node_info):
+def connection_string_for_node(target_node_info):
     """Process the input `target_node_info` entry which may be a libpq
     connection string or uri, or a dict containing key:value pairs of
     connection info entries or just the connection string with a
@@ -76,16 +44,16 @@ def connection_string_using_pgpass(target_node_info):
     contains a password and return a libpq-format connection string
     without the password in it and a possible replication slot."""
     connection_info, _ = connection_info_and_slot(target_node_info)
-    return create_pgpass_file(connection_info)
+    return pgutil.create_connection_string(connection_info)
 
 
-def replication_connection_string_and_slot_using_pgpass(target_node_info):
+def replication_connection_string_and_slot_for_node(target_node_info):
     """Like `connection_string_and_slot_using_pgpass` but returns a
     connection string for a replication connection."""
     connection_info, slot = connection_info_and_slot(target_node_info)
     connection_info["dbname"] = "replication"
     connection_info["replication"] = "true"
-    connection_string = create_pgpass_file(connection_info)
+    connection_string = pgutil.create_connection_string(connection_info)
     return connection_string, slot
 
 
