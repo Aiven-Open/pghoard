@@ -49,16 +49,6 @@ logging.getLogger("oauth2client").setLevel(logging.WARNING)
 CHUNK_SIZE = 1024 * 1024 * 5
 
 
-def unpaginate(domain, initial_op):
-    """Iterate thru the request pages until all items have been processed"""
-    request = initial_op(domain)
-    while request is not None:
-        result = request.execute()
-        for item in result.get("items", []):
-            yield item
-        request = domain.list_next(request, result)
-
-
 def get_credentials(credential_file=None, credentials=None):
     if credential_file:
         return GoogleCredentials.from_stream(credential_file)
@@ -123,6 +113,18 @@ class GoogleTransfer(BaseTransfer):
                 self.gs_object_client = None
             raise
 
+    def _retry_on_reset(self, action):
+        retries = 5
+        while True:
+            try:
+                return action()
+            except ConnectionResetError as ex:
+                if not retries:
+                    raise
+                self.log.error("%s failed: %s (%s), retrying", action, ex.__class__.__name__, ex)
+            retries -= 1
+            time.sleep(0.2)
+
     def get_metadata_for_key(self, key):
         key = self.format_key_for_backend(key)
         with self._object_client(not_found=key) as clob:
@@ -133,12 +135,24 @@ class GoogleTransfer(BaseTransfer):
         obj = req.execute()
         return obj.get("metadata", {})
 
+    def _unpaginate(self, domain, initial_op):
+        """Iterate thru the request pages until all items have been processed"""
+        request = initial_op(domain)
+        while request is not None:
+            result = self._retry_on_reset(request.execute)
+            for item in result.get("items", []):
+                yield item
+            request = domain.list_next(request, result)
+
     def list_path(self, key):
         path = self.format_key_for_backend(key, trailing_slash=True)
         self.log.debug("Listing path %r", path)
         return_list = []
         with self._object_client() as clob:
-            for item in unpaginate(clob, lambda o: o.list(bucket=self.bucket_name, delimiter="/", prefix=path)):
+            def initial_op(domain):
+                return domain.list(bucket=self.bucket_name, delimiter="/", prefix=path)
+
+            for item in self._unpaginate(clob, initial_op):
                 if item["name"].endswith("/"):
                     continue  # skip directory level objects
 
@@ -179,7 +193,7 @@ class GoogleTransfer(BaseTransfer):
             download = MediaIoBaseDownload(fileobj_to_store_to, req, chunksize=CHUNK_SIZE)
             done = False
             while not done:
-                status, done = download.next_chunk()
+                status, done = self._retry_on_reset(download.next_chunk)
                 if status:
                     progress_pct = status.progress() * 100
                     self.log.debug("Download of %r: %d%%", key, progress_pct)
@@ -209,7 +223,7 @@ class GoogleTransfer(BaseTransfer):
             req = clob.insert(bucket=self.bucket_name, name=key, media_body=upload, body=body)
             response = None
             while response is None:
-                status, response = req.next_chunk()
+                status, response = self._retry_on_reset(req.next_chunk)
                 if status:
                     self.log.debug("Upload of %r to %r: %d%%", local_object, key, status.progress() * 100)
 
@@ -235,7 +249,8 @@ class GoogleTransfer(BaseTransfer):
         start_time = time.time()
         gs_buckets = self.gs.buckets()  # pylint: disable=no-member
         try:
-            gs_buckets.get(bucket=bucket_name).execute()
+            request = gs_buckets.get(bucket=bucket_name)
+            self._retry_on_reset(request.execute)
             self.log.debug("Bucket: %r already exists, took: %.3fs", bucket_name, time.time() - start_time)
         except HttpError as ex:
             if ex.resp["status"] == "404":
