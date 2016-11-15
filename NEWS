@@ -3,8 +3,8 @@ pghoard X.X.X (2016-XX-XX)
 
 * Azure object storage updated to work with the latest python-azure-storage
   module and promoted to production ready status
-* Google object storage driver now retries operations once on failure to
-  work around transient connection reset issues
+* Google object storage driver now retries operations on failure to work
+  around transient connection reset and backend failure issues
 * Google object storage compatibility with Google oauth2client version 1.5+
 * S3 driver now supports server side encryption
 * Swift driver now supports the region_name configuration option

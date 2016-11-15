@@ -17,6 +17,7 @@ import httplib2
 import json
 import logging
 import os
+import random
 import time
 
 from googleapiclient.discovery import build
@@ -115,15 +116,23 @@ class GoogleTransfer(BaseTransfer):
 
     def _retry_on_reset(self, action):
         retries = 5
+        retry_wait = 0.2
         while True:
             try:
                 return action()
-            except ConnectionResetError as ex:
+            except (ConnectionResetError, HttpError) as ex:
                 if not retries:
                     raise
-                self.log.error("%s failed: %s (%s), retrying", action, ex.__class__.__name__, ex)
+                if isinstance(ex, HttpError):
+                    # https://cloud.google.com/storage/docs/json_api/v1/status-codes
+                    # https://cloud.google.com/storage/docs/exponential-backoff
+                    if ex.resp["status"] not in ("429", "500", "502", "503"):  # pylint: disable=no-member
+                        raise
+                    retry_wait = min(10.0, max(1.0, retry_wait * 2) + random.random())
+                self.log.error("%s failed: %s (%s), retrying in %.2fs",
+                               action, ex.__class__.__name__, ex, retry_wait)
             retries -= 1
-            time.sleep(0.2)
+            time.sleep(retry_wait)
 
     def get_metadata_for_key(self, key):
         key = self.format_key_for_backend(key)

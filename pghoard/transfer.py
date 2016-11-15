@@ -251,18 +251,19 @@ class TransferAgent(Thread):
                     self.stats.unexpected_exception(ex, where="handle_upload_unlink")
             return {"success": True, "opaque": file_to_transfer.get("opaque")}
         except Exception as ex:  # pylint: disable=broad-except
-            if file_to_transfer.get("retries", 0) > 0:
+            if file_to_transfer.get("retry_number", 0) > 0:
                 self.log.exception("Problem in moving file: %r, need to retry", file_to_transfer["local_path"])
                 # Ignore the exception the first time round as some object stores have frequent Internal Errors
                 # and the upload usually goes through without any issues the second time round
                 self.stats.unexpected_exception(ex, where="handle_upload")
             else:
-                self.log.warning("Problem in moving file: %r need to retry", file_to_transfer["local_path"])
+                self.log.warning("Problem in moving file: %r, need to retry (%s: %s)",
+                                 file_to_transfer["local_path"], ex.__class__.__name__, ex)
             # Sleep for a bit to avoid busy looping
             time.sleep(0.5)
 
-            file_to_transfer["retries"] = file_to_transfer.get("retries", 0) + 1
-            if file_to_transfer["retries"] > self.config["upload_retries_warning_limit"]:
+            file_to_transfer["retry_number"] = file_to_transfer.get("retry_number", 0) + 1
+            if file_to_transfer["retry_number"] > self.config["upload_retries_warning_limit"]:
                 create_alert_file(self.config, "upload_retries_warning")
 
             self.transfer_queue.put(file_to_transfer)
