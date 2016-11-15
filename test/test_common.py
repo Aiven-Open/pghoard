@@ -6,6 +6,7 @@ See LICENSE for details
 """
 from .base import PGHoardTestCase
 from pghoard.common import (
+    create_pgpass_file,
     convert_pg_command_version_to_number,
     default_json_serialization,
     json_encode,
@@ -14,10 +15,39 @@ from pghoard.common import (
 from pghoard.rohmu.errors import Error
 import datetime
 import json
+import os
 import pytest
 
 
 class TestCommon(PGHoardTestCase):
+    def test_create_pgpass_file(self):
+        original_home = os.environ['HOME']
+
+        def get_pgpass_contents():
+            with open(os.path.join(self.temp_dir, ".pgpass"), "rb") as fp:
+                return fp.read()
+        os.environ['HOME'] = self.temp_dir
+        # make sure our pgpass entry ends up in the file and the call returns a connection string without password
+        pwl = create_pgpass_file("host=localhost port='5432' user=foo password='bar' dbname=replication")
+        assert pwl == "dbname='replication' host='localhost' port='5432' user='foo'"
+        assert get_pgpass_contents() == b'localhost:5432:replication:foo:bar\n'
+        # See that it does not add a new row when repeated
+        pwl = create_pgpass_file("host=localhost port='5432' user=foo password='bar' dbname=replication")
+        assert pwl == "dbname='replication' host='localhost' port='5432' user='foo'"
+        assert get_pgpass_contents() == b'localhost:5432:replication:foo:bar\n'
+        # See that it does not add a new row when repeated as url
+        pwl = create_pgpass_file("postgres://foo:bar@localhost/replication")
+        # NOTE: create_pgpass_file() always returns the string in libpq format
+        assert pwl == "dbname='replication' host='localhost' user='foo'"
+        assert get_pgpass_contents() == b'localhost:5432:replication:foo:bar\n'
+        # See that it add a new row for a different user
+        create_pgpass_file("postgres://another:bar@localhost/replication")
+        assert get_pgpass_contents() == b'localhost:5432:replication:foo:bar\nlocalhost:5432:replication:another:bar\n'
+        # See that it replaces the previous row when we change password
+        pwl = create_pgpass_file("postgres://foo:xyz@localhost/replication")
+        assert get_pgpass_contents() == b'localhost:5432:replication:another:bar\nlocalhost:5432:replication:foo:xyz\n'
+        os.environ['HOME'] = original_home
+
     def test_pg_versions(self):
         assert convert_pg_command_version_to_number("foobar (PostgreSQL) 9.4.1") == 90401
         assert convert_pg_command_version_to_number("asdf (PostgreSQL) 9.5alpha1") == 90500
