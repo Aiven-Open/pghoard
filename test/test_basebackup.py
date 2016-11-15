@@ -215,7 +215,7 @@ LABEL: pg_basebackup base backup
             with psycopg2.connect(conn_str) as conn:
                 conn.autocommit = True
                 cursor = conn.cursor()
-                cursor.execute("SELECT pg_start_backup('conflicting')")
+                cursor.execute("SELECT pg_start_backup('conflicting')")  # pylint: disable=used-before-assignment
                 need_stop = True
             self._test_basebackups(capsys, db, pghoard, tmpdir, "local-tar")
             need_stop = False
