@@ -206,6 +206,26 @@ LABEL: pg_basebackup base backup
             pytest.skip("PostgreSQL < 9.6 required for exclusive backup tests")
         self._test_basebackups(capsys, db, pghoard, tmpdir, "local-tar")
 
+    def test_basebackups_local_tar_exclusive_conflict(self, capsys, db, pghoard, tmpdir):
+        if db.pgver >= "9.6":
+            pytest.skip("PostgreSQL < 9.6 required for exclusive backup tests")
+        conn_str = pgutil.create_connection_string(db.user)
+        need_stop = False
+        try:
+            with psycopg2.connect(conn_str) as conn:
+                conn.autocommit = True
+                cursor = conn.cursor()
+                cursor.execute("SELECT pg_start_backup('conflicting')")
+                need_stop = True
+            self._test_basebackups(capsys, db, pghoard, tmpdir, "local-tar")
+            need_stop = False
+        finally:
+            if need_stop:
+                with psycopg2.connect(conn_str) as conn:
+                    conn.autocommit = True
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT pg_stop_backup()")
+
     def test_basebackups_local_tar_pgespresso(self, capsys, db, pghoard, tmpdir):
         conn_str = pgutil.create_connection_string(db.user)
         with psycopg2.connect(conn_str) as conn:
