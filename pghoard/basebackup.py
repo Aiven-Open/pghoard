@@ -454,7 +454,17 @@ class PGBaseBackup(Thread):
                     backup_label = cursor.fetchone()[0]
                     backup_mode = "pgespresso"
                 else:
-                    cursor.execute("SELECT pg_start_backup(%s)", [BASEBACKUP_NAME])
+                    try:
+                        cursor.execute("SELECT pg_start_backup(%s)", [BASEBACKUP_NAME])
+                    except psycopg2.OperationalError as ex:
+                        self.log.warning("Exclusive pg_start_backup() failed: %s: %s", ex.__class__.__name__, ex)
+                        db_conn.rollback()
+                        if "a backup is already in progress" not in str(ex):
+                            raise
+                        self.log.info("Calling pg_stop_backup() and retrying")
+                        cursor.execute("SELECT pg_stop_backup()")
+                        cursor.execute("SELECT pg_start_backup(%s)", [BASEBACKUP_NAME])
+
                     with open(os.path.join(pgdata, "backup_label"), "r") as fp:
                         backup_label = fp.read()
                     backup_mode = "legacy"

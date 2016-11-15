@@ -23,6 +23,7 @@ class InotifyEvent(ctypes.Structure):
         ("name", c_char_p),
     ]
 
+
 s_size = 16
 # default 2048 events
 INOTIFY_EVENT_BUFFER_SIZE = 2048 * (ctypes.sizeof(InotifyEvent) + s_size)
