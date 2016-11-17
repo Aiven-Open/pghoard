@@ -373,12 +373,21 @@ class PGHoard:
         for ta in self.transfer_agents:
             ta.start()
 
+    def _cleanup_inactive_receivexlogs(self, site):
+        if site in self.receivexlogs:
+            if not self.receivexlogs[site].running:
+                if self.receivexlogs[site].is_alive():
+                    self.receivexlogs[site].join()
+                del self.receivexlogs[site]
+
     def handle_site(self, site, site_config):
         self.set_state_defaults(site)
         xlog_path, basebackup_path = self.create_backup_site_paths(site)
 
         if not site_config["active"]:
             return  # If a site has been marked inactive, don't bother checking anything
+
+        self._cleanup_inactive_receivexlogs(site)
 
         chosen_backup_node = random.choice(site_config["nodes"])
 
