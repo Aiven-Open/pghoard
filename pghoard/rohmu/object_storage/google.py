@@ -13,11 +13,13 @@ import googleapiclient  # noqa pylint: disable=unused-import
 from contextlib import contextmanager
 from io import BytesIO, FileIO
 import dateutil.parser
+import errno
 import httplib2
 import json
 import logging
 import os
 import random
+import ssl
 import time
 
 from googleapiclient.discovery import build
@@ -120,8 +122,11 @@ class GoogleTransfer(BaseTransfer):
         while True:
             try:
                 return action()
-            except (ConnectionResetError, HttpError) as ex:
+            except (HttpError, OSError, ssl.SSLEOFError) as ex:
                 if not retries:
+                    raise
+                # httplib2 commonly fails with Bad File Descriptor and Connection Reset
+                if isinstance(ex, OSError) and ex.errno not in [errno.EBADF, errno.ECONNRESET]:
                     raise
                 if isinstance(ex, HttpError):
                     # https://cloud.google.com/storage/docs/json_api/v1/status-codes
