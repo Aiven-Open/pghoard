@@ -57,7 +57,17 @@ def create_recovery_conf(dirpath, site, *,
     if recovery_end_command:
         lines.append("recovery_end_command = {}".format(adapt(recovery_end_command)))
     if recovery_target_action:
-        lines.append("recovery_target_action = '{}'".format(recovery_target_action))
+        with open(os.path.join(dirpath, "PG_VERSION"), "r") as fp:
+            pg_version = fp.read().strip()
+        if pg_version >= "9.5":
+            lines.append("recovery_target_action = '{}'".format(recovery_target_action))
+        elif recovery_target_action == "promote":
+            pass  # default action
+        elif recovery_target_action == "pause":
+            lines.append("pause_at_recovery_target = True")
+        else:
+            print("Unsupported recovery_target_action {!r} for PostgreSQL {}, ignoring".format(
+                recovery_target_action, pg_version))
     if recovery_target_name:
         lines.append("recovery_target_name = '{}'".format(recovery_target_name))
     if recovery_target_time:

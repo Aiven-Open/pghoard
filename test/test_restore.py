@@ -72,6 +72,9 @@ class TestRecoveryConf(PGHoardTestCase):
         td = self.temp_dir
         fn = os.path.join(td, "recovery.conf")
 
+        with open(os.path.join(td, "PG_VERSION"), "w") as fp:
+            fp.write("9.6")
+
         def getdata():
             with open(fn, "r") as fp:
                 return fp.read()
@@ -112,3 +115,15 @@ class TestRecoveryConf(PGHoardTestCase):
         assert "recovery_target_time" in content
         assert "recovery_target_xid" in content
         assert str(now) in content
+
+        with open(os.path.join(td, "PG_VERSION"), "w") as fp:
+            fp.write("9.3")
+
+        content = create_recovery_conf(td, "dummysite",
+                                       recovery_target_action="pause",
+                                       recovery_target_xid="42")
+        assert "pause_at_recovery_target" in content
+        content = create_recovery_conf(td, "dummysite",
+                                       recovery_target_action="promote",
+                                       recovery_target_xid="42")
+        assert "pause_at_recovery_target" not in content
