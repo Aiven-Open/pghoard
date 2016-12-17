@@ -17,6 +17,7 @@ pghoard X.X.X (2016-XX-XX)
   pgespresso) any conflicting exclusive basebackup is automatically cancelled
   to allow PGHoard to take its own basebackup.  This is sometimes required if
   a previous PGHoard process has been killed while it was taking a backup.
+* Support pghoard_restore --recovery-target-action with 9.3 and 9.4
 * Miscellaneous bug fixes
 
 pghoard 1.4.0 (2016-07-22)
