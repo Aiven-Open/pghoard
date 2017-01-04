@@ -228,14 +228,20 @@ class Restore:
         basebackups = self.storage.list_basebackups()
         for basebackup in basebackups:
             if recovery_target_time:
-                backup_start_time = dateutil.parser.parse(basebackup["metadata"]["start-time"])
-                if backup_start_time >= recovery_target_time:
+                # We really need the backup end time here, but pg_basebackup based backup methods don't provide
+                # it for us currently, so fall back to using start-time.
+                if "end-time" in basebackup["metadata"]:
+                    backup_ts = dateutil.parser.parse(basebackup["metadata"]["end-time"])
+                else:
+                    backup_ts = dateutil.parser.parse(basebackup["metadata"]["start-time"])
+                if backup_ts >= recovery_target_time:
                     continue
             applicable_basebackups.append(basebackup)
 
         if not applicable_basebackups:
             raise RestoreError("No applicable basebackups found, exiting")
 
+        # NOTE: as above, we may not have end-time so just sort by start-time, the order should be the same
         applicable_basebackups.sort(key=lambda basebackup: basebackup["metadata"]["start-time"])
         caption = "Found {} applicable basebackup{}".format(
             len(applicable_basebackups),

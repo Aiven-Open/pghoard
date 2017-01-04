@@ -159,6 +159,11 @@ LABEL: pg_basebackup base backup
         assert pghoard.test_site in out
         assert "pg-version" in out
 
+        assert "start-wal-segment" in out
+        if mode == "local-tar":
+            assert "end-time" in out
+            assert "end-wal-segment" in out
+
     def _test_restore_basebackup(self, db, pghoard, tmpdir):
         backup_out = tmpdir.join("test-restore").strpath
         # Restoring to empty directory works

@@ -1,6 +1,8 @@
 pghoard X.X.X (2016-XX-XX)
 ==========================
 
+* Basebackup `end-time` and `end-wal-segment` are now stored in metadata and
+  used for PITR when `local-tar` basebackups are used.
 * Azure object storage updated to work with the latest python-azure-storage
   module and promoted to production ready status
 * Google object storage driver now retries operations on failure to work
