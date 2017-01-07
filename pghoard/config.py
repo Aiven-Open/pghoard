@@ -10,11 +10,16 @@ from pghoard.rohmu import get_class_for_transfer
 from pghoard.rohmu.errors import InvalidConfigurationError
 from pghoard.rohmu.snappyfile import snappy
 import json
+import multiprocessing
 import os
 import subprocess
 
 
 SUPPORTED_VERSIONS = ["9.6", "9.5", "9.4", "9.3", "9.2"]
+
+
+def get_cpu_count():
+    return multiprocessing.cpu_count()
 
 
 def find_pg_binary(program, versions=None):
@@ -40,8 +45,8 @@ def set_config_defaults(config, *, check_commands=True):
     config.setdefault("upload_retries_warning_limit", 3)
 
     # default to 5 compression and transfer threads
-    config.setdefault("compression", {}).setdefault("thread_count", 5)
-    config.setdefault("transfer", {}).setdefault("thread_count", 5)
+    config.setdefault("compression", {}).setdefault("thread_count", max(get_cpu_count(), 5))
+    config.setdefault("transfer", {}).setdefault("thread_count", max(get_cpu_count(), 5))
     # default to prefetching min(#compressors, #transferagents) - 1 objects so all
     # operations where prefetching is used run fully in parallel without waiting to start
     config.setdefault("restore_prefetch", min(
