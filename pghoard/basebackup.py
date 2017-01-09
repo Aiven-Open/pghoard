@@ -533,15 +533,19 @@ class PGBaseBackup(Thread):
                         cursor.execute("SELECT pg_stop_backup()")
                 db_conn.commit()
 
-        start_wal_segment, backup_start_time = self.parse_backup_label(backup_label_data)
+            backup_end_time, backup_end_wal_segment = self.get_backup_end_time_and_segment(db_conn)
+
+        backup_start_wal_segment, backup_start_time = self.parse_backup_label(backup_label_data)
         metadata = {
             "compression-algorithm": compression_algorithm,
             "encryption-key-id": encryption_key_id,
+            "end-time": backup_end_time,
+            "end-wal-segment": backup_end_wal_segment,
             "format": "pghoard-bb-v1",
             "original-file-size": input_size,
             "pg-version": self.pg_version_server,
             "start-time": backup_start_time,
-            "start-wal-segment": start_wal_segment,
+            "start-wal-segment": backup_start_wal_segment,
         }
         for spcname, spcinfo in tablespaces.items():
             metadata["tablespace-name-{}".format(spcinfo["oid"])] = spcname
@@ -556,3 +560,18 @@ class PGBaseBackup(Thread):
             "site": self.site,
             "type": "UPLOAD",
         })
+
+    def get_backup_end_time_and_segment(self, db_conn):
+        cursor = db_conn.cursor()
+
+        # Get backup end time and end segment and forcibly register a transaction in the current segment
+        cursor.execute("SELECT now(), pg_xlogfile_name(pg_current_xlog_location()), txid_current()")
+        backup_end_time, backup_end_wal_segment, _ = cursor.fetchone()
+        db_conn.commit()
+
+        # Now force switch of the xlog segment to make sure we have archived a segment with a known
+        # timestamp after pg_stop_backup() was called.
+        cursor.execute("SELECT pg_switch_xlog()")
+        db_conn.commit()
+
+        return backup_end_time, backup_end_wal_segment
