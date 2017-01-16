@@ -533,7 +533,7 @@ class PGBaseBackup(Thread):
                         cursor.execute("SELECT pg_stop_backup()")
                 db_conn.commit()
 
-            backup_end_time, backup_end_wal_segment = self.get_backup_end_time_and_segment(db_conn)
+            backup_end_time, backup_end_wal_segment = self.get_backup_end_time_and_segment(db_conn, backup_mode)
 
         backup_start_wal_segment, backup_start_time = self.parse_backup_label(backup_label_data)
         metadata = {
@@ -561,7 +561,15 @@ class PGBaseBackup(Thread):
             "type": "UPLOAD",
         })
 
-    def get_backup_end_time_and_segment(self, db_conn):
+    def get_backup_end_time_and_segment(self, db_conn, backup_mode):
+        """Grab a timestamp and WAL segment name after the end of the backup: this is a point in time to which
+        we must be able to recover to, and the last WAL segment that is required for the backup to be
+        consistent.
+
+        Note that pg_switch_xlog() is a superuser-only function, but since pg_start_backup() and
+        pg_stop_backup() cause an XLOG switch we'll call them instead.  The downside is an unnecessary
+        checkpoint.
+        """
         cursor = db_conn.cursor()
 
         # Get backup end time and end segment and forcibly register a transaction in the current segment
@@ -571,7 +579,17 @@ class PGBaseBackup(Thread):
 
         # Now force switch of the xlog segment to make sure we have archived a segment with a known
         # timestamp after pg_stop_backup() was called.
-        cursor.execute("SELECT pg_switch_xlog()")
+        backup_end_name = "pghoard_end_of_backup"
+        if backup_mode == "non-exclusive":
+            cursor.execute("SELECT pg_start_backup(%s, false, false)", [backup_end_name])
+            cursor.execute("SELECT pg_stop_backup(false)")
+        elif backup_mode == "pgespresso":
+            cursor.execute("SELECT pgespresso_start_backup(%s, false)", [backup_end_name])
+            backup_label = cursor.fetchone()[0]
+            cursor.execute("SELECT pgespresso_stop_backup(%s)", [backup_label])
+        else:
+            cursor.execute("SELECT pg_start_backup(%s)", [backup_end_name])
+            cursor.execute("SELECT pg_stop_backup()")
         db_conn.commit()
 
         return backup_end_time, backup_end_wal_segment
