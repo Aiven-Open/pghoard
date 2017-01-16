@@ -13,9 +13,16 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.hashes import SHA1, SHA256
 from cryptography.hazmat.primitives.hmac import HMAC
 from cryptography.hazmat.primitives import serialization
+import cryptography
+import cryptography.hazmat.backends.openssl.backend
 import io
 import os
 import struct
+
+
+if cryptography.__version__ < "1.6":
+    # workaround for deadlock https://github.com/pyca/cryptography/issues/2911
+    cryptography.hazmat.backends.openssl.backend.activate_builtin_random()
 
 FILEMAGIC = b"pghoa1"
 
