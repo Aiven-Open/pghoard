@@ -19,6 +19,7 @@ import json
 import logging
 import os
 import random
+import socket
 import ssl
 import time
 
@@ -88,7 +89,7 @@ class GoogleTransfer(BaseTransfer):
             try:
                 # sometimes fails: httplib2.ServerNotFoundError: Unable to find the server at www.googleapis.com
                 return build("storage", "v1", credentials=self.google_creds)
-            except httplib2.ServerNotFoundError:
+            except (httplib2.ServerNotFoundError, socket.timeout):
                 if time.monotonic() - start_time > 40.0:
                     raise
 
@@ -122,20 +123,25 @@ class GoogleTransfer(BaseTransfer):
         while True:
             try:
                 return action()
-            except (HttpError, OSError, ssl.SSLEOFError) as ex:
+            except (HttpError, ssl.SSLEOFError, socket.timeout, OSError) as ex:
+                # Note that socket.timeout and ssl.SSLEOFError inherit from OSError
+                # and the order of handling the errors here needs to be correct
                 if not retries:
                     raise
-                # httplib2 commonly fails with Bad File Descriptor and Connection Reset
-                if isinstance(ex, OSError) and ex.errno not in [errno.EBADF, errno.ECONNRESET]:
-                    raise
-                if isinstance(ex, HttpError):
+                elif isinstance(ex, (socket.timeout, ssl.SSLEOFError)):
+                    pass  # just retry with the same sleep amount
+                elif isinstance(ex, HttpError):
                     # https://cloud.google.com/storage/docs/json_api/v1/status-codes
                     # https://cloud.google.com/storage/docs/exponential-backoff
                     if ex.resp["status"] not in ("429", "500", "502", "503"):  # pylint: disable=no-member
                         raise
                     retry_wait = min(10.0, max(1.0, retry_wait * 2) + random.random())
-                self.log.error("%s failed: %s (%s), retrying in %.2fs",
-                               action, ex.__class__.__name__, ex, retry_wait)
+                # httplib2 commonly fails with Bad File Descriptor and Connection Reset
+                elif isinstance(ex, OSError) and ex.errno not in [errno.EBADF, errno.ECONNRESET]:
+                    raise
+
+                self.log.warning("%s failed: %s (%s), retrying in %.2fs",
+                                 action, ex.__class__.__name__, ex, retry_wait)
             retries -= 1
             time.sleep(retry_wait)
 
@@ -146,7 +152,7 @@ class GoogleTransfer(BaseTransfer):
 
     def _metadata_for_key(self, clob, key):
         req = clob.get(bucket=self.bucket_name, object=key)
-        obj = req.execute()
+        obj = self._retry_on_reset(req.execute)
         return obj.get("metadata", {})
 
     def _unpaginate(self, domain, initial_op):
@@ -183,7 +189,7 @@ class GoogleTransfer(BaseTransfer):
         self.log.debug("Deleting key: %r", key)
         with self._object_client(not_found=key) as clob:
             req = clob.delete(bucket=self.bucket_name, object=key)
-            req.execute()
+            self._retry_on_reset(req.execute)
 
     def get_contents_to_file(self, key, filepath_to_store_to, *, progress_callback=None):
         fileobj = FileIO(filepath_to_store_to, mode="wb")
@@ -221,7 +227,7 @@ class GoogleTransfer(BaseTransfer):
         self.log.debug("Starting to fetch the contents of: %r", key)
         with self._object_client(not_found=key) as clob:
             req = clob.get_media(bucket=self.bucket_name, object=key)
-            data = req.execute()
+            data = self._retry_on_reset(req.execute)
             return data, self._metadata_for_key(clob, key)
 
     def _upload(self, upload_type, local_object, key, metadata, extra_props):
@@ -278,7 +284,7 @@ class GoogleTransfer(BaseTransfer):
 
         try:
             req = gs_buckets.insert(project=self.project_id, body={"name": bucket_name})
-            req.execute()
+            self._retry_on_reset(req.execute)
             self.log.debug("Created bucket: %r successfully, took: %.3fs", bucket_name, time.time() - start_time)
         except HttpError as ex:
             error = json.loads(ex.content.decode("utf-8"))["error"]
