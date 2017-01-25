@@ -19,6 +19,7 @@ import json
 import logging
 import os
 import random
+import socket
 import ssl
 import time
 
@@ -88,7 +89,7 @@ class GoogleTransfer(BaseTransfer):
             try:
                 # sometimes fails: httplib2.ServerNotFoundError: Unable to find the server at www.googleapis.com
                 return build("storage", "v1", credentials=self.google_creds)
-            except httplib2.ServerNotFoundError:
+            except (httplib2.ServerNotFoundError, socket.timeout):
                 if time.monotonic() - start_time > 40.0:
                     raise
 
@@ -122,20 +123,25 @@ class GoogleTransfer(BaseTransfer):
         while True:
             try:
                 return action()
-            except (HttpError, OSError, ssl.SSLEOFError) as ex:
+            except (HttpError, ssl.SSLEOFError, socket.timeout, OSError) as ex:
+                # Note that socket.timeout and ssl.SSLEOFError inherit from OSError
+                # and the order of handling the errors here needs to be correct
                 if not retries:
                     raise
-                # httplib2 commonly fails with Bad File Descriptor and Connection Reset
-                if isinstance(ex, OSError) and ex.errno not in [errno.EBADF, errno.ECONNRESET]:
-                    raise
-                if isinstance(ex, HttpError):
+                elif isinstance(ex, (socket.timeout, ssl.SSLEOFError)):
+                    pass  # just retry with the same sleep amount
+                elif isinstance(ex, HttpError):
                     # https://cloud.google.com/storage/docs/json_api/v1/status-codes
                     # https://cloud.google.com/storage/docs/exponential-backoff
                     if ex.resp["status"] not in ("429", "500", "502", "503"):  # pylint: disable=no-member
                         raise
                     retry_wait = min(10.0, max(1.0, retry_wait * 2) + random.random())
-                self.log.error("%s failed: %s (%s), retrying in %.2fs",
-                               action, ex.__class__.__name__, ex, retry_wait)
+                # httplib2 commonly fails with Bad File Descriptor and Connection Reset
+                elif isinstance(ex, OSError) and ex.errno not in [errno.EBADF, errno.ECONNRESET]:
+                    raise
+
+                self.log.warning("%s failed: %s (%s), retrying in %.2fs",
+                                 action, ex.__class__.__name__, ex, retry_wait)
             retries -= 1
             time.sleep(retry_wait)
 
