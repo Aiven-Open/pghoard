@@ -152,7 +152,7 @@ class GoogleTransfer(BaseTransfer):
 
     def _metadata_for_key(self, clob, key):
         req = clob.get(bucket=self.bucket_name, object=key)
-        obj = req.execute()
+        obj = self._retry_on_reset(req.execute)
         return obj.get("metadata", {})
 
     def _unpaginate(self, domain, initial_op):
@@ -189,7 +189,7 @@ class GoogleTransfer(BaseTransfer):
         self.log.debug("Deleting key: %r", key)
         with self._object_client(not_found=key) as clob:
             req = clob.delete(bucket=self.bucket_name, object=key)
-            req.execute()
+            self._retry_on_reset(req.execute)
 
     def get_contents_to_file(self, key, filepath_to_store_to, *, progress_callback=None):
         fileobj = FileIO(filepath_to_store_to, mode="wb")
@@ -227,7 +227,7 @@ class GoogleTransfer(BaseTransfer):
         self.log.debug("Starting to fetch the contents of: %r", key)
         with self._object_client(not_found=key) as clob:
             req = clob.get_media(bucket=self.bucket_name, object=key)
-            data = req.execute()
+            data = self._retry_on_reset(req.execute)
             return data, self._metadata_for_key(clob, key)
 
     def _upload(self, upload_type, local_object, key, metadata, extra_props):
@@ -284,7 +284,7 @@ class GoogleTransfer(BaseTransfer):
 
         try:
             req = gs_buckets.insert(project=self.project_id, body={"name": bucket_name})
-            req.execute()
+            self._retry_on_reset(req.execute)
             self.log.debug("Created bucket: %r successfully, took: %.3fs", bucket_name, time.time() - start_time)
         except HttpError as ex:
             error = json.loads(ex.content.decode("utf-8"))["error"]
