@@ -26,6 +26,7 @@ from queue import Empty, Queue
 import argparse
 import datetime
 import dateutil.parser
+import httplib2
 import json
 import logging
 import os
@@ -457,7 +458,9 @@ class PGHoard:
                     self.handle_site(site, site_config)
                 self.write_backup_state_to_json_file()
             except subprocess.CalledProcessError as ex:
-                self.log.error("%s: %s", ex.__class__.__name__, ex)
+                self.log.error("main loop: %s: %s", ex.__class__.__name__, ex)
+            except (socket.gaierror, httplib2.ServerNotFoundError) as ex:
+                self.log.warning("main loop: %s: %s", ex.__class__.__name__, ex)
             except Exception as ex:  # pylint: disable=broad-except
                 self.log.exception("Unexpected exception in PGHoard main loop")
                 self.stats.unexpected_exception(ex, where="pghoard_run")
