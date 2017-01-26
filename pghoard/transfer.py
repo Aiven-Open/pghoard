@@ -13,8 +13,10 @@ from pghoard.rohmu.errors import (
 from pghoard.rohmu import get_transfer
 from queue import Empty
 from threading import Thread, Lock
+import httplib2
 import logging
 import os
+import socket
 import time
 
 _STATS_LOCK = Lock()
@@ -251,10 +253,12 @@ class TransferAgent(Thread):
                     self.stats.unexpected_exception(ex, where="handle_upload_unlink")
             return {"success": True, "opaque": file_to_transfer.get("opaque")}
         except Exception as ex:  # pylint: disable=broad-except
-            if file_to_transfer.get("retry_number", 0) > 0:
+            dns_error = isinstance(ex, (socket.gaierror, httplib2.ServerNotFoundError))
+            if file_to_transfer.get("retry_number", 0) > 0 and not dns_error:
                 self.log.exception("Problem in moving file: %r, need to retry", file_to_transfer["local_path"])
                 # Ignore the exception the first time round as some object stores have frequent Internal Errors
-                # and the upload usually goes through without any issues the second time round
+                # and the upload usually goes through without any issues the second time round. Also DNS errors
+                # are not considered traceback-worthy.
                 self.stats.unexpected_exception(ex, where="handle_upload")
             else:
                 self.log.warning("Problem in moving file: %r, need to retry (%s: %s)",
