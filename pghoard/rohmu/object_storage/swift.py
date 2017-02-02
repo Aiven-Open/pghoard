@@ -6,10 +6,9 @@ See LICENSE for details
 """
 from .base import BaseTransfer
 from ..compat import suppress
+from ..dates import parse_timestamp
 from ..errors import FileNotFoundFromStorageError
 from swiftclient import client, exceptions  # pylint: disable=import-error
-import datetime
-import dateutil.parser
 import logging
 import os
 import time
@@ -104,9 +103,7 @@ class SwiftTransfer(BaseTransfer):
                 continue  # skip directory entries
             metadata = self._metadata_for_key(item["name"], resolve_manifest=True)
             segments_size = metadata.pop("_segments_size", 0)
-            last_modified = dateutil.parser.parse(item["last_modified"])
-            if last_modified.tzinfo is None:  # Assume UTC  # pylint: disable=no-member
-                last_modified = last_modified.replace(tzinfo=datetime.timezone.utc)  # pylint: disable=no-member
+            last_modified = parse_timestamp(item["last_modified"])
             return_list.append({
                 "name": self.format_key_from_backend(item["name"]),
                 "size": item["bytes"] + segments_size,

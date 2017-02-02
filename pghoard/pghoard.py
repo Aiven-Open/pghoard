@@ -18,14 +18,13 @@ from pghoard.compressor import CompressorThread
 from pghoard.rohmu.inotify import InotifyWatcher
 from pghoard.transfer import TransferAgent
 from pghoard.receivexlog import PGReceiveXLog
-from pghoard.rohmu import get_transfer
+from pghoard.rohmu import dates, get_transfer
 from pghoard.rohmu.compat import suppress
 from pghoard.rohmu.errors import FileNotFoundFromStorageError, InvalidConfigurationError
 from pghoard.webserver import WebServer
 from queue import Empty, Queue
 import argparse
 import datetime
-import dateutil.parser
 import json
 import logging
 import os
@@ -277,7 +276,7 @@ class PGHoard:
         for entry in results:
             # drop path from resulting list and convert timestamps
             entry["name"] = os.path.basename(entry["name"])
-            entry["metadata"]["start-time"] = dateutil.parser.parse(entry["metadata"]["start-time"])
+            entry["metadata"]["start-time"] = dates.parse_timestamp(entry["metadata"]["start-time"])
 
         results.sort(key=lambda entry: entry["metadata"]["start-time"])
         return results

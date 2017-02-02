@@ -7,13 +7,12 @@ See LICENSE for details
 from . import common, config, logutil, version
 from .patchedtarfile import tarfile
 from .postgres_command import PGHOARD_HOST, PGHOARD_PORT
-from pghoard.rohmu import compat, get_transfer, IO_BLOCK_SIZE, rohmufile
+from pghoard.rohmu import compat, dates, get_transfer, IO_BLOCK_SIZE, rohmufile
 from pghoard.rohmu.errors import Error, InvalidConfigurationError
 from psycopg2.extensions import adapt
 from requests import Session
 import argparse
 import datetime
-import dateutil.parser
 import json
 import logging
 import os
@@ -92,9 +91,9 @@ def print_basebackup_list(basebackups, *, caption="Available basebackups", verbo
         meta = b["metadata"].copy()
         lm = meta.pop("start-time")
         if isinstance(lm, str):
-            lm = dateutil.parser.parse(lm)
-        if lm.tzinfo:  # pylint: disable=no-member
-            lm = lm.astimezone(datetime.timezone.utc).replace(tzinfo=None)  # pylint: disable=no-member
+            lm = dates.parse_timestamp(lm)
+        if lm.tzinfo:
+            lm = lm.astimezone(datetime.timezone.utc).replace(tzinfo=None)
         lm_str = lm.isoformat()[:19] + "Z"  # # pylint: disable=no-member
         size_str = "{} MB".format(b["size"] // (1024 ** 2))
         orig_size = int(meta.pop("original-file-size", 0) or 0)
@@ -231,9 +230,9 @@ class Restore:
                 # We really need the backup end time here, but pg_basebackup based backup methods don't provide
                 # it for us currently, so fall back to using start-time.
                 if "end-time" in basebackup["metadata"]:
-                    backup_ts = dateutil.parser.parse(basebackup["metadata"]["end-time"])
+                    backup_ts = dates.parse_timestamp(basebackup["metadata"]["end-time"])
                 else:
-                    backup_ts = dateutil.parser.parse(basebackup["metadata"]["start-time"])
+                    backup_ts = dates.parse_timestamp(basebackup["metadata"]["start-time"])
                 if backup_ts >= recovery_target_time:
                     continue
             applicable_basebackups.append(basebackup)
@@ -328,7 +327,7 @@ class Restore:
         # If basebackup that we want it set as latest, figure out which one it is
         if recovery_target_time:
             try:
-                recovery_target_time = dateutil.parser.parse(recovery_target_time)
+                recovery_target_time = dates.parse_timestamp(recovery_target_time)
             except (TypeError, ValueError) as ex:
                 raise RestoreError("recovery_target_time {!r}: {}".format(recovery_target_time, ex))
             basebackup = self._find_nearest_basebackup(recovery_target_time)

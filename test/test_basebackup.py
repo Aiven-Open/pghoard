@@ -6,12 +6,14 @@ See LICENSE for details
 """
 from .conftest import TestPG
 from copy import deepcopy
-from pghoard import pgutil, statsd
+from pghoard import common, pgutil, statsd
 from pghoard.basebackup import PGBaseBackup
 from pghoard.restore import Restore, RestoreError
+from pghoard.rohmu import get_transfer
 from pghoard.rohmu.compat import makedirs
 from queue import Queue
 from subprocess import check_call
+import dateutil.parser
 import os
 import psycopg2
 import pytest
@@ -163,6 +165,18 @@ LABEL: pg_basebackup base backup
         if mode == "local-tar":
             assert "end-time" in out
             assert "end-wal-segment" in out
+
+        storage_config = common.get_object_storage_config(pghoard.config, pghoard.test_site)
+        storage = get_transfer(storage_config)
+        backups = storage.list_path(os.path.join(pghoard.config["path_prefix"], pghoard.test_site, "basebackup"))
+        for backup in backups:
+            assert "start-wal-segment" in backup["metadata"]
+            assert "start-time" in backup["metadata"]
+            assert dateutil.parser.parse(backup["metadata"]["start-time"]).tzinfo  # pylint: disable=no-member
+            if mode == "local-tar":
+                assert "end-wal-segment" in backup["metadata"]
+                assert "end-time" in backup["metadata"]
+                assert dateutil.parser.parse(backup["metadata"]["end-time"]).tzinfo  # pylint: disable=no-member
 
     def _test_restore_basebackup(self, db, pghoard, tmpdir):
         backup_out = tmpdir.join("test-restore").strpath
