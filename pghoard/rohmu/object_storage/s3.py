@@ -6,12 +6,12 @@ See LICENSE for details
 """
 import boto.exception
 import boto.s3
-import dateutil.parser
 import math
 import os
 import time
 from boto.s3.connection import OrdinaryCallingFormat
 from boto.s3.key import Key
+from ..dates import parse_timestamp
 from ..errors import FileNotFoundFromStorageError, InvalidConfigurationError, StorageError
 from .base import BaseTransfer
 
@@ -87,7 +87,7 @@ class S3Transfer(BaseTransfer):
             if name == path:
                 continue  # skip the path itself
             result.append({
-                "last_modified": dateutil.parser.parse(item.last_modified),
+                "last_modified": parse_timestamp(item.last_modified),
                 "metadata": self._metadata_for_key(item.name),
                 "name": name,
                 "size": item.size,

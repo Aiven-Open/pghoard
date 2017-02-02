@@ -12,7 +12,6 @@ import googleapiclient  # noqa pylint: disable=unused-import
 
 from contextlib import contextmanager
 from io import BytesIO, FileIO
-import dateutil.parser
 import errno
 import httplib2
 import json
@@ -44,6 +43,7 @@ except ImportError:
             scopes=[])
 
 
+from ..dates import parse_timestamp
 from ..errors import FileNotFoundFromStorageError, InvalidConfigurationError
 from .base import BaseTransfer
 
@@ -179,7 +179,7 @@ class GoogleTransfer(BaseTransfer):
                 return_list.append({
                     "name": self.format_key_from_backend(item["name"]),
                     "size": int(item["size"]),
-                    "last_modified": dateutil.parser.parse(item["updated"]),
+                    "last_modified": parse_timestamp(item["updated"]),
                     "metadata": item.get("metadata", {}),
                 })
         return return_list

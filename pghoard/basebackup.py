@@ -14,12 +14,11 @@ from .common import (
     terminate_subprocess,
 )
 from .patchedtarfile import tarfile
-from pghoard.rohmu import errors, rohmufile
+from pghoard.rohmu import dates, errors, rohmufile
 from pghoard.rohmu.compat import suppress
 from tempfile import NamedTemporaryFile
 from threading import Thread
 import datetime
-import dateutil.parser
 import io
 import json
 import logging
@@ -248,7 +247,8 @@ class PGBaseBackup(Thread):
                 start_wal_segment = line.split()[5].strip(b")").decode("utf8")
             elif line.startswith(b"START TIME: "):
                 start_time_text = line[len("START TIME: "):].decode("utf8")
-                start_time = dateutil.parser.parse(start_time_text).isoformat()  # pylint: disable=no-member
+                start_time_dt = dates.parse_timestamp(start_time_text, assume_local=True)
+                start_time = start_time_dt.isoformat()
         self.log.debug("Found: %r as starting wal segment, start_time: %r",
                        start_wal_segment, start_time)
         return start_wal_segment, start_time
