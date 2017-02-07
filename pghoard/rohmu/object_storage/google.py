@@ -117,7 +117,7 @@ class GoogleTransfer(BaseTransfer):
                 self.gs_object_client = None
             raise
 
-    def _retry_on_reset(self, action):
+    def _retry_on_reset(self, request, action):
         retries = 5
         retry_wait = 0.2
         while True:
@@ -142,6 +142,8 @@ class GoogleTransfer(BaseTransfer):
 
                 self.log.warning("%s failed: %s (%s), retrying in %.2fs",
                                  action, ex.__class__.__name__, ex, retry_wait)
+
+            request.http.connections.clear()  # reset connection cache
             retries -= 1
             time.sleep(retry_wait)
 
@@ -152,14 +154,14 @@ class GoogleTransfer(BaseTransfer):
 
     def _metadata_for_key(self, clob, key):
         req = clob.get(bucket=self.bucket_name, object=key)
-        obj = self._retry_on_reset(req.execute)
+        obj = self._retry_on_reset(req, req.execute)
         return obj.get("metadata", {})
 
     def _unpaginate(self, domain, initial_op):
         """Iterate thru the request pages until all items have been processed"""
         request = initial_op(domain)
         while request is not None:
-            result = self._retry_on_reset(request.execute)
+            result = self._retry_on_reset(request, request.execute)
             for item in result.get("items", []):
                 yield item
             request = domain.list_next(request, result)
@@ -189,7 +191,7 @@ class GoogleTransfer(BaseTransfer):
         self.log.debug("Deleting key: %r", key)
         with self._object_client(not_found=key) as clob:
             req = clob.delete(bucket=self.bucket_name, object=key)
-            self._retry_on_reset(req.execute)
+            self._retry_on_reset(req, req.execute)
 
     def get_contents_to_file(self, key, filepath_to_store_to, *, progress_callback=None):
         fileobj = FileIO(filepath_to_store_to, mode="wb")
@@ -213,7 +215,7 @@ class GoogleTransfer(BaseTransfer):
             download = MediaIoBaseDownload(fileobj_to_store_to, req, chunksize=CHUNK_SIZE)
             done = False
             while not done:
-                status, done = self._retry_on_reset(download.next_chunk)
+                status, done = self._retry_on_reset(download, download.next_chunk)
                 if status:
                     progress_pct = status.progress() * 100
                     self.log.debug("Download of %r: %d%%", key, progress_pct)
@@ -227,7 +229,7 @@ class GoogleTransfer(BaseTransfer):
         self.log.debug("Starting to fetch the contents of: %r", key)
         with self._object_client(not_found=key) as clob:
             req = clob.get_media(bucket=self.bucket_name, object=key)
-            data = self._retry_on_reset(req.execute)
+            data = self._retry_on_reset(req, req.execute)
             return data, self._metadata_for_key(clob, key)
 
     def _upload(self, upload_type, local_object, key, metadata, extra_props):
@@ -243,7 +245,7 @@ class GoogleTransfer(BaseTransfer):
             req = clob.insert(bucket=self.bucket_name, name=key, media_body=upload, body=body)
             response = None
             while response is None:
-                status, response = self._retry_on_reset(req.next_chunk)
+                status, response = self._retry_on_reset(req, req.next_chunk)
                 if status:
                     self.log.debug("Upload of %r to %r: %d%%", local_object, key, status.progress() * 100)
 
@@ -270,7 +272,7 @@ class GoogleTransfer(BaseTransfer):
         gs_buckets = self.gs.buckets()  # pylint: disable=no-member
         try:
             request = gs_buckets.get(bucket=bucket_name)
-            self._retry_on_reset(request.execute)
+            self._retry_on_reset(request, request.execute)
             self.log.debug("Bucket: %r already exists, took: %.3fs", bucket_name, time.time() - start_time)
         except HttpError as ex:
             if ex.resp["status"] == "404":
@@ -284,7 +286,7 @@ class GoogleTransfer(BaseTransfer):
 
         try:
             req = gs_buckets.insert(project=self.project_id, body={"name": bucket_name})
-            self._retry_on_reset(req.execute)
+            self._retry_on_reset(req, req.execute)
             self.log.debug("Created bucket: %r successfully, took: %.3fs", bucket_name, time.time() - start_time)
         except HttpError as ex:
             error = json.loads(ex.content.decode("utf-8"))["error"]
