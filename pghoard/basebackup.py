@@ -5,7 +5,7 @@ Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
 # pylint: disable=superfluous-parens
-from . import version, wal
+from . import common, version, wal
 from .common import (
     connection_string_using_pgpass,
     replication_connection_string_and_slot_using_pgpass,
@@ -16,11 +16,11 @@ from .common import (
 from .patchedtarfile import tarfile
 from pghoard.rohmu import dates, errors, rohmufile
 from pghoard.rohmu.compat import suppress
+from queue import Queue
 from tempfile import NamedTemporaryFile
 from threading import Thread
 import datetime
 import io
-import json
 import logging
 import os
 import psycopg2
@@ -242,6 +242,8 @@ class PGBaseBackup(Thread):
         })
 
     def parse_backup_label(self, backup_label_data):
+        if isinstance(backup_label_data, str):
+            backup_label_data = backup_label_data.encode("utf-8")
         for line in backup_label_data.split(b"\n"):
             if line.startswith(b"START WAL LOCATION"):
                 start_wal_segment = line.split()[5].strip(b")").decode("utf8")
@@ -294,48 +296,43 @@ class PGBaseBackup(Thread):
             "type": "CLOSE_WRITE",
         })
 
-    def write_init_entries_to_tar(self, *, pgdata, tablespaces, tar):
-        # Write a pghoard metadata file with tablespace mapping
-        self.latest_activity = datetime.datetime.utcnow()
+    def get_control_entries_for_tar(self, *, metadata, pg_control, backup_label):
+        blob = io.BytesIO(common.json_encode(metadata, binary=True))
+        ti = tarfile.TarInfo(name=".pghoard_tar_metadata.json")
+        ti.size = len(blob.getbuffer())
+        ti.mtime = time.time()
+        yield ti, blob, False
 
-        # This acts as a marker saying this is a new-style backup with possible tablespaces
-        metadata = {
-            "pgdata": pgdata,
-            "pghoard_object": "basebackup",
-            "pghoard_version": version.__version__,
-            "tablespaces": tablespaces,
-        }
-        metadata_io = io.BytesIO(json.dumps(metadata).encode("ascii"))
-        metadata_ti = tarfile.TarInfo(name=".pghoard_tar_metadata.json")
-        metadata_ti.size = len(metadata_io.getbuffer())
-        metadata_ti.mtime = time.time()
-        tar.addfile(metadata_ti, metadata_io)
-
-        # Create directory entries for empty directories with attributes of the pgdata "global" directory
-        global_dir = os.path.join(pgdata, "global")
-        for dirname in EMPTY_DIRS:
-            ti = tar.gettarinfo(name=global_dir, arcname=os.path.join("pgdata", dirname))
-            tar.addfile(ti)
-
-    def write_pg_control_to_tar(self, *, pgdata, tar):
         # Backup the latest version of pg_control
-        self.latest_activity = datetime.datetime.utcnow()
-        local_path = os.path.join(pgdata, "global", "pg_control")
-        archive_path = os.path.join("pgdata", "global", "pg_control")
-        tar.add(local_path, arcname=archive_path, recursive=False)
+        blob = io.BytesIO(pg_control)
+        ti = tarfile.TarInfo(name=os.path.join("pgdata", "global", "pg_control"))
+        ti.size = len(blob.getbuffer())
+        ti.mtime = time.time()
+        yield ti, blob, False
 
-    def write_backup_label_to_tar(self, *, tar, backup_label):
         # Add the given backup_label to the tar after calling pg_stop_backup()
-        label_io = io.BytesIO(backup_label)
-        label_ti = tarfile.TarInfo(name=os.path.join("pgdata", "backup_label"))
-        label_ti.size = len(label_io.getbuffer())
-        label_ti.mtime = time.time()
-        tar.addfile(label_ti, label_io)
+        blob = io.BytesIO(backup_label)
+        ti = tarfile.TarInfo(name=os.path.join("pgdata", "backup_label"))
+        ti.size = len(blob.getbuffer())
+        ti.mtime = time.time()
+        yield ti, blob, False
+
+        # Create directory entries for empty directories
+        for dirname in EMPTY_DIRS:
+            ti = tarfile.TarInfo(name=os.path.join("pgdata", dirname))
+            ti.type = tarfile.DIRTYPE
+            ti.mode = 0o700
+            ti.mtime = time.time()
+            yield ti, None, False
 
     def write_files_to_tar(self, *, files, tar):
         for archive_path, local_path, missing_ok in files:
             if not self.running:
                 raise BackupFailure("thread termination requested")
+
+            if isinstance(archive_path, tarfile.TarInfo):
+                tar.addfile(archive_path, local_path)
+                continue
 
             try:
                 tar.add(local_path, arcname=archive_path, recursive=False)
@@ -412,20 +409,76 @@ class PGBaseBackup(Thread):
             yield archive_path, local_path, False
             yield from add_directory(archive_path, local_path, missing_ok=False)
 
+    def tar_one_file(self, *, temp_dir, chunk_path, files_to_backup, callback_queue,
+                     filetype="basebackup_chunk", extra_metadata=None):
+        start_time = time.monotonic()
+
+        encryption_key_id = self.config["backup_sites"][self.site]["encryption_key_id"]
+        if encryption_key_id:
+            rsa_public_key = self.config["backup_sites"][self.site]["encryption_keys"][encryption_key_id]["public"]
+        else:
+            rsa_public_key = None
+
+        with NamedTemporaryFile(dir=temp_dir, prefix=os.path.basename(chunk_path), suffix=".tmp") as raw_output_obj:
+            # pylint: disable=bad-continuation
+            with rohmufile.file_writer(
+                    compression_algorithm=self.config["compression"]["algorithm"],
+                    compression_level=self.config["compression"]["level"],
+                    rsa_public_key=rsa_public_key,
+                    fileobj=raw_output_obj) as output_obj:
+                with tarfile.TarFile(fileobj=output_obj, mode="w") as output_tar:
+                    self.write_files_to_tar(files=files_to_backup, tar=output_tar)
+
+                input_size = output_obj.tell()
+
+            result_size = raw_output_obj.tell()
+            os.link(raw_output_obj.name, chunk_path)
+
+        rohmufile.log_compression_result(
+            encrypted=True if encryption_key_id else False,
+            elapsed=time.monotonic() - start_time,
+            original_size=input_size,
+            result_size=result_size,
+            source_name="$PGDATA files ({})".format(len(files_to_backup)),
+            log_func=self.log.info,
+        )
+
+        metadata = {
+            "compression-algorithm": self.config["compression"]["algorithm"],
+            "encryption-key-id": encryption_key_id,
+            "format": "pghoard-bb-v2",
+            "original-file-size": input_size,
+        }
+        if extra_metadata:
+            metadata.update(extra_metadata)
+        self.transfer_queue.put({
+            "callback_queue": callback_queue,
+            "file_size": result_size,
+            "filetype": filetype,
+            "local_path": chunk_path,
+            "metadata": metadata,
+            "site": self.site,
+            "type": "UPLOAD",
+        })
+
+        # Get the name of the chunk and the name of the parent directory (ie backup "name")
+        chunk_name = "/".join(chunk_path.split("/")[-2:])
+        return chunk_name, input_size, result_size
+
     def run_local_tar_basebackup(self):
         pgdata = self.config["backup_sites"][self.site]["pg_data_directory"]
         if not os.path.isdir(pgdata):
             raise errors.InvalidConfigurationError("pg_data_directory {!r} does not exist".format(pgdata))
 
-        temp_basebackup_dir, compressed_basebackup = self.get_paths_for_backup(self.basebackup_path)
+        temp_base_dir, compressed_base = self.get_paths_for_backup(self.basebackup_path)
+        os.makedirs(compressed_base)
+        data_file_format = "{}/{}.{{:04x}}.pghoard".format(compressed_base, os.path.basename(compressed_base)).format
+        chunk_files = []
 
-        compression_algorithm = self.config["compression"]["algorithm"]
-        compression_level = self.config["compression"]["level"]
+        # Default to 2GB chunks of uncompressed data
+        target_chunk_size = self.config["backup_sites"][self.site].get("basebackup_chunk_size") or (1024 * 1024 * 1024 * 2)
 
-        rsa_public_key = None
-        encryption_key_id = self.config["backup_sites"][self.site]["encryption_key_id"]
-        if encryption_key_id:
-            rsa_public_key = self.config["backup_sites"][self.site]["encryption_keys"][encryption_key_id]["public"]
+        chunk_callback_queue = Queue()
 
         self.log.debug("Connecting to database to start backup process")
         connection_string = connection_string_using_pgpass(self.connection_info)
@@ -482,46 +535,65 @@ class PGBaseBackup(Thread):
                 }
                 db_conn.commit()
 
-                self.log.info("Starting to backup %r to %r", pgdata, compressed_basebackup)
+                self.log.info("Starting to backup %r and %r tablespaces to %r",
+                              pgdata, len(tablespaces), compressed_base)
                 start_time = time.monotonic()
-                with NamedTemporaryFile(dir=temp_basebackup_dir, prefix="data.", suffix=".tmp-compress") as raw_output_obj:
-                    with rohmufile.file_writer(fileobj=raw_output_obj,
-                                               compression_algorithm=compression_algorithm,
-                                               compression_level=compression_level,
-                                               rsa_public_key=rsa_public_key) as output_obj:
-                        with tarfile.TarFile(fileobj=output_obj, mode="w") as output_tar:
-                            self.write_init_entries_to_tar(pgdata=pgdata, tablespaces=tablespaces, tar=output_tar)
-                            files = self.find_files_to_backup(pgdata=pgdata, tablespaces=tablespaces)  # NOTE: generator
-                            self.write_files_to_tar(files=files, tar=output_tar)
-                            self.write_pg_control_to_tar(pgdata=pgdata, tar=output_tar)
 
-                            # Call the stop backup functions now to get backup label for 9.6+ non-exclusive backups
-                            if backup_mode == "non-exclusive":
-                                cursor.execute("SELECT labelfile FROM pg_stop_backup(false)")
-                                backup_label = cursor.fetchone()[0]
-                            elif backup_mode == "pgespresso":
-                                cursor.execute("SELECT pgespresso_stop_backup(%s)", [backup_label])
-                            else:
-                                cursor.execute("SELECT pg_stop_backup()")
-                            db_conn.commit()
-                            backup_stopped = True
+                total_file_count = 0
+                one_chunk_size = 0
+                one_chunk_files = []
+                chunks = []
 
-                            backup_label_data = backup_label.encode("utf-8")
-                            self.write_backup_label_to_tar(tar=output_tar, backup_label=backup_label_data)
+                # Generate a list of chunks
+                for archive_path, local_path, missing_ok in \
+                        self.find_files_to_backup(pgdata=pgdata, tablespaces=tablespaces):
+                    file_size = os.path.getsize(local_path)
 
-                        input_size = output_obj.tell()
+                    # Switch chunks if the current chunk has at least 20% data and the new chunk would tip it over
+                    if one_chunk_size > target_chunk_size / 5 and one_chunk_size + file_size > target_chunk_size:
+                        chunks.append(one_chunk_files)
+                        one_chunk_size = 0
+                        one_chunk_files = []
 
-                    os.link(raw_output_obj.name, compressed_basebackup)
-                    result_size = raw_output_obj.tell()
+                    total_file_count += 1
+                    one_chunk_size += file_size
+                    one_chunk_files.append([archive_path, local_path, missing_ok])
+                chunks.append(one_chunk_files)
 
-                rohmufile.log_compression_result(
-                    elapsed=time.monotonic() - start_time,
-                    encrypted=True if rsa_public_key else False,
-                    log_func=self.log.info,
-                    original_size=input_size,
-                    result_size=result_size,
-                    source_name=pgdata,
-                )
+                # Tar up the chunks and submit them for upload; note that we start from chunk 1 here; chunk 0
+                # is reserved for special files and metadata and will be generated last.
+                for chunk_id, one_chunk_files in enumerate(chunks, 1):
+                    chunk_name, input_size, result_size = self.tar_one_file(
+                        callback_queue=chunk_callback_queue,
+                        chunk_path=data_file_format(chunk_id),
+                        temp_dir=temp_base_dir,
+                        files_to_backup=one_chunk_files,
+                    )
+                    chunk_files.append([chunk_name, input_size, result_size])
+
+                # Everything is now tarred up, grab the latest pg_control and stop the backup process
+                with open(os.path.join(pgdata, "global", "pg_control"), "rb") as fp:
+                    pg_control = fp.read()
+
+                # Call the stop backup functions now to get backup label for 9.6+ non-exclusive backups
+                if backup_mode == "non-exclusive":
+                    cursor.execute("SELECT labelfile FROM pg_stop_backup(false)")
+                    backup_label = cursor.fetchone()[0]
+                elif backup_mode == "pgespresso":
+                    cursor.execute("SELECT pgespresso_stop_backup(%s)", [backup_label])
+                else:
+                    cursor.execute("SELECT pg_stop_backup()")
+                db_conn.commit()
+                backup_stopped = True
+
+                total_size_plain = sum(item[1] for item in chunk_files)
+                total_size_enc = sum(item[2] for item in chunk_files)
+
+                self.log.info("Basebackup generation finished, %r files, %r chunks, "
+                              "%r byte input, %r byte output, took %r seconds, waiting to upload",
+                              total_file_count, len(chunk_files),
+                              total_size_plain, total_size_enc, time.monotonic() - start_time)
+
             finally:
                 db_conn.rollback()
                 if not backup_stopped:
@@ -533,35 +605,55 @@ class PGBaseBackup(Thread):
                         cursor.execute("SELECT pg_stop_backup()")
                 db_conn.commit()
 
-            backup_end_time, backup_end_wal_segment = self.get_backup_end_time_and_segment(db_conn, backup_mode)
+            backup_label_data = backup_label.encode("utf-8")
+            backup_start_wal_segment, backup_start_time = self.parse_backup_label(backup_label_data)
+            backup_end_wal_segment, backup_end_time = self.get_backup_end_segment_and_time(db_conn, backup_mode)
 
-        backup_start_wal_segment, backup_start_time = self.parse_backup_label(backup_label_data)
+        # wait for chunk transfer to finish
+        # TODO: timeout?
+        # TODO: handle errors?
+        # TODO: wipe chunks on error
+        upload_results = []
+        while len(upload_results) < len(chunk_files):
+            upload_results.append(chunk_callback_queue.get())
+
+        self.log.info("Basebackup chunk upload finished")
+
+        # Generate and upload the metadata chunk
         metadata = {
-            "compression-algorithm": compression_algorithm,
-            "encryption-key-id": encryption_key_id,
-            "end-time": backup_end_time,
-            "end-wal-segment": backup_end_wal_segment,
-            "format": "pghoard-bb-v1",
-            "original-file-size": input_size,
-            "pg-version": self.pg_version_server,
-            "start-time": backup_start_time,
-            "start-wal-segment": backup_start_wal_segment,
+            "backup_end_time": backup_end_time,
+            "backup_end_wal_segment": backup_end_wal_segment,
+            "backup_start_time": backup_start_time,
+            "backup_start_wal_segment": backup_start_wal_segment,
+            "chunks": chunk_files,
+            "pgdata": pgdata,
+            "pghoard_object": "basebackup",
+            "pghoard_version": version.__version__,
+            "tablespaces": tablespaces,
         }
-        for spcname, spcinfo in tablespaces.items():
-            metadata["tablespace-name-{}".format(spcinfo["oid"])] = spcname
-            metadata["tablespace-path-{}".format(spcinfo["oid"])] = spcinfo["path"]
+        control_files = list(self.get_control_entries_for_tar(
+            metadata=metadata,
+            pg_control=pg_control,
+            backup_label=backup_label_data,
+        ))
+        self.tar_one_file(
+            callback_queue=self.callback_queue,
+            chunk_path=data_file_format(0),
+            temp_dir=temp_base_dir,
+            files_to_backup=control_files,
+            filetype="basebackup",
+            extra_metadata={
+                "end-time": backup_end_time,
+                "end-wal-segment": backup_end_wal_segment,
+                "pg-version": self.pg_version_server,
+                "start-time": backup_start_time,
+                "start-wal-segment": backup_start_wal_segment,
+                "total-size-plain": total_size_plain,
+                "total-size-enc": total_size_enc,
+            },
+        )
 
-        self.transfer_queue.put({
-            "callback_queue": self.callback_queue,
-            "file_size": result_size,
-            "filetype": "basebackup",
-            "local_path": compressed_basebackup,
-            "metadata": metadata,
-            "site": self.site,
-            "type": "UPLOAD",
-        })
-
-    def get_backup_end_time_and_segment(self, db_conn, backup_mode):
+    def get_backup_end_segment_and_time(self, db_conn, backup_mode):
         """Grab a timestamp and WAL segment name after the end of the backup: this is a point in time to which
         we must be able to recover to, and the last WAL segment that is required for the backup to be
         consistent.
@@ -592,4 +684,4 @@ class PGBaseBackup(Thread):
             cursor.execute("SELECT pg_stop_backup()")
         db_conn.commit()
 
-        return backup_end_time, backup_end_wal_segment
+        return backup_end_wal_segment, backup_end_time
