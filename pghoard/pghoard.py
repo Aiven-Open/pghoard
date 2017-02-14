@@ -550,6 +550,7 @@ def main(args=None):
     parser = argparse.ArgumentParser(
         prog="pghoard",
         description="postgresql automatic backup daemon")
+    parser.add_argument("-D", "--debug", help="Enable debug logging", action="store_true")
     parser.add_argument("--version", action="version", help="show program version",
                         version=version.__version__)
     parser.add_argument("-s", "--short-log", help="use non-verbose logging format", action="store_true")
@@ -567,7 +568,7 @@ def main(args=None):
         print("pghoard: {!r} doesn't exist".format(config_path))
         return 1
 
-    logutil.configure_logging(short_log=arg.short_log)
+    logutil.configure_logging(short_log=arg.short_log, level=logging.DEBUG if arg.debug else logging.INFO)
 
     try:
         pghoard = PGHoard(config_path)

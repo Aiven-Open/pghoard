@@ -116,6 +116,7 @@ class Restore:
 
     def create_parser(self):
         parser = argparse.ArgumentParser()
+        parser.add_argument("-D", "--debug", help="Enable debug logging", action="store_true")
         parser.add_argument("--version", action='version', help="show program version",
                             version=version.__version__)
         sub = parser.add_subparsers(help="sub-command help")
@@ -435,6 +436,7 @@ class Restore:
     def run(self, args=None):
         parser = self.create_parser()
         args = parser.parse_args(args)
+        logutil.configure_logging(level=logging.DEBUG if args.debug else logging.INFO)
         if not hasattr(args, "func"):
             parser.print_help()
             return 1
@@ -489,7 +491,6 @@ class HTTPRestore(ObjectStore):
 
 
 def main():
-    logutil.configure_logging(level=logging.INFO)
     try:
         restore = Restore()
         return restore.run()

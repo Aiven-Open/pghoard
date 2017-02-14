@@ -81,8 +81,8 @@ def save_keys(config_file, site, key_id, rsa_private_key, rsa_public_key):
 
 
 def main():
-    logutil.configure_logging(level=logging.INFO)
     parser = argparse.ArgumentParser()
+    parser.add_argument("-D", "--debug", help="Enable debug logging", action="store_true")
     parser.add_argument("--version", action="version", help="show program version",
                         version=version.__version__)
     parser.add_argument("--site", help="backup site", required=False)
@@ -91,6 +91,7 @@ def main():
     parser.add_argument("--config", help="configuration file to store the keys in", default=os.environ.get("PGHOARD_CONFIG"))
 
     args = parser.parse_args()
+    logutil.configure_logging(level=logging.DEBUG if args.debug else logging.INFO)
 
     rsa_private_key, rsa_public_key = create_keys(args.bits)
     try:
