@@ -1,3 +1,9 @@
+pghoard future
+==============
+
+* `local-tar` backups are now split to roughly 2 gigabyte chunks of
+  plain-text files
+
 pghoard X.X.X (2016-XX-XX)
 ==========================
 
