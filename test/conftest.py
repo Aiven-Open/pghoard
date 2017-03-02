@@ -4,15 +4,19 @@ pghoard: fixtures for tests
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
-from pghoard import config as pghconfig, logutil
+from pghoard import config as pghconfig, logutil, pgutil
 from pghoard.pghoard import PGHoard
+from pghoard.rohmu.compat import suppress
 from pghoard.rohmu.snappyfile import snappy
 from py import path as py_path  # pylint: disable=no-name-in-module
+import contextlib
 import json
 import lzma
 import os
+import psycopg2
 import pytest
 import random
+import re
 import signal
 import subprocess
 import tempfile
@@ -24,7 +28,8 @@ logutil.configure_logging()
 
 class TestPG:
     def __init__(self, pgdata):
-        self.pgbin = pghconfig.find_pg_binary("")
+        pgver = os.getenv("PG_VERSION")
+        self.pgbin = pghconfig.find_pg_binary("", versions=[pgver] if pgver else None)
         self.pgdata = pgdata
         self.pg = None
         self.user = None
@@ -40,11 +45,14 @@ class TestPG:
         subprocess.check_call(argv)
 
     def run_pg(self):
-        self.pg = subprocess.Popen([
+        cmd = [
             os.path.join(self.pgbin, "postgres"),
-            "-D", self.pgdata, "-k", self.pgdata,
-            "-p", self.user["port"], "-c", "listen_addresses=",
-        ])
+            "-D", self.pgdata,
+            "-k", self.pgdata,
+            "-p", self.user["port"],
+            "-c", "listen_addresses=",
+        ]
+        self.pg = subprocess.Popen(cmd)
         time.sleep(1.0)  # let pg start
 
     def kill(self, force=True, immediate=True):
@@ -63,9 +71,8 @@ class TestPG:
             raise Exception("PG pid {} not dead".format(self.pg.pid))
 
 
-# NOTE: cannot use 'tmpdir' fixture here, it only works in 'function' scope
-@pytest.yield_fixture(scope="session")
-def db():
+@contextlib.contextmanager
+def setup_pg():
     tmpdir_obj = py_path.local(tempfile.mkdtemp(prefix="pghoard_dbtest_"))
     tmpdir = str(tmpdir_obj)
     # try to find the binaries for these versions in some path
@@ -89,17 +96,33 @@ def db():
             "local replication passwordy md5\n"
             "local replication all trust\n"
         )
-    with open(os.path.join(pgdata, "postgresql.conf"), "a") as fp:
-        fp.write(
-            "max_wal_senders = 2\n"
-            "wal_keep_segments = 100\n"
-            "wal_level = archive\n"
+    # rewrite postgresql.conf
+    with open(os.path.join(pgdata, "postgresql.conf"), "r+") as fp:
+        lines = fp.read().splitlines()
+        fp.seek(0)
+        fp.truncate()
+        config = {}
+        for line in lines:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            key, val = re.split(r"\s*=\s*", line, 1)
+            config[key] = re.sub(r"\s*(#.*)?$", "", val)
+        config.update({
+            "hot_standby": "on",
+            "logging_collector": "off",
+            "max_wal_senders": 2,
+            "wal_keep_segments": 100,
+            "wal_level": "hot_standby",
             # disable fsync and synchronous_commit to speed up the tests a bit
-            "fsync = off\n"
-            "synchronous_commit = off\n"
+            "fsync": "off",
+            "synchronous_commit": "off",
             # don't need to wait for autovacuum workers when shutting down
-            "autovacuum = off\n"
-        )
+            "autovacuum": "off",
+        })
+        lines = ["{} = {}\n".format(key, val) for key, val in sorted(config.items())]  # noqa
+        fp.write("".join(lines))
+    # now start pg and create test users
     db.run_pg()
     try:
         db.run_cmd("createuser", "-h", db.user["host"], "-p", db.user["port"], "disabled")
@@ -108,10 +131,38 @@ def db():
         yield db
     finally:
         db.kill()
-        try:
+        with suppress(Exception):
             tmpdir_obj.remove(rec=1)
-        except:  # pylint: disable=bare-except
-            pass
+
+
+@pytest.yield_fixture(scope="session")
+def db():
+    with setup_pg() as pg:
+        yield pg
+
+
+@pytest.yield_fixture(scope="session")
+def recovery_db():
+    with setup_pg() as pg:
+        # Make sure pgespresso extension is installed before we turn this into a standby
+        conn_str = pgutil.create_connection_string(pg.user)
+        conn = psycopg2.connect(conn_str)
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM pg_available_extensions WHERE name = 'pgespresso' AND default_version >= '1.2'")
+        if cursor.fetchone():
+            cursor.execute("CREATE EXTENSION pgespresso")
+        conn.commit()
+        conn.close()
+        # Now perform a clean shutdown and restart in recovery
+        pg.kill(force=False, immediate=False)
+        with open(os.path.join(pg.pgdata, "recovery.conf"), "w") as fp:
+            fp.write(
+                "standby_mode = 'on'\n"
+                "recovery_target_timeline = 'latest'\n"
+                "restore_command = 'false'\n"
+            )
+        pg.run_pg()
+        yield pg
 
 
 @pytest.yield_fixture  # pylint: disable=redefined-outer-name

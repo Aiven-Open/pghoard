@@ -140,7 +140,7 @@ LABEL: pg_basebackup base backup
         expected_items = (bunameset | {"pgdata/global/pg_control"}) - {"pgdata/global/sub2.test"}
         assert arcnameset == expected_items
 
-    def _test_create_basebackup(self, capsys, db, pghoard, mode):
+    def _test_create_basebackup(self, capsys, db, pghoard, mode, *, replica=False):
         pghoard.create_backup_site_paths(pghoard.test_site)
         basebackup_path = os.path.join(pghoard.config["backup_location"], pghoard.test_site, "basebackup")
         q = Queue()
@@ -164,7 +164,8 @@ LABEL: pg_basebackup base backup
         assert "start-wal-segment" in out
         if mode == "local-tar":
             assert "end-time" in out
-            assert "end-wal-segment" in out
+            if replica is False:
+                assert "end-wal-segment" in out
 
         storage_config = common.get_object_storage_config(pghoard.config, pghoard.test_site)
         storage = get_transfer(storage_config)
@@ -174,7 +175,8 @@ LABEL: pg_basebackup base backup
             assert "start-time" in backup["metadata"]
             assert dateutil.parser.parse(backup["metadata"]["start-time"]).tzinfo  # pylint: disable=no-member
             if mode == "local-tar":
-                assert "end-wal-segment" in backup["metadata"]
+                if replica is False:
+                    assert "end-wal-segment" in backup["metadata"]
                 assert "end-time" in backup["metadata"]
                 assert dateutil.parser.parse(backup["metadata"]["end-time"]).tzinfo  # pylint: disable=no-member
 
@@ -208,8 +210,8 @@ LABEL: pg_basebackup base backup
         check_call([os.path.join(db.pgbin, "pg_controldata"), backup_out])
         # TODO: check that the backup is valid
 
-    def _test_basebackups(self, capsys, db, pghoard, tmpdir, mode):
-        self._test_create_basebackup(capsys, db, pghoard, mode)
+    def _test_basebackups(self, capsys, db, pghoard, tmpdir, mode, *, replica=False):
+        self._test_create_basebackup(capsys, db, pghoard, mode, replica=replica)
         self._test_restore_basebackup(db, pghoard, tmpdir)
 
     def test_basebackups_basic(self, capsys, db, pghoard, tmpdir):
@@ -258,6 +260,21 @@ LABEL: pg_basebackup base backup
                 self._test_basebackups(capsys, db, pghoard, tmpdir, "local-tar")
             finally:
                 cursor.execute("DROP EXTENSION pgespresso")
+
+    def test_basebackups_replica_local_tar_nonexclusive(self, capsys, recovery_db, pghoard, tmpdir):
+        if recovery_db.pgver < "9.6":
+            pytest.skip("PostgreSQL 9.6+ required for non-exclusive backups")
+        self._test_basebackups(capsys, recovery_db, pghoard, tmpdir, "local-tar", replica=True)
+
+    def test_basebackups_replica_local_tar_pgespresso(self, capsys, recovery_db, pghoard, tmpdir):
+        conn_str = pgutil.create_connection_string(recovery_db.user)
+        with psycopg2.connect(conn_str) as conn:
+            conn.autocommit = True
+            cursor = conn.cursor()
+            cursor.execute("SELECT 1 FROM pg_available_extensions WHERE name = 'pgespresso' AND default_version >= '1.2'")
+            if not cursor.fetchone():
+                pytest.skip("pgespresso not available")
+        self._test_basebackups(capsys, recovery_db, pghoard, tmpdir, "local-tar", replica=True)
 
     def test_basebackups_pipe(self, capsys, db, pghoard, tmpdir):
         self._test_basebackups(capsys, db, pghoard, tmpdir, "pipe")
