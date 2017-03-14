@@ -573,8 +573,15 @@ class PGBaseBackup(Thread):
         cursor = db_conn.cursor()
 
         # Get backup end time and end segment and forcibly register a transaction in the current segment
-        cursor.execute("SELECT now(), pg_xlogfile_name(pg_current_xlog_location()), txid_current()")
-        backup_end_time, backup_end_wal_segment, _ = cursor.fetchone()
+        # Note that we can't call pg_xlogfile_name() or pg_current_xlog_location() in recovery
+        cursor.execute("SELECT now(), pg_is_in_recovery()")
+        backup_end_time, in_recovery = cursor.fetchone()
+        if in_recovery:
+            db_conn.commit()
+            return backup_end_time, None
+
+        cursor.execute("SELECT pg_xlogfile_name(pg_current_xlog_location()), txid_current()")
+        backup_end_wal_segment, _ = cursor.fetchone()
         db_conn.commit()
 
         # Now force switch of the xlog segment to make sure we have archived a segment with a known
