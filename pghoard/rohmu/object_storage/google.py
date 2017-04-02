@@ -12,6 +12,7 @@ import googleapiclient  # noqa pylint: disable=unused-import
 
 from contextlib import contextmanager
 from io import BytesIO, FileIO
+import codecs
 import errno
 import httplib2
 import json
@@ -71,6 +72,14 @@ def get_credentials(credential_file=None, credentials=None):
             user_agent="pghoard")
 
     return GoogleCredentials.get_application_default()
+
+
+def base64_to_hex(b64val):
+    if isinstance(b64val, str):
+        b64val = b64val.encode("ascii")
+    rawval = codecs.decode(b64val, "base64")
+    hexval = codecs.encode(rawval, "hex")
+    return hexval.decode("ascii")
 
 
 class GoogleTransfer(BaseTransfer):
@@ -183,6 +192,7 @@ class GoogleTransfer(BaseTransfer):
                     "size": int(item["size"]),
                     "last_modified": parse_timestamp(item["updated"]),
                     "metadata": item.get("metadata", {}),
+                    "md5": base64_to_hex(item["md5Hash"]),
                 })
         return return_list
 
