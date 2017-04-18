@@ -1,4 +1,3 @@
-
 """
 pghoard - main pghoard daemon
 
@@ -148,7 +147,7 @@ class PGHoard:
         pg_version = None
         try:
             with closing(psycopg2.connect(connection_string)) as c:
-                pg_version = c.server_version
+                pg_version = c.server_version  # pylint: disable=no-member
         except psycopg2.OperationalError as ex:
             self.log.warning("%s (%s) connecting to DB at: %r",
                              ex.__class__.__name__, ex, connection_string)

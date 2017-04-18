@@ -46,18 +46,18 @@ class StatsClient(object):
         send_tags = self._tags.copy()
         send_tags.update(tags or {})
         if self._message_format == "datadog":
-            for index, (tag, value) in enumerate(send_tags.items()):
+            for index, (tag, val) in enumerate(send_tags.items()):
                 if index == 0:
                     separator = "|#"
                 else:
                     separator = ","
-                if value is None:
+                if val is None:
                     pattern = "{}{}"
                 else:
                     pattern = "{}{}:{}"
-                parts.append(pattern.format(separator, tag, value).encode("utf-8"))
+                parts.append(pattern.format(separator, tag, val).encode("utf-8"))
         else:
-            for tag, value in send_tags.items():
-                parts.insert(1, ",{}={}".format(tag, value).encode("utf-8"))
+            for tag, val in send_tags.items():
+                parts.insert(1, ",{}={}".format(tag, val).encode("utf-8"))
 
         self._socket.sendto(b"".join(parts), self._dest_addr)
