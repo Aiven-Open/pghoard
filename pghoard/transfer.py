@@ -73,7 +73,7 @@ class TransferAgent(Thread):
         Transmits max once per ten seconds, regardless of how many threads are running.
         """
         global _last_stats_transmit_time  # pylint: disable=global-statement
-        with _STATS_LOCK:
+        with _STATS_LOCK:  # pylint: disable=not-context-manager
             if time.time() - _last_stats_transmit_time < 10.0:
                 return
 

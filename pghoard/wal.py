@@ -131,8 +131,8 @@ def verify_wal(*, wal_name, fileobj=None, filepath=None):
             source_name = getattr(fileobj, "name", "<UNKNOWN>")
         else:
             source_name = filepath
-            with open(filepath, "rb") as fileobj:
-                header_bytes = fileobj.read(WAL_HEADER_LEN)
+            with open(filepath, "rb") as fileobject:
+                header_bytes = fileobject.read(WAL_HEADER_LEN)
 
         hdr = read_header(header_bytes)
     except (KeyError, OSError, ValueError) as ex:

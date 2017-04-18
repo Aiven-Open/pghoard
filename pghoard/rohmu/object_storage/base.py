@@ -42,7 +42,7 @@ class BaseTransfer:
     def delete_key(self, key):
         raise NotImplementedError
 
-    def get_contents_to_file(self, key, path, *, progress_callback=None):
+    def get_contents_to_file(self, key, filepath_to_store_to, *, progress_callback=None):
         """Write key contents to file pointed by `path` and return metadata.  If `progress_callback` is
         provided it must be a function which accepts two numeric arguments: current state of progress and the
         expected maximum value.  The actual values and value ranges differ per storage provider, some (S3)
