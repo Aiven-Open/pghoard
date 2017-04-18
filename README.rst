@@ -518,13 +518,23 @@ Optional keys for Amazon Web Services S3:
 
  * Optional configuration keys for Swift:
 
-  * ``auth_version`` - defaults to ``2.0`` for keystone, use ``1.0`` with
-    Ceph Rados GW.
+  * ``auth_version`` - ``2.0`` (default) or ``3.0`` for keystone, use ``1.0`` with
+    Ceph Rados GW. 
   * ``segment_size`` - defaults to ``1024**3`` (1 gigabyte).  Objects larger
     than this will be split into multiple segments on upload.  Many Swift
     installations require large files (usually 5 gigabytes) to be segmented.
   * ``tenant_name``
   * ``region_name``
+  * ``user_id`` - for auth_version 3.0
+  * ``user_domain_id`` - for auth_version 3.0
+  * ``user_domain_name`` - for auth_version 3.0
+  * ``tenant_id`` - for auth_version 3.0
+  * ``project_id`` - for auth_version 3.0
+  * ``project_name`` - for auth_version 3.0
+  * ``project_domain_id`` - for auth_version 3.0
+  * ``project_domain_name`` - for auth_version 3.0
+  * ``service_type`` - for auth_version 3.0
+  * ``endpoint_type`` - for auth_version 3.0
 
 ``pg_bin_directory`` (default: find binaries from well-known directories)
 

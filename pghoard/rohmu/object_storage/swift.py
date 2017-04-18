@@ -40,14 +40,33 @@ logging.getLogger("swiftclient").setLevel(logging.WARNING)
 class SwiftTransfer(BaseTransfer):
     def __init__(self, *, user, key, container_name, auth_url,
                  auth_version="2.0", tenant_name=None, prefix=None,
-                 segment_size=SEGMENT_SIZE, region_name=None):
+                 segment_size=SEGMENT_SIZE, region_name=None,
+                 user_id=None, user_domain_id=None, user_domain_name=None,
+                 tenant_id=None, project_id=None, project_name=None,
+                 project_domain_id=None, project_domain_name=None,
+                 service_type=None, endpoint_type=None):
         prefix = prefix.lstrip("/") if prefix else ""
         super().__init__(prefix=prefix)
         self.container_name = container_name
-        if region_name is not None:
-            os_options = {'region_name': region_name}
+
+        if auth_version == "3.0":
+            os_options = {'region_name': region_name,
+                          'user_id': user_id,
+                          'user_domain_id': user_domain_id,
+                          'user_domain_name': user_domain_name,
+                          'tenant_id': tenant_id,
+                          'project_id': project_id,
+                          'project_name': project_name,
+                          'project_domain_id': project_domain_id,
+                          'project_domain_name': project_domain_name,
+                          'service_type': service_type,
+                          'endpoint_type': endpoint_type}
         else:
-            os_options = None
+            if region_name is not None:
+                os_options = {'region_name': region_name}
+            else:
+                os_options = None
+
         self.conn = client.Connection(user=user, key=key, authurl=auth_url,
                                       tenant_name=tenant_name, auth_version=auth_version,
                                       os_options=os_options)
