@@ -343,6 +343,43 @@ needs to be compressed, encrypted and stored in an object store (in archive
 mode) or it's inverse (in restore mode.)
 
 
+Restoring databases
+===================
+
+You can list your database basebackups by running::
+
+  pghoard_restore list-basebackups --config /var/lib/pghoard/pghoard.json --site default
+
+  Basebackup                                      Size  Start time            Metadata
+  ----------------------------------------  ----------  --------------------  ------------
+  default/basebackup/2016-04-12_0                 8 MB  2016-04-12T07:31:27Z  {'original-file-size': '48060928', 'start-wal-segment': '000000010000000000000012', 'compression-algorithm': 'snappy'}
+
+If we'd want to restore to the latest point in time we could fetch the required basebackup by running::
+
+  pghoard_restore get-basebackup --target-dir /var/lib/pgsql/9.5/data --site default --config /var/lib/pghoard/pghoard.json --restore-to-master
+
+  Basebackup complete.
+  You can start PostgreSQL by running pg_ctl -D foo start
+  On systemd based systems you can run systemctl start postgresql
+  On SYSV Init based systems you can run /etc/init.d/postgresql start
+
+Note that the ``target-dir`` needs to be either an empty or
+non-existing directory in which case PGHoard will automatically create
+it.
+
+After this we'd proceed to start both the PGHoard server process and the
+PostgreSQL server normally by running (on systemd based systems)::
+
+  systemctl start pghoard
+  systemctl start postgresql-9.5
+
+Which will make PostgreSQL start recovery process to the latest point
+in time. PGHoard must be running before you start up the
+PostgreSQL server. To see other possible restoration options please run::
+
+  pghoard_restore --help
+
+
 Configuration keys
 ==================
 
