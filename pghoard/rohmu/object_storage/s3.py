@@ -177,7 +177,7 @@ class S3Transfer(BaseTransfer):
                     self.log.info("Upload of part: %r/%r of %r, part size: %r took: %.2fs",
                                   part_num, chunks, filepath, self.multipart_chunk_size,
                                   time.monotonic() - start_time)
-            if len(mp.get_all_parts()) == chunks:
+            if len(list(mp)) == chunks:
                 self.log.info("Multipart upload of %r, size: %r, took: %.2fs, now completing multipart",
                               filepath, size, time.monotonic() - start_of_multipart_upload)
                 mp.complete_upload()
