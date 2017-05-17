@@ -246,7 +246,7 @@ a new WAL segment is ready.  The command instructs PGHoard to store the
 segment in its object store.
 
 The other option is to set up PGHoard to read the WAL stream directly from
-PostgreSQL.  To to this ``archive_mode`` must be disabled in
+PostgreSQL.  To do this ``archive_mode`` must be disabled in
 ``postgresql.conf`` and ``pghoard.json`` must set ``active_backup_mode`` to
 ``pg_receivexlog`` in the relevant site, for example::
 
@@ -351,7 +351,7 @@ Configuration keys
 Can be set on a per ``backup_site`` level to ``false`` to disable the taking
 of new backups and to stop the deletion of old ones.
 
-``active_backup_mode`` (no default)
+``active_backup_mode`` (default ``pg_receivexlog``)
 
 Can be either ``pg_receivexlog`` or ``archive_command``. If set to
 ``pg_receivexlog``, ``pghoard`` will start up a ``pg_receivexlog`` process to be
@@ -362,7 +362,7 @@ whereby pghoard will start communicating directly with PostgreSQL
 through the replication protocol. (Note requires an unreleased version
 of psycopg2 library)
 
-``alert_file_dir`` (default ``os.getcwd()``)
+``alert_file_dir`` (default ``backup_location`` if set else ``os.getcwd()``)
 
 Directory in which alert files for replication warning and failover are
 created.
@@ -381,7 +381,7 @@ configuration must list one or more nodes (under the configuration key
 object of libpq key: value connection info pairs or libpq connection string
 or a ``postgres://`` connection uri.
 
-``basebackup_count`` (default ``1``)
+``basebackup_count`` (default ``2``)
 
 How many basebackups should be kept around for restoration purposes.  The
 more there are the more diskspace will be used.
