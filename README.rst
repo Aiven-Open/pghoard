@@ -23,7 +23,8 @@ Fault-resilience and monitoring:
 * Verifies WAL file headers before upload (backup) and after download (restore),
   so that e.g. files recycled by PostgreSQL are ignored
 * Automatic history cleanup (backups and related WAL files older than N days)
-* ``archive_sync`` tool for detecting holes in WAL backup streams and fixing them
+* "Archive sync" tool for detecting holes in WAL backup streams and fixing them
+* "Archive cleanup" tool for deleting obsolete WAL files from the archive
 * Keeps statistics updated in a file on disk (for monitoring tools)
 * Creates alert files on disk on problems (for monitoring tools)
 
@@ -315,12 +316,24 @@ PostgreSQL server. To see other possible restoration options please run::
 Commands
 ========
 
-If correctly installed, PGHoard comes with five executables, ``pghoard``,
-``pghoard_archive_sync``, ``pghoard_create_keys`` and
-``pghoard_postgres_command`` and ``pghoard_restore``
+Once correctly installed, there are six commands available:
 
-``pghoard`` is the main process that should be run under ``systemd`` or
-``supervisord``.  It handles the backup of the configured sites.
+``pghoard`` is the main daemon process that should be run under a service
+manager, such as ``systemd`` or ``supervisord``.  It handles the backup of
+the configured sites.
+
+``pghoard_restore`` is a command line tool that can be used to restore a
+previous database backup from either ``pghoard`` itself or from one of the
+supported object stores.  ``pghoard_restore`` can also configure
+``recovery.conf`` to use ``pghoard_postgres_command`` as the WAL
+``restore_command`` in ``recovery.conf``.
+
+``pghoard_archive_cleanup`` can be used to clean up any orphan WAL files
+from the object store.  After the configured number of basebackups has been
+exceeded (configuration key ``basebackup_count``), ``pghoard`` deletes the
+oldest basebackup and all WAL associated with it.  Transient object storage
+failures and other interruptions can cause the WAL deletion process to leave
+orphan WAL files behind, they can be deleted with this tool.
 
 ``pghoard_archive_sync`` can be used to see if any local files should
 be archived but haven't been. The other usecase it has is to determine
@@ -329,12 +342,6 @@ from the current WAL file on to to the latest basebackup's first WAL file.
 
 ``pghoard_create_keys`` can be used to generate and output encryption keys
 in the ``pghoard`` configuration format.
-
-``pghoard_restore`` is a command line tool that can be used to restore a
-previous database backup from either ``pghoard`` itself or from one of the
-supported object stores.  ``pghoard_restore`` can also configure
-``recovery.conf`` to use ``pghoard_postgres_command`` as the WAL ``restore_command``
-in ``recovery.conf``.
 
 ``pghoard_postgres_command`` is a command line tool that can be used as
 PostgreSQL's ``archive_command`` or ``recovery_command``.  It communicates with
