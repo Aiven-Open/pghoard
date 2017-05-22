@@ -16,7 +16,7 @@ from .common import (
 from .patchedtarfile import tarfile
 from pghoard.rohmu import dates, errors, rohmufile
 from pghoard.rohmu.compat import suppress
-from queue import Queue
+from queue import Empty, Queue
 from tempfile import NamedTemporaryFile
 from threading import Thread
 import datetime
@@ -609,15 +609,17 @@ class PGBaseBackup(Thread):
             backup_start_wal_segment, backup_start_time = self.parse_backup_label(backup_label_data)
             backup_end_wal_segment, backup_end_time = self.get_backup_end_segment_and_time(db_conn, backup_mode)
 
-        # wait for chunk transfer to finish
-        # TODO: timeout?
-        # TODO: handle errors?
-        # TODO: wipe chunks on error
         upload_results = []
+        start_time = time.monotonic()
         while len(upload_results) < len(chunk_files):
-            upload_results.append(chunk_callback_queue.get())
+            try:
+                upload_results.append(chunk_callback_queue.get(timeout=3.0))
+            except Empty:
+                self.log.warning("Upload status: %r/%r handled, time taken: %r", len(upload_results), len(chunk_files),
+                                 time.monotonic() - start_time)
+                continue
 
-        self.log.info("Basebackup chunk upload finished")
+        self.log.info("Basebackup chunk upload finished %r files uploaded", len(upload_results))
 
         # Generate and upload the metadata chunk
         metadata = {
