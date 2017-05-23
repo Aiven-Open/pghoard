@@ -672,7 +672,7 @@ class PGBaseBackup(Thread):
         backup_end_time, in_recovery = cursor.fetchone()
         if in_recovery:
             db_conn.commit()
-            return backup_end_time, None
+            return None, backup_end_time
 
         cursor.execute("SELECT pg_xlogfile_name(pg_current_xlog_location()), txid_current()")
         backup_end_wal_segment, _ = cursor.fetchone()
