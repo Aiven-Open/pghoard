@@ -107,6 +107,45 @@ class TestWebServer:
         assert "{} MB".format(int(backups[0]["metadata"]["original-file-size"]) // (1024 ** 2)) in out
         assert backups[0]["name"] in out
 
+    def test_xlog_fetch_optimization(self, pghoard):
+        # inject fake WAL and timeline files for testing
+        invalid_xlog_name = "000000060000000000000001"
+        valid_xlog_name = "000000060000000000000002"
+        xlog_name_output = "optimization_output_filename"
+        output_path = os.path.join(
+            pghoard.config["backup_sites"][pghoard.test_site]["pg_xlog_directory"], xlog_name_output)
+        invalid_xlog_path = os.path.join(
+            pghoard.config["backup_sites"][pghoard.test_site]["pg_xlog_directory"], invalid_xlog_name)
+        valid_xlog_path = os.path.join(
+            pghoard.config["backup_sites"][pghoard.test_site]["pg_xlog_directory"], valid_xlog_name)
+
+        with open(valid_xlog_path, "wb") as out_file:
+            out_file.write(wal_header_for_file(os.path.basename(valid_xlog_path)))
+        with open(invalid_xlog_path, "wb") as out_file:
+            # We use the wrong WAL file's name to generate the header on purpose to see that our check works
+            out_file.write(wal_header_for_file(os.path.basename(valid_xlog_path)))
+
+        restore_command(
+            site=pghoard.test_site,
+            xlog=os.path.basename(valid_xlog_name),
+            host="127.0.0.1",
+            port=pghoard.config["http_port"],
+            output=output_path,
+            retry_interval=0.1)
+        assert os.path.exists(output_path)
+        os.unlink(output_path)
+
+        with pytest.raises(postgres_command.PGCError):
+            restore_command(
+                site=pghoard.test_site,
+                xlog=os.path.basename(invalid_xlog_name),
+                host="127.0.0.1",
+                port=pghoard.config["http_port"],
+                output=output_path,
+                retry_interval=0.1)
+        assert not os.path.exists(output_path)
+        os.unlink(invalid_xlog_path)
+
     def test_archiving(self, pghoard):
         store = pghoard.transfer_agents[0].get_object_storage(pghoard.test_site)
         # inject fake WAL and timeline files for testing
