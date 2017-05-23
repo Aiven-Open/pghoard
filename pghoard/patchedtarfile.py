@@ -5,6 +5,7 @@
 
 from pghoard.rohmu import IO_BLOCK_SIZE as BUFSIZE
 import shutil
+import sys
 import tarfile
 
 
@@ -35,4 +36,5 @@ def copyfileobj(src, dst, length=None, exception=OSError):
     return
 
 
-tarfile.copyfileobj = copyfileobj
+if sys.version_info < (3, 6, 0):
+    tarfile.copyfileobj = copyfileobj

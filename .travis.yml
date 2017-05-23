@@ -1,9 +1,8 @@
 language: python
 
 python:
-  - "3.3"
-  - "3.4"
   - "3.5"
+  - "3.6"
 
 install:
   - "pip install boto cryptography flake8 httplib2 mock psycopg2 pylint pytest python-dateutil python-snappy python-systemd requests azure azure-storage"
