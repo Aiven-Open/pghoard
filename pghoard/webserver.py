@@ -345,6 +345,23 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._save_and_verify_restored_file(filetype, filename, prefetch_target_path, target_path)
             raise HttpResponse(status=201)
 
+        # After reaching a recovery_target and restart of a PG server, PG wants to replay and refetch
+        # files from the archive starting from the latest checkpoint. We have potentially fetched these files
+        # already earlier. Check if we have the files already and if we do, don't go over the network to refetch
+        # them yet again but just rename them to the path that PG is requesting.
+        xlog_path = os.path.join(xlog_dir, filename)
+        if os.path.exists(xlog_path):
+            self.server.log.info("Requested %r, found it in pg_xlog directory as: %r, returning directly",
+                                 filename, xlog_path)
+            success = False
+            try:
+                self._save_and_verify_restored_file(filetype, filename, xlog_path, target_path)
+                success = True
+            except (ValueError, HttpResponse) as ex:
+                self.server.log.warning("Found file: %r but it was invalid: %s", xlog_path, ex)
+            if success:
+                raise HttpResponse(status=201)
+
         prefetch_n = self.server.config["restore_prefetch"]
         prefetch = []
         if filetype == "timeline":
