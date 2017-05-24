@@ -465,6 +465,41 @@ class PGBaseBackup(Thread):
         chunk_name = "/".join(chunk_path.split("/")[-2:])
         return chunk_name, input_size, result_size
 
+    def wait_for_chunk_transfer_to_complete(self, chunk_files, upload_results, chunk_callback_queue, start_time):
+        try:
+            upload_results.append(chunk_callback_queue.get(timeout=3.0))
+            self.log.debug("Completed a chunk transfer successfully: %r", upload_results[-1])
+            return True
+        except Empty:
+            self.log.warning("Upload status: %r/%r handled, time taken: %r", len(upload_results), len(chunk_files),
+                             time.monotonic() - start_time)
+        return False
+
+    def create_and_upload_chunks(self, chunks, data_file_format, temp_base_dir):
+        start_time = time.monotonic()
+        chunk_files = []
+        upload_results = []
+        chunk_callback_queue = Queue()
+        i = 0
+
+        for chunk_id, one_chunk_files in enumerate(chunks, 1):
+            if i < self.config["backup_sites"][self.site].get("basebackup_chunk_count", 5):
+                chunk_name, input_size, result_size = self.tar_one_file(
+                    callback_queue=chunk_callback_queue,
+                    chunk_path=data_file_format(chunk_id),
+                    temp_dir=temp_base_dir,
+                    files_to_backup=one_chunk_files,
+                )
+                chunk_files.append([chunk_name, input_size, result_size])
+                i += 1
+            elif self.wait_for_chunk_transfer_to_complete(chunk_files, upload_results, chunk_callback_queue, start_time):
+                i -= 1
+
+        while len(upload_results) < len(chunk_files):
+            self.wait_for_chunk_transfer_to_complete(chunk_files, upload_results, chunk_callback_queue, start_time)
+
+        return chunk_files
+
     def run_local_tar_basebackup(self):
         pgdata = self.config["backup_sites"][self.site]["pg_data_directory"]
         if not os.path.isdir(pgdata):
@@ -473,12 +508,9 @@ class PGBaseBackup(Thread):
         temp_base_dir, compressed_base = self.get_paths_for_backup(self.basebackup_path)
         os.makedirs(compressed_base)
         data_file_format = "{}/{}.{{:04x}}.pghoard".format(compressed_base, os.path.basename(compressed_base)).format
-        chunk_files = []
 
         # Default to 2GB chunks of uncompressed data
         target_chunk_size = self.config["backup_sites"][self.site].get("basebackup_chunk_size") or (1024 * 1024 * 1024 * 2)
-
-        chunk_callback_queue = Queue()
 
         self.log.debug("Connecting to database to start backup process")
         connection_string = connection_string_using_pgpass(self.connection_info)
@@ -562,14 +594,7 @@ class PGBaseBackup(Thread):
 
                 # Tar up the chunks and submit them for upload; note that we start from chunk 1 here; chunk 0
                 # is reserved for special files and metadata and will be generated last.
-                for chunk_id, one_chunk_files in enumerate(chunks, 1):
-                    chunk_name, input_size, result_size = self.tar_one_file(
-                        callback_queue=chunk_callback_queue,
-                        chunk_path=data_file_format(chunk_id),
-                        temp_dir=temp_base_dir,
-                        files_to_backup=one_chunk_files,
-                    )
-                    chunk_files.append([chunk_name, input_size, result_size])
+                chunk_files = self.create_and_upload_chunks(chunks, data_file_format, temp_base_dir)
 
                 # Everything is now tarred up, grab the latest pg_control and stop the backup process
                 with open(os.path.join(pgdata, "global", "pg_control"), "rb") as fp:
@@ -608,18 +633,6 @@ class PGBaseBackup(Thread):
             backup_label_data = backup_label.encode("utf-8")
             backup_start_wal_segment, backup_start_time = self.parse_backup_label(backup_label_data)
             backup_end_wal_segment, backup_end_time = self.get_backup_end_segment_and_time(db_conn, backup_mode)
-
-        upload_results = []
-        start_time = time.monotonic()
-        while len(upload_results) < len(chunk_files):
-            try:
-                upload_results.append(chunk_callback_queue.get(timeout=3.0))
-            except Empty:
-                self.log.warning("Upload status: %r/%r handled, time taken: %r", len(upload_results), len(chunk_files),
-                                 time.monotonic() - start_time)
-                continue
-
-        self.log.info("Basebackup chunk upload finished %r files uploaded", len(upload_results))
 
         # Generate and upload the metadata chunk
         metadata = {
