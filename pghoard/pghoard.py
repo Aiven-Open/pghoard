@@ -442,7 +442,7 @@ class PGHoard:
                               site, delta_since_last_backup)
                 new_backup_needed = True
 
-        if new_backup_needed:
+        if new_backup_needed and not os.path.exists(self.config["maintenance_mode_file"]):
             self.basebackups_callbacks[site] = Queue()
             self.create_basebackup(site, chosen_backup_node, basebackup_path, self.basebackups_callbacks[site])
 
