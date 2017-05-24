@@ -119,14 +119,16 @@ class PGBaseBackup(Thread):
             "--verbose",
             "--pgdata", output_name,
         ]
+
+        # May be empty if using trust auth
+        password = self.connection_info.pop("password", "")
         if self.pg_version_server < 90300:
-            conn_info = self.connection_info
-            if "user" in conn_info:
-                command.extend(["--user", conn_info["user"]])
-            if "port" in conn_info:
-                command.extend(["--port", conn_info["port"]])
-            if "host" in conn_info:
-                command.extend(["--host", conn_info["host"]])
+            if "user" in self.connection_info:
+                command.extend(["--user", self.connection_info["user"]])
+            if "port" in self.connection_info:
+                command.extend(["--port", self.connection_info["port"]])
+            if "host" in self.connection_info:
+                command.extend(["--host", self.connection_info["host"]])
         else:
             connection_string, _ = replication_connection_string_and_slot_using_pgpass(self.connection_info)
             command.extend([
@@ -134,7 +136,7 @@ class PGBaseBackup(Thread):
                 "--dbname", connection_string
             ])
 
-        return command
+        return command, password
 
     def check_command_success(self, proc, output_file):
         rc = terminate_subprocess(proc, log=self.log)
@@ -204,9 +206,17 @@ class PGBaseBackup(Thread):
         start_wal_segment = wal.get_current_wal_from_identify_system(connection_string)
 
         temp_basebackup_dir, compressed_basebackup = self.get_paths_for_backup(self.basebackup_path)
-        command = self.get_command_line("-")
+        command, password = self.get_command_line("-")
+
         self.log.debug("Starting to run: %r", command)
-        proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        env = {}
+        if password:
+            env = {"PGPASSWORD": password}
+        proc = subprocess.Popen(
+            command,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE)
         setattr(proc, "basebackup_start_time", time.monotonic())
 
         self.pid = proc.pid
@@ -261,10 +271,17 @@ class PGBaseBackup(Thread):
     def run_basic_basebackup(self):
         basebackup_directory, _ = self.get_paths_for_backup(self.basebackup_path)
         basebackup_tar_file = os.path.join(basebackup_directory, "base.tar")
-        command = self.get_command_line(basebackup_directory)
+        command, password = self.get_command_line(basebackup_directory)
 
         self.log.debug("Starting to run: %r", command)
-        proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        env = {}
+        if password:
+            env = {"PGPASSWORD": password}
+        proc = subprocess.Popen(
+            command,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE)
         setattr(proc, "basebackup_start_time", time.monotonic())
 
         self.pid = proc.pid

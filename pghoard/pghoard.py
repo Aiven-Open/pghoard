@@ -171,7 +171,7 @@ class PGHoard:
         self.inotify.add_watch(xlog_directory)
         thread = PGReceiveXLog(
             config=self.config,
-            connection_string=connection_string,
+            connection_info=connection_info,
             xlog_location=xlog_directory,
             site=site,
             slot=slot,
