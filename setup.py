@@ -30,6 +30,7 @@ setup(
     entry_points={
         "console_scripts": [
             "pghoard = pghoard.pghoard:main",
+            "pghoard_archive_cleanup = pghoard.archive_cleanup:main",
             "pghoard_archive_sync = pghoard.archive_sync:main",
             "pghoard_create_keys = pghoard.create_keys:main",
             "pghoard_postgres_command = pghoard.postgres_command:main",

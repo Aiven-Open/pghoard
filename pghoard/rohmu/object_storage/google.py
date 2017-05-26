@@ -171,14 +171,12 @@ class GoogleTransfer(BaseTransfer):
         request = initial_op(domain)
         while request is not None:
             result = self._retry_on_reset(request, request.execute)
-            for item in result.get("items", []):
-                yield item
+            yield from result.get("items", [])
             request = domain.list_next(request, result)
 
-    def list_path(self, key):
+    def list_iter(self, key, *, with_metadata=True):  # pylint: disable=unused-argument
         path = self.format_key_for_backend(key, trailing_slash=True)
         self.log.debug("Listing path %r", path)
-        return_list = []
         with self._object_client() as clob:
             def initial_op(domain):
                 return domain.list(bucket=self.bucket_name, delimiter="/", prefix=path)
@@ -187,14 +185,13 @@ class GoogleTransfer(BaseTransfer):
                 if item["name"].endswith("/"):
                     continue  # skip directory level objects
 
-                return_list.append({
+                yield {
                     "name": self.format_key_from_backend(item["name"]),
                     "size": int(item["size"]),
                     "last_modified": parse_timestamp(item["updated"]),
                     "metadata": item.get("metadata", {}),
                     "md5": base64_to_hex(item["md5Hash"]),
-                })
-        return return_list
+                }
 
     def delete_key(self, key):
         key = self.format_key_for_backend(key)

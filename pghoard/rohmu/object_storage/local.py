@@ -41,13 +41,13 @@ class LocalTransfer(BaseTransfer):
         with suppress(FileNotFoundError):
             os.unlink(metadata_path)
 
-    def list_path(self, key):
+    def list_iter(self, key, *, with_metadata=True):
         target_path = self.format_key_for_backend(key.strip("/"))
-        return_list = []
         try:
             input_files = os.listdir(target_path)
         except FileNotFoundError:
-            return return_list
+            return
+
         for file_name in input_files:
             if file_name.startswith("."):
                 continue
@@ -57,17 +57,19 @@ class LocalTransfer(BaseTransfer):
             metadata_file = full_path + ".metadata"
             if not os.path.exists(metadata_file):
                 continue
-            with open(metadata_file, "r") as fp:
-                metadata = json.load(fp)
+            if with_metadata:
+                with open(metadata_file, "r") as fp:
+                    metadata = json.load(fp)
+            else:
+                metadata = None
             st = os.stat(full_path)
             last_modified = datetime.datetime.fromtimestamp(st.st_mtime, tz=datetime.timezone.utc)
-            return_list.append({
+            yield {
                 "name": os.path.join(key.strip("/"), file_name),
                 "size": st.st_size,
                 "last_modified": last_modified,
                 "metadata": metadata,
-            })
-        return return_list
+            }
 
     def get_contents_to_file(self, key, filepath_to_store_to, *, progress_callback=None):
         source_path = self.format_key_for_backend(key.strip("/"))

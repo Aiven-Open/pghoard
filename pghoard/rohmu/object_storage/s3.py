@@ -76,23 +76,25 @@ class S3Transfer(BaseTransfer):
             raise FileNotFoundFromStorageError(key)
         item.delete()
 
-    def list_path(self, key):
+    def list_iter(self, key, *, with_metadata=True):
         path = self.format_key_for_backend(key, trailing_slash=True)
         self.log.debug("Listing path %r", path)
-        result = []
         for item in self.bucket.list(path, "/"):
             if not hasattr(item, "last_modified"):
                 continue  # skip objects with no last_modified: not regular objects
             name = self.format_key_from_backend(item.name)
             if name == path:
                 continue  # skip the path itself
-            result.append({
+            if with_metadata:
+                metadata = self._metadata_for_key(item.name)
+            else:
+                metadata = None
+            yield {
                 "last_modified": parse_timestamp(item.last_modified),
-                "metadata": self._metadata_for_key(item.name),
+                "metadata": metadata,
                 "name": name,
                 "size": item.size,
-            })
-        return result
+            }
 
     def get_contents_to_file(self, key, filepath_to_store_to, *, progress_callback=None):
         key = self.format_key_for_backend(key)

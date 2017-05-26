@@ -62,7 +62,10 @@ class BaseTransfer:
     def get_metadata_for_key(self, key):
         raise NotImplementedError
 
-    def list_path(self, key):
+    def list_path(self, key, *, with_metadata=True):
+        return list(self.list_iter(key, with_metadata=with_metadata))
+
+    def list_iter(self, key, *, with_metadata=True):
         raise NotImplementedError
 
     def sanitize_metadata(self, metadata, replace_hyphen_with="-"):

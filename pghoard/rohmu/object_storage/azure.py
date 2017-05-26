@@ -25,37 +25,45 @@ class AzureTransfer(BaseTransfer):
         self.log.debug("AzureTransfer initialized, %r", self.container_name)
 
     def get_metadata_for_key(self, key):
-        key = self.format_key_for_backend(key, remove_slash_prefix=True, trailing_slash=False)
-        results = self._list_blobs(key)
+        path = self.format_key_for_backend(key, remove_slash_prefix=True, trailing_slash=False)
+        results = list(self._list_iter(path))
         if not results:
             raise FileNotFoundFromStorageError(key)
         return results[0]["metadata"]
 
     def _metadata_for_key(self, key):
-        return self._list_blobs(key)[0]["metadata"]
+        return list(self._list_iter(key))[0]["metadata"]
 
-    def list_path(self, key, trailing_slash=True):  # pylint: disable=arguments-differ
+    def list_path(self, key, *, with_metadata=True):
         # Trailing slash needed when listing directories, without when listing individual files
-        path = self.format_key_for_backend(key, remove_slash_prefix=True, trailing_slash=trailing_slash)
-        return self._list_blobs(path)
+        path = self.format_key_for_backend(key, remove_slash_prefix=True, trailing_slash=True)
+        return list(self._list_iter(path, with_metadata=with_metadata))
 
-    def _list_blobs(self, path):
+    def list_iter(self, key, *, with_metadata=True):
+        # Trailing slash needed when listing directories, without when listing individual files
+        path = self.format_key_for_backend(key, remove_slash_prefix=True, trailing_slash=True)
+        yield from self._list_iter(path, with_metadata=with_metadata)
+
+    def _list_iter(self, path, *, with_metadata=True):
         self.log.debug("Listing path %r", path)
+        include = "metadata" if with_metadata else None
         if path:
-            items = self.conn.list_blobs(self.container_name, prefix=path, delimiter="/", include="metadata")
+            items = self.conn.list_blobs(self.container_name, prefix=path, delimiter="/", include=include)
         else:  # If you give Azure an empty path, it gives you an authentication error
-            items = self.conn.list_blobs(self.container_name, delimiter="/", include="metadata")
-        results = []
+            items = self.conn.list_blobs(self.container_name, delimiter="/", include=include)
         for item in items:
             if not isinstance(item, BlobPrefix):
-                results.append({
-                    "last_modified": item.properties.last_modified,
+                if with_metadata:
                     # Azure Storage cannot handle '-' so we turn them into underscores and back again
-                    "metadata": dict((k.replace("_", "-"), v) for k, v in item.metadata.items()),
+                    metadata = dict((k.replace("_", "-"), v) for k, v in item.metadata.items())
+                else:
+                    metadata = None
+                yield {
+                    "last_modified": item.properties.last_modified,
+                    "metadata": metadata,
                     "name": self.format_key_from_backend(item.name),
                     "size": item.properties.content_length,
-                })
-        return results
+                }
 
     def delete_key(self, key):
         key = self.format_key_for_backend(key, remove_slash_prefix=True)
