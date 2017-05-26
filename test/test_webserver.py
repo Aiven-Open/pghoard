@@ -494,7 +494,7 @@ class TestWebServer:
         assert content == restored_data
 
     def test_get_encrypted_archived_file(self, pghoard):
-        xlog_seg = "000000010000000000000010"
+        xlog_seg = "000000090000000000000010"
         content = wal_header_for_file(xlog_seg)
         compressor = pghoard.Compressor()
         compressed_content = compressor.compress(content) + (compressor.flush() or b"")
