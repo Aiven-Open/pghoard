@@ -192,11 +192,13 @@ def pghoard(db, tmpdir, request):  # pylint: disable=redefined-outer-name
                 },
             },
         },
-        "http_address": "127.0.0.1",
-        "http_port": random.randint(1024, 32000),
         "compression": {
             "algorithm": "snappy" if snappy else "lzma",
-        }
+        },
+        "http_address": "127.0.0.1",
+        "http_port": random.randint(1024, 32000),
+        "json_state_file_path": tmpdir.join("pghoard_state.json").strpath,
+        "maintenance_mode_file": tmpdir.join("maintenance_mode_file").strpath,
     }
     confpath = os.path.join(str(tmpdir), "config.json")
     with open(confpath, "w") as fp:

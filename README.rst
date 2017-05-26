@@ -442,7 +442,7 @@ listen to all available addresses.
 HTTP webserver port. Used for the archive command and for fetching of
 basebackups/WAL's when restoring if not using an object store.
 
-``json_state_file_path`` (default ``"/tmp/pghoard_state.json"``)
+``json_state_file_path`` (default ``"/var/lib/pghoard/pghoard_state.json"``)
 
 Location of a JSON state file which describes the state of the ``pghoard``
 process.
@@ -451,7 +451,7 @@ process.
 
 Determines log level of ``pghoard``.
 
-``maintenance_mode_file`` (default ``"/tmp/pghoard_maintenance_mode_file"``)
+``maintenance_mode_file`` (default ``"/var/lib/pghoard/maintenance_mode_file"``)
 
 If a file exists in this location, no new backup actions will be started.
 
@@ -519,7 +519,7 @@ Optional keys for Amazon Web Services S3:
  * Optional configuration keys for Swift:
 
   * ``auth_version`` - ``2.0`` (default) or ``3.0`` for keystone, use ``1.0`` with
-    Ceph Rados GW. 
+    Ceph Rados GW.
   * ``segment_size`` - defaults to ``1024**3`` (1 gigabyte).  Objects larger
     than this will be split into multiple segments on upload.  Many Swift
     installations require large files (usually 5 gigabytes) to be segmented.
