@@ -174,7 +174,7 @@ class GoogleTransfer(BaseTransfer):
             yield from result.get("items", [])
             request = domain.list_next(request, result)
 
-    def list_iter(self, key, *, with_metadata=True):  # pylint: disable=unused-argument
+    def list_iter(self, key, *, with_metadata=True):  # pylint: disable=unused-argument, unused-variable
         path = self.format_key_for_backend(key, trailing_slash=True)
         self.log.debug("Listing path %r", path)
         with self._object_client() as clob:
