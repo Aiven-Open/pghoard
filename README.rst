@@ -198,7 +198,8 @@ installation.
    account to the ``replication`` database from the master and standby
    nodes. For example::
 
-     host  replication  pghoard  127.0.0.1/32  md5
+     # TYPE  DATABASE     USER     ADDRESS       METHOD
+     host    replication  pghoard  127.0.0.1/32  md5
 
    After editing, please reload the configuration with either::
 
@@ -526,7 +527,7 @@ Optional keys for Amazon Web Services S3:
  * Optional configuration keys for Swift:
 
   * ``auth_version`` - ``2.0`` (default) or ``3.0`` for keystone, use ``1.0`` with
-    Ceph Rados GW. 
+    Ceph Rados GW.
   * ``segment_size`` - defaults to ``1024**3`` (1 gigabyte).  Objects larger
     than this will be split into multiple segments on upload.  Many Swift
     installations require large files (usually 5 gigabytes) to be segmented.
