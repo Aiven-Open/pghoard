@@ -39,8 +39,8 @@ def set_config_defaults(config, *, check_commands=True):
     config.setdefault("http_address", PGHOARD_HOST)
     config.setdefault("http_port", PGHOARD_PORT)
     config.setdefault("alert_file_dir", config.get("backup_location") or os.getcwd())
-    config.setdefault("json_state_file_path", "/tmp/pghoard_state.json")  # XXX: get a better default
-    config.setdefault("maintenance_mode_file", "/tmp/pghoard_maintenance_mode_file")
+    config.setdefault("json_state_file_path", "/var/lib/pghoard/pghoard_state.json")
+    config.setdefault("maintenance_mode_file", "/var/lib/pghoard/maintenance_mode_file")
     config.setdefault("log_level", "INFO")
     config.setdefault("path_prefix", "")
     config.setdefault("upload_retries_warning_limit", 3)

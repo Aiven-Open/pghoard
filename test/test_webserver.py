@@ -32,6 +32,7 @@ def http_restore(pghoard):
 
 class TestWebServer:
     def test_requesting_status(self, pghoard):
+        pghoard.write_backup_state_to_json_file()
         conn = HTTPConnection(host="127.0.0.1", port=pghoard.config["http_port"])
         response = conn.request("GET", "/status")
         response = conn.getresponse()

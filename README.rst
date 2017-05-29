@@ -450,7 +450,7 @@ listen to all available addresses.
 HTTP webserver port. Used for the archive command and for fetching of
 basebackups/WAL's when restoring if not using an object store.
 
-``json_state_file_path`` (default ``"/tmp/pghoard_state.json"``)
+``json_state_file_path`` (default ``"/var/lib/pghoard/pghoard_state.json"``)
 
 Location of a JSON state file which describes the state of the ``pghoard``
 process.
@@ -459,7 +459,7 @@ process.
 
 Determines log level of ``pghoard``.
 
-``maintenance_mode_file`` (default ``"/tmp/pghoard_maintenance_mode_file"``)
+``maintenance_mode_file`` (default ``"/var/lib/pghoard/maintenance_mode_file"``)
 
 If a file exists in this location, no new backup actions will be started.
 

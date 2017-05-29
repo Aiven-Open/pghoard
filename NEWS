@@ -22,6 +22,10 @@ pghoard X.X.X (2016-XX-XX)
   to allow PGHoard to take its own basebackup.  This is sometimes required if
   a previous PGHoard process has been killed while it was taking a backup.
 * Support pghoard_restore --recovery-target-action with 9.3 and 9.4
+* Creating a `maintenance_mode_file` as documented in README now stops
+  automatic basebackups from being created
+* Changed the default directory for `maintenance_mode_file` and
+  `json_state_file_path` from /tmp to /var/lib/pghoard
 * Autotune compression.thread_count and transfer_agent.thread_count defaults
   to be max(cpu_count, 5) instead of a default of 5 as before.
 * Miscellaneous bug fixes
