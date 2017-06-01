@@ -373,7 +373,7 @@ class Restore:
 
             tablespaces = bmeta["tablespaces"]
             basebackup_data_files = [
-                [os.path.join(site, "basebackup_chunk", chunk[0]), chunk[2]]
+                [os.path.join(self.config["path_prefix"], site, "basebackup_chunk", chunk[0]), chunk[2]]
                 for chunk in bmeta["chunks"]
             ]
             # We need the files from the main basebackup file too
