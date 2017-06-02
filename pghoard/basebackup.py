@@ -465,13 +465,13 @@ class PGBaseBackup(Thread):
         chunk_name = "/".join(chunk_path.split("/")[-2:])
         return chunk_name, input_size, result_size
 
-    def wait_for_chunk_transfer_to_complete(self, chunk_files, upload_results, chunk_callback_queue, start_time):
+    def wait_for_chunk_transfer_to_complete(self, chunk_count, upload_results, chunk_callback_queue, start_time):
         try:
             upload_results.append(chunk_callback_queue.get(timeout=3.0))
-            self.log.debug("Completed a chunk transfer successfully: %r", upload_results[-1])
+            self.log.info("Completed a chunk transfer successfully: %r", upload_results[-1])
             return True
         except Empty:
-            self.log.warning("Upload status: %r/%r handled, time taken: %r", len(upload_results), len(chunk_files),
+            self.log.warning("Upload status: %r/%r handled, time taken: %r", len(upload_results), chunk_count,
                              time.monotonic() - start_time)
         return False
 
@@ -480,23 +480,37 @@ class PGBaseBackup(Thread):
         chunk_files = []
         upload_results = []
         chunk_callback_queue = Queue()
+        chunks_on_disk = 0
         i = 0
 
-        for chunk_id, one_chunk_files in enumerate(chunks, 1):
-            if i < self.config["backup_sites"][self.site].get("basebackup_chunk_count", 5):
+        while i < len(chunks):
+            if chunks_on_disk < self.config["backup_sites"][self.site].get("basebackup_chunk_count", 5):
+                chunk_id = i + 1
+                one_chunk_files = chunks[i]
+
                 chunk_name, input_size, result_size = self.tar_one_file(
                     callback_queue=chunk_callback_queue,
                     chunk_path=data_file_format(chunk_id),
                     temp_dir=temp_base_dir,
                     files_to_backup=one_chunk_files,
                 )
-                chunk_files.append([chunk_name, input_size, result_size])
+                chunk_files.append(
+                    {
+                        "chunk_filename": chunk_name,
+                        "input_size": input_size,
+                        "result_size": result_size,
+                        "files": [chunk[0] for chunk in one_chunk_files]
+                    }
+                )
+                chunks_on_disk += 1
                 i += 1
-            elif self.wait_for_chunk_transfer_to_complete(chunk_files, upload_results, chunk_callback_queue, start_time):
-                i -= 1
+                self.log.info("Queued backup chunk %r for transfer, chunks_on_disk: %r, current: %r, total_chunks: %r",
+                              chunk_name, chunks_on_disk, i, len(chunks))
+            elif self.wait_for_chunk_transfer_to_complete(len(chunks), upload_results, chunk_callback_queue, start_time):
+                chunks_on_disk -= 1
 
         while len(upload_results) < len(chunk_files):
-            self.wait_for_chunk_transfer_to_complete(chunk_files, upload_results, chunk_callback_queue, start_time)
+            self.wait_for_chunk_transfer_to_complete(len(chunks), upload_results, chunk_callback_queue, start_time)
 
         return chunk_files
 
@@ -611,8 +625,8 @@ class PGBaseBackup(Thread):
                 db_conn.commit()
                 backup_stopped = True
 
-                total_size_plain = sum(item[1] for item in chunk_files)
-                total_size_enc = sum(item[2] for item in chunk_files)
+                total_size_plain = sum(item["input_size"] for item in chunk_files)
+                total_size_enc = sum(item["result_size"] for item in chunk_files)
 
                 self.log.info("Basebackup generation finished, %r files, %r chunks, "
                               "%r byte input, %r byte output, took %r seconds, waiting to upload",

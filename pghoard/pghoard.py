@@ -269,7 +269,7 @@ class PGHoard:
                 self.log.debug("PGHoard chunk metadata: %r", bmeta)
                 for chunk in bmeta["chunks"]:
                     basebackup_data_files.append(
-                        os.path.join(self.config["path_prefix"], site, "basebackup_chunk", chunk[0])
+                        os.path.join(self.config["path_prefix"], site, "basebackup_chunk", chunk["chunk_filename"])
                     )
 
         self.log.debug("Deleting basebackup datafiles: %r", ', '.join(basebackup_data_files))
