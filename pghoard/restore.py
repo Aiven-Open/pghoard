@@ -14,7 +14,6 @@ from requests import Session
 import argparse
 import datetime
 import io
-import json
 import logging
 import os
 import re
@@ -253,17 +252,6 @@ class Restore:
         print("\nSelecting {!r} for restore".format(selected))
         return selected
 
-    def _extract_pghoard_bb_v2_metadata(self, fileobj):
-        # | in mode to use tarfile's internal stream buffer manager, currently required because our SnappyFile
-        # interface doesn't do proper buffering for reads
-        with tarfile.open(fileobj=fileobj, mode="r|", bufsize=IO_BLOCK_SIZE) as tar:
-            for tarinfo in tar:
-                if tarinfo.name == ".pghoard_tar_metadata.json":
-                    tar_meta_bytes = tar.extractfile(tarinfo).read()
-                    return json.loads(tar_meta_bytes.decode("utf-8"))
-
-        raise Exception(".pghoard_tar_metadata.json not found")
-
     def _extract_pghoard_bb_v1_v2(self, fileobj, pgdata, tablespaces):
         directories = []
         # | in mode to use tarfile's internal stream buffer manager, currently required because our SnappyFile
@@ -369,7 +357,7 @@ class Restore:
             bmeta_compressed = self.storage.get_file_bytes(basebackup)
             with rohmufile.file_reader(fileobj=io.BytesIO(bmeta_compressed), metadata=metadata,
                                        key_lookup=config.key_lookup_for_site(self.config, site)) as input_obj:
-                bmeta = self._extract_pghoard_bb_v2_metadata(input_obj)
+                bmeta = common.extract_pghoard_bb_v2_metadata(input_obj)
 
             tablespaces = bmeta["tablespaces"]
             basebackup_data_files = [
