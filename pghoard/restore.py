@@ -358,6 +358,7 @@ class Restore:
             with rohmufile.file_reader(fileobj=io.BytesIO(bmeta_compressed), metadata=metadata,
                                        key_lookup=config.key_lookup_for_site(self.config, site)) as input_obj:
                 bmeta = common.extract_pghoard_bb_v2_metadata(input_obj)
+            self.log.debug("Backup metadata: %r", bmeta)
 
             tablespaces = bmeta["tablespaces"]
             basebackup_data_files = [
@@ -430,13 +431,16 @@ class Restore:
         total_download_size = sum(item[1] for item in basebackup_data_files)
         total_downloaded = 0
         current_size = 0
+        i = 0
 
         def download_progress(current_pos, expected_max, end=""):
             progress = current_pos / expected_max
             if total_download_size > 0:
                 progress = (total_downloaded + progress * current_size) / total_download_size
 
-            print("\rDownload progress: {:.2%}".format(progress), end=end)
+            print("\rDownload chunk: {}/{} progress: {:.2%}".format(
+                i, len(basebackup_data_files),
+                progress), end=end)
 
         for basebackup_data_file, backup_data_file_size in basebackup_data_files:
             if isinstance(basebackup_data_file, tuple):
@@ -449,6 +453,7 @@ class Restore:
                     site=site,
                 )
                 total_downloaded += current_size
+                i += 1
 
             self.extract_one_backup(
                 obj=tmp_obj,
