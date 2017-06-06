@@ -521,7 +521,7 @@ class PGBaseBackup(Thread):
 
         temp_base_dir, compressed_base = self.get_paths_for_backup(self.basebackup_path)
         os.makedirs(compressed_base)
-        data_file_format = "{}/{}.{{:04x}}.pghoard".format(compressed_base, os.path.basename(compressed_base)).format
+        data_file_format = "{}/{}.{{0:08d}}.pghoard".format(compressed_base, os.path.basename(compressed_base)).format
 
         # Default to 2GB chunks of uncompressed data
         target_chunk_size = self.config["backup_sites"][self.site].get("basebackup_chunk_size") or (1024 * 1024 * 1024 * 2)
