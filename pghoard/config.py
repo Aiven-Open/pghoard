@@ -15,7 +15,7 @@ import os
 import subprocess
 
 
-SUPPORTED_VERSIONS = ["9.6", "9.5", "9.4", "9.3", "9.2"]
+SUPPORTED_VERSIONS = ["10", "9.6", "9.5", "9.4", "9.3", "9.2"]
 
 
 def get_cpu_count():
@@ -26,10 +26,12 @@ def find_pg_binary(program, versions=None):
     pathformats = ["/usr/pgsql-{ver}/bin/{prog}", "/usr/lib/postgresql/{ver}/bin/{prog}"]
     for ver in versions or SUPPORTED_VERSIONS:
         for pathfmt in pathformats:
+            if ver == "10" and program == "pg_receivexlog":
+                program = "pg_receivewal"
             pgbin = pathfmt.format(ver=ver, prog=program)
             if os.path.exists(pgbin):
-                return pgbin
-    return os.path.join("/usr/bin", program)
+                return pgbin, ver
+    return os.path.join("/usr/bin", program), None
 
 
 def set_config_defaults(config, *, check_commands=True):
@@ -131,12 +133,13 @@ def set_config_defaults(config, *, check_commands=True):
                 command_path = os.path.join(bin_dir, command) if bin_dir else None
                 if not command_path or not os.path.exists(command_path):
                     pg_version = site_config["pg_data_directory_version"]
-                    command_path = find_pg_binary(command, [pg_version] if pg_version else None)
+                    command_path, _ = find_pg_binary(command, [pg_version] if pg_version else None)
             site_config[command_key] = command_path
 
             if check_commands and site_config["active"]:
                 if not command_path or not os.path.exists(command_path):
-                    raise InvalidConfigurationError("Site {!r} command {!r} not found".format(site_name, command))
+                    raise InvalidConfigurationError("Site {!r} command {!r} not found from path {}".format(
+                        site_name, command, command_path))
                 version_output = subprocess.check_output([command_path, "--version"])
                 version_string = version_output.decode("ascii").strip()
                 site_config[command + "_version"] = convert_pg_command_version_to_number(version_string)

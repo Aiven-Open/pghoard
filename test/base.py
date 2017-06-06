@@ -49,7 +49,7 @@ class PGHoardTestCase:
         # NOTE: we set pg_receivexlog_path and pg_basebackup_path per site and globally mostly to verify that
         # it works, the config keys are deprecated and will be removed in a future release at which point we'll
         # switch to using pg_bin_directory config.
-        bindir = find_pg_binary("")
+        bindir, ver = find_pg_binary("")
 
         if hasattr(psycopg2.extras, "PhysicalReplicationConnection"):
             active_backup_mode = "walreceiver"
@@ -72,6 +72,8 @@ class PGHoardTestCase:
             "json_state_file_path": os.path.join(self.temp_dir, "state.json"),
             "pg_basebackup_path": os.path.join(bindir, "pg_basebackup"),
         }
+        if ver == "10":
+            config["backup_sites"][self.test_site]["pg_receivexlog_path"] = os.path.join(bindir, "pg_receivewal")
         return set_config_defaults(config)
 
     def setup_method(self, method):

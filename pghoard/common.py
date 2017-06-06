@@ -123,9 +123,13 @@ def convert_pg_command_version_to_number(command_version_string):
     9.5alpha1 or 9.6devel"""
     match = re.search(r" \(PostgreSQL\) ([0-9]+(?:\.[0-9]+)+)", command_version_string)
     if not match:
-        raise Error("Unrecognized PostgreSQL version string {!r}".format(command_version_string))
+        match = re.search(r" \(PostgreSQL\) ([0-9]+)beta([0-9])", command_version_string)
+        if not match:
+            raise Error("Unrecognized PostgreSQL version string {!r}".format(command_version_string))
     vernum = match.group(1) + ".0"  # padding for development versions
     parts = vernum.split(".")
+    if len(parts) == 2:  # PG 10+
+        return int(parts[0]) * 10000 + int(parts[1]) * 100
     return int(parts[0]) * 10000 + int(parts[1]) * 100 + int(parts[2])
 
 

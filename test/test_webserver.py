@@ -170,13 +170,22 @@ class TestWebServer:
         conn = psycopg2.connect(create_connection_string(db.user))
         conn.autocommit = True
         cursor = conn.cursor()
-        cursor.execute("SELECT pg_xlogfile_name(pg_current_xlog_location())")
+        if conn.server_version >= 100000:
+            cursor.execute("SELECT pg_walfile_name(pg_current_wal_lsn())")
+        else:
+            cursor.execute("SELECT pg_xlogfile_name(pg_current_xlog_location())")
         start_xlog = cursor.fetchone()[0]
         cursor.execute("CREATE TABLE IF NOT EXISTS testint (i INT)")
         for n in range(count):
             cursor.execute("INSERT INTO testint (i) VALUES (%s)", [n])
-            cursor.execute("SELECT pg_switch_xlog()")
-        cursor.execute("SELECT pg_xlogfile_name(pg_current_xlog_location())")
+            if conn.server_version >= 100000:
+                cursor.execute("SELECT pg_switch_wal()")
+            else:
+                cursor.execute("SELECT pg_switch_xlog()")
+        if conn.server_version >= 100000:
+            cursor.execute("SELECT pg_walfile_name(pg_current_wal_lsn())")
+        else:
+            cursor.execute("SELECT pg_xlogfile_name(pg_current_xlog_location())")
         end_xlog = cursor.fetchone()[0]
         conn.close()
         return start_xlog, end_xlog
@@ -453,7 +462,7 @@ class TestWebServer:
 
         postgres_command.http_request = orig_http_request
 
-    def test_get_archived_file(self, pghoard):
+    def test_get_archived_file(self, pghoard, db):
         xlog_seg_prev_tli = "00000001000000000000000F"
         xlog_seg = "00000002000000000000000F"
         xlog_file = "xlog/{}".format(xlog_seg)
@@ -472,7 +481,10 @@ class TestWebServer:
 
         restore_command(site=pghoard.test_site, xlog=xlog_seg, output=None,
                         host="127.0.0.1", port=pghoard.config["http_port"])
-        restore_target = os.path.join(pgdata, "pg_xlog", xlog_seg)
+        if db.ver == "10":
+            restore_target = os.path.join(pgdata, "pg_wal", xlog_seg)
+        else:
+            restore_target = os.path.join(pgdata, "pg_xlog", xlog_seg)
         restore_command(site=pghoard.test_site, xlog=xlog_seg, output=restore_target,
                         host="127.0.0.1", port=pghoard.config["http_port"])
         assert os.path.exists(restore_target) is True
@@ -494,7 +506,7 @@ class TestWebServer:
             restored_data = fp.read()
         assert content == restored_data
 
-    def test_get_encrypted_archived_file(self, pghoard):
+    def test_get_encrypted_archived_file(self, pghoard, db):
         xlog_seg = "000000090000000000000010"
         content = wal_header_for_file(xlog_seg)
         compressor = pghoard.Compressor()
@@ -516,7 +528,10 @@ class TestWebServer:
                 "private": CONSTANT_TEST_RSA_PRIVATE_KEY,
             },
         }
-        restore_target = os.path.join(pgdata, "pg_xlog", xlog_seg)
+        if db.ver == "10":
+            restore_target = os.path.join(pgdata, "pg_wal", xlog_seg)
+        else:
+            restore_target = os.path.join(pgdata, "pg_xlog", xlog_seg)
         restore_command(site=pghoard.test_site, xlog=xlog_seg, output=restore_target,
                         host="127.0.0.1", port=pghoard.config["http_port"])
         assert os.path.exists(restore_target)

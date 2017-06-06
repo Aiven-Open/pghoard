@@ -133,7 +133,8 @@ class PGBaseBackup(Thread):
                 "--progress",
                 "--dbname", connection_string
             ])
-
+        if self.pg_version_server >= 100000:
+            command.extend(["--wal-method=none"])
         return command
 
     def check_command_success(self, proc, output_file):
@@ -689,7 +690,7 @@ class PGBaseBackup(Thread):
         we must be able to recover to, and the last WAL segment that is required for the backup to be
         consistent.
 
-        Note that pg_switch_xlog() is a superuser-only function, but since pg_start_backup() and
+        Note that pg_switch_xlog()/pg_switch_wal() is a superuser-only function, but since pg_start_backup() and
         pg_stop_backup() cause an XLOG switch we'll call them instead.  The downside is an unnecessary
         checkpoint.
         """
@@ -703,7 +704,10 @@ class PGBaseBackup(Thread):
             db_conn.commit()
             return None, backup_end_time
 
-        cursor.execute("SELECT pg_xlogfile_name(pg_current_xlog_location()), txid_current()")
+        if self.pg_version_server >= 100000:
+            cursor.execute("SELECT pg_walfile_name(pg_current_wal_lsn()), txid_current()")
+        else:
+            cursor.execute("SELECT pg_xlogfile_name(pg_current_xlog_location()), txid_current()")
         backup_end_wal_segment, _ = cursor.fetchone()
         db_conn.commit()
 

@@ -29,7 +29,9 @@ logutil.configure_logging()
 class TestPG:
     def __init__(self, pgdata):
         pgver = os.getenv("PG_VERSION")
-        self.pgbin = pghconfig.find_pg_binary("", versions=[pgver] if pgver else None)
+        pgbin, ver = pghconfig.find_pg_binary("", versions=[pgver] if pgver else None)
+        self.pgbin = pgbin
+        self.ver = ver
         self.pgdata = pgdata
         self.pg = None
         self.user = None
@@ -200,6 +202,9 @@ def pghoard(db, tmpdir, request):  # pylint: disable=redefined-outer-name
         "json_state_file_path": tmpdir.join("pghoard_state.json").strpath,
         "maintenance_mode_file": tmpdir.join("maintenance_mode_file").strpath,
     }
+    if db.ver == "10":
+        config["backup_sites"][test_site]["pg_xlog_directory"] = os.path.join(db.pgdata, "pg_wal")
+
     confpath = os.path.join(str(tmpdir), "config.json")
     with open(confpath, "w") as fp:
         json.dump(config, fp)
