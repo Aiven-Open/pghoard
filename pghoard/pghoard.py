@@ -162,7 +162,7 @@ class PGHoard:
             self.stats.unexpected_exception(ex, where="check_pg_server_version")
         return pg_version
 
-    def receivexlog_listener(self, site, connection_info, xlog_directory):
+    def receivexlog_listener(self, site, connection_info, wal_directory):
         connection_string, slot = replication_connection_string_and_slot_using_pgpass(connection_info)
         pg_version_server = self.check_pg_server_version(connection_string)
         if pg_version_server:
@@ -170,11 +170,11 @@ class PGHoard:
         if not self.check_pg_versions_ok(site, pg_version_server, "pg_receivexlog"):
             return
 
-        self.inotify.add_watch(xlog_directory)
+        self.inotify.add_watch(wal_directory)
         thread = PGReceiveXLog(
             config=self.config,
             connection_string=connection_string,
-            xlog_location=xlog_directory,
+            wal_location=wal_directory,
             site=site,
             slot=slot,
             pg_version_server=pg_version_server)
@@ -345,7 +345,7 @@ class PGHoard:
             # Process uncompressed files (ie WAL pg_receivexlog received)
             for filename in os.listdir(uncompressed_xlog_path):
                 full_path = os.path.join(uncompressed_xlog_path, filename)
-                if not wal.XLOG_RE.match(filename) and not wal.TIMELINE_RE.match(filename):
+                if not wal.WAL_RE.match(filename) and not wal.TIMELINE_RE.match(filename):
                     self.log.warning("Found invalid file %r from incoming xlog directory", full_path)
                     continue
                 compression_event = {
@@ -363,7 +363,7 @@ class PGHoard:
                     continue  # silently ignore .metadata files, they're expected and processed below
                 full_path = os.path.join(compressed_xlog_path, filename)
                 metadata_path = full_path + ".metadata"
-                is_xlog = wal.XLOG_RE.match(filename)
+                is_xlog = wal.WAL_RE.match(filename)
                 is_timeline = wal.TIMELINE_RE.match(filename)
                 if not ((is_xlog or is_timeline) and os.path.exists(metadata_path)):
                     self.log.warning("Found invalid file %r from compressed xlog directory", full_path)

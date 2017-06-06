@@ -97,9 +97,9 @@ dbname|"""
 
     def test_local_check_backup_count_and_state(self):
         basebackup_storage_path = os.path.join(self.local_storage_dir, "basebackup")
-        xlog_storage_path = os.path.join(self.local_storage_dir, "xlog")
+        wal_storage_path = os.path.join(self.local_storage_dir, "xlog")
         os.makedirs(basebackup_storage_path)
-        os.makedirs(xlog_storage_path)
+        os.makedirs(wal_storage_path)
 
         self.pghoard.set_state_defaults(self.test_site)
         assert self.pghoard.get_remote_basebackups_info(self.test_site) == []
@@ -118,7 +118,7 @@ dbname|"""
                             "start-time": start_time.isoformat(),
                         }, fp)
                 for wal in wals:
-                    with open(os.path.join(xlog_storage_path, wal), "wb") as fp:
+                    with open(os.path.join(wal_storage_path, wal), "wb") as fp:
                         fp.write(b"something")
 
         backups_and_wals = {
@@ -148,7 +148,7 @@ dbname|"""
         self.pghoard.check_backup_count_and_state(self.test_site)
         basebackups = self.pghoard.get_remote_basebackups_info(self.test_site)
         assert len(basebackups) == 1
-        assert len(os.listdir(xlog_storage_path)) == 3
+        assert len(os.listdir(wal_storage_path)) == 3
         # Put all WAL segments between 1 and 9 in place to see that they're deleted and we don't try to go back
         # any further from TLI 1.  Note that timeline 3 is now "empty" so deletion shouldn't touch timelines 2
         # or 1.
@@ -167,14 +167,14 @@ dbname|"""
             ],
         }
         write_backup_and_wal_files(new_backups_and_wals)
-        assert len(os.listdir(xlog_storage_path)) == 11
+        assert len(os.listdir(wal_storage_path)) == 11
         self.pghoard.check_backup_count_and_state(self.test_site)
         basebackups = self.pghoard.get_remote_basebackups_info(self.test_site)
         assert len(basebackups) == 1
         expected_wal_count = len(backups_and_wals["2015-08-25_0"])
         expected_wal_count += len(new_backups_and_wals[""])
         expected_wal_count += len(new_backups_and_wals["2015-08-25_4"])
-        assert len(os.listdir(xlog_storage_path)) == expected_wal_count
+        assert len(os.listdir(wal_storage_path)) == expected_wal_count
         # Now put WAL files in place with no gaps anywhere
         gapless_backups_and_wals = {
             "2015-08-25_3": [
@@ -186,11 +186,11 @@ dbname|"""
             ],
         }
         write_backup_and_wal_files(gapless_backups_and_wals)
-        assert len(os.listdir(xlog_storage_path)) >= 10
+        assert len(os.listdir(wal_storage_path)) >= 10
         self.pghoard.check_backup_count_and_state(self.test_site)
         basebackups = self.pghoard.get_remote_basebackups_info(self.test_site)
         assert len(basebackups) == 1
-        assert len(os.listdir(xlog_storage_path)) == 1
+        assert len(os.listdir(wal_storage_path)) == 1
 
     def test_alert_files(self):
         alert_file_path = os.path.join(self.config["alert_file_dir"], "test_alert")
@@ -220,31 +220,31 @@ dbname|"""
         assert empty_state == state
 
     def test_startup_walk_for_missed_compressed_files(self):
-        compressed_xlog_path, _ = self.pghoard.create_backup_site_paths(self.test_site)
-        with open(os.path.join(compressed_xlog_path, "000000010000000000000004"), "wb") as fp:
+        compressed_wal_path, _ = self.pghoard.create_backup_site_paths(self.test_site)
+        with open(os.path.join(compressed_wal_path, "000000010000000000000004"), "wb") as fp:
             fp.write(b"foo")
-        with open(os.path.join(compressed_xlog_path, "000000010000000000000004.metadata"), "wb") as fp:
+        with open(os.path.join(compressed_wal_path, "000000010000000000000004.metadata"), "wb") as fp:
             fp.write(b"{}")
-        with open(os.path.join(compressed_xlog_path, "0000000F.history"), "wb") as fp:
+        with open(os.path.join(compressed_wal_path, "0000000F.history"), "wb") as fp:
             fp.write(b"foo")
-        with open(os.path.join(compressed_xlog_path, "0000000F.history.metadata"), "wb") as fp:
+        with open(os.path.join(compressed_wal_path, "0000000F.history.metadata"), "wb") as fp:
             fp.write(b"{}")
-        with open(os.path.join(compressed_xlog_path, "000000010000000000000004xyz"), "wb") as fp:
+        with open(os.path.join(compressed_wal_path, "000000010000000000000004xyz"), "wb") as fp:
             fp.write(b"foo")
-        with open(os.path.join(compressed_xlog_path, "000000010000000000000004xyz.metadata"), "wb") as fp:
+        with open(os.path.join(compressed_wal_path, "000000010000000000000004xyz.metadata"), "wb") as fp:
             fp.write(b"{}")
         self.pghoard.startup_walk_for_missed_files()
         assert self.pghoard.compression_queue.qsize() == 0
         assert self.pghoard.transfer_queue.qsize() == 2
 
     def test_startup_walk_for_missed_uncompressed_files(self):
-        compressed_xlog_path, _ = self.pghoard.create_backup_site_paths(self.test_site)
-        uncompressed_xlog_path = compressed_xlog_path + "_incoming"
-        with open(os.path.join(uncompressed_xlog_path, "000000010000000000000004"), "wb") as fp:
+        compressed_wal_path, _ = self.pghoard.create_backup_site_paths(self.test_site)
+        uncompressed_wal_path = compressed_wal_path + "_incoming"
+        with open(os.path.join(uncompressed_wal_path, "000000010000000000000004"), "wb") as fp:
             fp.write(b"foo")
-        with open(os.path.join(uncompressed_xlog_path, "00000002.history"), "wb") as fp:
+        with open(os.path.join(uncompressed_wal_path, "00000002.history"), "wb") as fp:
             fp.write(b"foo")
-        with open(os.path.join(uncompressed_xlog_path, "000000010000000000000004xyz"), "wb") as fp:
+        with open(os.path.join(uncompressed_wal_path, "000000010000000000000004xyz"), "wb") as fp:
             fp.write(b"foo")
         self.pghoard.startup_walk_for_missed_files()
         assert self.pghoard.compression_queue.qsize() == 2

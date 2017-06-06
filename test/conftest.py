@@ -186,7 +186,6 @@ def pghoard(db, tmpdir, request):  # pylint: disable=redefined-outer-name
                 "basebackup_interval_hours": 24,
                 "pg_bin_directory": db.pgbin,
                 "pg_data_directory": db.pgdata,
-                "pg_xlog_directory": os.path.join(db.pgdata, "pg_xlog"),
                 "nodes": [db.user],
                 "object_storage": {
                     "storage_type": "local",
@@ -202,8 +201,6 @@ def pghoard(db, tmpdir, request):  # pylint: disable=redefined-outer-name
         "json_state_file_path": tmpdir.join("pghoard_state.json").strpath,
         "maintenance_mode_file": tmpdir.join("maintenance_mode_file").strpath,
     }
-    if db.ver == "10":
-        config["backup_sites"][test_site]["pg_xlog_directory"] = os.path.join(db.pgdata, "pg_wal")
 
     confpath = os.path.join(str(tmpdir), "config.json")
     with open(confpath, "w") as fp:

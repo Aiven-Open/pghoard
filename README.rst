@@ -581,19 +581,6 @@ This is used when the ``local-tar`` ``basebackup_mode`` is used.  The data
 directory must point to PostgreSQL's ``$PGDATA`` and must be readable by the
 ``pghoard`` daemon.
 
-If ``pg_data_directory`` is set the ``pg_xlog_directory`` option is not
-needed.
-
-``pg_xlog_directory`` (default ``"/var/lib/pgsql/data/pg_xlog"``)
-
-Deprecated.  Set ``pg_data_directory`` instead.
-
-This is used when ``pghoard_postgres_command`` is used as PostgreSQL's
-``archive_command`` or ``restore_command``.  It should be set to the
-absolute path to the PostgreSQL ``pg_xlog`` directory.  Note that
-``pghoard`` will need to be able to read and write files from the directory
-in order to back them up or to recover them.
-
 ``restore_prefetch`` (default ``min(compression.thread_count,
 transfer.thread_count) - 1``)
 

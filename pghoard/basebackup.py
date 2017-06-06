@@ -37,6 +37,8 @@ EMPTY_DIRS = [
     "pg_snapshot",
     "pg_stat_tmp",
     "pg_tblspc",
+    "pg_wal",
+    "pg_wal/archive_status",
     "pg_xlog",
     "pg_xlog/archive_status",
 ]
@@ -196,10 +198,10 @@ class PGBaseBackup(Thread):
 
     def run_piped_basebackup(self):
         # In a piped basebackup we're not able to read backup_label and must figure out the start wal segment
-        # on our own.  Note that this xlog file value will only be correct if no other basebackups are run in
+        # on our own.  Note that this WAL file value will only be correct if no other basebackups are run in
         # parallel.  PGHoard itself will never do this itself but if the user starts one on his own we'll get
         # an incorrect start-wal-time since the pg_basebackup from pghoard will not generate a new checkpoint.
-        # This means that this xlog information would not be the oldest required to restore from this
+        # This means that this WAL information would not be the oldest required to restore from this
         # basebackup.
         connection_string, _ = replication_connection_string_and_slot_using_pgpass(self.connection_info)
         start_wal_segment = wal.get_current_wal_from_identify_system(connection_string)
@@ -224,7 +226,7 @@ class PGBaseBackup(Thread):
         # the backup and the start_time is taken _after_ the backup has completed and so is conservatively
         # in the future but not exactly correct. These both are valid only as long as no other
         # basebackups than those controlled by pghoard are currently running at the same time.
-        # pg_basebackups are taken simultaneously directly or through other backup managers the xlog
+        # pg_basebackups are taken simultaneously directly or through other backup managers the WAL
         # file will be incorrect since a new checkpoint will not be issued for a parallel backup
         metadata.update({
             "start-time": datetime.datetime.now(datetime.timezone.utc).isoformat(),
@@ -691,13 +693,13 @@ class PGBaseBackup(Thread):
         consistent.
 
         Note that pg_switch_xlog()/pg_switch_wal() is a superuser-only function, but since pg_start_backup() and
-        pg_stop_backup() cause an XLOG switch we'll call them instead.  The downside is an unnecessary
+        pg_stop_backup() cause an WAL switch we'll call them instead.  The downside is an unnecessary
         checkpoint.
         """
         cursor = db_conn.cursor()
 
         # Get backup end time and end segment and forcibly register a transaction in the current segment
-        # Note that we can't call pg_xlogfile_name() or pg_current_xlog_location() in recovery
+        # Note that we can't call pg_walfile_name() or pg_current_wal_lsn() in recovery
         cursor.execute("SELECT now(), pg_is_in_recovery()")
         backup_end_time, in_recovery = cursor.fetchone()
         if in_recovery:
@@ -711,7 +713,7 @@ class PGBaseBackup(Thread):
         backup_end_wal_segment, _ = cursor.fetchone()
         db_conn.commit()
 
-        # Now force switch of the xlog segment to make sure we have archived a segment with a known
+        # Now force switch of the WAL segment to make sure we have archived a segment with a known
         # timestamp after pg_stop_backup() was called.
         backup_end_name = "pghoard_end_of_backup"
         if backup_mode == "non-exclusive":

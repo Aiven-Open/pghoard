@@ -56,6 +56,11 @@ class PGHoardTestCase:
         else:
             active_backup_mode = "pg_receivexlog"
 
+        # Instantiate a fake PG data directory
+        pg_data_directory = os.path.join(str(self.temp_dir), "PG_DATA_DIRECTORY")
+        os.makedirs(pg_data_directory)
+        open(os.path.join(pg_data_directory, "PG_VERSION"), "w").write(ver)
+
         config = {
             "alert_file_dir": os.path.join(str(self.temp_dir), "alerts"),
             "backup_location": os.path.join(str(self.temp_dir), "backupspool"),
@@ -66,6 +71,7 @@ class PGHoardTestCase:
                         "storage_type": "local",
                         "directory": os.path.join(self.temp_dir, "backups"),
                     },
+                    "pg_data_directory": pg_data_directory,
                     "pg_receivexlog_path": os.path.join(bindir, "pg_receivexlog"),
                 },
             },

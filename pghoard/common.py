@@ -200,3 +200,9 @@ def extract_pghoard_bb_v2_metadata(fileobj):
                 return json.loads(tar_meta_bytes.decode("utf-8"))
 
     raise Exception(".pghoard_tar_metadata.json not found")
+
+
+def get_pg_wal_directory(config):
+    if config["pg_data_directory_version"] == "10":
+        return os.path.join(config["pg_data_directory"], "pg_wal")
+    return os.path.join(config["pg_data_directory"], "pg_xlog")

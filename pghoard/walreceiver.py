@@ -6,7 +6,7 @@ See LICENSE for details
 """
 from io import BytesIO
 from pghoard.common import suppress
-from pghoard.wal import get_lsn_from_start_of_wal_file, convert_integer_to_lsn, name_for_tli_log_seg, XLOG_SEG_SIZE
+from pghoard.wal import get_lsn_from_start_of_wal_file, convert_integer_to_lsn, name_for_tli_log_seg, WAL_SEG_SIZE
 from psycopg2.extras import PhysicalReplicationConnection, REPLICATION_PHYSICAL  # pylint: disable=no-name-in-module
 from queue import Empty, Queue
 from threading import Thread
@@ -114,15 +114,15 @@ class WALReceiver(Thread):
                 timeline=timeline)
         return timeline
 
-    def switch_xlog(self):
-        self.log.debug("Switching xlog from %r amount of data: %r",
+    def switch_wal(self):
+        self.log.debug("Switching WAL from %r amount of data: %r",
                        self.latest_wal, self.buffer.tell())
 
         self.buffer.seek(0)
-        wal_data = BytesIO(self.buffer.read(XLOG_SEG_SIZE))
+        wal_data = BytesIO(self.buffer.read(WAL_SEG_SIZE))
         wal_data.seek(0, os.SEEK_END)
-        padding = XLOG_SEG_SIZE - wal_data.tell()
-        # Pad with 0s up to XLOG_SEG_SIZE
+        padding = WAL_SEG_SIZE - wal_data.tell()
+        # Pad with 0s up to WAL_SEG_SIZE
         wal_data.write(padding * b"\0")
         wal_data.seek(0)
         callback_queue = Queue()
@@ -159,7 +159,7 @@ class WALReceiver(Thread):
                 self.stats.unexpected_exception(ex, where="walreceiver_run")
                 continue
             self.log.debug("replication_msg: %r, buffer: %r/%r",
-                           msg, self.buffer.tell(), XLOG_SEG_SIZE)
+                           msg, self.buffer.tell(), WAL_SEG_SIZE)
             if msg:
                 self.latest_activity = datetime.datetime.utcnow()
                 log, _, seg = convert_integer_to_lsn(msg.data_start)
@@ -173,8 +173,8 @@ class WALReceiver(Thread):
                 # TODO: Calculate end pos and transmit that?
                 msg.cursor.send_feedback(write_lsn=msg.data_start)
 
-            if wal_name and self.latest_wal != wal_name or self.buffer.tell() >= XLOG_SEG_SIZE:
-                self.switch_xlog()
+            if wal_name and self.latest_wal != wal_name or self.buffer.tell() >= WAL_SEG_SIZE:
+                self.switch_wal()
 
             for wal_start, queue in self.callbacks.items():
                 with suppress(Empty):

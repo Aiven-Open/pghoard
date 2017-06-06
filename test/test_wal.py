@@ -17,9 +17,9 @@ WAL_HEADER_95 = codecs.decode(b"87d006002f0000000000009c1100000000000000", "hex_
 def wal_header_for_file(name, version=90500):
     tli, log, seg = wal.name_to_tli_log_seg(name)
     if version < 90300:
-        recoff = seg * wal.XLOG_SEG_SIZE
+        recoff = seg * wal.WAL_SEG_SIZE
         return struct.pack("=HHILLI", wal.WAL_MAGIC_BY_VERSION[version], 0, tli, log, recoff, 0)
-    pageaddr = (log << 32) | (seg * wal.XLOG_SEG_SIZE)
+    pageaddr = (log << 32) | (seg * wal.WAL_SEG_SIZE)
     return struct.pack("=HHIQI", wal.WAL_MAGIC_BY_VERSION[version], 0, tli, pageaddr, 0)
 
 
