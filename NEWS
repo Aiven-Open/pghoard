@@ -1,10 +1,10 @@
-pghoard X.X.X (2016-XX-XX)
+pghoard 1.5.0 (2017-06-07)
 ==========================
 
 * New tool, `pghoard_archive_cleanup` to clean up any orphan WAL segments
   from the object store
 * Basebackup `end-time` and `end-wal-segment` are now stored in metadata and
-  used for PITR when `local-tar` basebackups are used.
+  used for PITR when `local-tar` basebackups are used
 * Azure object storage updated to work with the latest python-azure-storage
   module and promoted to production ready status
 * Google object storage driver now retries operations on failure to work
@@ -16,18 +16,19 @@ pghoard X.X.X (2016-XX-XX)
   using the new non-exclusive backup mechanism.  Previous PostgreSQL
   versions require the pgespresso extension to take backups of replicas
   using the `local-tar` method, the pg_basebackup utilizing (default)
-  methods have always supported backups of replicas.
+  methods have always supported backups of replicas
 * When `local-tar` basebackups are used in exclusive mode (PG <= 9.5 without
   pgespresso) any conflicting exclusive basebackup is automatically cancelled
   to allow PGHoard to take its own basebackup.  This is sometimes required if
-  a previous PGHoard process has been killed while it was taking a backup.
+  a previous PGHoard process has been killed while it was taking a backup
 * Support pghoard_restore --recovery-target-action with 9.3 and 9.4
 * Creating a `maintenance_mode_file` as documented in README now stops
   automatic basebackups from being created
 * Changed the default directory for `maintenance_mode_file` and
   `json_state_file_path` from /tmp to /var/lib/pghoard
 * Autotune compression.thread_count and transfer_agent.thread_count defaults
-  to be max(cpu_count, 5) instead of a default of 5 as before.
+  to be max(cpu_count, 5) instead of a default of 5 as before
+* Support for Python 3.6
 * Miscellaneous bug fixes
 
 pghoard 1.4.0 (2016-07-22)
