@@ -297,24 +297,25 @@ class PGBaseBackup(Thread):
         })
 
     def get_control_entries_for_tar(self, *, metadata, pg_control, backup_label):
+        mtime = time.time()
         blob = io.BytesIO(common.json_encode(metadata, binary=True))
         ti = tarfile.TarInfo(name=".pghoard_tar_metadata.json")
         ti.size = len(blob.getbuffer())
-        ti.mtime = time.time()
+        ti.mtime = mtime
         yield ti, blob, False
 
         # Backup the latest version of pg_control
         blob = io.BytesIO(pg_control)
         ti = tarfile.TarInfo(name=os.path.join("pgdata", "global", "pg_control"))
         ti.size = len(blob.getbuffer())
-        ti.mtime = time.time()
+        ti.mtime = mtime
         yield ti, blob, False
 
         # Add the given backup_label to the tar after calling pg_stop_backup()
         blob = io.BytesIO(backup_label)
         ti = tarfile.TarInfo(name=os.path.join("pgdata", "backup_label"))
         ti.size = len(blob.getbuffer())
-        ti.mtime = time.time()
+        ti.mtime = mtime
         yield ti, blob, False
 
         # Create directory entries for empty directories
@@ -322,7 +323,7 @@ class PGBaseBackup(Thread):
             ti = tarfile.TarInfo(name=os.path.join("pgdata", dirname))
             ti.type = tarfile.DIRTYPE
             ti.mode = 0o700
-            ti.mtime = time.time()
+            ti.mtime = mtime
             yield ti, None, False
 
     def write_files_to_tar(self, *, files, tar):
@@ -432,6 +433,7 @@ class PGBaseBackup(Thread):
                 input_size = output_obj.tell()
 
             result_size = raw_output_obj.tell()
+            # Make the file persist over the with-block with this hardlink
             os.link(raw_output_obj.name, chunk_path)
 
         rohmufile.log_compression_result(
