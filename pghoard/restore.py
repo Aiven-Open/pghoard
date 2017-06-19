@@ -488,13 +488,18 @@ class Restore:
         dl_dir = os.path.join(self.config["backup_location"], self.config["path_prefix"], site, "basebackup_incoming")
         compat.makedirs(dl_dir, exist_ok=True)
         tmp = tempfile.NamedTemporaryFile(dir=dl_dir, prefix="basebackup.", suffix=".pghoard")
-        metadata = self.storage.get_basebackup_file_to_fileobj(
-            basebackup=basebackup_data_file,
-            fileobj=tmp,
-            progress_callback=progress_callback)
-        progress_callback(1, 1)
-        self.log.info("Downloaded %r", basebackup_data_file)
-        tmp.seek(0)
+        try:
+            metadata = self.storage.get_basebackup_file_to_fileobj(
+                basebackup=basebackup_data_file,
+                fileobj=tmp,
+                progress_callback=progress_callback)
+            progress_callback(1, 1)
+            self.log.info("Downloaded %r", basebackup_data_file)
+            tmp.seek(0)
+        except:  # pylint: disable=bare-except
+            self.log.exception("Problem downloading a backup file: %r", basebackup_data_file)
+            tmp.close()
+            raise
         return tmp, metadata
 
     def extract_one_backup(self, *, obj, metadata, pgdata, site, tablespaces):
