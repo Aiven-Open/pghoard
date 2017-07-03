@@ -171,6 +171,7 @@ class ArchiveSync:
 
     def run(self, args=None):
         parser = argparse.ArgumentParser()
+        parser.add_argument("-D", "--debug", help="Enable debug logging", action="store_true")
         parser.add_argument("--version", action='version', help="show program version",
                             version=version.__version__)
         parser.add_argument("--site", help="pghoard site", required=False)
@@ -179,12 +180,12 @@ class ArchiveSync:
         parser.add_argument("--create-new-backup-on-failure", help="request a new basebackup if verification fails",
                             action="store_true", default=False)
         args = parser.parse_args(args)
+        logutil.configure_logging(level=logging.DEBUG if args.debug else logging.INFO)
         self.set_config(args.config, args.site)
         return self.archive_sync(args.no_verify, args.create_new_backup_on_failure)
 
 
 def main():
-    logutil.configure_logging(level=logging.INFO)
     tool = ArchiveSync()
     try:
         return tool.run()

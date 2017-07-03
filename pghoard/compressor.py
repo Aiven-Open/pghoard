@@ -128,7 +128,8 @@ class CompressorThread(Thread):
             compressed_filepath = None
         else:
             compressed_filepath = self.get_compressed_file_path(site, filetype, event["full_path"])
-            output_obj = NamedTemporaryFile(prefix=compressed_filepath, suffix=".tmp-compress")
+            output_obj = NamedTemporaryFile(dir=os.path.dirname(compressed_filepath),
+                                            prefix=os.path.basename(compressed_filepath), suffix=".tmp-compress")
 
         input_obj = event.get("input_data")
         if not input_obj:

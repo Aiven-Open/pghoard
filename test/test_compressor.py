@@ -191,7 +191,7 @@ class CompressionCase(PGHoardTestCase):
             },
             "site": self.test_site,
         }
-        transfer_event = self.transfer_queue.get(timeout=1.0)
+        transfer_event = self.transfer_queue.get(timeout=3.0)
         for key, value in expected.items():
             assert transfer_event[key] == value
 
