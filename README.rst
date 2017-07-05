@@ -389,7 +389,7 @@ configuration must list one or more nodes (under the configuration key
 object of libpq key: value connection info pairs or libpq connection string
 or a ``postgres://`` connection uri.
 
-``basebackup_chunk_count`` (default ``5``)
+``basebackup_chunks_in_progress`` (default ``5``)
 
 How many basebackup chunks can there be simultaneously on disk while
 it is being taken. For chunk size configuration see ``basebackup_chunk_size``.
@@ -398,7 +398,7 @@ it is being taken. For chunk size configuration see ``basebackup_chunk_size``.
 
 In how large backup chunks to take a ``local-tar`` basebackup. Disk
 space needed for a successful backup is this variable multiplied by
-``basebackup_chunk_count``.
+``basebackup_chunks_in_progress``.
 
 ``basebackup_count`` (default ``2``)
 

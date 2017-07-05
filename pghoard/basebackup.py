@@ -486,7 +486,7 @@ class PGBaseBackup(Thread):
         i = 0
 
         while i < len(chunks):
-            if chunks_on_disk < self.config["backup_sites"][self.site].get("basebackup_chunk_count", 5):
+            if chunks_on_disk < self.config["backup_sites"][self.site]["basebackup_chunks_in_progress"]:
                 chunk_id = i + 1
                 one_chunk_files = chunks[i]
 
@@ -526,7 +526,7 @@ class PGBaseBackup(Thread):
         data_file_format = "{}/{}.{{0:08d}}.pghoard".format(compressed_base, os.path.basename(compressed_base)).format
 
         # Default to 2GB chunks of uncompressed data
-        target_chunk_size = self.config["backup_sites"][self.site].get("basebackup_chunk_size") or (1024 * 1024 * 1024 * 2)
+        target_chunk_size = self.config["backup_sites"][self.site]["basebackup_chunk_size"]
 
         self.log.debug("Connecting to database to start backup process")
         connection_string = connection_string_using_pgpass(self.connection_info)
