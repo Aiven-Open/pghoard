@@ -9,6 +9,7 @@ from pghoard import config, logutil, statsd, version, wal
 from pghoard.basebackup import PGBaseBackup
 from pghoard.common import (
     create_alert_file,
+    extract_pghoard_bb_v2_metadata,
     get_object_storage_config,
     replication_connection_string_and_slot_using_pgpass,
     write_json_file,
@@ -17,13 +18,14 @@ from pghoard.compressor import CompressorThread
 from pghoard.rohmu.inotify import InotifyWatcher
 from pghoard.transfer import TransferAgent
 from pghoard.receivexlog import PGReceiveXLog
-from pghoard.rohmu import dates, get_transfer
+from pghoard.rohmu import dates, get_transfer, rohmufile
 from pghoard.rohmu.compat import suppress
 from pghoard.rohmu.errors import FileNotFoundFromStorageError, InvalidConfigurationError
 from pghoard.webserver import WebServer
 from queue import Empty, Queue
 import argparse
 import datetime
+import io
 import json
 import logging
 import os
@@ -253,16 +255,34 @@ class PGHoard:
                 self.log.exception("Problem deleting: %r", wal_path)
                 self.stats.unexpected_exception(ex, where="delete_remote_wal_before")
 
-    def delete_remote_basebackup(self, site, basebackup):
+    def delete_remote_basebackup(self, site, basebackup, metadata):
+        start_time = time.monotonic()
         storage = self.site_transfers.get(site)
-        obj_key = os.path.join(self.config["path_prefix"], site, "basebackup", basebackup)
-        try:
-            storage.delete_key(obj_key)
-        except FileNotFoundFromStorageError:
-            self.log.info("Tried to delete non-existent basebackup %r", obj_key)
-        except Exception as ex:  # FIXME: don't catch all exceptions; pylint: disable=broad-except
-            self.log.exception("Problem deleting: %r", obj_key)
-            self.stats.unexpected_exception(ex, where="delete_remote_basebackup")
+        main_backup_key = os.path.join(self.config["path_prefix"], site, "basebackup", basebackup)
+        basebackup_data_files = [main_backup_key]
+
+        if metadata.get("format") == "pghoard-bb-v2":
+            bmeta_compressed = storage.get_contents_to_string(main_backup_key)[0]
+            with rohmufile.file_reader(fileobj=io.BytesIO(bmeta_compressed), metadata=metadata,
+                                       key_lookup=config.key_lookup_for_site(self.config, site)) as input_obj:
+                bmeta = extract_pghoard_bb_v2_metadata(input_obj)
+                self.log.debug("PGHoard chunk metadata: %r", bmeta)
+                for chunk in bmeta["chunks"]:
+                    basebackup_data_files.append(
+                        os.path.join(self.config["path_prefix"], site, "basebackup_chunk", chunk["chunk_filename"])
+                    )
+
+        self.log.debug("Deleting basebackup datafiles: %r", ', '.join(basebackup_data_files))
+        for obj_key in basebackup_data_files:
+            try:
+                storage.delete_key(obj_key)
+            except FileNotFoundFromStorageError:
+                self.log.info("Tried to delete non-existent basebackup %r", obj_key)
+            except Exception as ex:  # FIXME: don't catch all exceptions; pylint: disable=broad-except
+                self.log.exception("Problem deleting: %r", obj_key)
+                self.stats.unexpected_exception(ex, where="delete_remote_basebackup")
+        self.log.info("Deleted basebackup datafiles: %r, took: %.2fs",
+                      ', '.join(basebackup_data_files), time.monotonic() - start_time)
 
     def get_remote_basebackups_info(self, site):
         storage = self.site_transfers.get(site)
@@ -306,7 +326,7 @@ class PGHoard:
 
             if last_wal_segment_still_needed:
                 self.delete_remote_wal_before(last_wal_segment_still_needed, site, pg_version)
-            self.delete_remote_basebackup(site, basebackup_to_be_deleted["name"])
+            self.delete_remote_basebackup(site, basebackup_to_be_deleted["name"], basebackup_to_be_deleted["metadata"])
         self.state["backup_sites"][site]["basebackups"] = basebackups
 
         return last_backup_time

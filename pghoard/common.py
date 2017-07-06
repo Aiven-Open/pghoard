@@ -5,6 +5,7 @@ Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
 from pghoard import pgutil
+from pghoard.rohmu import IO_BLOCK_SIZE
 from pghoard.rohmu.compat import suppress
 from pghoard.rohmu.errors import Error, InvalidConfigurationError
 import datetime
@@ -13,6 +14,7 @@ import json
 import logging
 import os
 import re
+import tarfile
 import tempfile
 import time
 
@@ -182,3 +184,15 @@ def delete_alert_file(config, filename):
     filepath = os.path.join(config["alert_file_dir"], filename)
     with suppress(FileNotFoundError):
         os.unlink(filepath)
+
+
+def extract_pghoard_bb_v2_metadata(fileobj):
+    # | in mode to use tarfile's internal stream buffer manager, currently required because our SnappyFile
+    # interface doesn't do proper buffering for reads
+    with tarfile.open(fileobj=fileobj, mode="r|", bufsize=IO_BLOCK_SIZE) as tar:
+        for tarinfo in tar:
+            if tarinfo.name == ".pghoard_tar_metadata.json":
+                tar_meta_bytes = tar.extractfile(tarinfo).read()
+                return json.loads(tar_meta_bytes.decode("utf-8"))
+
+    raise Exception(".pghoard_tar_metadata.json not found")

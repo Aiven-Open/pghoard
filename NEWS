@@ -1,7 +1,8 @@
 pghoard X.X.X (XXXX-XX-XX)
 ==========================
 
-* ...
+* `local-tar` backups are now split to roughly 2 gigabyte chunks of
+  plain-text files
 
 pghoard 1.5.0 (2017-06-07)
 ==========================

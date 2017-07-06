@@ -65,6 +65,9 @@ def set_config_defaults(config, *, check_commands=True):
     for site_name, site_config in config["backup_sites"].items():
         site_config.setdefault("active", True)
         site_config.setdefault("active_backup_mode", "pg_receivexlog")
+
+        site_config.setdefault("basebackup_chunk_size", 1024 * 1024 * 1024 * 2)
+        site_config.setdefault("basebackup_chunks_in_progress", 5)
         site_config.setdefault("basebackup_count", 2)
         site_config.setdefault("basebackup_interval_hours", 24)
         site_config.setdefault("basebackup_mode",

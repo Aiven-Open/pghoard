@@ -133,14 +133,7 @@ LABEL: pg_basebackup base backup
         assert "pgdata/global/sub2.test" not in arcnameset  # acceptable loss
         assert "pgdata/global/sub3.test" in arcnameset  # acceptable
 
-        # Add pg_control
-        pgb.write_pg_control_to_tar(pgdata=db.pgdata, tar=faketar)
-        arcnameset = set(item[1] for item in faketar.items)
-        assert len(arcnameset) == len(faketar.items)
-        expected_items = (bunameset | {"pgdata/global/pg_control"}) - {"pgdata/global/sub2.test"}
-        assert arcnameset == expected_items
-
-    def _test_create_basebackup(self, capsys, db, pghoard, mode, *, replica=False):
+    def _test_create_basebackup(self, capsys, db, pghoard, mode, replica=False):
         pghoard.create_backup_site_paths(pghoard.test_site)
         basebackup_path = os.path.join(pghoard.config["backup_location"], pghoard.test_site, "basebackup")
         q = Queue()
