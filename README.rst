@@ -527,6 +527,7 @@ Optional keys for Amazon Web Services S3:
  * ``account_key`` for the secret key of the Azure Storage account
  * ``bucket_name`` for the name of Azure Storage container used to store
    objects
+ * ``azure_cloud`` Azure cloud selector, ``"public"`` (default) or ``"germany"``
 
 * ``swift`` for OpenStack Swift, required configuration keys:
 

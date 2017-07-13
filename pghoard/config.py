@@ -108,7 +108,7 @@ def set_config_defaults(config, *, check_commands=True):
                     site_name, config.get("backup_location")))
         else:
             try:
-                get_class_for_transfer(obj_store["storage_type"])
+                get_class_for_transfer(obj_store)
             except ImportError as ex:
                 raise InvalidConfigurationError(
                     "Site {0!r} object_storage: {1.__class__.__name__!s}: {1!s}".format(site_name, ex))

@@ -10,7 +10,8 @@ from . errors import InvalidConfigurationError
 IO_BLOCK_SIZE = 2 ** 20  # 1 MiB
 
 
-def get_class_for_transfer(storage_type):
+def get_class_for_transfer(obj_store):
+    storage_type = obj_store["storage_type"]
     if storage_type == "azure":
         from .object_storage.azure import AzureTransfer
         return AzureTransfer
@@ -30,11 +31,8 @@ def get_class_for_transfer(storage_type):
     raise InvalidConfigurationError("unsupported storage type {0!r}".format(storage_type))
 
 
-def get_transfer(storage_config, *, storage_type=None):
-    # TODO: drop storage_type from the function signature, always read it from the config
-    if "storage_type" in storage_config:
-        storage_config = storage_config.copy()
-        storage_type = storage_config.pop("storage_type")
-
-    storage_class = get_class_for_transfer(storage_type)
+def get_transfer(storage_config):
+    storage_class = get_class_for_transfer(storage_config)
+    storage_config = storage_config.copy()
+    storage_config.pop("storage_type")
     return storage_class(**storage_config)
