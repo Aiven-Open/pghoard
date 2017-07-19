@@ -8,19 +8,33 @@ See LICENSE for details
 from azure.storage.blob import BlockBlobService
 from azure.storage.blob.models import BlobPrefix
 from .base import BaseTransfer
-from ..errors import FileNotFoundFromStorageError
+from ..errors import FileNotFoundFromStorageError, InvalidConfigurationError
 import azure.common
 import time
 
 
+ENDPOINT_SUFFIXES = {
+    None: None,  # use default
+    "germany": "core.cloudapi.de",  # Azure Germany is a completely separate cloud from the regular Azure Public cloud
+    "public": None,  # use default
+}
+
+
 class AzureTransfer(BaseTransfer):
-    def __init__(self, account_name, account_key, bucket_name, prefix=None):
+    def __init__(self, account_name, account_key, bucket_name, prefix=None,
+                 azure_cloud=None):
         prefix = "{}".format(prefix.lstrip("/") if prefix else "")
         super().__init__(prefix=prefix)
         self.account_name = account_name
         self.account_key = account_key
         self.container_name = bucket_name
-        self.conn = BlockBlobService(account_name=self.account_name, account_key=self.account_key)
+        try:
+            endpoint_suffix = ENDPOINT_SUFFIXES[azure_cloud]
+        except KeyError:
+            raise InvalidConfigurationError("Unknown azure cloud {!r}".format(azure_cloud))
+
+        self.conn = BlockBlobService(account_name=self.account_name, account_key=self.account_key,
+                                     endpoint_suffix=endpoint_suffix)
         self.container = self.get_or_create_container(self.container_name)
         self.log.debug("AzureTransfer initialized, %r", self.container_name)
 
