@@ -30,10 +30,10 @@ def _location_for_region(region):
 
 class S3Transfer(BaseTransfer):
     def __init__(self,
-                 aws_access_key_id,
-                 aws_secret_access_key,
                  region,
                  bucket_name,
+                 aws_access_key_id=None,
+                 aws_secret_access_key=None,
                  prefix=None,
                  host=None,
                  port=None,
