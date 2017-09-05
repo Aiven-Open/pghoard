@@ -7,6 +7,7 @@ See LICENSE for details
 from . import common, config, logutil, version
 from .patchedtarfile import tarfile
 from .postgres_command import PGHOARD_HOST, PGHOARD_PORT
+from concurrent import futures
 from pghoard.rohmu import compat, dates, get_transfer, IO_BLOCK_SIZE, rohmufile
 from pghoard.rohmu.errors import Error, InvalidConfigurationError
 from psycopg2.extensions import adapt
@@ -20,6 +21,7 @@ import re
 import shutil
 import sys
 import tempfile
+import time
 
 
 class RestoreError(Error):
@@ -429,42 +431,97 @@ class Restore:
             os.chmod(dirname, 0o700)
 
         total_download_size = sum(item[1] for item in basebackup_data_files)
-        total_downloaded = 0
-        current_size = 0
-        i = 0
+        progress_report_time = [0]
+        download_errors = 0
+        extract_errors = 0
 
-        def download_progress(current_pos, expected_max, end=""):
-            progress = current_pos / expected_max
-            if total_download_size > 0:
-                progress = (total_downloaded + progress * current_size) / total_download_size
+        with futures.ThreadPoolExecutor(max_workers=self.config["compression"]["thread_count"]) as extract_executor:
+            extract_jobs = []
+            with futures.ThreadPoolExecutor(max_workers=self.config["transfer"]["thread_count"]) as download_executor:
+                download_jobs = []
+                download_progress_per_file = {
+                    basebackup_data_file: 0
+                    for basebackup_data_file, _ in basebackup_data_files
+                    if not isinstance(basebackup_data_file, tuple)
+                }
 
-            print("\rDownload chunk: {}/{} progress: {:.2%}".format(
-                i, len(basebackup_data_files),
-                progress), end=end)
+                def download_progress(end=""):
+                    # report max once per second
+                    if time.monotonic() - progress_report_time[0] < 1:
+                        return
+                    progress_report_time[0] = time.monotonic()
 
-        for basebackup_data_file, backup_data_file_size in basebackup_data_files:
-            if isinstance(basebackup_data_file, tuple):
-                tmp_obj, tmp_metadata = basebackup_data_file
-            else:
-                current_size = backup_data_file_size
-                tmp_obj, tmp_metadata = self.download_one_backup(
-                    basebackup_data_file=basebackup_data_file,
-                    progress_callback=download_progress,
-                    site=site,
-                )
-                total_downloaded += current_size
-                i += 1
+                    total_downloaded = sum(download_progress_per_file.values())
+                    if total_download_size <= 0:
+                        progress = 0
+                    else:
+                        progress = total_downloaded / total_download_size
+                    print("\rDownload progress: {progress:.2%} ({dl_mib:.0f} / {total_mib:.0f} MiB)\r".format(
+                        progress=progress,
+                        dl_mib=total_downloaded / (1024 ** 2),
+                        total_mib=total_download_size / (1024 ** 2),
+                    ), end=end)
 
-            self.extract_one_backup(
-                obj=tmp_obj,
-                metadata=tmp_metadata,
-                pgdata=pgdata,
-                site=site,
-                tablespaces=tablespaces,
-            )
+                for basebackup_data_file, backup_data_file_size in basebackup_data_files:
+                    if isinstance(basebackup_data_file, tuple):
+                        tmp_obj, tmp_metadata = basebackup_data_file
+                        extract_jobs.append(extract_executor.submit(
+                            self.extract_one_backup,
+                            obj=tmp_obj,
+                            metadata=tmp_metadata,
+                            pgdata=pgdata,
+                            site=site,
+                            tablespaces=tablespaces,
+                        ))
+                        continue
 
-        total_download_size = -1
-        download_progress(1, 1, end="\n")
+                    def single_download_progress(current_pos, expected_max,
+                                                 this_file_name=basebackup_data_file,
+                                                 this_file_size=backup_data_file_size):
+                        download_progress_per_file[this_file_name] = this_file_size * (current_pos / expected_max)
+                        download_progress()
+
+                    # NOTE: Most of the transfer clients aren't thread-safe, so initialize a new transfer
+                    # client for each download.  We could use thread local storage or pooling here, but
+                    # probably not worth the trouble for this use case.
+                    transfer = get_transfer(common.get_object_storage_config(self.config, site))
+                    download_jobs.append(download_executor.submit(
+                        self.download_one_backup,
+                        basebackup_data_file=basebackup_data_file,
+                        progress_callback=single_download_progress,
+                        site=site,
+                        transfer=transfer,
+                    ))
+
+                for future in futures.as_completed(download_jobs):
+                    if future.exception():
+                        self.log.error("Got error from chunk download: %s", future.exception())
+                        download_errors += 1
+                        continue
+
+                    tmp_obj, tmp_metadata = future.result()
+                    extract_jobs.append(extract_executor.submit(
+                        self.extract_one_backup,
+                        obj=tmp_obj,
+                        metadata=tmp_metadata,
+                        pgdata=pgdata,
+                        site=site,
+                        tablespaces=tablespaces,
+                    ))
+
+                progress_report_time[0] = 0
+                download_progress(end="\n")
+
+            for future in futures.as_completed(extract_jobs):
+                if future.exception():
+                    self.log.error("Got error from chunk extraction: %s", future.exception())
+                    extract_errors += 1
+                    continue
+
+        if download_errors:
+            raise RestoreError("Backup download failed with {} errors".format(download_errors))
+        if extract_errors:
+            raise RestoreError("Backup extraction failed with {} errors".format(extract_errors))
 
         create_recovery_conf(
             dirpath=pgdata,
@@ -484,14 +541,14 @@ class Restore:
         print("On systemd based systems you can run systemctl start postgresql")
         print("On SYSV Init based systems you can run /etc/init.d/postgresql start")
 
-    def download_one_backup(self, *, basebackup_data_file, progress_callback, site):
+    def download_one_backup(self, *, transfer, basebackup_data_file, progress_callback, site):
         dl_dir = os.path.join(self.config["backup_location"], self.config["path_prefix"], site, "basebackup_incoming")
         compat.makedirs(dl_dir, exist_ok=True)
         tmp = tempfile.NamedTemporaryFile(dir=dl_dir, prefix="basebackup.", suffix=".pghoard")
         try:
-            metadata = self.storage.get_basebackup_file_to_fileobj(
-                basebackup=basebackup_data_file,
-                fileobj=tmp,
+            metadata = transfer.get_contents_to_fileobj(
+                key=basebackup_data_file,
+                fileobj_to_store_to=tmp,
                 progress_callback=progress_callback)
             progress_callback(1, 1)
             self.log.info("Downloaded %r", basebackup_data_file)

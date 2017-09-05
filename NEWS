@@ -2,7 +2,12 @@ pghoard X.X.X (XXXX-XX-XX)
 ==========================
 
 * `local-tar` backups are now split to roughly 2 gigabyte chunks of
-  plain-text files
+  plain-text files.  New basebackups now benefit from some parallelization,
+  as up to 5 chunks may be uploaded in parallel while new backup chunks are
+  being created.
+* `pghoard_restore` can now download and extract chunked basebackups using
+  all CPU cores of the machine assuming that the parallel download mechanism
+  can deliver it chunks fast enough
 * Alternative `pghoard_postgres_command` implementation in Go for faster
   startup times.  The time that the Python implementation takes to start
   limits WAL restore throughput quite a bit
