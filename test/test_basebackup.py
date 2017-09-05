@@ -365,10 +365,14 @@ LABEL: pg_basebackup base backup
             ])
 
             # Adjust the generated recovery.conf to point pghoard_postgres_command to our instance
-            new_cmd = "PYTHONPATH={} python3 -m pghoard.postgres_command".format(os.path.dirname(os.path.dirname(__file__)))
+            new_py_restore_cmd = "PYTHONPATH={} python3 -m pghoard.postgres_command --mode restore".format(
+                os.path.dirname(os.path.dirname(__file__)))
+            new_go_restore_cmd = "{}/pghoard_postgres_command_go --mode restore".format(
+                os.path.dirname(os.path.dirname(__file__)))
             with open(os.path.join(backup_out, "recovery.conf"), "r+") as fp:
                 rconf = fp.read()
-                rconf = rconf.replace("pghoard_postgres_command", new_cmd)
+                rconf = rconf.replace("pghoard_postgres_command_go --mode restore", new_go_restore_cmd)
+                rconf = rconf.replace("pghoard_postgres_command --mode restore", new_py_restore_cmd)
                 fp.seek(0)
                 fp.write(rconf)
 
