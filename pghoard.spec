@@ -9,8 +9,9 @@ Requires:       postgresql-server, systemd
 Requires:       python3-boto, python3-cryptography >= 0.8, python3-dateutil
 Requires:       python3-psycopg2, python3-requests, python3-snappy
 Conflicts:      pgespresso92 < 1.2, pgespresso93 < 1.2, pgespresso94 < 1.2, pgespresso95 < 1.2
-BuildRequires:  python3-flake8, python3-pytest, python3-pylint, python3-devel
-BuildArch:      noarch
+BuildRequires:  python3-flake8, python3-pytest, python3-pylint, python3-devel, golang
+
+%undefine _missing_build_ids_terminate_build
 
 %description
 PGHoard is a PostgreSQL streaming backup service.  Backups are stored in
@@ -24,11 +25,17 @@ Support for Microsoft Azure is experimental.
 %setup -q -n pghoard
 
 
+%build
+go build golang/pghoard_postgres_command_go.go
+
+
 %install
+sed -e s,pghoard_postgres_command,pghoard_postgres_command_go,g -i pghoard/restore.py
 python3 setup.py install --prefix=%{_prefix} --root=%{buildroot}
 sed -e "s@#!/bin/python@#!%{_bindir}/python@" -i %{buildroot}%{_bindir}/*
 %{__install} -Dm0644 pghoard.unit %{buildroot}%{_unitdir}/pghoard.service
 %{__mkdir_p} %{buildroot}%{_localstatedir}/lib/pghoard
+cp -a pghoard_postgres_command_go %{buildroot}%{_bindir}
 
 
 %check
@@ -44,6 +51,9 @@ make test
 
 
 %changelog
+* Tue Sep 5 2017 Oskari Saarenmaa <os@aiven.io> - 1.4.0
+- Add pghoard_postgres_command_go
+
 * Tue Jul 26 2016 Oskari Saarenmaa <os@ohmu.fi> - 1.4.0
 - Conflict with pgespresso < 1.2: older versions crash PostgreSQL
   when tablespaces are used
