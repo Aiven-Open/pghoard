@@ -152,7 +152,11 @@ class GoogleTransfer(BaseTransfer):
                 self.log.warning("%s failed: %s (%s), retrying in %.2fs",
                                  action, ex.__class__.__name__, ex, retry_wait)
 
-            request.http.connections.clear()  # reset connection cache
+            # we want to reset the http connection state in case of error, but note that
+            # `request` may be a httplib2 request or a MediaIoBaseDownload
+            if hasattr(request, "http"):
+                request.http.connections.clear()  # reset connection cache
+
             retries -= 1
             time.sleep(retry_wait)
 
