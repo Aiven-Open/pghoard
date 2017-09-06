@@ -11,6 +11,7 @@ pghoard X.X.X (XXXX-XX-XX)
 * Alternative `pghoard_postgres_command` implementation in Go for faster
   startup times.  The time that the Python implementation takes to start
   limits WAL restore throughput quite a bit
+* Miscellaneous bug fixes
 
 pghoard 1.5.0 (2017-06-07)
 ==========================
