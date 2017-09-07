@@ -49,6 +49,11 @@ class ArchiveCleanup:
         parser.add_argument("--site", help="pghoard site", required=False)
         parser.add_argument("--config", help="pghoard config file", default=os.environ.get("PGHOARD_CONFIG"))
         args = parser.parse_args(args)
+
+        if not args.config:
+            print("pghoard: config file path must be given with --config or via env PGHOARD_CONFIG")
+            return 1
+
         self.set_config(args.config, args.site)
         return self.archive_cleanup()
 
