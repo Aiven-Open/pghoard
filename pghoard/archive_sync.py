@@ -180,6 +180,11 @@ class ArchiveSync:
         parser.add_argument("--create-new-backup-on-failure", help="request a new basebackup if verification fails",
                             action="store_true", default=False)
         args = parser.parse_args(args)
+
+        if not args.config:
+            print("pghoard: config file path must be given with --config or via env PGHOARD_CONFIG")
+            return 1
+
         logutil.configure_logging(level=logging.DEBUG if args.debug else logging.INFO)
         self.set_config(args.config, args.site)
         return self.archive_sync(args.no_verify, args.create_new_backup_on_failure)
