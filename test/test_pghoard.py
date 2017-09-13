@@ -13,7 +13,6 @@ from pghoard.rohmu import compat
 from unittest.mock import Mock, patch
 import datetime
 import json
-import multiprocessing
 import os
 
 
@@ -203,18 +202,17 @@ dbname|"""
     def test_backup_state_file(self):
         self.pghoard.write_backup_state_to_json_file()
         state_path = self.config["json_state_file_path"]
-        thread_count = max(multiprocessing.cpu_count(), 5)
         with open(state_path, "r") as fp:
             state = json.load(fp)
         empty_state = {
             "startup_time": self.pghoard.state["startup_time"],
             "backup_sites": {},
-            "compressors": [{}] * thread_count,
+            "compressors": [{}] * self.config["compression"]["thread_count"],
             "queues": {
                 "compression_queue": 0,
                 "transfer_queue": 0,
             },
-            "transfer_agents": [{}] * thread_count,
+            "transfer_agents": [{}] * self.config["transfer"]["thread_count"],
             "pg_receivexlogs": {},
             "pg_basebackups": {},
             "walreceivers": {},
