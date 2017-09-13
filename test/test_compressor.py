@@ -155,7 +155,7 @@ class CompressionCase(PGHoardTestCase):
             "src_path": file_path_partial,
             "full_path": file_path,
         })
-        transfer_event = self.transfer_queue.get(timeout=1.0)
+        transfer_event = self.transfer_queue.get(timeout=5.0)
         expected = {
             "filetype": filetype,
             "local_path": file_path.replace(self.incoming_path, self.handled_path),
@@ -223,7 +223,7 @@ class CompressionCase(PGHoardTestCase):
             },
             "site": self.test_site,
         }
-        transfer_event = self.transfer_queue.get(timeout=1.0)
+        transfer_event = self.transfer_queue.get(timeout=5.0)
         for key, value in expected.items():
             assert transfer_event[key] == value
 
@@ -239,7 +239,7 @@ class CompressionCase(PGHoardTestCase):
             "type": "CLOSE_WRITE",
         }
         transfer_event = self.compression_queue.put(event)
-        transfer_event = self.transfer_queue.get(timeout=1.0)
+        transfer_event = self.transfer_queue.get(timeout=5.0)
         expected = {
             "callback_queue": callback_queue,
             "filetype": "xlog",
@@ -275,7 +275,7 @@ class CompressionCase(PGHoardTestCase):
             "site": self.test_site,
             "type": "DECOMPRESSION",
         })
-        callback_queue.get(timeout=1.0)
+        callback_queue.get(timeout=5.0)
         assert os.path.exists(local_filepath) is True
         with open(local_filepath, "rb") as fp:
             fdata = fp.read()
@@ -311,7 +311,7 @@ class CompressionCase(PGHoardTestCase):
             "site": self.test_site,
             "type": "DECOMPRESSION",
         })
-        callback_queue.get(timeout=1.0)
+        callback_queue.get(timeout=5.0)
         assert os.path.exists(local_filepath) is True
         with open(local_filepath, "rb") as fp:
             fdata = fp.read()
