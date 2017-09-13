@@ -152,9 +152,8 @@ class GoogleTransfer(BaseTransfer):
                 self.log.warning("%s failed: %s (%s), retrying in %.2fs",
                                  action, ex.__class__.__name__, ex, retry_wait)
 
-            # we want to reset the http connection state in case of error, but note that
-            # `request` may be a httplib2 request or a MediaIoBaseDownload
-            if hasattr(request, "http"):
+            # we want to reset the http connection state in case of error
+            if request and hasattr(request, "http"):
                 request.http.connections.clear()  # reset connection cache
 
             retries -= 1
@@ -226,7 +225,7 @@ class GoogleTransfer(BaseTransfer):
             download = MediaIoBaseDownload(fileobj_to_store_to, req, chunksize=CHUNK_SIZE)
             done = False
             while not done:
-                status, done = self._retry_on_reset(download, download.next_chunk)
+                status, done = self._retry_on_reset(getattr(download, "_request", None), download.next_chunk)
                 if status:
                     progress_pct = status.progress() * 100
                     self.log.debug("Download of %r: %d%%", key, progress_pct)
