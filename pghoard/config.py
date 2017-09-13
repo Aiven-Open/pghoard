@@ -45,14 +45,18 @@ def set_config_defaults(config, *, check_commands=True):
     config.setdefault("path_prefix", "")
     config.setdefault("upload_retries_warning_limit", 3)
 
-    # default to 5 compression and transfer threads
-    config.setdefault("compression", {}).setdefault("thread_count", max(get_cpu_count(), 5))
-    config.setdefault("transfer", {}).setdefault("thread_count", max(get_cpu_count(), 5))
-    # default to prefetching min(#compressors, #transferagents) - 1 objects so all
-    # operations where prefetching is used run fully in parallel without waiting to start
-    config.setdefault("restore_prefetch", min(
-        config["compression"]["thread_count"],
-        config["transfer"]["thread_count"]) - 1)
+    # default to cpu_count + 1 compression threads
+    config.setdefault("compression", {}).setdefault(
+        "thread_count",
+        get_cpu_count() + 1,
+    )
+    # default to cpu_count + 3 transfer threads (max 20)
+    config.setdefault("transfer", {}).setdefault(
+        "thread_count",
+        min(get_cpu_count() + 3, 20),
+    )
+    # default to prefetching transfer.thread_count objects
+    config.setdefault("restore_prefetch", config["transfer"]["thread_count"])
     # if compression algorithm is not explicitly set prefer snappy if it's available
     if snappy is not None:
         config["compression"].setdefault("algorithm", "snappy")
