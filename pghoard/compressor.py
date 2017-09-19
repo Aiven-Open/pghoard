@@ -91,7 +91,7 @@ class CompressorThread(Thread):
             return "basebackup"
 
         if event["type"] == "CLOSE_WRITE" or (event["type"] == "MOVE" and event["src_path"].endswith(".partial")):
-            if wal.XLOG_RE.match(os.path.basename(event["full_path"])):
+            if wal.WAL_RE.match(os.path.basename(event["full_path"])):
                 return "xlog"
             if wal.TIMELINE_RE.match(os.path.basename(event["full_path"])):
                 return "timeline"

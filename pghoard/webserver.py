@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pghoard import wal
-from pghoard.common import json_encode
+from pghoard.common import json_encode, get_pg_wal_directory
 from pghoard.rohmu.compat import suppress
 from pghoard.rohmu.errors import Error, FileNotFoundFromStorageError
 from pghoard.version import __version__
@@ -165,7 +165,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             # allow postgresql's archive_command and restore_command to just feed in files without providing
             # their types which isn't possible without a wrapper to add it.
             if obtype == "archive":
-                if wal.XLOG_RE.match(path[2]):
+                if wal.WAL_RE.match(path[2]):
                     obtype = "xlog"
                 elif wal.TIMELINE_RE.match(path[2]):
                     obtype = "timeline"
@@ -257,7 +257,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         callback_queue = Queue()
 
         site_config = self.server.config["backup_sites"][site]
-        xlog_dir = site_config["pg_xlog_directory"]
+        xlog_dir = get_pg_wal_directory(site_config)
         downloads = {}
         for obname in names:
             if obname in self.server.prefetch_404:
@@ -339,7 +339,7 @@ class RequestHandler(BaseHTTPRequestHandler):
 
         # See if we have already prefetched the file
         site_config = self.server.config["backup_sites"][site]
-        xlog_dir = site_config["pg_xlog_directory"]
+        xlog_dir = get_pg_wal_directory(site_config)
         prefetch_target_path = os.path.join(xlog_dir, "{}.pghoard.prefetch".format(filename))
         if os.path.exists(prefetch_target_path):
             self._save_and_verify_restored_file(filetype, filename, prefetch_target_path, target_path)
@@ -396,7 +396,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         start_time = time.time()
 
         site_config = self.server.config["backup_sites"][site]
-        xlog_dir = site_config["pg_xlog_directory"]
+        xlog_dir = get_pg_wal_directory(site_config)
         xlog_path = os.path.join(xlog_dir, filename)
         self.server.log.debug("Got request to archive: %r %r %r, %r", site, filetype,
                               filename, xlog_path)

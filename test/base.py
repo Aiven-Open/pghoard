@@ -49,12 +49,17 @@ class PGHoardTestCase:
         # NOTE: we set pg_receivexlog_path and pg_basebackup_path per site and globally mostly to verify that
         # it works, the config keys are deprecated and will be removed in a future release at which point we'll
         # switch to using pg_bin_directory config.
-        bindir = find_pg_binary("")
+        bindir, ver = find_pg_binary("")
 
         if hasattr(psycopg2.extras, "PhysicalReplicationConnection"):
             active_backup_mode = "walreceiver"
         else:
             active_backup_mode = "pg_receivexlog"
+
+        # Instantiate a fake PG data directory
+        pg_data_directory = os.path.join(str(self.temp_dir), "PG_DATA_DIRECTORY")
+        os.makedirs(pg_data_directory)
+        open(os.path.join(pg_data_directory, "PG_VERSION"), "w").write(ver)
 
         config = {
             "alert_file_dir": os.path.join(str(self.temp_dir), "alerts"),
@@ -66,12 +71,15 @@ class PGHoardTestCase:
                         "storage_type": "local",
                         "directory": os.path.join(self.temp_dir, "backups"),
                     },
+                    "pg_data_directory": pg_data_directory,
                     "pg_receivexlog_path": os.path.join(bindir, "pg_receivexlog"),
                 },
             },
             "json_state_file_path": os.path.join(self.temp_dir, "state.json"),
             "pg_basebackup_path": os.path.join(bindir, "pg_basebackup"),
         }
+        if ver == "10":
+            config["backup_sites"][self.test_site]["pg_receivexlog_path"] = os.path.join(bindir, "pg_receivewal")
         return set_config_defaults(config)
 
     def setup_method(self, method):

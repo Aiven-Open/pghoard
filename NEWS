@@ -11,6 +11,11 @@ pghoard X.X.X (XXXX-XX-XX)
 * Alternative `pghoard_postgres_command` implementation in Go for faster
   startup times.  The time that the Python implementation takes to start
   limits WAL restore throughput quite a bit
+* Remove support for pg_xlog_directory config variable, we now require
+  pg_data_directory to be set in the config for the backup site. This is 
+  done in order to stop guessing and possibly getting the answer wrong
+  for the real location of the data.
+* Add support for PostgreSQL 10.
 * Miscellaneous bug fixes
 
 pghoard 1.5.0 (2017-06-07)

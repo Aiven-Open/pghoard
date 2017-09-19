@@ -47,8 +47,14 @@ def requests_head_call_return(*args, **kwargs):  # pylint: disable=unused-argume
 @patch("requests.put")
 def test_check_wal_archive_integrity(requests_put_mock, requests_head_mock, tmpdir):
     from pghoard.archive_sync import ArchiveSync, SyncError
+
+    # Instantiate a fake PG data directory
+    pg_data_directory = os.path.join(str(tmpdir), "PG_DATA_DIRECTORY")
+    os.makedirs(pg_data_directory)
+    open(os.path.join(pg_data_directory, "PG_VERSION"), "w").write("9.6")
+
     config_file = tmpdir.join("arsy.conf").strpath
-    write_json_file(config_file, {"http_port": 8080, "backup_sites": {"foo": {}}})
+    write_json_file(config_file, {"http_port": 8080, "backup_sites": {"foo": {"pg_data_directory": pg_data_directory}}})
     arsy = ArchiveSync()
     arsy.set_config(config_file, site="foo")
     requests_put_mock.return_value = HTTPResult(201)  # So the backup requests succeeds

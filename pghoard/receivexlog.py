@@ -17,12 +17,12 @@ from threading import Thread
 
 
 class PGReceiveXLog(Thread):
-    def __init__(self, config, connection_string, xlog_location, site, slot, pg_version_server):
+    def __init__(self, config, connection_string, wal_location, site, slot, pg_version_server):
         super().__init__()
         self.log = logging.getLogger("PGReceiveXLog")
         self.config = config
         self.connection_string = connection_string
-        self.xlog_location = xlog_location
+        self.wal_location = wal_location
         self.site = site
         self.slot = slot
         self.pg_version_server = pg_version_server
@@ -38,7 +38,7 @@ class PGReceiveXLog(Thread):
             self.config["backup_sites"][self.site]["pg_receivexlog_path"],
             "--status-interval", "1",
             "--verbose",
-            "--directory", self.xlog_location,
+            "--directory", self.wal_location,
         ]
         if self.pg_version_server < 90300:
             conn_info = get_connection_info(self.connection_string)

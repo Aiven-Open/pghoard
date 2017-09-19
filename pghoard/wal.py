@@ -11,7 +11,7 @@ import struct
 import subprocess
 
 TIMELINE_RE = re.compile(r"^[A-F0-9]{8}\.history$")
-XLOG_RE = re.compile("^[A-F0-9]{24}$")
+WAL_RE = re.compile("^[A-F0-9]{24}$")
 WAL_HEADER_LEN = 20
 WAL_MAGIC = {
     0xD071: 90200,
@@ -19,12 +19,13 @@ WAL_MAGIC = {
     0xD07E: 90400,
     0xD087: 90500,
     0xD093: 90600,
+    0xD097: 100000,
 }
 WAL_MAGIC_BY_VERSION = {value: key for key, value in WAL_MAGIC.items()}
 
-# NOTE: XLOG_SEG_SIZE is a ./configure option in PostgreSQL, but in practice it
+# NOTE: WAL_SEG_SIZE is a ./configure option in PostgreSQL, but in practice it
 # looks like everyone uses the default (16MB) and it's all we support for now.
-XLOG_SEG_SIZE = 16 * 1024 * 1024
+WAL_SEG_SIZE = 16 * 1024 * 1024
 
 WalHeader = namedtuple("WalHeader", ("version", "timeline", "lsn", "filename"))
 
@@ -37,11 +38,11 @@ def read_header(blob):
     if version < 90300:
         # Header format changed, reunpack, field names in PG XLogRecPtr are logid and recoff
         magic, info, tli, log, pos, _ = struct.unpack("=HHILLI", blob[:WAL_HEADER_LEN])  # pylint: disable=unused-variable
-        seg = pos // XLOG_SEG_SIZE
+        seg = pos // WAL_SEG_SIZE
     else:
         log = pageaddr >> 32
         pos = pageaddr & 0xFFFFFFFF
-        seg = pos // XLOG_SEG_SIZE
+        seg = pos // WAL_SEG_SIZE
     lsn = "{:X}/{:X}".format(log, pos)
     filename = name_for_tli_log_seg(tli, log, seg)
     return WalHeader(version=version, timeline=tli, lsn=lsn, filename=filename)
@@ -75,7 +76,7 @@ def name_for_tli_log_seg(tli, log, seg):
 def convert_integer_to_lsn(value):
     log = value >> 32
     pos = value & 0xFFFFFFFF
-    seg = pos // XLOG_SEG_SIZE
+    seg = pos // WAL_SEG_SIZE
     return log, pos, seg
 
 
@@ -83,13 +84,13 @@ def get_lsn_from_start_of_wal_file(lsn):
     log_hex, seg_hex = lsn.split("/", 1)
     log = int(log_hex, 16)
     seg = int(seg_hex, 16) >> 24
-    pos = seg * XLOG_SEG_SIZE
+    pos = seg * WAL_SEG_SIZE
     return "{:X}/{:X}".format(log, pos)
 
 
 def lsn_from_name(name):
     _, log, seg = name_to_tli_log_seg(name)
-    pos = seg * XLOG_SEG_SIZE
+    pos = seg * WAL_SEG_SIZE
     return "{:X}/{:X}".format(log, pos)
 
 

@@ -16,7 +16,14 @@ import pytest
 class TestRecoveryConf(PGHoardTestCase):
     def test_recovery_targets(self, tmpdir):
         config_file = tmpdir.join("conf.json").strpath
-        write_json_file(config_file, {"backup_sites": {"test": {}}})
+
+        # Instantiate a fake PG data directory
+        pg_data_directory = os.path.join(str(self.temp_dir), "PG_DATA_DIRECTORY")
+        os.makedirs(pg_data_directory)
+        open(os.path.join(pg_data_directory, "PG_VERSION"), "w").write("9.6")
+
+        write_json_file(config_file, {"backup_sites": {"test": {"pg_data_directory": pg_data_directory}}})
+
         r = Restore()
         r._get_object_storage = Mock()  # pylint: disable=protected-access
         with pytest.raises(RestoreError) as excinfo:

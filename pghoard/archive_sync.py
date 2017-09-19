@@ -6,6 +6,7 @@ See LICENSE for details
 """
 from . import config, logutil, version, wal
 from .rohmu.errors import InvalidConfigurationError
+from pghoard.common import get_pg_wal_directory
 import argparse
 import logging
 import os
@@ -18,7 +19,7 @@ class SyncError(Exception):
 
 
 class ArchiveSync:
-    """Iterate over xlog directory in reverse alphanumeric order and upload
+    """Iterate over WAL directory in reverse alphanumeric order and upload
     files to object storage until we find a file that already exists there.
     This can be used after a failover has happened to make sure the archive
     has no gaps in case the previous master failed before archiving its
@@ -67,8 +68,8 @@ class ArchiveSync:
         current_wal_file = self.get_current_wal_file()
         first_required_wal_file, _ = self.get_first_required_wal_segment()
 
-        # Find relevant xlog files.  We do this by checking archival status
-        # of all XLOG files older than the one currently open (ie reverse
+        # Find relevant WAL files.  We do this by checking archival status
+        # of all WAL files older than the one currently open (ie reverse
         # sorted list from newest file that should've been archived to the
         # oldest on disk) and and appending missing files to a list.  After
         # collecting a list we start archiving them from oldest to newest.
@@ -76,45 +77,45 @@ class ArchiveSync:
         # if sync is interrupted for some reason.
         # Sort all timeline files first to make sure they're always
         # archived, otherwise the timeline files are processed only after
-        # all xlog files for a given timeline have been handled.
-        xlog_dir = self.backup_site["pg_xlog_directory"]
-        xlog_files = os.listdir(xlog_dir)
-        xlog_files.sort(key=lambda f: (f.endswith(".history"), f), reverse=True)
+        # all WAL files for a given timeline have been handled.
+        wal_dir = get_pg_wal_directory(self.backup_site)
+        wal_files = os.listdir(wal_dir)
+        wal_files.sort(key=lambda f: (f.endswith(".history"), f), reverse=True)
         need_archival = []
-        for xlog_file in xlog_files:
+        for wal_file in wal_files:
             archive_type = None
-            if wal.TIMELINE_RE.match(xlog_file):
+            if wal.TIMELINE_RE.match(wal_file):
                 # We want all timeline files
                 archive_type = "TIMELINE"
-            elif not wal.XLOG_RE.match(xlog_file):
+            elif not wal.WAL_RE.match(wal_file):
                 pass   # not a WAL or timeline file
-            elif xlog_file == current_wal_file:
-                self.log.info("Skipping currently open WAL file %r", xlog_file)
-            elif xlog_file > current_wal_file:
-                self.log.debug("Skipping recycled WAL file %r", xlog_file)
-            elif first_required_wal_file is not None and xlog_file < first_required_wal_file:
-                self.log.info("WAL file %r is not needed for the latest basebackup", xlog_file)
+            elif wal_file == current_wal_file:
+                self.log.info("Skipping currently open WAL file %r", wal_file)
+            elif wal_file > current_wal_file:
+                self.log.debug("Skipping recycled WAL file %r", wal_file)
+            elif first_required_wal_file is not None and wal_file < first_required_wal_file:
+                self.log.info("WAL file %r is not needed for the latest basebackup", wal_file)
                 break
             else:
                 # WAL file in range first_required_wal_file .. current_wal_file
                 archive_type = "WAL"
 
             if archive_type:
-                resp = requests.head("{base}/archive/{file}".format(base=self.base_url, file=xlog_file))
+                resp = requests.head("{base}/archive/{file}".format(base=self.base_url, file=wal_file))
                 if resp.status_code == 200:
-                    self.log.info("%s file %r already archived", archive_type, xlog_file)
+                    self.log.info("%s file %r already archived", archive_type, wal_file)
                     continue
-                self.log.info("%s file %r needs to be archived", archive_type, xlog_file)
-                need_archival.append(xlog_file)
+                self.log.info("%s file %r needs to be archived", archive_type, wal_file)
+                need_archival.append(wal_file)
 
-        for xlog_file in sorted(need_archival):  # sort oldest to newest
-            resp = requests.put("{base}/archive/{file}".format(base=self.base_url, file=xlog_file))
-            archive_type = "TIMELINE" if ".history" in xlog_file else "WAL"
+        for wal_file in sorted(need_archival):  # sort oldest to newest
+            resp = requests.put("{base}/archive/{file}".format(base=self.base_url, file=wal_file))
+            archive_type = "TIMELINE" if ".history" in wal_file else "WAL"
             if resp.status_code != 201:
                 self.log.error("%s file %r archival failed with status code %r",
-                               archive_type, xlog_file, resp.status_code)
+                               archive_type, wal_file, resp.status_code)
             else:
-                self.log.info("%s file %r archived", archive_type, xlog_file)
+                self.log.info("%s file %r archived", archive_type, wal_file)
 
     def check_wal_archive_integrity(self, new_backup_on_failure):
         current_wal_file = self.get_current_wal_file()
@@ -138,10 +139,10 @@ class ArchiveSync:
                 # Decrement one segment if we're on a valid timeline
                 current_seg, current_log = wal.get_previous_wal_on_same_timeline(current_seg, current_log, pg_version)
 
-            xlog_file = wal.name_for_tli_log_seg(current_tli, current_log, current_seg)
-            resp = requests.head("{base}/archive/{file}".format(base=self.base_url, file=xlog_file))
+            wal_file = wal.name_for_tli_log_seg(current_tli, current_log, current_seg)
+            resp = requests.head("{base}/archive/{file}".format(base=self.base_url, file=wal_file))
             if resp.status_code == 200:
-                self.log.info("%s file %r correctly archived", archive_type, xlog_file)
+                self.log.info("%s file %r correctly archived", archive_type, wal_file)
                 file_count += 1
                 if current_seg == target_seg and current_log == target_log and current_tli == target_tli:
                     self.log.info("Found all required WAL files: %r", file_count)
@@ -150,7 +151,7 @@ class ArchiveSync:
                 continue
             elif not valid_timeline:
                 msg = "{} file {} missing, integrity check from {} to {} failed".format(
-                    archive_type, xlog_file, current_wal_file, first_required_wal_file)
+                    archive_type, wal_file, current_wal_file, first_required_wal_file)
                 if not new_backup_on_failure:
                     raise SyncError(msg)
                 self.log.error("Requesting new basebackup: %s", msg)

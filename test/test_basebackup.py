@@ -293,13 +293,22 @@ LABEL: pg_basebackup base backup
             assert res[1] == tspath
 
             # Start receivexlog since we want the WALs to be able to restore later on
-            xlog_directory = os.path.join(pghoard.config["backup_location"], pghoard.test_site, "xlog_incoming")
-            makedirs(xlog_directory, exist_ok=True)
-            pghoard.receivexlog_listener(pghoard.test_site, db.user, xlog_directory)
-            cursor.execute("SELECT txid_current(), pg_switch_xlog()")
+            wal_directory = os.path.join(pghoard.config["backup_location"], pghoard.test_site, "xlog_incoming")
+            makedirs(wal_directory, exist_ok=True)
+            pghoard.receivexlog_listener(pghoard.test_site, db.user, wal_directory)
+            if conn.server_version >= 100000:
+                cursor.execute("SELECT txid_current(), pg_switch_wal()")
+            else:
+                cursor.execute("SELECT txid_current(), pg_switch_xlog()")
+
             self._test_create_basebackup(capsys, db, pghoard, "local-tar")
-            cursor.execute("SELECT txid_current(), pg_switch_xlog()")
-            cursor.execute("SELECT txid_current(), pg_switch_xlog()")
+
+            if conn.server_version >= 100000:
+                cursor.execute("SELECT txid_current(), pg_switch_wal()")
+                cursor.execute("SELECT txid_current(), pg_switch_wal()")
+            else:
+                cursor.execute("SELECT txid_current(), pg_switch_xlog()")
+                cursor.execute("SELECT txid_current(), pg_switch_xlog()")
 
             backup_out = tmpdir.join("test-restore").strpath
             backup_ts_out = tmpdir.join("test-restore-tstest").strpath

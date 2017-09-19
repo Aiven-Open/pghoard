@@ -19,9 +19,9 @@ import os
 import pytest
 
 
-class TestXlog:
+class TestWAL:
     def __init__(self, path, name, mode):
-        """Create a random or zero file resembling a valid xlog, bigger than block size, with a valid header."""
+        """Create a random or zero file resembling a valid WAL, bigger than block size, with a valid header."""
         self.path = os.path.join(path, name)
         self.path_partial = self.path + ".partial"
         self.contents = wal_header_for_file(name)
@@ -123,7 +123,7 @@ class CompressionCase(PGHoardTestCase):
         assert self.compressor.get_event_filetype(event) == "basebackup"
 
     def test_write_file(self):
-        ifile = TestXlog(self.incoming_path, "00000001000000000000000C", "random")
+        ifile = TestWAL(self.incoming_path, "00000001000000000000000C", "random")
         with open(ifile.path, "rb") as input_obj, io.BytesIO() as output_obj:
             orig_len, compr_len = rohmufile.write_file(
                 input_obj=input_obj,
@@ -135,8 +135,8 @@ class CompressionCase(PGHoardTestCase):
             assert len(output_obj.getvalue()) == compr_len
             assert orig_len == ifile.size
 
-    def test_compress_to_file_xlog(self):
-        ifile = TestXlog(self.incoming_path, "00000001000000000000000C", "random")
+    def test_compress_to_file_wal(self):
+        ifile = TestWAL(self.incoming_path, "00000001000000000000000C", "random")
         self._test_compress_to_file("xlog", ifile.size, ifile.path, ifile.path_partial)
 
     def test_compress_to_file_history(self):
@@ -171,7 +171,7 @@ class CompressionCase(PGHoardTestCase):
             assert transfer_event[key] == value
 
     def test_compress_to_memory(self):
-        ifile = TestXlog(self.incoming_path, "00000001000000000000000C", "random")
+        ifile = TestWAL(self.incoming_path, "00000001000000000000000C", "random")
         self.compression_queue.put({
             "compress_to_memory": True,
             "delete_file_after_compression": False,
@@ -200,7 +200,7 @@ class CompressionCase(PGHoardTestCase):
         assert result == ifile.contents
 
     def test_compress_encrypt_to_memory(self):
-        ifile = TestXlog(self.incoming_path, "00000001000000000000000C", "random")
+        ifile = TestWAL(self.incoming_path, "00000001000000000000000C", "random")
         self.compressor.config["backup_sites"][self.test_site]["encryption_key_id"] = "testkey"
         event = {
             "compress_to_memory": True,
@@ -228,7 +228,7 @@ class CompressionCase(PGHoardTestCase):
             assert transfer_event[key] == value
 
     def test_archive_command_compression(self):
-        zero = TestXlog(self.incoming_path, "00000001000000000000000D", "zero")
+        zero = TestWAL(self.incoming_path, "00000001000000000000000D", "zero")
         callback_queue = Queue()
         event = {
             "callback_queue": callback_queue,
@@ -258,7 +258,7 @@ class CompressionCase(PGHoardTestCase):
         assert self.decompress(transfer_event["blob"]) == zero.contents
 
     def test_decompression_event(self):
-        ifile = TestXlog(self.incoming_path, "00000001000000000000000A", "random")
+        ifile = TestWAL(self.incoming_path, "00000001000000000000000A", "random")
         callback_queue = Queue()
         local_filepath = os.path.join(self.temp_dir, "00000001000000000000000A")
         self.compression_queue.put({
@@ -283,7 +283,7 @@ class CompressionCase(PGHoardTestCase):
         assert fdata == ifile.contents
 
     def test_decompression_decrypt_event(self):
-        ifile = TestXlog(self.incoming_path, "00000001000000000000000E", "random")
+        ifile = TestWAL(self.incoming_path, "00000001000000000000000E", "random")
         output_obj = io.BytesIO()
         with open(ifile.path, "rb") as input_obj:
             rohmufile.write_file(
@@ -319,7 +319,7 @@ class CompressionCase(PGHoardTestCase):
         assert fdata == ifile.contents
 
     def test_compress_decompress_fileobj(self, tmpdir):
-        plaintext = TestXlog(self.incoming_path, "00000001000000000000000E", "random").contents
+        plaintext = TestWAL(self.incoming_path, "00000001000000000000000E", "random").contents
         output_file = tmpdir.join("data.out").strpath
         with open(output_file, "w+b") as plain_fp:
             cmp_fp = compressor.CompressionFile(plain_fp, self.algorithm)

@@ -123,9 +123,13 @@ def convert_pg_command_version_to_number(command_version_string):
     9.5alpha1 or 9.6devel"""
     match = re.search(r" \(PostgreSQL\) ([0-9]+(?:\.[0-9]+)+)", command_version_string)
     if not match:
-        raise Error("Unrecognized PostgreSQL version string {!r}".format(command_version_string))
+        match = re.search(r" \(PostgreSQL\) ([0-9]+)beta([0-9])", command_version_string)
+        if not match:
+            raise Error("Unrecognized PostgreSQL version string {!r}".format(command_version_string))
     vernum = match.group(1) + ".0"  # padding for development versions
     parts = vernum.split(".")
+    if len(parts) == 2:  # PG 10+
+        return int(parts[0]) * 10000 + int(parts[1]) * 100
     return int(parts[0]) * 10000 + int(parts[1]) * 100 + int(parts[2])
 
 
@@ -196,3 +200,9 @@ def extract_pghoard_bb_v2_metadata(fileobj):
                 return json.loads(tar_meta_bytes.decode("utf-8"))
 
     raise Exception(".pghoard_tar_metadata.json not found")
+
+
+def get_pg_wal_directory(config):
+    if config["pg_data_directory_version"] == "10":
+        return os.path.join(config["pg_data_directory"], "pg_wal")
+    return os.path.join(config["pg_data_directory"], "pg_xlog")
