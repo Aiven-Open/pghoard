@@ -22,7 +22,7 @@ class ArchiveCleanup:
         self.storage = None
 
     def set_config(self, config_file, site):
-        self.config = config.read_json_config_file(config_file, check_commands=False)
+        self.config = config.read_json_config_file(config_file, check_commands=False, check_pgdata=False)
         self.site = config.get_site_from_config(self.config, site)
         self.backup_site = self.config["backup_sites"][self.site]
         storage_config = common.get_object_storage_config(self.config, self.site)
