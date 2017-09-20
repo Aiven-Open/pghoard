@@ -1,11 +1,11 @@
 """
-pghoard
+pghoard - unit test setup
 
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
 # pylint: disable=attribute-defined-outside-init
-from pghoard.config import find_pg_binary, set_config_defaults
+from pghoard.config import find_pg_binary, set_and_check_config_defaults
 from shutil import rmtree
 from tempfile import mkdtemp
 import logging
@@ -80,7 +80,7 @@ class PGHoardTestCase:
         }
         if ver == "10":
             config["backup_sites"][self.test_site]["pg_receivexlog_path"] = os.path.join(bindir, "pg_receivewal")
-        return set_config_defaults(config)
+        return set_and_check_config_defaults(config)
 
     def setup_method(self, method):
         self.temp_dir = mkdtemp(prefix=self.__class__.__name__)

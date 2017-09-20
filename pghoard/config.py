@@ -34,7 +34,7 @@ def find_pg_binary(program, versions=None):
     return os.path.join("/usr/bin", program), None
 
 
-def set_config_defaults(config, *, check_commands=True):
+def set_and_check_config_defaults(config, *, check_commands=True, check_pgdata=True):
     # TODO: consider implementing a real configuration schema at some point
     # misc global defaults
     config.setdefault("backup_location", None)
@@ -83,13 +83,14 @@ def set_config_defaults(config, *, check_commands=True):
 
         # NOTE: pg_data_directory doesn't have a default value
         data_dir = site_config.get("pg_data_directory")
-        if not data_dir:
+        if not data_dir and check_pgdata:
             raise InvalidConfigurationError(
                 "Site {!r}: pg_data_directory must be set".format(site_name))
 
-        version_file = os.path.join(data_dir, "PG_VERSION") if data_dir else None
-        with open(version_file, "r") as fp:
-            site_config["pg_data_directory_version"] = fp.read().strip()
+        if check_pgdata:
+            version_file = os.path.join(data_dir, "PG_VERSION") if data_dir else None
+            with open(version_file, "r") as fp:
+                site_config["pg_data_directory_version"] = fp.read().strip()
 
         obj_store = site_config["object_storage"] or {}
         if not obj_store:
@@ -120,8 +121,10 @@ def set_config_defaults(config, *, check_commands=True):
             if not command_path:
                 command_path = os.path.join(bin_dir, command) if bin_dir else None
                 if not command_path or not os.path.exists(command_path):
-                    pg_version = site_config["pg_data_directory_version"]
-                    command_path, _ = find_pg_binary(command, [pg_version] if pg_version else None)
+                    pg_versions_to_check = None
+                    if "pg_data_directory_version" in site_config:
+                        pg_versions_to_check = [site_config["pg_data_directory_version"]]
+                    command_path, _ = find_pg_binary(command, pg_versions_to_check)
             site_config[command_key] = command_path
 
             if check_commands and site_config["active"]:
@@ -137,7 +140,7 @@ def set_config_defaults(config, *, check_commands=True):
     return config
 
 
-def read_json_config_file(filename, *, check_commands=True, add_defaults=True):
+def read_json_config_file(filename, *, check_commands=True, add_defaults=True, check_pgdata=True):
     try:
         with open(filename, "r") as fp:
             config = json.load(fp)
@@ -153,7 +156,7 @@ def read_json_config_file(filename, *, check_commands=True, add_defaults=True):
     if not add_defaults:
         return config
 
-    return set_config_defaults(config, check_commands=check_commands)
+    return set_and_check_config_defaults(config, check_commands=check_commands, check_pgdata=check_pgdata)
 
 
 def get_site_from_config(config, site):
