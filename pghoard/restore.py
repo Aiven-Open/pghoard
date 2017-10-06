@@ -8,6 +8,8 @@ from . import common, config, logutil, version
 from .patchedtarfile import tarfile
 from .postgres_command import PGHOARD_HOST, PGHOARD_PORT
 from concurrent import futures
+# ignore pylint/distutils issue, https://github.com/PyCQA/pylint/issues/73
+from distutils.version import LooseVersion  # pylint: disable=no-name-in-module,import-error
 from pghoard.rohmu import compat, dates, get_transfer, IO_BLOCK_SIZE, rohmufile
 from pghoard.rohmu.errors import Error, InvalidConfigurationError
 from psycopg2.extensions import adapt
@@ -60,7 +62,7 @@ def create_recovery_conf(dirpath, site, *,
     if recovery_target_action:
         with open(os.path.join(dirpath, "PG_VERSION"), "r") as fp:
             pg_version = fp.read().strip()
-        if pg_version >= "9.5":
+        if LooseVersion(pg_version) >= "9.5":
             lines.append("recovery_target_action = '{}'".format(recovery_target_action))
         elif recovery_target_action == "promote":
             pass  # default action
