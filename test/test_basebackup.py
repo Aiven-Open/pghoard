@@ -4,7 +4,7 @@ pghoard - basebackup tests
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
-from .conftest import TestPG
+from .conftest import PGTester
 from copy import deepcopy
 from pghoard import common, pgutil, statsd
 from pghoard.basebackup import PGBaseBackup
@@ -385,7 +385,7 @@ LABEL: pg_basebackup base backup
                 fp.seek(0)
                 fp.write(rconf)
 
-            r_db = TestPG(backup_out)
+            r_db = PGTester(backup_out)
             r_db.user = dict(db.user, host=backup_out)
             r_db.run_pg()
             r_conn_str = pgutil.create_connection_string(r_db.user)

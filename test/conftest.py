@@ -26,7 +26,7 @@ import time
 logutil.configure_logging()
 
 
-class TestPG:
+class PGTester:
     def __init__(self, pgdata):
         pgver = os.getenv("PG_VERSION")
         pgbin, ver = pghconfig.find_pg_binary("", versions=[pgver] if pgver else None)
@@ -79,7 +79,7 @@ def setup_pg():
     tmpdir = str(tmpdir_obj)
     # try to find the binaries for these versions in some path
     pgdata = os.path.join(tmpdir, "pgdata")
-    db = TestPG(pgdata)  # pylint: disable=redefined-outer-name
+    db = PGTester(pgdata)  # pylint: disable=redefined-outer-name
     db.run_cmd("initdb", "-D", pgdata, "--encoding", "utf-8")
     # NOTE: does not use TCP ports, no port conflicts
     db.user = dict(host=pgdata, user="pghoard", password="pghoard", dbname="postgres", port="5432")
