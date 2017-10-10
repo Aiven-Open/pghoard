@@ -95,10 +95,6 @@ class CompressionCase(PGHoardTestCase):
         # Rename from non-partial suffix is not recognized
         event["src_path"] += "xyz"
         assert self.compressor.get_event_filetype(event) is None
-        # "CLOSE_WRITE" doesn't consider src_path
-        del event["src_path"]
-        event["type"] = "CLOSE_WRITE"
-        assert self.compressor.get_event_filetype(event) == "xlog"
         # other event types are ignored
         event["type"] = "NAKKI"
         assert self.compressor.get_event_filetype(event) is None
@@ -236,7 +232,7 @@ class CompressionCase(PGHoardTestCase):
             "delete_file_after_compression": False,
             "full_path": zero.path,
             "src_path": zero.path_partial,
-            "type": "CLOSE_WRITE",
+            "type": "MOVE",
         }
         transfer_event = self.compression_queue.put(event)
         transfer_event = self.transfer_queue.get(timeout=5.0)

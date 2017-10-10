@@ -129,13 +129,14 @@ class WALReceiver(Thread):
         self.callbacks[self.latest_wal_start] = callback_queue
 
         compression_event = {
-            "type": "CLOSE_WRITE",
+            "type": "MOVE",
             "callback_queue": callback_queue,
             "compress_to_memory": True,
             "delete_file_after_compression": False,
             "input_data": wal_data,
             "full_path": self.latest_wal,
             "site": self.site,
+            "src_path": "{}.partial".format(self.latest_wal),
         }
         self.latest_wal = None
         self.compression_queue.put(compression_event)

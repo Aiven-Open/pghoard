@@ -87,14 +87,15 @@ class CompressorThread(Thread):
         self.log.debug("Quitting Compressor")
 
     def get_event_filetype(self, event):
-        if event["type"] == "CLOSE_WRITE" and os.path.basename(event["full_path"]) == "base.tar":
-            return "basebackup"
+        close_write = event["type"] == "CLOSE_WRITE"
+        move = event["type"] == "MOVE" and event["src_path"].endswith(".partial")
 
-        if event["type"] == "CLOSE_WRITE" or (event["type"] == "MOVE" and event["src_path"].endswith(".partial")):
-            if wal.WAL_RE.match(os.path.basename(event["full_path"])):
-                return "xlog"
-            if wal.TIMELINE_RE.match(os.path.basename(event["full_path"])):
-                return "timeline"
+        if close_write and os.path.basename(event["full_path"]) == "base.tar":
+            return "basebackup"
+        elif (move or close_write) and wal.TIMELINE_RE.match(os.path.basename(event["full_path"])):
+            return "timeline"
+        elif move and wal.WAL_RE.match(os.path.basename(event["full_path"])):
+            return "xlog"
 
         return None
 
