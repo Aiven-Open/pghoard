@@ -12,6 +12,7 @@ import googleapiclient  # noqa pylint: disable=unused-import
 
 from contextlib import contextmanager
 from io import BytesIO, FileIO
+from http.client import IncompleteRead
 import codecs
 import errno
 import httplib2
@@ -132,12 +133,12 @@ class GoogleTransfer(BaseTransfer):
         while True:
             try:
                 return action()
-            except (HttpError, ssl.SSLEOFError, socket.timeout, OSError) as ex:
+            except (IncompleteRead, HttpError, ssl.SSLEOFError, socket.timeout, OSError) as ex:
                 # Note that socket.timeout and ssl.SSLEOFError inherit from OSError
                 # and the order of handling the errors here needs to be correct
                 if not retries:
                     raise
-                elif isinstance(ex, (socket.timeout, ssl.SSLEOFError, BrokenPipeError)):
+                elif isinstance(ex, (IncompleteRead, socket.timeout, ssl.SSLEOFError, BrokenPipeError)):
                     pass  # just retry with the same sleep amount
                 elif isinstance(ex, HttpError):
                     # https://cloud.google.com/storage/docs/json_api/v1/status-codes
