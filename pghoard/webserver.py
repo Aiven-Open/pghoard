@@ -412,12 +412,13 @@ class RequestHandler(BaseHTTPRequestHandler):
         else:
             compress_to_memory = True
         compression_event = {
-            "type": "CLOSE_WRITE",
+            "type": "MOVE",
             "callback_queue": callback_queue,
             "compress_to_memory": compress_to_memory,
             "delete_file_after_compression": False,
             "full_path": xlog_path,
             "site": site,
+            "src_path": "{}.partial".format(xlog_path),
         }
         self.server.compression_queue.put(compression_event)
         try:

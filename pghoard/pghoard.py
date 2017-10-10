@@ -352,7 +352,8 @@ class PGHoard:
                     "delete_file_after_compression": True,
                     "full_path": full_path,
                     "site": site,
-                    "type": "CLOSE_WRITE",
+                    "src_path": "{}.partial",
+                    "type": "MOVE",
                 }
                 self.log.debug("Found: %r when starting up, adding to compression queue", compression_event)
                 self.compression_queue.put(compression_event)
