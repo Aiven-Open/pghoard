@@ -1,6 +1,7 @@
-pghoard X.X.X (XXXX-XX-XX)
+pghoard 1.6.0 (2017-10-12)
 ==========================
 
+* Support for PostgreSQL 10
 * `local-tar` backups are now split to roughly 2 gigabyte chunks of
   plain-text files.  New basebackups now benefit from some parallelization,
   as up to 5 chunks may be uploaded in parallel while new backup chunks are
@@ -12,10 +13,9 @@ pghoard X.X.X (XXXX-XX-XX)
   startup times.  The time that the Python implementation takes to start
   limits WAL restore throughput quite a bit
 * Remove support for pg_xlog_directory config variable, we now require
-  pg_data_directory to be set in the config for the backup site. This is 
+  pg_data_directory to be set in the config for the backup site. This is
   done in order to stop guessing and possibly getting the answer wrong
   for the real location of the data.
-* Add support for PostgreSQL 10.
 * Miscellaneous bug fixes
 
 pghoard 1.5.0 (2017-06-07)
