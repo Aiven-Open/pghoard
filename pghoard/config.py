@@ -159,6 +159,124 @@ def read_json_config_file(filename, *, check_commands=True, add_defaults=True, c
     return set_and_check_config_defaults(config, check_commands=check_commands, check_pgdata=check_pgdata)
 
 
+def validate_config_file(config):
+
+    def is_int(i):
+        return isinstance(i, int)
+
+    def is_boolean(b):
+        return isinstance(b, bool)
+
+    def str_not_blank(s):
+        return s and len(s.strip())
+
+    def validate(rootdict, field, validator, has_default=True):
+        field_val = rootdict.get(field)
+        if (field_val and validator(field_val)) or has_default:
+            return True
+        else:
+            raise InvalidConfigurationError("Configuration field %s has invalid/blank value: %s" % (field, field_val))
+
+    def validate_encryption(rootdict):
+        if str_not_blank(rootdict.get("encryption_key_id", "")):
+            for k in rootdict["encryption_keys"]:
+                keypair = rootdict[k]
+                if not (keypair.get("private", False) and keypair.get("public", False)):
+                    raise InvalidConfigurationError("Incomplete keypair for %s." % k)
+
+    def validate_object_storage(obj_storage):
+        validate(obj_storage, "storage_type", lambda s: s in ("local", "google", "s3", "azure", "swift"))
+        storage_type = obj_storage.get("storage_type", "")
+
+        if storage_type == "local":
+            validate(obj_storage, "directory", str_not_blank, False)
+        elif storage_type == "google":
+            validate(obj_storage, "project_id", str_not_blank, False)
+            validate(obj_storage, "bucket_name", str_not_blank, False)
+            validate(obj_storage, "credential_file", str_not_blank, False)
+        elif storage_type == "s3":
+            validate(obj_storage, "aws_access_key_id", str_not_blank, False)
+            validate(obj_storage, "aws_secret_access_key", str_not_blank, False)
+            validate(obj_storage, "region", str_not_blank, False)
+            validate(obj_storage, "bucket_name", str_not_blank, False)
+            validate(obj_storage, "encrypted", is_boolean)
+
+            # The following technically have no defaults but they are for
+            # S3-compatible services and so are treated as such
+            validate(obj_storage, "host", str_not_blank)
+            validate(obj_storage, "port", is_int)
+            validate(obj_storage, "is_secure", is_boolean)
+        elif storage_type == "azure":
+            validate(obj_storage, "account_name", str_not_blank, False)
+            validate(obj_storage, "account_key", str_not_blank, False)
+            validate(obj_storage, "bucket_name", str_not_blank, False)
+            validate(obj_storage, "azure_cloud", lambda s: s in ("public", "germany"))
+        elif storage_type == "swift":
+            validate(obj_storage, "user", str_not_blank, False)
+            validate(obj_storage, "key", str_not_blank, False)
+            validate(obj_storage, "auth_url", str_not_blank, False)
+            validate(obj_storage, "container_name", str_not_blank, False)
+
+            # The following are all optional and so are treated as has default.
+            validate(obj_storage, "auth_version", str_not_blank)
+            validate(obj_storage, "segment_size", str_not_blank)
+            validate(obj_storage, "tenant_name", str_not_blank)
+            validate(obj_storage, "region_name", str_not_blank)
+            validate(obj_storage, "user_id", str_not_blank)
+            validate(obj_storage, "user_domain_id", str_not_blank)
+            validate(obj_storage, "user_domain_name", str_not_blank)
+            validate(obj_storage, "tenant_id", str_not_blank)
+            validate(obj_storage, "project_id", str_not_blank)
+            validate(obj_storage, "project_name", str_not_blank)
+            validate(obj_storage, "project_domain_id", str_not_blank)
+            validate(obj_storage, "project_domain_name", str_not_blank)
+            validate(obj_storage, "service_type", str_not_blank)
+            validate(obj_storage, "endpoint_type", str_not_blank)
+
+    def validate_compression(config):
+        compression = config.get("compression")
+
+        if compression:
+            validate(compression, "algorithm", lambda s: s in ("snappy", "lzma"))
+            validate(compression, "level", is_int)
+            validate(compression, "thread_count", is_int)
+        else:
+            # It's fine, pghoard can live even without compression
+            return True
+
+    validate_compression(config)
+    validate(config, "backup_location", str_not_blank, has_default=False)
+    validate(config, "log_level", lambda s: s in ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"))
+    validate(config, "http_address", str_not_blank)
+    validate(config, "http_port", is_int)
+    validate(config, "alert_file_dir", str_not_blank)
+    validate(config, "json_state_file_path", str_not_blank)
+    validate(config, "maintenance_mode_file", str_not_blank)
+    validate(config, "upload_retries_warning_limit", is_int)
+    validate(config, "restore_prefetch", is_int)
+    validate(config, "syslog", is_boolean)
+    validate(config, "syslog_address", str_not_blank)
+    validate(config, "syslog_facility", str_not_blank)
+
+    cfg_backup_sites = config["backup_sites"]
+    for site in cfg_backup_sites.keys():
+        site_config = cfg_backup_sites[site]
+        validate_encryption(site_config)
+        validate_object_storage(site_config)
+        validate(site_config, "active", is_boolean)
+        validate(site_config, "active_backup_mode", lambda s: s in("pg_receivexlog", "archive_command", "walreceiver"))
+        validate(site_config, "basebackup_chunks_in_progress", is_int)
+        validate(site_config, "basebackup_count", is_int)
+        validate(site_config, "basebackup_interval_hours", is_int)
+        validate(site_config, "basebackup_mode", lambda s: s in ("basic", "pipe", "local-tar"))
+        validate(site_config, "pg_bin_directory", str_not_blank)
+        validate(site_config, "pg_basebackup_path", str_not_blank)
+        validate(site_config, "pg_receivexlog_path", str_not_blank)
+        validate(site_config, "pg_data_directory", str_not_blank)
+
+    return True
+
+
 def get_site_from_config(config, site):
     if not config.get("backup_sites"):
         raise InvalidConfigurationError("No backup sites defined in configuration")

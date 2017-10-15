@@ -576,6 +576,7 @@ def main(args=None):
                         version=version.__version__)
     parser.add_argument("-s", "--short-log", help="use non-verbose logging format", action="store_true")
     parser.add_argument("--config", help="configuration file path", default=os.environ.get("PGHOARD_CONFIG"))
+    parser.add_argument("--validate", help="validate configuration file syntax", action="store_true")
     parser.add_argument("config_file", help="configuration file path (for backward compatibility)",
                         nargs="?")
     arg = parser.parse_args(args)
@@ -588,6 +589,10 @@ def main(args=None):
     if not os.path.exists(config_path):
         print("pghoard: {!r} doesn't exist".format(config_path))
         return 1
+
+    if arg.validate:
+        cfg = config.read_json_config_file(config_path, add_defaults=False)
+        config.validate_config_file(cfg)
 
     logutil.configure_logging(short_log=arg.short_log, level=logging.DEBUG if arg.debug else logging.INFO)
 
