@@ -538,7 +538,7 @@ class PGBaseBackup(Thread):
 
             if self.pg_version_server >= 90600:
                 # We'll always use the the non-exclusive backup mode on 9.6 and newer
-                cursor.execute("SELECT pg_start_backup(%s, false, false)", [BASEBACKUP_NAME])
+                cursor.execute("SELECT pg_start_backup(%s, true, false)", [BASEBACKUP_NAME])
                 backup_label = None
                 backup_mode = "non-exclusive"
             else:
@@ -717,7 +717,7 @@ class PGBaseBackup(Thread):
         # timestamp after pg_stop_backup() was called.
         backup_end_name = "pghoard_end_of_backup"
         if backup_mode == "non-exclusive":
-            cursor.execute("SELECT pg_start_backup(%s, false, false)", [backup_end_name])
+            cursor.execute("SELECT pg_start_backup(%s, true, false)", [backup_end_name])
             cursor.execute("SELECT pg_stop_backup(false)")
         elif backup_mode == "pgespresso":
             cursor.execute("SELECT pgespresso_start_backup(%s, false)", [backup_end_name])
