@@ -54,6 +54,6 @@ pylint: $(generated)
 	$(PYTHON) -m pylint.lint --rcfile .pylintrc $(PYTHON_SOURCE_DIRS)
 
 flake8: $(generated)
-	$(PYTHON) -m flake8 --max-line-len=125 $(PYTHON_SOURCE_DIRS)
+	$(PYTHON) -m flake8 --ignore=E722 --max-line-len=125 $(PYTHON_SOURCE_DIRS)
 
 .PHONY: rpm
