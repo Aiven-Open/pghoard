@@ -1,3 +1,11 @@
+pghoard X.X.X (unreleased)
+==========================
+
+* Support for PostgreSQL 10.1+
+* Use fast checkpoints by default to make the start of backups faster.  Slow
+  progress at the beginning of the backup has a tendency to confuse people.
+
+
 pghoard 1.6.0 (2017-10-12)
 ==========================
 
