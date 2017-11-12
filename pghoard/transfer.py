@@ -71,10 +71,7 @@ class TransferAgent(Thread):
             name = os.path.join(name_parts[-2], name_parts[-1])
         else:
             name = name_parts[-1]
-        return os.path.join(file_to_transfer["path_prefix"],
-                            file_to_transfer["site"],
-                            file_to_transfer["filetype"],
-                            name)
+        return os.path.join(file_to_transfer["prefix"], file_to_transfer["filetype"], name)
 
     def transmit_statsd_metrics(self):
         """
@@ -108,10 +105,13 @@ class TransferAgent(Thread):
                 continue
             if file_to_transfer["type"] == "QUIT":
                 break
+
+            site = file_to_transfer["site"]
+            filetype = file_to_transfer["filetype"]
             self.log.debug("Starting to %r %r, size: %r",
                            file_to_transfer["type"], file_to_transfer["local_path"],
                            file_to_transfer.get("file_size", "unknown"))
-            file_to_transfer.setdefault("path_prefix", self.config["path_prefix"])
+            file_to_transfer.setdefault("prefix", self.config["backup_sites"][site]["prefix"])
             start_time = time.time()
             key = self.form_key_path(file_to_transfer)
             oper = file_to_transfer["type"].lower()
@@ -119,8 +119,6 @@ class TransferAgent(Thread):
             if oper_func is None:
                 self.log.warning("Invalid operation %r", file_to_transfer["type"])
                 continue
-            site = file_to_transfer["site"]
-            filetype = file_to_transfer["filetype"]
 
             result = oper_func(site, key, file_to_transfer)
 

@@ -4,6 +4,11 @@ pghoard X.X.X (unreleased)
 * Support for PostgreSQL 10.1+
 * Use fast checkpoints by default to make the start of backups faster.  Slow
   progress at the beginning of the backup has a tendency to confuse people.
+* Allow overriding the name of the folder for a site's backups by using a
+  new site-level configuration option `prefix`.  Previously backups were
+  always stored in a folder named after the site, optionally prefixed by an
+  undocumented top-level configuration option `path_prefix` which is now
+  deprecated.
 
 
 pghoard 1.6.0 (2017-10-12)

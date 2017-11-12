@@ -31,13 +31,11 @@ class CompressorThread(Thread):
         if filetype == "basebackup":
             rest, _ = os.path.split(original_path)
             rest, backupname = os.path.split(rest)
-            folder_for_type = "basebackup"
+            object_path = os.path.join("basebackup", backupname)
         else:
-            backupname = os.path.basename(original_path)
-            folder_for_type = "xlog"
+            object_path = os.path.join("xlog", os.path.basename(original_path))
 
-        cfp = os.path.join(self.config["backup_location"], self.config["path_prefix"],
-                           site, folder_for_type, backupname)
+        cfp = os.path.join(self.config["backup_location"], self.config["backup_sites"][site]["prefix"], object_path)
         self.log.debug("compressed_file_path for %r is %r", original_path, cfp)
         return cfp
 

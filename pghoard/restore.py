@@ -182,7 +182,7 @@ class Restore:
     def _get_object_storage(self, site, pgdata):
         storage_config = common.get_object_storage_config(self.config, site)
         storage = get_transfer(storage_config)
-        return ObjectStore(storage, self.config["path_prefix"], site, pgdata)
+        return ObjectStore(storage, self.config["backup_sites"][site]["prefix"], site, pgdata)
 
     def list_basebackups(self, arg):
         """List basebackups from an object store"""
@@ -367,7 +367,7 @@ class Restore:
             tablespaces = bmeta["tablespaces"]
             basebackup_data_files = [
                 [
-                    os.path.join(self.config["path_prefix"], site, "basebackup_chunk", chunk["chunk_filename"]),
+                    os.path.join(self.config["backup_sites"][site]["prefix"], "basebackup_chunk", chunk["chunk_filename"]),
                     chunk["result_size"],
                 ]
                 for chunk in bmeta["chunks"]
@@ -532,7 +532,11 @@ class Restore:
         )
 
     def download_one_backup(self, *, transfer, basebackup_data_file, progress_callback, site):
-        dl_dir = os.path.join(self.config["backup_location"], self.config["path_prefix"], site, "basebackup_incoming")
+        dl_dir = os.path.join(
+            self.config["backup_location"],
+            self.config["backup_sites"][site]["prefix"],
+            "basebackup_incoming",
+        )
         compat.makedirs(dl_dir, exist_ok=True)
         tmp = tempfile.NamedTemporaryFile(dir=dl_dir, prefix="basebackup.", suffix=".pghoard")
         try:
@@ -577,15 +581,15 @@ class Restore:
 
 
 class ObjectStore:
-    def __init__(self, storage, path_prefix, site, pgdata):
+    def __init__(self, storage, prefix, site, pgdata):
         self.storage = storage
-        self.path_prefix = path_prefix
+        self.prefix = prefix
         self.site = site
         self.pgdata = pgdata
         self.log = logging.getLogger(self.__class__.__name__)
 
     def list_basebackups(self):
-        return self.storage.list_path(os.path.join(self.path_prefix, self.site, "basebackup"))
+        return self.storage.list_path(os.path.join(self.prefix, "basebackup"))
 
     def show_basebackup_list(self, verbose=True):
         result = self.list_basebackups()
@@ -604,7 +608,7 @@ class ObjectStore:
 
 class HTTPRestore(ObjectStore):
     def __init__(self, host, port, site, pgdata=None):
-        super().__init__(storage=None, path_prefix=None, site=site, pgdata=pgdata)
+        super().__init__(storage=None, prefix=None, site=site, pgdata=pgdata)
         self.host = host
         self.port = port
         self.session = Session()
