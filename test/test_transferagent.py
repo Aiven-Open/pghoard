@@ -34,9 +34,15 @@ class MockStorageRaising(Mock):
 class TestTransferAgent(PGHoardTestCase):
     def setup_method(self, method):
         super().setup_method(method)
-        self.config = self.config_template()
-        self.config["backup_sites"][self.test_site]["object_storage"] = {"storage_type": "s3"}
-        os.makedirs(self.config["alert_file_dir"], exist_ok=True)
+        self.config = self.config_template({
+            "backup_sites": {
+                self.test_site: {
+                    "object_storage": {
+                        "storage_type": "s3",
+                    },
+                },
+            },
+        })
 
         self.foo_path = os.path.join(self.temp_dir, self.test_site, "xlog", "00000001000000000000000C")
         os.makedirs(os.path.join(self.temp_dir, self.test_site, "xlog"))

@@ -48,21 +48,26 @@ class CompressionCase(PGHoardTestCase):
     def setup_method(self, method):
         super().setup_method(method)
         self.log = logging.getLogger(str(method))
-        self.config = self.config_template()
-        self.config["backup_sites"][self.test_site] = {
-            "encryption_key_id": None,
-            "encryption_keys": {
-                "testkey": {
-                    "public": CONSTANT_TEST_RSA_PUBLIC_KEY,
-                    "private": CONSTANT_TEST_RSA_PRIVATE_KEY
+        self.config = self.config_template({
+            "backup_sites": {
+                self.test_site: {
+                    "encryption_key_id": None,
+                    "encryption_keys": {
+                        "testkey": {
+                            "public": CONSTANT_TEST_RSA_PUBLIC_KEY,
+                            "private": CONSTANT_TEST_RSA_PRIVATE_KEY
+                        },
+                    },
+                    "object_storage": {
+                        "storage_type": "s3",
+                    },
+                    "pg_version": 90500,
                 },
             },
-            "object_storage": {
-                "storage_type": "s3",
+            "compression": {
+                "algorithm": self.algorithm,
             },
-            "pg_version": 90500,
-        }
-        self.config["compression"]["algorithm"] = self.algorithm
+        })
         self.compression_queue = Queue()
         self.transfer_queue = Queue()
         self.incoming_path = os.path.join(self.temp_dir, self.test_site, "xlog")
