@@ -118,18 +118,31 @@ def terminate_subprocess(proc, timeout=0.1, log=None):
 
 
 def convert_pg_command_version_to_number(command_version_string):
-    """convert a string like `psql (PostgreSQL) 9.4.4` to 90404.  also
+    """
+    Convert a string like `psql (PostgreSQL) 9.4.4` to 90404.  also
     handle pre-release versioning where the version string is something like
-    9.5alpha1 or 9.6devel"""
+    9.5alpha1 or 9.6devel.
+
+    Version <  10.0 int format:  ABBCC, where A.BB=major and CC=minor
+    Version >= 10.0 int format: AAxxCC, where AA=major, xx is unused and CC=minor
+
+    "9.6.5" ->  90605
+    "10.0"  -> 100000
+    "10.1"  -> 100001
+    """
     match = re.search(r" \(PostgreSQL\) ([0-9]+(?:\.[0-9]+)+)", command_version_string)
     if not match:
         match = re.search(r" \(PostgreSQL\) ([0-9]+)beta([0-9])", command_version_string)
         if not match:
             raise Error("Unrecognized PostgreSQL version string {!r}".format(command_version_string))
-    vernum = match.group(1) + ".0"  # padding for development versions
-    parts = vernum.split(".")
-    if len(parts) == 2:  # PG 10+
-        return int(parts[0]) * 10000 + int(parts[1]) * 100
+
+    parts = match.group(1).split(".")  # ['9', '6', '5'] or ['10', '1']
+    if len(parts) == 2:
+        if int(parts[0]) >= 10:  # PG 10+: just major and minor
+            return int(parts[0]) * 10000 + int(parts[1])
+        else:
+            parts.append("0")  # padding for development version numbers
+
     return int(parts[0]) * 10000 + int(parts[1]) * 100 + int(parts[2])
 
 

@@ -49,9 +49,14 @@ class TestCommon(PGHoardTestCase):
         os.environ['HOME'] = original_home
 
     def test_pg_versions(self):
+        assert convert_pg_command_version_to_number("pg_basebackup (PostgreSQL) 9.3.20") == 90320
         assert convert_pg_command_version_to_number("foobar (PostgreSQL) 9.4.1") == 90401
+        assert convert_pg_command_version_to_number("pg_basebackup (PostgreSQL) 9.5.8") == 90508
         assert convert_pg_command_version_to_number("asdf (PostgreSQL) 9.5alpha1") == 90500
         assert convert_pg_command_version_to_number("pg_dummyutil (PostgreSQL) 9.6devel") == 90600
+        assert convert_pg_command_version_to_number("pg_basebackup (PostgreSQL) 9.6.6") == 90606
+        assert convert_pg_command_version_to_number("pg_basebackup (PostgreSQL) 10.0") == 100000
+        assert convert_pg_command_version_to_number("pg_basebackup (PostgreSQL) 10.1") == 100001
         with pytest.raises(Error):
             convert_pg_command_version_to_number("PostgreSQL) 9.6devel")
         with pytest.raises(Error):
