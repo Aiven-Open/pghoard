@@ -383,11 +383,101 @@ data and the actual backups.  (if no object storage is used)
 ``backup_sites`` (default ``{}``)
 
 This object contains names and configurations for the different PostgreSQL
-clusters (here called ``sites``) from which to take backups.  Each site's
-configuration must list one or more nodes (under the configuration key
-``nodes``) from which the backups are taken.  A node can be described as an
-object of libpq key: value connection info pairs or libpq connection string
-or a ``postgres://`` connection uri.
+clusters (here called ``sites``) from which to take backups.  The
+configuration keys for sites are listed below.
+
+* ``compression`` WAL/basebackup compression parameters
+
+ * ``algorithm`` default ``"snappy"`` if available, otherwise ``"lzma"``
+ * ``level`` default ``"0"`` compression level for ``"lzma"`` compression
+ * ``thread_count`` (default max(cpu_count, ``5``)) number of parallel compression threads
+
+``http_address`` (default ``"127.0.0.1"``)
+
+Address to bind the PGHoard HTTP server to.  Set to an empty string to
+listen to all available addresses.
+
+``http_port`` (default ``16000``)
+
+HTTP webserver port. Used for the archive command and for fetching of
+basebackups/WAL's when restoring if not using an object store.
+
+``json_state_file_path`` (default ``"/var/lib/pghoard/pghoard_state.json"``)
+
+Location of a JSON state file which describes the state of the ``pghoard``
+process.
+
+``log_level`` (default ``"INFO"``)
+
+Determines log level of ``pghoard``.
+
+``maintenance_mode_file`` (default ``"/var/lib/pghoard/maintenance_mode_file"``)
+
+If a file exists in this location, no new backup actions will be started.
+
+``restore_prefetch`` (default ``transfer.thread_count``)
+
+Number of files to prefetch when performing archive recovery.  The default
+is the number of Transfer Agent threads to try to utilize them all.
+
+``statsd`` (default: disabled)
+
+Enables metrics sending to a statsd daemon that supports Telegraf
+or DataDog syntax with tags.
+
+The value is a JSON object::
+
+  {
+      "host": "<statsd address>",
+      "port": <statsd port>,
+      "format": "<statsd message format>",
+      "tags": {
+          "<tag>": "<value>"
+      }
+  }
+
+``format`` (default: ``"telegraf"``)
+
+Determines statsd message format. Following formats are supported:
+
+* ``telegraf`` `Telegraf spec`_
+
+.. _`Telegraf spec`: https://github.com/influxdata/telegraf/tree/master/plugins/inputs/statsd
+
+* ``datadog`` `DataDog spec`_
+
+.. _`DataDog spec`: http://docs.datadoghq.com/guides/dogstatsd/#datagram-format
+
+The ``tags`` setting can be used to enter optional tag values for the metrics.
+
+``syslog`` (default ``false``)
+
+Determines whether syslog logging should be turned on or not.
+
+``syslog_address`` (default ``"/dev/log"``)
+
+Determines syslog address to use in logging (requires syslog to be true as
+well)
+
+``syslog_facility`` (default ``"local2"``)
+
+Determines syslog log facility. (requires syslog to be true as well)
+
+* ``transfer`` WAL/basebackup transfer parameters
+
+ * ``thread_count`` (default max(cpu_count, ``5``)) number of parallel uploads/downloads
+
+``upload_retries_warning_limit`` (default ``3``)
+
+After this many failed upload attempts for a single file, create an
+alert file.
+
+Backup site configuration
+=========================
+
+The following options control the behavior of each backup site.  A backup
+site means an individual PostgreSQL installation ("cluster" in PostgreSQL
+terminology) from which to take backups.
 
 ``basebackup_chunks_in_progress`` (default ``5``)
 
@@ -419,9 +509,7 @@ The way basebackups should be created.  The default mode, ``basic`` runs
 disk before compressing and optionally encrypting it.  The alternative mode
 ``pipe`` pipes the data directly from ``pg_basebackup`` to PGHoard's
 compression and encryption processing reducing the amount of temporary disk
-space that's required.  PGHoard version 1.3.0 and older implemented this
-mode with the now deprecated config option ``stream_compression`` which is
-still recognized and used unless ``basebackup_mode`` is given.
+space that's required.
 
 Neither ``basic`` nor ``pipe`` modes support multiple tablespaces.
 
@@ -450,34 +538,6 @@ key needs to be in place for restoring encrypted backups.
 
 You can use ``pghoard_create_keys`` to generate and output encryption keys
 in the ``pghoard`` configuration format.
-
-``http_address`` (default ``"127.0.0.1"``)
-
-Address to bind the PGHoard HTTP server to.  Set to an empty string to
-listen to all available addresses.
-
-``http_port`` (default ``16000``)
-
-HTTP webserver port. Used for the archive command and for fetching of
-basebackups/WAL's when restoring if not using an object store.
-
-``json_state_file_path`` (default ``"/var/lib/pghoard/pghoard_state.json"``)
-
-Location of a JSON state file which describes the state of the ``pghoard``
-process.
-
-``log_level`` (default ``"INFO"``)
-
-Determines log level of ``pghoard``.
-
-``maintenance_mode_file`` (default ``"/var/lib/pghoard/maintenance_mode_file"``)
-
-If a file exists in this location, no new backup actions will be started.
-
-``upload_retries_warning_limit`` (default ``3``)
-
-After this many failed upload attempts for a single file, create an
-alert file.
 
 ``object_storage`` (no default)
 
@@ -556,6 +616,13 @@ Optional keys for Amazon Web Services S3:
   * ``service_type`` - for auth_version 3.0
   * ``endpoint_type`` - for auth_version 3.0
 
+``nodes`` (no default)
+
+Array of one or more nodes from which the backups are taken.  A node can be
+described as an object of libpq key: value connection info pairs or libpq
+connection string or a ``postgres://`` connection uri.
+
+
 ``pg_bin_directory`` (default: find binaries from well-known directories)
 
 Site-specific option for finding ``pg_basebackup`` and ``pg_receivexlog``
@@ -565,81 +632,11 @@ well-known locations.  In case ``pg_data_directory`` is set and points to a
 valid data directory the lookup is restricted to the version contained in
 the given data directory.
 
-``pg_basebackup_path`` (default ``"/usr/bin/pg_basebackup"``)
-
-Deprecated.  Use site-specific ``pg_bin_directory`` instead.
-Determines the path where to find the correct ``pg_basebackup`` binary.
-
-``pg_receivexlog_path`` (default ``"/usr/bin/pg_receivexlog"``)
-
-Deprecated.  Use site-specific ``pg_bin_directory`` instead.
-Determines the path where to find the correct ``pg_receivexlog`` binary.
-
 ``pg_data_directory`` (no default)
 
 This is used when the ``local-tar`` ``basebackup_mode`` is used.  The data
 directory must point to PostgreSQL's ``$PGDATA`` and must be readable by the
 ``pghoard`` daemon.
-
-``restore_prefetch`` (default ``min(compression.thread_count,
-transfer.thread_count) - 1``)
-
-Number of files to prefetch when performing archive recovery.  The default
-is the lower of Compression or Transfer Agent threads minus one to perform
-all operations in parallel when a single backup site is used.
-
-``statsd`` (default: disabled)
-
-Enables metrics sending to a statsd daemon that supports Telegraf
-or DataDog syntax with tags.
-
-The value is a JSON object::
-
-  {
-      "host": "<statsd address>",
-      "port": <statsd port>,
-      "format": "<statsd message format>",
-      "tags": {
-          "<tag>": "<value>"
-      }
-  }
-
-``format`` (default: ``"telegraf"``)
-
-Determines statsd message format. Following formats are supported:
-
-* ``telegraf`` `Telegraf spec`_
-
-.. _`Telegraf spec`: https://github.com/influxdata/telegraf/tree/master/plugins/inputs/statsd
-
-* ``datadog`` `DataDog spec`_
-
-.. _`DataDog spec`: http://docs.datadoghq.com/guides/dogstatsd/#datagram-format
-
-The ``tags`` setting can be used to enter optional tag values for the metrics.
-
-``syslog`` (default ``false``)
-
-Determines whether syslog logging should be turned on or not.
-
-``syslog_address`` (default ``"/dev/log"``)
-
-Determines syslog address to use in logging (requires syslog to be true as
-well)
-
-``syslog_facility`` (default ``"local2"``)
-
-Determines syslog log facility. (requires syslog to be true as well)
-
-* ``compression`` WAL/basebackup compression parameters
-
- * ``algorithm`` default ``"snappy"`` if available, otherwise ``"lzma"``
- * ``level`` default ``"0"`` compression level for ``"lzma"`` compression
- * ``thread_count`` (default max(cpu_count, ``5``)) number of parallel compression threads
-
-* ``transfer`` WAL/basebackup transfer parameters
-
- * ``thread_count`` (default max(cpu_count, ``5``)) number of parallel uploads/downloads
 
 
 Alert files

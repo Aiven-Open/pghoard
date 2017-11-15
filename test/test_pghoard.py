@@ -9,7 +9,6 @@ from .base import PGHoardTestCase
 from pghoard.common import create_alert_file, delete_alert_file, write_json_file
 from pghoard.pghoard import PGHoard
 from pghoard.pgutil import create_connection_string
-from pghoard.rohmu import compat
 from unittest.mock import Mock, patch
 import datetime
 import json
@@ -19,15 +18,21 @@ import os
 class TestPGHoard(PGHoardTestCase):
     def setup_method(self, method):
         super().setup_method(method)
-        self.config = self.config_template()
-        self.config["backup_sites"][self.test_site].update({
-            "basebackup_count": 1,
-            "basebackup_interval_hours": 1,
-            "nodes": [{"host": "127.0.0.4"}],
+        self.config = self.config_template({
+            "backup_sites": {
+                self.test_site: {
+                    "basebackup_count": 1,
+                    "basebackup_interval_hours": 1,
+                    "nodes": [
+                        {
+                            "host": "127.0.0.4",
+                        },
+                    ],
+                },
+            },
         })
         config_path = os.path.join(self.temp_dir, "pghoard.json")
         write_json_file(config_path, self.config)
-        compat.makedirs(self.config["alert_file_dir"], exist_ok=True)
 
         self.pghoard = PGHoard(config_path)
         # This is the "final storage location" when using "local" storage type

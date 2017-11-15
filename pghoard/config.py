@@ -76,6 +76,7 @@ def set_and_check_config_defaults(config, *, check_commands=True, check_pgdata=T
         site_config.setdefault("basebackup_chunks_in_progress", 5)
         site_config.setdefault("basebackup_count", 2)
         site_config.setdefault("basebackup_interval_hours", 24)
+        # NOTE: stream_compression removed from documentation after 1.6.0 release
         site_config.setdefault("basebackup_mode",
                                "pipe" if site_config.get("stream_compression") else "basic")
         site_config.setdefault("encryption_key_id", None)
@@ -116,6 +117,7 @@ def set_and_check_config_defaults(config, *, check_commands=True, check_pgdata=T
         # pg_bin_directory to point to the version-specific bin directory.
         bin_dir = site_config.get("pg_bin_directory")
         for command in ["pg_basebackup", "pg_receivexlog"]:
+            # NOTE: pg_basebackup_path and pg_receivexlog_path removed from documentation after 1.6.0 release
             command_key = "{}_path".format(command)
             command_path = site_config.get(command_key) or config.get(command_key)
             if not command_path:

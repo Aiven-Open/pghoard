@@ -6,6 +6,7 @@ See LICENSE for details
 """
 # pylint: disable=attribute-defined-outside-init
 from pghoard.config import find_pg_binary, set_and_check_config_defaults
+from pghoard.rohmu import compat
 from shutil import rmtree
 from tempfile import mkdtemp
 import logging
@@ -45,7 +46,7 @@ class PGHoardTestCase:
     def setup_class(cls):
         cls.log = logging.getLogger(cls.__name__)
 
-    def config_template(self):
+    def config_template(self, override=None):
         # NOTE: we set pg_receivexlog_path and pg_basebackup_path per site and globally mostly to verify that
         # it works, the config keys are deprecated and will be removed in a future release at which point we'll
         # switch to using pg_bin_directory config.
@@ -80,6 +81,16 @@ class PGHoardTestCase:
         }
         if ver == "10":
             config["backup_sites"][self.test_site]["pg_receivexlog_path"] = os.path.join(bindir, "pg_receivewal")
+        if override:
+            all_site_overrides = override.pop("backup_sites", None)
+            for site_name, site_override in (all_site_overrides or {}).items():
+                if site_name in config["backup_sites"]:
+                    config["backup_sites"][site_name].update(site_override)
+                else:
+                    config["backup_sites"][site_name] = site_override
+            config.update(override)
+
+        compat.makedirs(config["alert_file_dir"], exist_ok=True)
         return set_and_check_config_defaults(config)
 
     def setup_method(self, method):
