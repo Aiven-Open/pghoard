@@ -162,7 +162,7 @@ LABEL: pg_basebackup base backup
 
         storage_config = common.get_object_storage_config(pghoard.config, pghoard.test_site)
         storage = get_transfer(storage_config)
-        backups = storage.list_path(os.path.join(pghoard.config["path_prefix"], pghoard.test_site, "basebackup"))
+        backups = storage.list_path(os.path.join(pghoard.config["backup_sites"][pghoard.test_site]["prefix"], "basebackup"))
         for backup in backups:
             assert "start-wal-segment" in backup["metadata"]
             assert "start-time" in backup["metadata"]

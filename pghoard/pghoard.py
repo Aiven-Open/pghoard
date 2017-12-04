@@ -203,7 +203,7 @@ class PGHoard:
         self.walreceivers[site] = thread
 
     def create_backup_site_paths(self, site):
-        site_path = os.path.join(self.config["backup_location"], self.config["path_prefix"], site)
+        site_path = os.path.join(self.config["backup_location"], self.config["backup_sites"][site]["prefix"])
         xlog_path = os.path.join(site_path, "xlog")
         basebackup_path = os.path.join(site_path, "basebackup")
 
@@ -233,7 +233,7 @@ class PGHoard:
                 if seg == 0 and log == 0:
                     break
                 seg, log = wal.get_previous_wal_on_same_timeline(seg, log, pg_version)
-            wal_path = os.path.join(self.config["path_prefix"], site, "xlog",
+            wal_path = os.path.join(self.config["backup_sites"][site]["prefix"], "xlog",
                                     wal.name_for_tli_log_seg(tli, log, seg))
             self.log.debug("Deleting wal_file: %r", wal_path)
             try:
@@ -258,7 +258,7 @@ class PGHoard:
     def delete_remote_basebackup(self, site, basebackup, metadata):
         start_time = time.monotonic()
         storage = self.site_transfers.get(site)
-        main_backup_key = os.path.join(self.config["path_prefix"], site, "basebackup", basebackup)
+        main_backup_key = os.path.join(self.config["backup_sites"][site]["prefix"], "basebackup", basebackup)
         basebackup_data_files = [main_backup_key]
 
         if metadata.get("format") == "pghoard-bb-v2":
@@ -268,9 +268,11 @@ class PGHoard:
                 bmeta = extract_pghoard_bb_v2_metadata(input_obj)
                 self.log.debug("PGHoard chunk metadata: %r", bmeta)
                 for chunk in bmeta["chunks"]:
-                    basebackup_data_files.append(
-                        os.path.join(self.config["path_prefix"], site, "basebackup_chunk", chunk["chunk_filename"])
-                    )
+                    basebackup_data_files.append(os.path.join(
+                        self.config["backup_sites"][site]["prefix"],
+                        "basebackup_chunk",
+                        chunk["chunk_filename"],
+                    ))
 
         self.log.debug("Deleting basebackup datafiles: %r", ', '.join(basebackup_data_files))
         for obj_key in basebackup_data_files:
@@ -291,7 +293,7 @@ class PGHoard:
             storage = get_transfer(storage_config)
             self.site_transfers[site] = storage
 
-        results = storage.list_path(os.path.join(self.config["path_prefix"], site, "basebackup"))
+        results = storage.list_path(os.path.join(self.config["backup_sites"][site]["prefix"], "basebackup"))
         for entry in results:
             # drop path from resulting list and convert timestamps
             entry["name"] = os.path.basename(entry["name"])

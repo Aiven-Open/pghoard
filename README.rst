@@ -638,6 +638,11 @@ This is used when the ``local-tar`` ``basebackup_mode`` is used.  The data
 directory must point to PostgreSQL's ``$PGDATA`` and must be readable by the
 ``pghoard`` daemon.
 
+``prefix`` (default: site name)
+
+Path prefix to use for all backups related to this site.  Defaults to the
+name of the site.
+
 
 Alert files
 ===========

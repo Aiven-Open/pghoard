@@ -44,7 +44,7 @@ def set_and_check_config_defaults(config, *, check_commands=True, check_pgdata=T
     config.setdefault("json_state_file_path", "/var/lib/pghoard/pghoard_state.json")
     config.setdefault("maintenance_mode_file", "/var/lib/pghoard/maintenance_mode_file")
     config.setdefault("log_level", "INFO")
-    config.setdefault("path_prefix", "")
+    config.setdefault("path_prefix", "")  # deprecated, used in the default path for sites
     config.setdefault("upload_retries_warning_limit", 3)
 
     # default to cpu_count + 1 compression threads
@@ -81,6 +81,7 @@ def set_and_check_config_defaults(config, *, check_commands=True, check_pgdata=T
                                "pipe" if site_config.get("stream_compression") else "basic")
         site_config.setdefault("encryption_key_id", None)
         site_config.setdefault("object_storage", None)
+        site_config.setdefault("prefix", os.path.join(config["path_prefix"], site_name))
 
         # NOTE: pg_data_directory doesn't have a default value
         data_dir = site_config.get("pg_data_directory")

@@ -28,14 +28,13 @@ class ArchiveCleanup:
         storage_config = common.get_object_storage_config(self.config, self.site)
         self.storage = get_transfer(storage_config)
 
-    def storage_path(self, name):
-        return os.path.join(self.config["path_prefix"], self.site, name)
-
     def archive_cleanup(self):
-        basebackups = self.storage.list_path(self.storage_path("basebackup"))
+        basebackup_path = os.path.join(self.backup_site["prefix"], "basebackup")
+        xlog_path = os.path.join(self.backup_site["prefix"], "xlog")
+        basebackups = self.storage.list_path(basebackup_path)
         first_required_wal = min(bb["metadata"]["start-wal-segment"] for bb in basebackups)
         self.log.info("First required WAL segment is %r", first_required_wal)
-        for object_info in self.storage.list_iter(self.storage_path("xlog"), with_metadata=False):
+        for object_info in self.storage.list_iter(xlog_path, with_metadata=False):
             object_name = object_info["name"]
             segment = os.path.basename(object_name)
             if segment < first_required_wal:
