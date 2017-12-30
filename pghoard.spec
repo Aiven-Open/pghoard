@@ -6,7 +6,7 @@ Summary:        PostgreSQL streaming backup service
 License:        ASL 2.0
 Source0:        pghoard-rpm-src.tar
 Requires:       postgresql-server, systemd
-Requires:       python3-boto, python3-cryptography >= 0.8, python3-dateutil
+Requires:       python3-botocore, python3-cryptography >= 0.8, python3-dateutil
 Requires:       python3-psycopg2, python3-requests, python3-snappy
 Conflicts:      pgespresso92 < 1.2, pgespresso93 < 1.2, pgespresso94 < 1.2, pgespresso95 < 1.2
 BuildRequires:  python3-flake8, python3-pytest, python3-pylint, python3-devel, golang

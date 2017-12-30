@@ -56,8 +56,11 @@ def _test_storage(st, driver, tmpdir, storage_config):
     assert out.getvalue() == b"from disk"
 
     if driver == "s3":
-        key = st.bucket.get_key(st.format_key_for_backend("test1/x1"))
-        assert bool(key.encrypted) == bool(storage_config.get('encrypted'))
+        response = st.s3_client.head_object(
+            Bucket=st.bucket_name,
+            Key=st.format_key_for_backend("test1/x1"),
+        )
+        assert bool(response.get("ServerSideEncryption")) == bool(storage_config.get('encrypted'))
 
     st.store_file_from_memory("test1/x1", b"dummy", {"k": "v"})
     out = BytesIO()
@@ -75,8 +78,11 @@ def _test_storage(st, driver, tmpdir, storage_config):
     assert st.get_contents_to_file("test1/td", to_disk_file) == {"to-disk": "42"}
 
     if driver == "s3":
-        key = st.bucket.get_key(st.format_key_for_backend("test1/td"))
-        assert bool(key.encrypted) == bool(storage_config.get('encrypted'))
+        response = st.s3_client.head_object(
+            Bucket=st.bucket_name,
+            Key=st.format_key_for_backend("test1/x1"),
+        )
+        assert bool(response.get("ServerSideEncryption")) == bool(storage_config.get('encrypted'))
 
     assert st.list_path("") == []  # nothing at top level (directories not listed)
     if driver == "local":
@@ -134,30 +140,8 @@ def _test_storage(st, driver, tmpdir, storage_config):
             test_size_send += len(chunk)
     test_hash_send = test_hash.hexdigest()
 
-    if driver == "s3":
-        # inject a failure in multipart uploads
-        def failing_new_key(key_name):  # pylint: disable=unused-argument
-            # fail after the second call, restore functionality after the third
-            fail_calls[0] += 1
-            if fail_calls[0] > 3:
-                st.bucket.new_key = orig_new_key
-            if fail_calls[0] > 2:
-                raise Exception("multipart upload failure!")
-
-        fail_calls = [0]
-        orig_new_key = st.bucket.new_key
-        st.bucket.new_key = failing_new_key
-
-        st.store_file_from_disk("test1/30m", test_file, multipart=True,
-                                metadata={"thirtymeg": "data", "size": test_size_send, "key": "value-with-a-hyphen"})
-
-        assert fail_calls[0] > 3
-
-        key = st.bucket.get_key(st.format_key_for_backend("test1/30m"))
-        assert bool(key.encrypted) == bool(storage_config.get('encrypted'))
-    else:
-        st.store_file_from_disk("test1/30m", test_file, multipart=True,
-                                metadata={"thirtymeg": "data", "size": test_size_send, "key": "value-with-a-hyphen"})
+    st.store_file_from_disk("test1/30m", test_file, multipart=True,
+                            metadata={"thirtymeg": "data", "size": test_size_send, "key": "value-with-a-hyphen"})
 
     os.unlink(test_file)
 

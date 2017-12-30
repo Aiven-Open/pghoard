@@ -4,28 +4,18 @@ rohmu
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
-import boto.exception
-import boto.s3
+from ..errors import FileNotFoundFromStorageError, InvalidConfigurationError, StorageError
+from .base import BaseTransfer
+import botocore.client
+import botocore.exceptions
+import botocore.session
 import math
 import os
 import time
-from boto.s3.connection import OrdinaryCallingFormat
-from boto.s3.key import Key
-from ..dates import parse_timestamp
-from ..errors import FileNotFoundFromStorageError, InvalidConfigurationError, StorageError
-from .base import BaseTransfer
 
 
-MULTIPART_CHUNK_SIZE = 1024 * 1024 * 100
-
-
-def _location_for_region(region):
-    """return a s3 bucket location closest to the selected region, used when
-    a new bucket must be created.  implemented according to
-    http://docs.aws.amazon.com/general/latest/gr/rande.html#s3_region"""
-    if not region or region == "us-east-1":
-        return ""
-    return region
+MULTIPART_CHUNK_SIZE = 1024 * 1024 * 64
+READ_BLOCK_SIZE = 1024 * 1024 * 1
 
 
 class S3Transfer(BaseTransfer):
@@ -41,18 +31,43 @@ class S3Transfer(BaseTransfer):
                  segment_size=MULTIPART_CHUNK_SIZE,
                  encrypted=False):
         super().__init__(prefix=prefix)
-        self.region = region
-        self.location = _location_for_region(region)
+        botocore_session = botocore.session.get_session()
         self.bucket_name = bucket_name
-        if host and port:
-            self.conn = boto.connect_s3(aws_access_key_id=aws_access_key_id,
-                                        aws_secret_access_key=aws_secret_access_key,
-                                        host=host, port=port, is_secure=is_secure,
-                                        calling_format=OrdinaryCallingFormat())
+        self.location = ""
+        self.region = region
+        if not host or not port:
+            self.s3_client = botocore_session.create_client(
+                "s3",
+                aws_access_key_id=aws_access_key_id,
+                aws_secret_access_key=aws_secret_access_key,
+                region_name=region,
+            )
+            if self.region and self.region != "us-east-1":
+                self.location = self.region
         else:
-            self.conn = boto.s3.connect_to_region(region_name=region, aws_access_key_id=aws_access_key_id,
-                                                  aws_secret_access_key=aws_secret_access_key)
-        self.bucket = self.get_or_create_bucket(self.bucket_name)
+            scheme = "https" if is_secure else "http"
+            custom_url = "{scheme}://{host}:{port}".format(scheme=scheme, host=host, port=port)
+            if self.region:
+                signature_version = "s3v4"
+                self.location = self.region
+            else:
+                signature_version = "s3"
+            custom_config = botocore.client.Config(
+                s3={'addressing_style': 'path'},
+                signature_version=signature_version,
+            )
+            self.s3_client = botocore_session.create_client(
+                "s3",
+                aws_access_key_id=aws_access_key_id,
+                aws_secret_access_key=aws_secret_access_key,
+                config=custom_config,
+                endpoint_url=custom_url,
+                region_name=region,
+                verify=False,
+            )
+
+        self.check_or_create_bucket()
+
         self.multipart_chunk_size = segment_size
         self.encrypted = encrypted
         self.log.debug("S3Transfer initialized")
@@ -62,152 +77,237 @@ class S3Transfer(BaseTransfer):
         return self._metadata_for_key(key)
 
     def _metadata_for_key(self, key):
-        item = self.bucket.get_key(key)
-        if item is None:
-            raise FileNotFoundFromStorageError(key)
+        try:
+            response = self.s3_client.head_object(Bucket=self.bucket_name, Key=key)
+        except botocore.exceptions.ClientError as ex:
+            status_code = ex.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+            if status_code == 404:
+                raise FileNotFoundFromStorageError(key)
+            else:
+                raise StorageError("Metadata lookup failed for {}".format(key)) from ex
 
-        return item.metadata
+        return response["Metadata"]
 
     def delete_key(self, key):
         key = self.format_key_for_backend(key)
         self.log.debug("Deleting key: %r", key)
-        item = self.bucket.get_key(key)
-        if item is None:
-            raise FileNotFoundFromStorageError(key)
-        item.delete()
+        self._metadata_for_key(key)  # check that key exists
+        self.s3_client.delete_object(Bucket=self.bucket_name, Key=key)
 
     def list_iter(self, key, *, with_metadata=True):
         path = self.format_key_for_backend(key, trailing_slash=True)
         self.log.debug("Listing path %r", path)
-        for item in self.bucket.list(path, "/"):
-            if not hasattr(item, "last_modified"):
-                continue  # skip objects with no last_modified: not regular objects
-            name = self.format_key_from_backend(item.name)
-            if name == path:
-                continue  # skip the path itself
-            if with_metadata:
-                metadata = self._metadata_for_key(item.name)
-            else:
-                metadata = None
-            yield {
-                "last_modified": parse_timestamp(item.last_modified),
-                "metadata": metadata,
-                "name": name,
-                "size": item.size,
+        continuation_token = None
+        while True:
+            args = {
+                "Bucket": self.bucket_name,
+                "Delimiter": "/",
+                "Prefix": path,
             }
+            if continuation_token:
+                args["ContinuationToken"] = continuation_token
+            response = self.s3_client.list_objects_v2(**args)
+            for item in response.get("Contents", []):
+                if with_metadata:
+                    metadata = self._metadata_for_key(item["Key"])
+                else:
+                    metadata = None
+                name = self.format_key_from_backend(item["Key"])
+                yield {
+                    "last_modified": item["LastModified"],
+                    "metadata": metadata,
+                    "name": name,
+                    "size": item["Size"],
+                }
+            if "NextContinuationToken" in response:
+                continuation_token = response["NextContinuationToken"]
+            else:
+                break
+
+    def _get_object_stream(self, key):
+        key = self.format_key_for_backend(key)
+        try:
+            response = self.s3_client.get_object(
+                Bucket=self.bucket_name,
+                Key=key,
+            )
+        except botocore.exceptions.ClientError as ex:
+            status_code = ex.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+            if status_code == 404:
+                raise FileNotFoundFromStorageError(key)
+            else:
+                raise StorageError("Fetching the remote object {} failed".format(key)) from ex
+        return response["Body"], response["ContentLength"], response["Metadata"]
+
+    def _read_object_to_fileobj(self, fileobj, streaming_body, body_length, cb=None):
+        data_read = 0
+        while data_read < body_length:
+            read_amount = body_length - data_read
+            if read_amount > READ_BLOCK_SIZE:
+                read_amount = READ_BLOCK_SIZE
+            data = streaming_body.read(amt=read_amount)
+            fileobj.write(data)
+            data_read += len(data)
+            if cb:
+                cb(data_read, body_length)
+        if cb:
+            cb(data_read, body_length)
 
     def get_contents_to_file(self, key, filepath_to_store_to, *, progress_callback=None):
-        key = self.format_key_for_backend(key)
-        item = self.bucket.get_key(key)
-        if item is None:
-            raise FileNotFoundFromStorageError(key)
-        item.get_contents_to_filename(filepath_to_store_to, cb=progress_callback, num_cb=1000)
-        return item.metadata
+        with open(filepath_to_store_to, "wb") as fh:
+            stream, length, metadata = self._get_object_stream(key)
+            self._read_object_to_fileobj(fh, stream, length, cb=progress_callback)
+        return metadata
 
     def get_contents_to_fileobj(self, key, fileobj_to_store_to, *, progress_callback=None):
-        key = self.format_key_for_backend(key)
-        item = self.bucket.get_key(key)
-        if item is None:
-            raise FileNotFoundFromStorageError(key)
-        item.get_contents_to_file(fileobj_to_store_to, cb=progress_callback, num_cb=1000)
-        return item.metadata
+        stream, length, metadata = self._get_object_stream(key)
+        self._read_object_to_fileobj(fileobj_to_store_to, stream, length, cb=progress_callback)
+        return metadata
 
     def get_contents_to_string(self, key):
-        key = self.format_key_for_backend(key)
-        item = self.bucket.get_key(key)
-        if item is None:
-            raise FileNotFoundFromStorageError(key)
-        return item.get_contents_as_string(), item.metadata
+        stream, _, metadata = self._get_object_stream(key)
+        data = stream.read()
+        return data, metadata
 
     def store_file_from_memory(self, key, memstring, metadata=None):
-        s3key = Key(self.bucket)
-        s3key.key = self.format_key_for_backend(key)
+        key = self.format_key_for_backend(key)
+        args = {
+            "Bucket": self.bucket_name,
+            "Body": memstring,
+            "Key": key,
+        }
         if metadata:
-            for k, v in self.sanitize_metadata(metadata).items():
-                s3key.set_metadata(k, v)
-        s3key.set_contents_from_string(memstring, replace=True, encrypt_key=self.encrypted)
-
-    def _store_multipart_upload(self, mp, fp, part_num, filepath):
-        attempt = 0
-        last_ex = None
-        pos = fp.tell()
-        while attempt < 100:
-            if attempt > 0:
-                time.sleep(1.0)
-                fp.seek(pos, os.SEEK_SET)
-            try:
-                self.log.debug("Uploading part: %r of %r, bytes: %r-%r, attempt: %r",
-                               part_num, filepath,
-                               (part_num - 1) * self.multipart_chunk_size, part_num * self.multipart_chunk_size,
-                               attempt)
-                mp.upload_part_from_file(fp=fp, part_num=part_num, size=self.multipart_chunk_size)
-                return
-            except Exception as ex:  # pylint: disable=broad-except
-                self.log.exception("Uploading part %r of %r failed, attempt: %r", part_num, filepath, attempt)
-                last_ex = ex
-            attempt += 1
-
-        err = "Multipart upload of {0!r} failed: {1.__class__.__name__}: {1}".format(mp.key_name, last_ex)
-        raise StorageError(err) from last_ex
+            args["Metadata"] = self.sanitize_metadata(metadata)
+        if self.encrypted:
+            args["ServerSideEncryption"] = "AES256"
+        self.s3_client.put_object(**args)
 
     def store_file_from_disk(self, key, filepath, metadata=None, multipart=None):
         size = os.path.getsize(filepath)
-        key = self.format_key_for_backend(key)
-        metadata = self.sanitize_metadata(metadata)
         if not multipart or size <= self.multipart_chunk_size:
-            s3key = Key(self.bucket)
-            s3key.key = key
-            if metadata:
-                for k, v in metadata.items():
-                    s3key.set_metadata(k, v)
-            s3key.set_contents_from_filename(filepath, replace=True,
-                                             encrypt_key=self.encrypted)
-        else:
-            start_of_multipart_upload = time.monotonic()
-            chunks = math.ceil(size / self.multipart_chunk_size)
-            self.log.debug("Starting to upload multipart file: %r, size: %r, chunks: %d",
-                           key, size, chunks)
-            mp = self.bucket.initiate_multipart_upload(key, metadata=metadata,
-                                                       encrypt_key=self.encrypted)
+            with open(filepath, "rb") as fh:
+                data = fh.read()
+                self.store_file_from_memory(key, data, metadata)
+            return
 
-            with open(filepath, "rb") as fp:
-                part_num = 0
-                while fp.tell() < size:
-                    part_num += 1
-                    start_time = time.monotonic()
-                    self._store_multipart_upload(mp, fp, part_num, filepath)
-                    self.log.info("Upload of part: %r/%r of %r, part size: %r took: %.2fs",
-                                  part_num, chunks, filepath, self.multipart_chunk_size,
-                                  time.monotonic() - start_time)
-            if len(list(mp)) == chunks:
-                self.log.info("Multipart upload of %r, size: %r, took: %.2fs, now completing multipart",
-                              filepath, size, time.monotonic() - start_of_multipart_upload)
-                mp.complete_upload()
-            else:
-                err = "Multipart upload of {!r} does not match expected chunk list".format(key)
-                self.log.error(err)
-                mp.cancel_upload()
-                raise StorageError(err)
+        key = self.format_key_for_backend(key)
 
-    def get_or_create_bucket(self, bucket_name):
+        start_of_multipart_upload = time.monotonic()
+        chunks = math.ceil(size / self.multipart_chunk_size)
+        self.log.debug("Starting to upload multipart file: %r, size: %r, chunks: %d",
+                       filepath, size, chunks)
+
+        parts = []
+        part_number = 1
+
+        args = {
+            "Bucket": self.bucket_name,
+            "Key": key,
+        }
+        if metadata:
+            args["Metadata"] = self.sanitize_metadata(metadata)
+        if self.encrypted:
+            args["ServerSideEncryption"] = "AES256"
+
         try:
-            bucket = self.conn.get_bucket(bucket_name)
-        except boto.exception.S3ResponseError as ex:
-            if ex.status == 404:
-                bucket = None
-            elif ex.status == 403:
-                self.log.warning("Failed to verify access to bucket, proceeding without validation")
-                bucket = self.conn.get_bucket(bucket_name, validate=False)
-            elif ex.status == 301:
-                # Bucket exists on another region, find out which
-                location = self.conn.get_bucket(bucket_name, validate=False).get_location()
-                raise InvalidConfigurationError("bucket {!r} is in location {!r}, tried to use {!r}"
-                                                .format(bucket_name, location, self.location))
+            response = self.s3_client.create_multipart_upload(**args)
+        except botocore.exceptions.ClientError as ex:
+            raise StorageError("Failed to initiate multipart upload for {}".format(key)) from ex
+
+        mp_id = response["UploadId"]
+
+        with open(filepath, "rb") as fp:
+            while True:
+                data = fp.read(self.multipart_chunk_size)
+                if not data:
+                    break
+
+                attempts = 10
+                start_of_part_upload = time.monotonic()
+                while True:
+                    attempts -= 1
+                    try:
+                        response = self.s3_client.upload_part(
+                            Body=data,
+                            Bucket=self.bucket_name,
+                            Key=key,
+                            PartNumber=part_number,
+                            UploadId=mp_id,
+                        )
+                    except botocore.exceptions.ClientError as ex:
+                        self.log.exception("Uploading part %d for %s failed, attempts left: %d", part_number, key, attempts)
+                        if attempts <= 0:
+                            try:
+                                self.s3_client.abort_multipart_upload(
+                                    Bucket=self.bucket_name,
+                                    Key=key,
+                                    UploadId=mp_id,
+                                )
+                            finally:
+                                err = "Multipart upload of {0} failed: {1.__class__.__name__}: {1}".format(key, ex)
+                                raise StorageError(err) from ex
+                        else:
+                            time.sleep(1.0)
+                    else:
+                        self.log.info(
+                            "Uploaded part %d of %d, size %d in %.2fs",
+                            part_number,
+                            chunks,
+                            len(data),
+                            time.monotonic() - start_of_part_upload,
+                        )
+                        parts.append({
+                            "ETag": response["ETag"],
+                            "PartNumber": part_number,
+                        })
+                        part_number += 1
+                        break
+
+        try:
+            response = self.s3_client.complete_multipart_upload(
+                Bucket=self.bucket_name,
+                Key=key,
+                MultipartUpload={"Parts": parts},
+                UploadId=mp_id,
+            )
+        except botocore.exceptions.ClientError as ex:
+            try:
+                self.s3_client.abort_multipart_upload(
+                    Bucket=self.bucket_name,
+                    Key=key,
+                    UploadId=mp_id,
+                )
+            finally:
+                raise StorageError("Failed to complete multipart upload for {}".format(key)) from ex
+
+        self.log.info(
+            "Multipart upload of %r complete, size: %r, took: %.2fs",
+            filepath, size, time.monotonic() - start_of_multipart_upload
+        )
+
+    def check_or_create_bucket(self):
+        create_bucket = False
+        try:
+            self.s3_client.head_bucket(Bucket=self.bucket_name)
+        except botocore.exceptions.ClientError as ex:
+            status_code = ex.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+            if status_code == 301:
+                raise InvalidConfigurationError("Wrong region for bucket {}, check configuration".format(self.bucket_name))
+            elif status_code == 403:
+                self.log.warning("Access denied on bucket check, assuming write permissions")
+            elif status_code == 404:
+                create_bucket = True
             else:
                 raise
-        if not bucket:
-            self.log.debug("Creating bucket: %r in location: %r", bucket_name, self.location)
-            bucket = self.conn.create_bucket(bucket_name, location=self.location)
-        else:
-            self.log.debug("Found bucket: %r", bucket_name)
-        return bucket
+
+        if create_bucket:
+            self.log.debug("Creating bucket: %r in location: %r", self.bucket_name, self.region)
+            args = {
+                "Bucket": self.bucket_name,
+            }
+            if self.location:
+                args["CreateBucketConfiguration"] = {
+                    "LocationConstraint": self.location,
+                }
+
+            self.s3_client.create_bucket(**args)

@@ -13,6 +13,8 @@ pghoard X.X.X (unreleased)
   errors now).  Total WAL segment storage size savings is reported after
   cleanup.  There is a 'dry run' mode available now to estimate cleanup
   effect before deleting actual items.
+* Use botocore rather than boto for interfacing with S3. Botocore is the
+  underlying and maintained library under the newer boto3 SDK.
 
 pghoard 1.6.0 (2017-10-12)
 ==========================
