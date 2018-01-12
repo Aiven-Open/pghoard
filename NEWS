@@ -9,6 +9,10 @@ pghoard X.X.X (unreleased)
   always stored in a folder named after the site, optionally prefixed by an
   undocumented top-level configuration option ``path_prefix`` which is now
   deprecated.
+* ``archive_cleanup`` storage errors are no longer fatal (just logged as
+  errors now).  Total WAL segment storage size savings is reported after
+  cleanup.  There is a 'dry run' mode available now to estimate cleanup
+  effect before deleting actual items.
 
 pghoard 1.6.0 (2017-10-12)
 ==========================
