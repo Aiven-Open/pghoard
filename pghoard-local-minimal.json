@@ -14,7 +14,7 @@
                 "storage_type": "local",
                 "directory": "./backups"
             },
-            "pg_data_directory": "/path/where/my/pgdata/resides",
+            "pg_data_directory": "/path/where/my/pgdata/resides"
         }
     }
 }
