@@ -5,39 +5,38 @@ pghoard X.X.X (unreleased)
 * Use fast checkpoints by default to make the start of backups faster.  Slow
   progress at the beginning of the backup has a tendency to confuse people.
 * Allow overriding the name of the folder for a site's backups by using a
-  new site-level configuration option `prefix`.  Previously backups were
+  new site-level configuration option ``prefix``.  Previously backups were
   always stored in a folder named after the site, optionally prefixed by an
-  undocumented top-level configuration option `path_prefix` which is now
+  undocumented top-level configuration option ``path_prefix`` which is now
   deprecated.
-
 
 pghoard 1.6.0 (2017-10-12)
 ==========================
 
 * Support for PostgreSQL 10
-* `local-tar` backups are now split to roughly 2 gigabyte chunks of
+* ``local-tar`` backups are now split to roughly 2 gigabyte chunks of
   plain-text files.  New basebackups now benefit from some parallelization,
   as up to 5 chunks may be uploaded in parallel while new backup chunks are
   being created.
-* `pghoard_restore` can now download and extract chunked basebackups using
+* ``pghoard_restore`` can now download and extract chunked basebackups using
   all CPU cores of the machine assuming that the parallel download mechanism
   can deliver it chunks fast enough
-* Alternative `pghoard_postgres_command` implementation in Go for faster
+* Alternative ``pghoard_postgres_command`` implementation in Go for faster
   startup times.  The time that the Python implementation takes to start
   limits WAL restore throughput quite a bit
-* Remove support for pg_xlog_directory config variable, we now require
-  pg_data_directory to be set in the config for the backup site. This is
-  done in order to stop guessing and possibly getting the answer wrong
+* Remove support for ``pg_xlog_directory`` config variable, we now require
+  ``pg_data_directory`` to be set in the config for the backup site.  This
+  is done in order to stop guessing and possibly getting the answer wrong
   for the real location of the data.
 * Miscellaneous bug fixes
 
 pghoard 1.5.0 (2017-06-07)
 ==========================
 
-* New tool, `pghoard_archive_cleanup` to clean up any orphan WAL segments
+* New tool, ``pghoard_archive_cleanup`` to clean up any orphan WAL segments
   from the object store
-* Basebackup `end-time` and `end-wal-segment` are now stored in metadata and
-  used for PITR when `local-tar` basebackups are used
+* Basebackup ``end-time`` and ``end-wal-segment`` are now stored in metadata and
+  used for PITR when ``local-tar`` basebackups are used
 * Azure object storage updated to work with the latest python-azure-storage
   module and promoted to production ready status
 * Google object storage driver now retries operations on failure to work
@@ -45,33 +44,33 @@ pghoard 1.5.0 (2017-06-07)
 * Google object storage compatibility with Google oauth2client version 1.5+
 * S3 driver now supports server side encryption
 * Swift driver now supports the region_name configuration option
-* Support for `local-tar` backups of a replica on PostgreSQL 9.6 and newer
+* Support for ``local-tar`` backups of a replica on PostgreSQL 9.6 and newer
   using the new non-exclusive backup mechanism.  Previous PostgreSQL
   versions require the pgespresso extension to take backups of replicas
-  using the `local-tar` method, the pg_basebackup utilizing (default)
+  using the ``local-tar`` method, the pg_basebackup utilizing (default)
   methods have always supported backups of replicas
-* When `local-tar` basebackups are used in exclusive mode (PG <= 9.5 without
+* When ``local-tar`` basebackups are used in exclusive mode (PG <= 9.5 without
   pgespresso) any conflicting exclusive basebackup is automatically cancelled
   to allow PGHoard to take its own basebackup.  This is sometimes required if
   a previous PGHoard process has been killed while it was taking a backup
 * Support pghoard_restore --recovery-target-action with 9.3 and 9.4
-* Creating a `maintenance_mode_file` as documented in README now stops
+* Creating a ``maintenance_mode_file`` as documented in README now stops
   automatic basebackups from being created
-* Changed the default directory for `maintenance_mode_file` and
-  `json_state_file_path` from /tmp to /var/lib/pghoard
-* Autotune compression.thread_count and transfer_agent.thread_count defaults
-  to be max(cpu_count, 5) instead of a default of 5 as before
+* Changed the default directory for ``maintenance_mode_file`` and
+  ``json_state_file_path`` from ``/tmp`` to ``/var/lib/pghoard``
+* Autotune ``compression.thread_count`` and ``transfer_agent.thread_count`` defaults
+  to be ``max(cpu_count, 5)`` instead of a default of ``5`` as before
 * Support for Python 3.6
 * Miscellaneous bug fixes
 
 pghoard 1.4.0 (2016-07-22)
 ==========================
 
-* Add ability to get state file from webserver using GET /status
+* Add ability to get state file from webserver using ``GET /status``
 * Support for Telegraf and DataDog statsd
 * Basebackup restoration now shows download progress
-* New `basebackup_mode` option: `local-tar` to collect files directly from
-  `$PGDATA` instead of running pg_basebackup.  The `local-tar` mode allows
+* New ``basebackup_mode`` option: ``local-tar`` to collect files directly from
+  ``$PGDATA`` instead of running pg_basebackup.  The ``local-tar`` mode allows
   backing up user tablespaces
 * New site-specific configuration option ``pg_data_directory`` is required
   to use the new ``local-tar`` mode, but it's also recommended in other
@@ -89,7 +88,7 @@ pghoard 1.4.0 (2016-07-22)
   operation modes: pipe data directly from pg_basebackup's stdout to PGHoard
   compression or collect the temporary tar files first that pg_basebackup
   writes itself.  This introduced a new configuration option per site:
-  `basebackup_mode` which supersedes the old `stream_compression` config
+  ``basebackup_mode`` which supersedes the old ``stream_compression`` config
   option
 * Revamped file transformation (encryption, compression) interfaces
 * Make sure object storage modules are importable when reading configuration
@@ -131,12 +130,12 @@ pghoard 1.1.0 (2016-04-05)
 
 * Consider last basebackup's start time instead of completion time for
   scheduling the next basebackup
-* pghoard_create_keys can now update an existing configuration file
+* ``pghoard_create_keys`` can now update an existing configuration file
 * Support for OpenStack Swift object storage
 * More generic object storage configuration.  All configuration keys for
   object stores are passed as-is to the implementation.  This also meant
   that some defaults were dropped: bucket_name and container_name must be
-  manually set, they no longer default to `pghoard`.
+  manually set, they no longer default to ``pghoard``.
 * New test cases to validate object storage interfaces - the tests revealed
   a couple of minor issues which have been fixed in this release
 * ``pghoard`` can now be built from a checkout of a tag, namely generation
@@ -148,7 +147,7 @@ pghoard 1.0.0 (2016-03-16)
 
 * Support for PostgreSQL 9.3 - 9.5
 * Support compressing basebackups on the fly
-* Add archive_sync command to sync archive / check archive integrity
+* Add ``archive_sync`` command to sync archive / check archive integrity
 * Support different recovery_targets
 * Support encryption and integrity protection of the backup files
 * Snappy compression support
@@ -158,6 +157,6 @@ pghoard 1.0.0 (2016-03-16)
 * Bug fixes
 
 pghoard 0.9.0 (2015-06-19)
-============================
+==========================
 
 * Initial release
