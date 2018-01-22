@@ -73,7 +73,7 @@ class S3Transfer(BaseTransfer):
         self.log.debug("S3Transfer initialized")
 
     def get_metadata_for_key(self, key):
-        key = self.format_key_for_backend(key)
+        key = self.format_key_for_backend(key, remove_slash_prefix=True)
         return self._metadata_for_key(key)
 
     def _metadata_for_key(self, key):
@@ -89,13 +89,13 @@ class S3Transfer(BaseTransfer):
         return response["Metadata"]
 
     def delete_key(self, key):
-        key = self.format_key_for_backend(key)
+        key = self.format_key_for_backend(key, remove_slash_prefix=True)
         self.log.debug("Deleting key: %r", key)
         self._metadata_for_key(key)  # check that key exists
         self.s3_client.delete_object(Bucket=self.bucket_name, Key=key)
 
     def list_iter(self, key, *, with_metadata=True):
-        path = self.format_key_for_backend(key, trailing_slash=True)
+        path = self.format_key_for_backend(key, remove_slash_prefix=True, trailing_slash=True)
         self.log.debug("Listing path %r", path)
         continuation_token = None
         while True:
@@ -125,7 +125,7 @@ class S3Transfer(BaseTransfer):
                 break
 
     def _get_object_stream(self, key):
-        key = self.format_key_for_backend(key)
+        key = self.format_key_for_backend(key, remove_slash_prefix=True)
         try:
             response = self.s3_client.get_object(
                 Bucket=self.bucket_name,
@@ -170,7 +170,7 @@ class S3Transfer(BaseTransfer):
         return data, metadata
 
     def store_file_from_memory(self, key, memstring, metadata=None):
-        key = self.format_key_for_backend(key)
+        key = self.format_key_for_backend(key, remove_slash_prefix=True)
         args = {
             "Bucket": self.bucket_name,
             "Body": memstring,
@@ -190,7 +190,7 @@ class S3Transfer(BaseTransfer):
                 self.store_file_from_memory(key, data, metadata)
             return
 
-        key = self.format_key_for_backend(key)
+        key = self.format_key_for_backend(key, remove_slash_prefix=True)
 
         start_of_multipart_upload = time.monotonic()
         chunks = math.ceil(size / self.multipart_chunk_size)
