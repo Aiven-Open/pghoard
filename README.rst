@@ -89,7 +89,7 @@ The following Python modules are required:
 Optional requirements include:
 
 * azure_ for Microsoft Azure object storage
-* boto_ for AWS S3 (or Ceph-S3) object storage
+* botocore_ for AWS S3 (or Ceph-S3) object storage
 * google-api-client_ for Google Cloud object storage
 * cryptography_ for backup encryption and decryption (version 0.8 or newer required)
 * snappy_ for Snappy compression and decompression
@@ -97,7 +97,7 @@ Optional requirements include:
 * swiftclient_ for OpenStack Swift object storage
 
 .. _`azure`: https://github.com/Azure/azure-sdk-for-python
-.. _`boto`: https://github.com/boto/boto
+.. _`botocore`: https://github.com/boto/botocore
 .. _`google-api-client`: https://github.com/google/google-api-python-client
 .. _`cryptography`: https://cryptography.io/
 .. _`snappy`: https://github.com/andrix/python-snappy
