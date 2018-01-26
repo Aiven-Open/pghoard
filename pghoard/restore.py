@@ -153,6 +153,8 @@ class Restore:
             cmd.add_argument("--tablespace-dir", metavar="NAME=DIRECTORY", action="append",
                              help="map the given tablespace to an existing empty directory; "
                                   "this option can be used multiple times to map multiple tablespaces")
+            cmd.add_argument("--tablespace-base-dir", required=False,
+                             help="map all tablespaces in the backup against an existing empty base directory ")
             cmd.add_argument("--recovery-end-command", help="PostgreSQL recovery_end_command", metavar="COMMAND")
             cmd.add_argument("--recovery-target-action", help="PostgreSQL recovery_target_action",
                              choices=["pause", "promote", "shutdown"])
@@ -218,6 +220,7 @@ class Restore:
                 restore_to_master=arg.restore_to_master,
                 overwrite=arg.overwrite,
                 tablespace_mapping=tablespace_mapping,
+                tablespace_base_dir=arg.tablespace_base_dir,
             )
         except RestoreError:
             raise
@@ -319,7 +322,8 @@ class Restore:
                         recovery_target_xid=None,
                         restore_to_master=None,
                         overwrite=False,
-                        tablespace_mapping=None):
+                        tablespace_mapping=None,
+                        tablespace_base_dir=None):
         targets = [recovery_target_name, recovery_target_time, recovery_target_xid]
         if sum(0 if flag is None else 1 for flag in targets) > 1:
             raise RestoreError("Specify at most one of recovery_target_name, "
@@ -396,9 +400,17 @@ class Restore:
             # Object is a raw (encrypted, compressed) basebackup
             basebackup_data_files = [[basebackup, -1]]
 
+        if tablespace_base_dir and not os.path.exists(tablespace_base_dir) and not overwrite:
+            # we just care that the dir exists, but we're OK if there are other objects there
+            raise RestoreError("Tablespace base directory {!r} does not exist, aborting."
+                               .format(tablespace_base_dir))
+
         # Map tablespaces as requested and make sure the directories exist
         for tsname, tsinfo in tablespaces.items():
             tspath = tablespace_mapping.pop(tsname, tsinfo["path"])
+            if tablespace_base_dir and not tspath:
+                tspath = os.path.join(tablespace_base_dir, str(tsinfo["oid"]))
+                os.makedirs(tspath, exist_ok=True)
             if not os.path.exists(tspath):
                 raise RestoreError("Tablespace {!r} target directory {!r} does not exist, aborting."
                                    .format(tsname, tspath))
