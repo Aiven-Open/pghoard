@@ -238,7 +238,7 @@ class TransferAgent(Thread):
             else:
                 # Basebackups may be multipart uploads, depending on the driver.
                 # Swift needs to know about this so it can do possible cleanups.
-                multipart = file_to_transfer["filetype"] == "basebackup"
+                multipart = file_to_transfer["filetype"] in {"basebackup", "basebackup_chunk"}
                 try:
                     storage.store_file_from_disk(key, file_to_transfer["local_path"],
                                                  metadata=file_to_transfer["metadata"],
