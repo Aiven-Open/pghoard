@@ -99,8 +99,8 @@ def print_basebackup_list(basebackups, *, caption="Available basebackups", verbo
         if lm.tzinfo:
             lm = lm.astimezone(datetime.timezone.utc).replace(tzinfo=None)
         lm_str = lm.isoformat()[:19] + "Z"  # # pylint: disable=no-member
-        size_str = "{} MB".format(b["size"] // (1024 ** 2))
-        orig_size = int(meta.pop("original-file-size", 0) or 0)
+        size_str = "{} MB".format(int(meta.get("total-size-enc", b["size"])) // (1024 ** 2))
+        orig_size = int(meta.get("total-size-plain", meta.get("original-file-size")) or 0)
         if orig_size:
             orig_size_str = "{} MB".format(orig_size // (1024 ** 2))
         else:
