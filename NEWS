@@ -1,4 +1,4 @@
-pghoard X.X.X (unreleased)
+pghoard 1.7.0 (2018-02-09)
 ==========================
 
 * Support for PostgreSQL 10.1+
@@ -17,6 +17,7 @@ pghoard X.X.X (unreleased)
   underlying and maintained library under the newer boto3 SDK.
 * Add a new --tablespace-base-dir option to restore so you can put all
   the tablespaces under a single directory hierarchy.
+* Miscellaneous bug fixes and improvements
 
 pghoard 1.6.0 (2017-10-12)
 ==========================
