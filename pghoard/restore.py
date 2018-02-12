@@ -408,7 +408,7 @@ class Restore:
         # Map tablespaces as requested and make sure the directories exist
         for tsname, tsinfo in tablespaces.items():
             tspath = tablespace_mapping.pop(tsname, tsinfo["path"])
-            if tablespace_base_dir and not tspath:
+            if tablespace_base_dir and not os.path.exists(tspath):
                 tspath = os.path.join(tablespace_base_dir, str(tsinfo["oid"]))
                 os.makedirs(tspath, exist_ok=True)
             if not os.path.exists(tspath):
