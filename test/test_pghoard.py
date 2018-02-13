@@ -265,23 +265,25 @@ class TestPGHoardWithPG:
         # connecting using the proper user should work and not yield any alerts
         clean_alert_files()
         conn_str = create_connection_string(db.user)
-        assert pghoard.check_pg_server_version(conn_str) is not None
+        assert pghoard.check_pg_server_version(conn_str, pghoard.test_site) is not None
         assert os.listdir(pghoard.config["alert_file_dir"]) == []
 
         # nonexistent user should yield a configuration error
+        # Make sure we're not caching the pg_version
+        del pghoard.config["backup_sites"][pghoard.test_site]["pg_version"]
         clean_alert_files()
         conn_str = create_connection_string(dict(db.user, user="nonexistent"))
-        assert pghoard.check_pg_server_version(conn_str) is None
+        assert pghoard.check_pg_server_version(conn_str, pghoard.test_site) is None
         assert os.listdir(pghoard.config["alert_file_dir"]) == ["configuration_error"]
 
         # so should the disabled user
         clean_alert_files()
         conn_str = create_connection_string(dict(db.user, user="disabled"))
-        assert pghoard.check_pg_server_version(conn_str) is None
+        assert pghoard.check_pg_server_version(conn_str, pghoard.test_site) is None
         assert os.listdir(pghoard.config["alert_file_dir"]) == ["configuration_error"]
 
         # existing user with an invalid password should cause an authentication error
         clean_alert_files()
         conn_str = create_connection_string(dict(db.user, user="passwordy"))
-        assert pghoard.check_pg_server_version(conn_str) is None
+        assert pghoard.check_pg_server_version(conn_str, pghoard.test_site) is None
         assert os.listdir(pghoard.config["alert_file_dir"]) == ["authentication_error"]

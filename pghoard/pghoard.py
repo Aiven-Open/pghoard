@@ -124,9 +124,7 @@ class PGHoard:
 
     def create_basebackup(self, site, connection_info, basebackup_path, callback_queue=None):
         connection_string, _ = replication_connection_string_and_slot_using_pgpass(connection_info)
-        pg_version_server = self.check_pg_server_version(connection_string)
-        if pg_version_server:
-            self.config["backup_sites"][site]["pg_version"] = pg_version_server
+        pg_version_server = self.check_pg_server_version(connection_string, site)
         if not self.check_pg_versions_ok(site, pg_version_server, "pg_basebackup"):
             if callback_queue:
                 callback_queue.put({"success": False})
@@ -145,11 +143,17 @@ class PGHoard:
         thread.start()
         self.basebackups[site] = thread
 
-    def check_pg_server_version(self, connection_string):
+    def check_pg_server_version(self, connection_string, site):
+        if "pg_version" in self.config["backup_sites"][site]:
+            return self.config["backup_sites"][site]["pg_version"]
+
         pg_version = None
         try:
             with closing(psycopg2.connect(connection_string)) as c:
                 pg_version = c.server_version  # pylint: disable=no-member
+                # Cache pg_version so we don't have to query it again, note that this means that for major
+                # version upgrades you want to restart pghoard.
+                self.config["backup_sites"][site]["pg_version"] = pg_version
         except psycopg2.OperationalError as ex:
             self.log.warning("%s (%s) connecting to DB at: %r",
                              ex.__class__.__name__, ex, connection_string)
@@ -164,9 +168,7 @@ class PGHoard:
 
     def receivexlog_listener(self, site, connection_info, wal_directory):
         connection_string, slot = replication_connection_string_and_slot_using_pgpass(connection_info)
-        pg_version_server = self.check_pg_server_version(connection_string)
-        if pg_version_server:
-            self.config["backup_sites"][site]["pg_version"] = pg_version_server
+        pg_version_server = self.check_pg_server_version(connection_string, site)
         if not self.check_pg_versions_ok(site, pg_version_server, "pg_receivexlog"):
             return
 
@@ -183,9 +185,7 @@ class PGHoard:
 
     def start_walreceiver(self, site, chosen_backup_node, last_flushed_lsn):
         connection_string, slot = replication_connection_string_and_slot_using_pgpass(chosen_backup_node)
-        pg_version_server = self.check_pg_server_version(connection_string)
-        if pg_version_server:
-            self.config["backup_sites"][site]["pg_version"] = pg_version_server
+        pg_version_server = self.check_pg_server_version(connection_string, site)
         if not WALReceiver:
             self.log.error("Could not import WALReceiver, incorrect psycopg2 version?")
             return
