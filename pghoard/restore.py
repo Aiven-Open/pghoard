@@ -472,6 +472,7 @@ class Restore:
                     total_mib=total_download_size / (1024 ** 2),
                 ), end=end)
 
+            object_storage_config = common.get_object_storage_config(self.config, site)
             for basebackup_data_file, backup_data_file_size in basebackup_data_files:
                 def single_download_progress(current_pos, expected_max,
                                              this_file_name=basebackup_data_file,
@@ -479,16 +480,12 @@ class Restore:
                     download_progress_per_file[this_file_name] = this_file_size * (current_pos / expected_max)
                     download_progress()
 
-                # NOTE: Most of the transfer clients aren't thread-safe, so initialize a new transfer
-                # client for each download.  We could use thread local storage or pooling here, but
-                # probably not worth the trouble for this use case.
-                transfer = get_transfer(common.get_object_storage_config(self.config, site))
                 jobs.append(executor.submit(
                     self.process_one_chunk,
                     basebackup_data_file=basebackup_data_file,
                     progress_callback=single_download_progress,
                     site=site,
-                    transfer=transfer,
+                    object_storage_config=object_storage_config,
                     pgdata=pgdata,
                     tablespaces=tablespaces,
                 ))
@@ -523,11 +520,16 @@ class Restore:
         print("On systemd based systems you can run systemctl start postgresql")
         print("On SYSV Init based systems you can run /etc/init.d/postgresql start")
 
-    def process_one_chunk(self, *, transfer, basebackup_data_file, progress_callback, site, pgdata, tablespaces):
+    def process_one_chunk(self, *, basebackup_data_file, progress_callback, site,
+                          object_storage_config, pgdata, tablespaces):
         self.log.debug("Processing one chunk: %r", basebackup_data_file)
         if isinstance(basebackup_data_file, tuple):
             tmp, metadata = basebackup_data_file
         else:
+            # NOTE: Most of the transfer clients aren't thread-safe, so initialize a new transfer
+            # client for each download.  We could use thread local storage or pooling here, but
+            # probably not worth the trouble for this use case.
+            transfer = get_transfer(object_storage_config)
             tmp, metadata = self.download_one_backup(
                 transfer=transfer,
                 basebackup_data_file=basebackup_data_file,
