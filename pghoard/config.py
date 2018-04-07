@@ -57,6 +57,9 @@ def set_and_check_config_defaults(config, *, check_commands=True, check_pgdata=T
         "thread_count",
         min(get_cpu_count() + 3, 20),
     )
+    # Using more than 20 worker processes would require a lot of scratch space and
+    # typically moves the bottleneck from CPU to IO so more than that isn't useful
+    config.setdefault("restore_process_count", min(get_cpu_count() + 2, 20))
     # default to prefetching transfer.thread_count objects
     config.setdefault("restore_prefetch", config["transfer"]["thread_count"])
     # if compression algorithm is not explicitly set prefer snappy if it's available

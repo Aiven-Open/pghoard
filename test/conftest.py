@@ -200,6 +200,11 @@ def pghoard(db, tmpdir, request):  # pylint: disable=redefined-outer-name
         "http_port": random.randint(1024, 32000),
         "json_state_file_path": tmpdir.join("pghoard_state.json").strpath,
         "maintenance_mode_file": tmpdir.join("maintenance_mode_file").strpath,
+        # Set process count to 1 to avoid launching subprocesses during basebackup tests.
+        # The new processes would be created with fork, which doesn't work properly due to
+        # all the fds and other things that are created during typical test setup. There
+        # is separate test case that executes the multiprocess version.
+        "restore_process_count": 1,
     }
 
     confpath = os.path.join(str(tmpdir), "config.json")

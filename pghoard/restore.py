@@ -7,17 +7,19 @@ See LICENSE for details
 from . import common, config, logutil, version
 from .patchedtarfile import tarfile
 from .postgres_command import PGHOARD_HOST, PGHOARD_PORT
-from concurrent import futures
 # ignore pylint/distutils issue, https://github.com/PyCQA/pylint/issues/73
 from distutils.version import LooseVersion  # pylint: disable=no-name-in-module,import-error
 from pghoard.rohmu import compat, dates, get_transfer, IO_BLOCK_SIZE, rohmufile
 from pghoard.rohmu.errors import Error, InvalidConfigurationError
 from psycopg2.extensions import adapt
 from requests import Session
+from threading import RLock
 import argparse
 import datetime
 import io
 import logging
+import multiprocessing
+import multiprocessing.pool
 import os
 import re
 import shutil
@@ -211,6 +213,7 @@ class Restore:
                 pgdata=arg.target_dir,
                 basebackup=arg.basebackup,
                 site=site,
+                debug=arg.debug,
                 primary_conninfo=arg.primary_conninfo,
                 recovery_end_command=arg.recovery_end_command,
                 recovery_target_action=arg.recovery_target_action,
@@ -259,61 +262,8 @@ class Restore:
         print("\nSelecting {!r} for restore".format(selected))
         return selected
 
-    def _extract_pghoard_bb_v1_v2(self, fileobj, pgdata, tablespaces):
-        directories = []
-        # | in mode to use tarfile's internal stream buffer manager, currently required because our SnappyFile
-        # interface doesn't do proper buffering for reads
-        with tarfile.open(fileobj=fileobj, mode="r|", bufsize=IO_BLOCK_SIZE) as tar:
-            for tarinfo in tar:
-                if tarinfo.name in (".pghoard_tar_metadata.json", "pgdata", "tablespaces"):
-                    continue  # ignore
-
-                if tarinfo.name.startswith("pgdata/"):
-                    target_name = os.path.join(pgdata, tarinfo.name[7:])
-                elif tarinfo.name.startswith("tablespaces/"):
-                    tscomponents = tarinfo.name.split("/", 2)
-                    tsname = tscomponents[1]
-                    tspath = tablespaces[tsname]["path"]
-
-                    if len(tscomponents) == 2 and tarinfo.isdir():
-                        # Create tablespace entry
-                        tblspc_dir = os.path.join(pgdata, "pg_tblspc")
-                        os.makedirs(tblspc_dir, exist_ok=True)
-                        linkname = os.path.join(pgdata, "pg_tblspc", str(tablespaces[tsname]["oid"]))
-                        os.symlink(tspath, linkname)
-                        directories.append([tspath, tarinfo])
-                        continue
-
-                    target_name = os.path.join(tspath, tscomponents[2])
-                else:
-                    raise Exception("Unrecognized path {!r} in tar".format(tarinfo.name))
-
-                if tarinfo.isdir():
-                    directories.append([target_name, tarinfo])
-                    compat.makedirs(target_name, exist_ok=True)
-                elif tarinfo.isreg():
-                    target_dir = os.path.dirname(target_name)
-                    if not os.path.exists(target_dir):
-                        compat.makedirs(target_dir, exist_ok=True)
-                    tar.makefile(tarinfo, target_name)
-                    tar.chmod(tarinfo, target_name)
-                    tar.utime(tarinfo, target_name)
-                elif tarinfo.issym():
-                    os.symlink(tarinfo.linkname, target_name)
-                else:
-                    raise Exception("Unrecognized file type for file {!r} in tar".format(tarinfo.name))
-
-        for target_name, tarinfo in directories:
-            tar.chmod(tarinfo, target_name)
-            tar.utime(tarinfo, target_name)
-
-    def _extract_basic(self, fileobj, pgdata):
-        # | in mode to use tarfile's internal stream buffer manager, currently required because our SnappyFile
-        # interface doesn't do proper buffering for reads
-        with tarfile.open(fileobj=fileobj, mode="r|", bufsize=IO_BLOCK_SIZE) as tar:
-            tar.extractall(pgdata)
-
     def _get_basebackup(self, pgdata, basebackup, site,
+                        debug=False,
                         primary_conninfo=None,
                         recovery_end_command=None,
                         recovery_target_action=None,
@@ -377,7 +327,7 @@ class Restore:
                 for chunk in bmeta["chunks"]
             ]
             # We need the files from the main basebackup file too
-            basebackup_data_files.append([(io.BytesIO(bmeta_compressed), metadata), 0])
+            basebackup_data_files.append([(bmeta_compressed, metadata), 0])
 
         elif metadata.get("format") == "pghoard-bb-v1":
             # Tablespace information stored in object store metadata, look it up
@@ -444,63 +394,15 @@ class Restore:
             os.makedirs(dirname)
             os.chmod(dirname, 0o700)
 
-        total_download_size = sum(item[1] for item in basebackup_data_files)
-        progress_report_time = [0]
-        errors = 0
-        jobs = []
-        with futures.ThreadPoolExecutor(max_workers=self.config["transfer"]["thread_count"]) as executor:
-            download_progress_per_file = {
-                basebackup_data_file: 0
-                for basebackup_data_file, _ in basebackup_data_files
-                if not isinstance(basebackup_data_file, tuple)
-            }
-
-            def download_progress(end=""):
-                # report max once per second
-                if time.monotonic() - progress_report_time[0] < 1:
-                    return
-                progress_report_time[0] = time.monotonic()
-
-                total_downloaded = sum(download_progress_per_file.values())
-                if total_download_size <= 0:
-                    progress = 0
-                else:
-                    progress = total_downloaded / total_download_size
-                print("\rDownload progress: {progress:.2%} ({dl_mib:.0f} / {total_mib:.0f} MiB)\r".format(
-                    progress=progress,
-                    dl_mib=total_downloaded / (1024 ** 2),
-                    total_mib=total_download_size / (1024 ** 2),
-                ), end=end)
-
-            object_storage_config = common.get_object_storage_config(self.config, site)
-            for basebackup_data_file, backup_data_file_size in basebackup_data_files:
-                def single_download_progress(current_pos, expected_max,
-                                             this_file_name=basebackup_data_file,
-                                             this_file_size=backup_data_file_size):
-                    download_progress_per_file[this_file_name] = this_file_size * (current_pos / expected_max)
-                    download_progress()
-
-                jobs.append(executor.submit(
-                    self.process_one_chunk,
-                    basebackup_data_file=basebackup_data_file,
-                    progress_callback=single_download_progress,
-                    site=site,
-                    object_storage_config=object_storage_config,
-                    pgdata=pgdata,
-                    tablespaces=tablespaces,
-                ))
-
-            for future in futures.as_completed(jobs):
-                if future.exception():
-                    self.log.error("Got error from chunk download: %s", future.exception())
-                    errors += 1
-                    continue
-
-            progress_report_time[0] = 0
-            download_progress(end="\n")
-
-        if errors:
-            raise RestoreError("Backup download/extraction failed with {} errors".format(errors))
+        fetcher = BasebackupFetcher(
+            app_config=self.config,
+            data_files=basebackup_data_files,
+            debug=debug,
+            pgdata=pgdata,
+            site=site,
+            tablespaces=tablespaces,
+        )
+        fetcher.fetch_all()
 
         create_recovery_conf(
             dirpath=pgdata,
@@ -520,65 +422,6 @@ class Restore:
         print("On systemd based systems you can run systemctl start postgresql")
         print("On SYSV Init based systems you can run /etc/init.d/postgresql start")
 
-    def process_one_chunk(self, *, basebackup_data_file, progress_callback, site,
-                          object_storage_config, pgdata, tablespaces):
-        self.log.debug("Processing one chunk: %r", basebackup_data_file)
-        if isinstance(basebackup_data_file, tuple):
-            tmp, metadata = basebackup_data_file
-        else:
-            # NOTE: Most of the transfer clients aren't thread-safe, so initialize a new transfer
-            # client for each download.  We could use thread local storage or pooling here, but
-            # probably not worth the trouble for this use case.
-            transfer = get_transfer(object_storage_config)
-            tmp, metadata = self.download_one_backup(
-                transfer=transfer,
-                basebackup_data_file=basebackup_data_file,
-                progress_callback=progress_callback,
-                site=site
-            )
-
-        self.extract_one_backup(
-            obj=tmp,
-            metadata=metadata,
-            pgdata=pgdata,
-            site=site,
-            tablespaces=tablespaces,
-        )
-
-    def download_one_backup(self, *, transfer, basebackup_data_file, progress_callback, site):
-        dl_dir = os.path.join(
-            self.config["backup_location"],
-            self.config["backup_sites"][site]["prefix"],
-            "basebackup_incoming",
-        )
-        compat.makedirs(dl_dir, exist_ok=True)
-        tmp = tempfile.NamedTemporaryFile(dir=dl_dir, prefix="basebackup.", suffix=".pghoard")
-        try:
-            metadata = transfer.get_contents_to_fileobj(
-                key=basebackup_data_file,
-                fileobj_to_store_to=tmp,
-                progress_callback=progress_callback)
-            progress_callback(1, 1)
-            self.log.info("Downloaded %r", basebackup_data_file)
-            tmp.seek(0)
-        except:  # pylint: disable=bare-except
-            self.log.exception("Problem downloading a backup file: %r", basebackup_data_file)
-            tmp.close()
-            raise
-        return tmp, metadata
-
-    def extract_one_backup(self, *, obj, metadata, pgdata, site, tablespaces):
-        with obj:
-            with rohmufile.file_reader(fileobj=obj, metadata=metadata,
-                                       key_lookup=config.key_lookup_for_site(self.config, site)) as input_obj:
-                if metadata.get("format") in ("pghoard-bb-v1", "pghoard-bb-v2"):
-                    self._extract_pghoard_bb_v1_v2(input_obj, pgdata, tablespaces)
-                elif not metadata.get("format"):
-                    self._extract_basic(input_obj, pgdata)
-                else:
-                    raise RestoreError("Unrecognized basebackup format {!r}".format(metadata.get("format")))
-        self.log.info("Extracted %r %r", obj, metadata)
-
     def run(self, args=None):
         parser = self.create_parser()
         args = parser.parse_args(args)
@@ -592,6 +435,242 @@ class Restore:
         except KeyboardInterrupt:
             print("*** interrupted by keyboard ***")
             return 1
+
+
+class BasebackupFetcher():
+    def __init__(self, *, app_config, debug, site, pgdata, tablespaces, data_files):
+        self.log = logging.getLogger(self.__class__.__name__)
+        self.config = app_config
+        self.data_files = data_files
+        self.debug = debug
+        self.download_progress_per_file = {}
+        self.errors = 0
+        self.lock = RLock()
+        self.manager_class = multiprocessing.Manager if self._process_count() > 1 else ThreadingManager
+        self.pending_jobs = len(self.data_files)
+        self.pgdata = pgdata
+        # There's no point in spawning child processes if process count is 1
+        self.pool_class = multiprocessing.Pool if self._process_count() > 1 else multiprocessing.pool.ThreadPool
+        self.site = site
+        self.sleep_fn = time.sleep
+        self.tablespaces = tablespaces
+        self.total_download_size = 0
+
+    def fetch_all(self):
+        with self.manager_class() as manager:
+            self._setup_progress_tracking(manager)
+            with self.pool_class(processes=self._process_count()) as pool:
+                self._queue_jobs(pool)
+                self._wait_for_jobs_to_complete()
+
+        if self.errors:
+            raise RestoreError("Backup download/extraction failed with {} errors".format(self.errors))
+
+    def _process_count(self):
+        return min(self.config["restore_process_count"], len(self.data_files))
+
+    def _setup_progress_tracking(self, manager):
+        self.total_download_size = sum(item[1] for item in self.data_files)
+        initial_progress = [[fn, 0] for fn, _ in self.data_files if not isinstance(fn, tuple)]
+        self.download_progress_per_file = manager.dict(initial_progress)
+
+    def current_progress(self):
+        total_downloaded = sum(self.download_progress_per_file.values())
+        if self.total_download_size <= 0:
+            progress = 0
+        else:
+            progress = total_downloaded / self.total_download_size
+        return total_downloaded, progress
+
+    def _print_download_progress(self, end=""):
+        total_downloaded, progress = self.current_progress()
+        print("\rDownload progress: {progress:.2%} ({dl_mib:.0f} / {total_mib:.0f} MiB)\r".format(
+            progress=progress,
+            dl_mib=total_downloaded / (1024 ** 2),
+            total_mib=self.total_download_size / (1024 ** 2),
+        ), end=end)
+        sys.stdout.flush()
+
+    def job_completed(self, _result):
+        with self.lock:
+            self.pending_jobs -= 1
+
+    def job_failed(self, exception):
+        self.log.error("Got error from chunk download: %s", exception)
+        with self.lock:
+            self.errors += 1
+            self.pending_jobs -= 1
+
+    def jobs_in_progress(self):
+        with self.lock:
+            return self.pending_jobs > 0
+
+    def _queue_jobs(self, pool):
+        for data_file, data_file_size in self.data_files:
+            self._queue_job(pool, data_file, data_file_size)
+
+    def _queue_job(self, pool, data_file, data_file_size):
+        pool.apply_async(
+            _fetch_and_process_chunk,
+            [],
+            {
+                "app_config": self.config,
+                "debug": self.debug,
+                "data_file": data_file,
+                "data_file_size": data_file_size,
+                "download_progress_per_file": self.download_progress_per_file,
+                "site": self.site,
+                "pgdata": self.pgdata,
+                "tablespaces": self.tablespaces,
+            },
+            self.job_completed,
+            self.job_failed,
+        )
+
+    def _wait_for_jobs_to_complete(self):
+        while self.jobs_in_progress():
+            self._print_download_progress()
+            self.sleep_fn(1)
+
+        self._print_download_progress(end="\n")
+
+
+# Provides sufficient interface compatibility with multiprocessing.Manager for threaded use
+class ThreadingManager:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        return False
+
+    def dict(self, *args, **kwargs):
+        return dict(*args, **kwargs)
+
+
+def _fetch_and_process_chunk(*, app_config, debug, data_file, data_file_size,
+                             download_progress_per_file, site, pgdata, tablespaces):
+    logutil.configure_logging(level=logging.DEBUG if debug else logging.INFO)
+    fetcher = ChunkFetcher(app_config, data_file, data_file_size,
+                           download_progress_per_file, site, pgdata, tablespaces)
+    fetcher.process_chunk()
+
+
+class ChunkFetcher:
+    def __init__(self, app_config, data_file, data_file_size,
+                 download_progress_per_file, site, pgdata, tablespaces):
+        self.config = app_config
+        self.data_file = data_file
+        self.data_file_size = data_file_size
+        self.download_progress_per_file = download_progress_per_file
+        self.log = logging.getLogger(self.__class__.__name__)
+        self.pgdata = pgdata
+        self.site = site
+        self.tablespaces = tablespaces
+
+    def _create_transfer(self):
+        object_storage_config = common.get_object_storage_config(self.config, self.site)
+        return get_transfer(object_storage_config)
+
+    def _progress_callback(self, current_pos, expected_max):
+        self.download_progress_per_file[self.data_file] = self.data_file_size * (current_pos / expected_max)
+
+    def process_chunk(self):
+        self.log.debug("Processing one chunk: %r", self.data_file)
+        if isinstance(self.data_file, tuple):
+            data, metadata = self.data_file
+            tmp = io.BytesIO(data)
+        else:
+            tmp, metadata = self.download_one_backup()
+
+        self.extract_one_backup(obj=tmp, metadata=metadata)
+
+    def download_one_backup(self):
+        dl_dir = os.path.join(
+            self.config["backup_location"],
+            self.config["backup_sites"][self.site]["prefix"],
+            "basebackup_incoming",
+        )
+        compat.makedirs(dl_dir, exist_ok=True)
+        tmp = tempfile.NamedTemporaryFile(dir=dl_dir, prefix="basebackup.", suffix=".pghoard")
+        try:
+            metadata = self._create_transfer().get_contents_to_fileobj(
+                key=self.data_file,
+                fileobj_to_store_to=tmp,
+                progress_callback=self._progress_callback)
+            self._progress_callback(1, 1)
+            self.log.info("Downloaded %r", self.data_file)
+            tmp.seek(0)
+        except:  # pylint: disable=bare-except
+            self.log.exception("Problem downloading a backup file: %r", self.data_file)
+            tmp.close()
+            raise
+        return tmp, metadata
+
+    def extract_one_backup(self, *, obj, metadata):
+        with obj:
+            with rohmufile.file_reader(fileobj=obj, metadata=metadata,
+                                       key_lookup=config.key_lookup_for_site(self.config, self.site)) as input_obj:
+                if metadata.get("format") in ("pghoard-bb-v1", "pghoard-bb-v2"):
+                    self._extract_pghoard_bb_v1_v2(input_obj)
+                elif not metadata.get("format"):
+                    self._extract_basic(input_obj)
+                else:
+                    raise RestoreError("Unrecognized basebackup format {!r}".format(metadata.get("format")))
+        self.log.info("Extracted %r %r", obj, metadata)
+
+    def _extract_pghoard_bb_v1_v2(self, fileobj):
+        directories = []
+        # | in mode to use tarfile's internal stream buffer manager, currently required because our SnappyFile
+        # interface doesn't do proper buffering for reads
+        with tarfile.open(fileobj=fileobj, mode="r|", bufsize=IO_BLOCK_SIZE) as tar:
+            for tarinfo in tar:
+                if tarinfo.name in (".pghoard_tar_metadata.json", "pgdata", "tablespaces"):
+                    continue  # ignore
+
+                if tarinfo.name.startswith("pgdata/"):
+                    target_name = os.path.join(self.pgdata, tarinfo.name[7:])
+                elif tarinfo.name.startswith("tablespaces/"):
+                    tscomponents = tarinfo.name.split("/", 2)
+                    tsname = tscomponents[1]
+                    tspath = self.tablespaces[tsname]["path"]
+
+                    if len(tscomponents) == 2 and tarinfo.isdir():
+                        # Create tablespace entry
+                        tblspc_dir = os.path.join(self.pgdata, "pg_tblspc")
+                        os.makedirs(tblspc_dir, exist_ok=True)
+                        linkname = os.path.join(self.pgdata, "pg_tblspc", str(self.tablespaces[tsname]["oid"]))
+                        os.symlink(tspath, linkname)
+                        directories.append([tspath, tarinfo])
+                        continue
+
+                    target_name = os.path.join(tspath, tscomponents[2])
+                else:
+                    raise Exception("Unrecognized path {!r} in tar".format(tarinfo.name))
+
+                if tarinfo.isdir():
+                    directories.append([target_name, tarinfo])
+                    compat.makedirs(target_name, exist_ok=True)
+                elif tarinfo.isreg():
+                    target_dir = os.path.dirname(target_name)
+                    if not os.path.exists(target_dir):
+                        compat.makedirs(target_dir, exist_ok=True)
+                    tar.makefile(tarinfo, target_name)
+                    tar.chmod(tarinfo, target_name)
+                    tar.utime(tarinfo, target_name)
+                elif tarinfo.issym():
+                    os.symlink(tarinfo.linkname, target_name)
+                else:
+                    raise Exception("Unrecognized file type for file {!r} in tar".format(tarinfo.name))
+
+        for target_name, tarinfo in directories:
+            tar.chmod(tarinfo, target_name)
+            tar.utime(tarinfo, target_name)
+
+    def _extract_basic(self, fileobj):
+        # | in mode to use tarfile's internal stream buffer manager, currently required because our SnappyFile
+        # interface doesn't do proper buffering for reads
+        with tarfile.open(fileobj=fileobj, mode="r|", bufsize=IO_BLOCK_SIZE) as tar:
+            tar.extractall(self.pgdata)
 
 
 class ObjectStore:

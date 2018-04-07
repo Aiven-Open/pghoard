@@ -54,7 +54,9 @@ logging.getLogger("googleapiclient.discovery_cache").setLevel(logging.ERROR)
 logging.getLogger("googleapiclient").setLevel(logging.WARNING)
 logging.getLogger("oauth2client").setLevel(logging.WARNING)
 
-CHUNK_SIZE = 1024 * 1024 * 5
+# googleapiclient download performs some 3-4 times better with 50 MB chunk size than 5 MB chunk size
+DOWNLOAD_CHUNK_SIZE = 1024 * 1024 * 50
+UPLOAD_CHUNK_SIZE = 1024 * 1024 * 5
 
 
 def get_credentials(credential_file=None, credentials=None):
@@ -225,7 +227,7 @@ class GoogleTransfer(BaseTransfer):
         next_prog_report = 0.0
         with self._object_client(not_found=key) as clob:
             req = clob.get_media(bucket=self.bucket_name, object=key)
-            download = MediaIoBaseDownload(fileobj_to_store_to, req, chunksize=CHUNK_SIZE)
+            download = MediaIoBaseDownload(fileobj_to_store_to, req, chunksize=DOWNLOAD_CHUNK_SIZE)
             done = False
             while not done:
                 status, done = self._retry_on_reset(getattr(download, "_request", None), download.next_chunk)
@@ -249,7 +251,7 @@ class GoogleTransfer(BaseTransfer):
         key = self.format_key_for_backend(key)
         self.log.debug("Starting to upload %r", key)
         upload = upload_type(local_object, mimetype="application/octet-stream",
-                             resumable=True, chunksize=CHUNK_SIZE)
+                             resumable=True, chunksize=UPLOAD_CHUNK_SIZE)
         body = {"metadata": metadata}
         if extra_props:
             body.update(extra_props)
