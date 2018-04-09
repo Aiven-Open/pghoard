@@ -115,6 +115,7 @@ class S3Transfer(BaseTransfer):
                 name = self.format_key_from_backend(item["Key"])
                 yield {
                     "last_modified": item["LastModified"],
+                    "md5": item["ETag"].strip('"'),
                     "metadata": metadata,
                     "name": name,
                     "size": item["Size"],
