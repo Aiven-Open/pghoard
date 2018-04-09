@@ -245,7 +245,7 @@ class GoogleTransfer(BaseTransfer):
             data = self._retry_on_reset(req, req.execute)
             return data, self._metadata_for_key(clob, key)
 
-    def _upload(self, upload_type, local_object, key, metadata, extra_props):
+    def _upload(self, upload_type, local_object, key, metadata, extra_props, cache_control):
         key = self.format_key_for_backend(key)
         self.log.debug("Starting to upload %r", key)
         upload = upload_type(local_object, mimetype="application/octet-stream",
@@ -253,6 +253,8 @@ class GoogleTransfer(BaseTransfer):
         body = {"metadata": metadata}
         if extra_props:
             body.update(extra_props)
+        if cache_control is not None:
+            body["cacheControl"] = cache_control
 
         with self._object_client() as clob:
             req = clob.insert(bucket=self.bucket_name, name=key, media_body=upload, body=body)
@@ -262,13 +264,16 @@ class GoogleTransfer(BaseTransfer):
                 if status:
                     self.log.debug("Upload of %r to %r: %d%%", local_object, key, status.progress() * 100)
 
-    def store_file_from_memory(self, key, memstring, metadata=None, extra_props=None):  # pylint: disable=arguments-differ
+    def store_file_from_memory(self, key, memstring, metadata=None, extra_props=None,  # pylint: disable=arguments-differ
+                               cache_control=None):
         return self._upload(MediaIoBaseUpload, BytesIO(memstring), key,
-                            self.sanitize_metadata(metadata), extra_props)
+                            self.sanitize_metadata(metadata), extra_props, cache_control=cache_control)
 
     def store_file_from_disk(self, key, filepath, metadata=None,  # pylint: disable=arguments-differ, unused-variable
-                             *, multipart=None, extra_props=None):  # pylint: disable=arguments-differ, unused-variable
-        return self._upload(MediaFileUpload, filepath, key, self.sanitize_metadata(metadata), extra_props)
+                             *, multipart=None, extra_props=None,  # pylint: disable=arguments-differ, unused-variable
+                             cache_control=None):
+        return self._upload(MediaFileUpload, filepath, key, self.sanitize_metadata(metadata), extra_props,
+                            cache_control=cache_control)
 
     def get_or_create_bucket(self, bucket_name):
         """Look up the bucket if it already exists and try to create the

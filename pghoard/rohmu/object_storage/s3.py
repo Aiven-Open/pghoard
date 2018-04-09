@@ -170,7 +170,7 @@ class S3Transfer(BaseTransfer):
         data = stream.read()
         return data, metadata
 
-    def store_file_from_memory(self, key, memstring, metadata=None):
+    def store_file_from_memory(self, key, memstring, metadata=None, cache_control=None):
         key = self.format_key_for_backend(key, remove_slash_prefix=True)
         args = {
             "Bucket": self.bucket_name,
@@ -181,14 +181,16 @@ class S3Transfer(BaseTransfer):
             args["Metadata"] = self.sanitize_metadata(metadata)
         if self.encrypted:
             args["ServerSideEncryption"] = "AES256"
+        if cache_control is not None:
+            args["CacheControl"] = cache_control
         self.s3_client.put_object(**args)
 
-    def store_file_from_disk(self, key, filepath, metadata=None, multipart=None):
+    def store_file_from_disk(self, key, filepath, metadata=None, multipart=None, cache_control=None):
         size = os.path.getsize(filepath)
         if not multipart or size <= self.multipart_chunk_size:
             with open(filepath, "rb") as fh:
                 data = fh.read()
-                self.store_file_from_memory(key, data, metadata)
+                self.store_file_from_memory(key, data, metadata, cache_control=cache_control)
             return
 
         key = self.format_key_for_backend(key, remove_slash_prefix=True)
@@ -209,7 +211,8 @@ class S3Transfer(BaseTransfer):
             args["Metadata"] = self.sanitize_metadata(metadata)
         if self.encrypted:
             args["ServerSideEncryption"] = "AES256"
-
+        if cache_control is not None:
+            args["CacheControl"] = cache_control
         try:
             response = self.s3_client.create_multipart_upload(**args)
         except botocore.exceptions.ClientError as ex:
