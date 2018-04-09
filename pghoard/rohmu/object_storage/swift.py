@@ -211,12 +211,18 @@ class SwiftTransfer(BaseTransfer):
         metadata = self._headers_to_metadata(headers)
         return data, metadata
 
-    def store_file_from_memory(self, key, memstring, metadata=None):
+    def store_file_from_memory(self, key, memstring, metadata=None, cache_control=None):
+        if cache_control is not None:
+            raise NotImplementedError("SwiftTransfer: cache_control support not implemented")
+
         key = self.format_key_for_backend(key)
         metadata_to_send = self._metadata_to_headers(self.sanitize_metadata(metadata))
         self.conn.put_object(self.container_name, key, contents=memstring, headers=metadata_to_send)
 
-    def store_file_from_disk(self, key, filepath, metadata=None, multipart=None):
+    def store_file_from_disk(self, key, filepath, metadata=None, multipart=None, cache_control=None):
+        if cache_control is not None:
+            raise NotImplementedError("SwiftTransfer: cache_control support not implemented")
+
         if multipart:
             # Start by trying to delete the file - if it's a potential multipart file we need to manually
             # delete it, otherwise old segments won't be cleaned up by anything.  Note that we only issue
