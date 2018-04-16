@@ -16,22 +16,32 @@ import tarfile
 
 def test_encryptor_decryptor():
     plaintext = b"test"
-    encryptor = Encryptor(CONSTANT_TEST_RSA_PUBLIC_KEY)
-    ciphertext = encryptor.update(plaintext) + encryptor.finalize()
-    assert plaintext not in ciphertext
-    decryptor = Decryptor(CONSTANT_TEST_RSA_PRIVATE_KEY)
-    result = decryptor.update(ciphertext) + decryptor.finalize()
-    assert plaintext == result
-    public_key = json.loads(json.dumps(CONSTANT_TEST_RSA_PUBLIC_KEY))
-    private_key = json.loads(json.dumps(CONSTANT_TEST_RSA_PRIVATE_KEY))
-    encryptor = Encryptor(public_key)
-    decryptor = Decryptor(private_key)
-    assert plaintext == decryptor.update(encryptor.update(plaintext) + encryptor.finalize()) + decryptor.finalize()
+    for op in (None, "json"):
+        if op == "json":
+            public_key = json.loads(json.dumps(CONSTANT_TEST_RSA_PUBLIC_KEY))
+            private_key = json.loads(json.dumps(CONSTANT_TEST_RSA_PRIVATE_KEY))
+        else:
+            public_key = CONSTANT_TEST_RSA_PUBLIC_KEY
+            private_key = CONSTANT_TEST_RSA_PRIVATE_KEY
+
+        encryptor = Encryptor(public_key)
+        decryptor = Decryptor(private_key)
+        encrypted = encryptor.update(plaintext) + encryptor.finalize()
+        assert plaintext not in encrypted
+        offset = 0
+        while decryptor.expected_header_bytes() > 0:
+            chunk = encrypted[offset:offset + decryptor.expected_header_bytes()]
+            decryptor.process_header(chunk)
+            offset += len(chunk)
+        decrypted_size = len(encrypted) - decryptor.header_size() - decryptor.footer_size()
+        decrypted = decryptor.process_data(encrypted[decryptor.header_size():decryptor.header_size() + decrypted_size])
+        decrypted += decryptor.finalize(encrypted[-decryptor.footer_size():])
+        assert plaintext == decrypted
 
 
 def test_decryptorfile(tmpdir):
     # create a plaintext blob bigger than IO_BLOCK_SIZE
-    plaintext1 = b"rvdmfki6iudmx8bb25tx1sozex3f4u0nm7uba4eibscgda0ckledcydz089qw1p1"
+    plaintext1 = b"rvdmfki6iudmx8bb25tx1sozex3f4u0nm7uba4eibscgda0ckledcydz089qw1p1wer"
     repeat = int(1.5 * IO_BLOCK_SIZE / len(plaintext1))
     plaintext = repeat * plaintext1
     encryptor = Encryptor(CONSTANT_TEST_RSA_PUBLIC_KEY)
@@ -82,6 +92,18 @@ def test_decryptorfile(tmpdir):
     result = fp.read(1)
     assert plaintext[2:3] == result
     assert fp.tell() == 3
+    result = fp.read(17)
+    assert plaintext[3:16] == result
+    result = fp.read(6)
+    assert plaintext[16:22] == result
+    result = fp.read(6)
+    assert plaintext[22:28] == result
+    result = fp.read(6)
+    assert plaintext[28:32] == result
+    fp.seek(len(plaintext) - 3)
+    assert plaintext[-3:-2] == fp.read(1)
+    assert plaintext[-2:] == fp.read()
+
     with pytest.raises(io.UnsupportedOperation):
         fp.truncate()
     # close the file (this can be safely called multiple times), other ops should fail after that
