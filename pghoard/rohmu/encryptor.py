@@ -6,7 +6,7 @@ See LICENSE for details
 """
 
 from . import IO_BLOCK_SIZE
-from .filewrap import FileWrap
+from .filewrap import FileWrap, Sink
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
@@ -156,6 +156,8 @@ class Decryptor:
             self.authenticator = HMAC(auth_key, SHA256(), backend=default_backend())
 
     def process_data(self, data):
+        if not data:
+            return b""
         self.authenticator.update(data)
         return self.cipher.update(data)
 
@@ -332,3 +334,57 @@ class DecryptorFile(FileWrap):
         """True if this stream supports random access"""
         self._check_not_closed()
         return True
+
+
+class DecryptSink(Sink):
+    def __init__(self, next_sink, file_size, encryption_key_data):
+        super().__init__(next_sink)
+        self.data_bytes_received = 0
+        self.data_size = file_size
+        self.decryptor = Decryptor(encryption_key_data)
+        self.file_size = file_size
+        self.footer = b""
+        self.header = b""
+
+    def _extract_encryption_footer_bytes(self, data):
+        expected_data_bytes = self.data_size - self.data_bytes_received
+        if len(data) > expected_data_bytes:
+            self.footer += data[expected_data_bytes:]
+            data = data[:expected_data_bytes]
+        return data
+
+    def _process_encryption_header(self, data):
+        if not data or not self.decryptor.expected_header_bytes():
+            return data
+        if self.header:
+            data = self.header + data
+            self.header = None
+        offset = 0
+        while self.decryptor.expected_header_bytes() > 0:
+            header_bytes = self.decryptor.expected_header_bytes()
+            if header_bytes + offset > len(data):
+                self.header = data[offset:]
+                return b""
+            self.decryptor.process_header(data[offset:offset + header_bytes])
+            offset += header_bytes
+        data = data[offset:]
+        self.data_size = self.file_size - self.decryptor.header_size() - self.decryptor.footer_size()
+        return data
+
+    def write(self, data):
+        written = len(data)
+        data = self._process_encryption_header(data)
+        if not data:
+            return written
+        data = self._extract_encryption_footer_bytes(data)
+        self.data_bytes_received += len(data)
+        if data:
+            data = self.decryptor.process_data(data)
+        if len(self.footer) == self.decryptor.footer_size():
+            final_data = self.decryptor.finalize(self.footer)
+            if final_data:
+                data += final_data
+        if not data:
+            return written
+        self._write_to_next_sink(data)
+        return written

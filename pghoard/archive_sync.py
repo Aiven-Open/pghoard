@@ -61,7 +61,7 @@ class ArchiveSync:
     def archive_sync(self, verify, new_backup_on_failure):
         self.check_and_upload_missing_local_files()
         if not verify:
-            return
+            return None
         return self.check_wal_archive_integrity(new_backup_on_failure)
 
     def check_and_upload_missing_local_files(self):

@@ -128,7 +128,7 @@ class PGHoard:
         if not self.check_pg_versions_ok(site, pg_version_server, "pg_basebackup"):
             if callback_queue:
                 callback_queue.put({"success": False})
-            return None
+            return
 
         thread = PGBaseBackup(
             config=self.config,

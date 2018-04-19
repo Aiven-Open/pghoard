@@ -472,6 +472,15 @@ Determines syslog log facility. (requires syslog to be true as well)
 After this many failed upload attempts for a single file, create an
 alert file.
 
+``tar_executable`` (default ``"pghoard_gnutaremu"``)
+
+The tar command to use for restoring basebackups. This must be GNU tar because some
+advanced switches like ``--transform`` are needed. If this value is not defined (or
+is explicitly set to ``"pghoard_gnutaremu"``), Python's internal tarfile
+implementation is used. The Python implementation is somewhat slower than the
+actual tar command and in environments with fast disk IO (compared to available CPU
+capacity) it is recommended to set this to ``"tar"``.
+
 Backup site configuration
 =========================
 

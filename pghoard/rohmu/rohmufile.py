@@ -7,9 +7,10 @@ See LICENSE for details
 
 from . import IO_BLOCK_SIZE
 from .compat import suppress
-from .compressor import CompressionFile, DecompressionFile
-from .encryptor import DecryptorFile, EncryptorFile
+from .compressor import CompressionFile, DecompressionFile, DecompressSink
+from .encryptor import DecryptorFile, EncryptorFile, DecryptSink
 from .errors import InvalidConfigurationError
+from .filewrap import ThrottleSink
 import time
 
 
@@ -20,20 +21,27 @@ def _fileobj_name(input_obj):
     return repr(input_obj)
 
 
+def _get_encryption_key_data(metadata, key_lookup):
+    if not metadata or not metadata.get("encryption-key-id"):
+        return None
+
+    key_id = metadata["encryption-key-id"]
+    key_data = None
+    if key_lookup:
+        with suppress(KeyError):
+            key_data = key_lookup(key_id)
+
+    if not key_data:
+        raise InvalidConfigurationError("File is encrypted with key {!r} but key not found".format(key_id))
+    return key_data
+
+
 def file_reader(*, fileobj, metadata=None, key_lookup=None):
     if not metadata:
         return fileobj
 
-    key_id = metadata.get("encryption-key-id")
-    if key_id:
-        key_data = None
-        if key_lookup:
-            with suppress(KeyError):
-                key_data = key_lookup(key_id)
-
-        if not key_data:
-            raise InvalidConfigurationError("File is encrypted with key {!r} but key not found".format(key_id))
-
+    key_data = _get_encryption_key_data(metadata, key_lookup)
+    if key_data:
         fileobj = DecryptorFile(fileobj, key_data)
 
     comp_alg = metadata.get("compression-algorithm")
@@ -41,6 +49,21 @@ def file_reader(*, fileobj, metadata=None, key_lookup=None):
         fileobj = DecompressionFile(fileobj, comp_alg)
 
     return fileobj
+
+
+def create_sink_pipeline(*, output, file_size=None, metadata=None, key_lookup=None, throttle_time=0.001):
+    if throttle_time:
+        output = ThrottleSink(output, throttle_time)
+
+    comp_alg = metadata.get("compression-algorithm") if metadata else None
+    if comp_alg:
+        output = DecompressSink(output, comp_alg)
+
+    key_data = _get_encryption_key_data(metadata, key_lookup)
+    if key_data:
+        output = DecryptSink(output, file_size, key_data)
+
+    return output
 
 
 def read_file(*, input_obj, output_obj, metadata, key_lookup, progress_callback=None, log_func=None):

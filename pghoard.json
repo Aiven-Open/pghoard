@@ -24,6 +24,7 @@
             "pg_bin_directory": "/usr/bin"
         }
     },
+    "tar_executable": "tar",
     "http_address": "127.0.0.1",
     "http_port": 16000,
     "log_level": "INFO",
