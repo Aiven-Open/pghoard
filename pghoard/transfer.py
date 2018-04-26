@@ -5,6 +5,7 @@ Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
 from pghoard.common import create_alert_file, get_object_storage_config
+from pghoard.fetcher import FileFetchManager
 from pghoard.rohmu.compat import suppress
 from pghoard.rohmu.errors import (
     FileNotFoundFromStorageError,
@@ -22,13 +23,15 @@ _last_stats_transmit_time = 0
 
 
 class TransferAgent(Thread):
-    def __init__(self, config, compression_queue, transfer_queue, stats,
+    def __init__(self, config, compression_queue, mp_manager, transfer_queue, stats,
                  shared_state_dict):
         super().__init__()
         self.log = logging.getLogger("TransferAgent")
         self.config = config
         self.stats = stats
         self.compression_queue = compression_queue
+        self.mp_manager = mp_manager
+        self.fetch_manager = FileFetchManager(self.config, self.mp_manager, self.get_object_storage)
         self.transfer_queue = transfer_queue
         self.running = True
         self.sleep = time.sleep
@@ -100,6 +103,7 @@ class TransferAgent(Thread):
     def run(self):
         while self.running:
             self.transmit_statsd_metrics()
+            self.fetch_manager.check_state()
             try:
                 file_to_transfer = self.transfer_queue.get(timeout=1.0)
             except Empty:
@@ -174,6 +178,7 @@ class TransferAgent(Thread):
                           "FAILED " if not result["success"] else "",
                           key, oper_size, time.time() - start_time)
 
+        self.fetch_manager.stop()
         self.log.debug("Quitting TransferAgent")
 
     def handle_list(self, site, key, file_to_transfer):
@@ -206,21 +211,9 @@ class TransferAgent(Thread):
 
     def handle_download(self, site, key, file_to_transfer):
         try:
-            storage = self.get_object_storage(site)
-
-            content, metadata = storage.get_contents_to_string(key)
-            file_to_transfer["file_size"] = len(content)
-            # Note that here we flip the local_path to mean the target_path
-            self.compression_queue.put({
-                "blob": content,
-                "callback_queue": file_to_transfer["callback_queue"],
-                "local_path": file_to_transfer["target_path"],
-                "metadata": metadata,
-                "opaque": file_to_transfer.get("opaque"),
-                "site": site,
-                "type": "DECOMPRESSION",
-            })
-            return {"success": True, "call_callback": False}
+            file_size = self.fetch_manager.fetch_file(site, key, file_to_transfer["target_path"])
+            file_to_transfer["file_size"] = file_size
+            return {"success": True, "opaque": file_to_transfer.get("opaque")}
         except FileNotFoundFromStorageError as ex:
             self.log.warning("%r not found from storage", key)
             return {"success": False, "exception": ex, "opaque": file_to_transfer.get("opaque")}

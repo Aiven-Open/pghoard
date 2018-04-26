@@ -7,7 +7,7 @@ See LICENSE for details
 # pylint: disable=attribute-defined-outside-init
 from .base import PGHoardTestCase
 from pghoard import statsd
-from pghoard.rohmu.errors import StorageError
+from pghoard.rohmu.errors import FileNotFoundFromStorageError, StorageError
 from pghoard.transfer import TransferAgent
 from queue import Empty, Queue
 from unittest.mock import Mock
@@ -39,7 +39,8 @@ class TestTransferAgent(PGHoardTestCase):
             "backup_sites": {
                 self.test_site: {
                     "object_storage": {
-                        "storage_type": "s3",
+                        "storage_type": "local",
+                        "directory": self.temp_dir
                     },
                 },
             },
@@ -60,6 +61,7 @@ class TestTransferAgent(PGHoardTestCase):
         self.transfer_agent = TransferAgent(
             config=self.config,
             compression_queue=self.compression_queue,
+            mp_manager=None,
             transfer_queue=self.transfer_queue,
             stats=statsd.StatsClient(host=None),
             shared_state_dict={})
@@ -83,16 +85,10 @@ class TestTransferAgent(PGHoardTestCase):
             "target_path": self.temp_dir,
             "type": "DOWNLOAD",
         })
-        expected_event = {
-            "blob": b"joo",
-            "callback_queue": callback_queue,
-            "local_path": self.temp_dir,
-            "metadata": {"key": "value"},
-            "opaque": 42,
-            "site": self.test_site,
-            "type": "DECOMPRESSION",
-        }
-        assert self.compression_queue.get(timeout=1.0) == expected_event
+        event = callback_queue.get(timeout=1.0)
+        assert event["success"] is False
+        assert event["opaque"] == 42
+        assert isinstance(event["exception"], FileNotFoundFromStorageError)
 
     def test_handle_upload_xlog(self):
         callback_queue = Queue()
