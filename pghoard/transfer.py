@@ -31,6 +31,7 @@ class TransferAgent(Thread):
         self.compression_queue = compression_queue
         self.transfer_queue = transfer_queue
         self.running = True
+        self.sleep = time.sleep
         self.state = shared_state_dict
         self.site_transfers = {}
         self.log.debug("TransferAgent initialized")
@@ -266,12 +267,13 @@ class TransferAgent(Thread):
             else:
                 self.log.warning("Problem in moving file: %r, need to retry (%s: %s)",
                                  file_to_transfer["local_path"], ex.__class__.__name__, ex)
-            # Sleep for a bit to avoid busy looping
-            time.sleep(0.5)
 
             file_to_transfer["retry_number"] = file_to_transfer.get("retry_number", 0) + 1
             if file_to_transfer["retry_number"] > self.config["upload_retries_warning_limit"]:
                 create_alert_file(self.config, "upload_retries_warning")
+
+            # Sleep for a bit to avoid busy looping. Increase sleep time if the op fails multiple times
+            self.sleep(min(0.5 * 2 ** (file_to_transfer["retry_number"] - 1), 20))
 
             self.transfer_queue.put(file_to_transfer)
             return {"success": False, "call_callback": False, "exception": ex}

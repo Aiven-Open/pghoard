@@ -13,6 +13,7 @@ from queue import Empty, Queue
 from unittest.mock import Mock
 import os
 import pytest
+import time
 
 
 class MockStorage(Mock):
@@ -128,8 +129,15 @@ class TestTransferAgent(PGHoardTestCase):
         assert os.path.exists(self.foo_basebackup_path) is False
 
     def test_handle_failing_upload_xlog(self):
+        sleeps = []
+
+        def sleep(sleep_amount):
+            sleeps.append(sleep_amount)
+            time.sleep(0.001)
+
         callback_queue = Queue()
         storage = MockStorageRaising()
+        self.transfer_agent.sleep = sleep
         self.transfer_agent.get_object_storage = storage
         assert os.path.exists(self.foo_path) is True
         self.transfer_queue.put({
@@ -142,7 +150,9 @@ class TestTransferAgent(PGHoardTestCase):
             "type": "UPLOAD",
         })
         with pytest.raises(Empty):
-            callback_queue.get(timeout=3.0)
+            callback_queue.get(timeout=0.1)
         alert_file_path = os.path.join(self.config["alert_file_dir"], "upload_retries_warning")
         assert os.path.exists(alert_file_path) is True
         os.unlink(alert_file_path)
+        expected_sleeps = [0.5, 1, 2, 4, 8, 16, 20, 20]
+        assert sleeps[:8] == expected_sleeps
