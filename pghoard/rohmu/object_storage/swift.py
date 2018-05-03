@@ -30,6 +30,7 @@ def swift_exception_logger(err):
         client.logger.debug("GET %r FAILED: %r", err.http_path, err.http_status)
     else:
         client.logger.error(str(err))
+    return None
 
 
 orig_swift_exception_logger = client.logger.exception

@@ -148,7 +148,7 @@ class TestBasebackupFetcher(unittest.TestCase):
         config = {"restore_process_count": 4}
         site = "some-site"
         pgdata = "/tmp/test_restore"
-        tablespaces = {"foo": {"path": "/tmp/test_restore2"}}
+        tablespaces = {"foo": {"oid": 1234, "path": "/tmp/test_restore2"}}
         data_files = [("bar1", 1000), ("bar2", 2000), ((b"baz", {}), 0)]
         fetcher = BasebackupFetcher(app_config=config,
                                     data_files=data_files,
@@ -197,10 +197,8 @@ class TestBasebackupFetcher(unittest.TestCase):
 
     # Runs actual sub processes to decrypt and decompress basebackup chunks
     def test_real_processing(self):
-        chunk_dir = os.path.join("test", "basebackup", "chunks")
-        files = [fn for fn in os.listdir(chunk_dir) if ".metadata" not in fn]
-        files_with_size = [(fn, os.stat(os.path.join(chunk_dir, fn)).st_size) for fn in files]
-        self.run_restore_test(files_with_size, self.real_processing)
+        for tar in ["tar", "pghoard/gnutaremu.py"]:
+            self.run_restore_test("basebackup", tar, self.real_processing)
 
     def real_processing(self, fetcher, restore_dir):
         assert fetcher.pool_class == multiprocessing.Pool
@@ -219,9 +217,8 @@ class TestBasebackupFetcher(unittest.TestCase):
                           "9f1dcbc35c350d6027f98be0f5c8b43b42ca52b7604459c0c42be3aa88913d47")
 
     def test_real_processing_with_threading(self):
-        chunk_dir = os.path.join("test", "basebackup", "chunks")
-        files_with_size = [("00000001.pghoard", os.stat(os.path.join(chunk_dir, "00000001.pghoard")).st_size)]
-        self.run_restore_test(files_with_size, self.real_processing_with_threading)
+        for tar in ["tar", "pghoard/gnutaremu.py"]:
+            self.run_restore_test("basebackup", tar, self.real_processing_with_threading, files=["00000001.pghoard"])
 
     def real_processing_with_threading(self, fetcher, restore_dir):
         assert fetcher.pool_class == multiprocessing.pool.ThreadPool
@@ -229,18 +226,62 @@ class TestBasebackupFetcher(unittest.TestCase):
         self.check_sha256(os.path.join(restore_dir, "pg_notify", "0000"),
                           "9f1dcbc35c350d6027f98be0f5c8b43b42ca52b7604459c0c42be3aa88913d47")
 
-    def run_restore_test(self, files, logic):
-        with open(os.path.join("test", "basebackup", "config.json"), "r") as f:
+    def test_tablespaces(self):
+        def rm_tablespace_paths():
+            shutil.rmtree("/tmp/nsd5b2b8e4978847ef9b3056b7e01c51a8", ignore_errors=True)
+            shutil.rmtree("/tmp/ns5252b4c03072434691a11a5795b39477", ignore_errors=True)
+
+        rm_tablespace_paths()
+        tablespaces = {"nstest1": {"path": "/tmp/nsd5b2b8e4978847ef9b3056b7e01c51a8", "oid": 16395},
+                       "nstest2": {"path": "/tmp/ns5252b4c03072434691a11a5795b39477", "oid": 16396}}
+        for tar in ["tar", "pghoard/gnutaremu.py"]:
+            try:
+                self.run_restore_test("basebackup_with_ts", tar, self.tablespaces, tablespaces=tablespaces)
+            finally:
+                rm_tablespace_paths()
+
+    def tablespaces(self, fetcher, restore_dir):
+        fetcher.fetch_all()
+
+        assert not os.path.isdir(os.path.join(restore_dir, "pgdata"))
+        assert not os.path.isdir(os.path.join(restore_dir, "tablespaces"))
+
+        self.check_sha256("/tmp/ns5252b4c03072434691a11a5795b39477/PG_10_201707211/16384/16400",
+                          "2d6ea9066c3efb3bb7e2938725e31d7f0e4c9b4ac3e30c3091c5b061d3650300")
+        assert os.path.islink(os.path.join(restore_dir, "pg_tblspc", "16396"))
+        self.check_sha256(os.path.join(restore_dir, "pg_tblspc", "16396", "PG_10_201707211", "16384", "16400"),
+                          "2d6ea9066c3efb3bb7e2938725e31d7f0e4c9b4ac3e30c3091c5b061d3650300")
+
+        self.check_sha256("/tmp/nsd5b2b8e4978847ef9b3056b7e01c51a8/PG_10_201707211/16384/16397",
+                          "d5d418c8ebd66ca1f26bdda100195146801b9776a3325abc6c548df8696f2649")
+        assert os.path.islink(os.path.join(restore_dir, "pg_tblspc", "16395"))
+        self.check_sha256(os.path.join(restore_dir, "pg_tblspc", "16395", "PG_10_201707211", "16384", "16397"),
+                          "d5d418c8ebd66ca1f26bdda100195146801b9776a3325abc6c548df8696f2649")
+
+        self.check_sha256(os.path.join(restore_dir, "base", "13968", "13811"),
+                          "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
+        self.check_sha256(os.path.join(restore_dir, "base", "13968", "2619_vm"),
+                          "64e86044d11dc1e1a8a1e3481b7beb0850fdea6b26a749cb610ef85e0e4aa626")
+        self.check_sha256(os.path.join(restore_dir, "base", "13968", "3440"),
+                          "84e3bda6f1abdd0fb0aff4bc6587ea07b9d8b61c1a0d6bdc4d16d339a761717f")
+
+    def run_restore_test(self, path, tar_executable, logic, tablespaces=None, files=None):
+        chunk_dir = os.path.join("test", path, "chunks")
+        files = [fn for fn in os.listdir(chunk_dir) if ".metadata" not in fn and (not files or fn in files)]
+        files = [(fn, os.stat(os.path.join(chunk_dir, fn)).st_size) for fn in files]
+        with open(os.path.join("test", path, "config.json"), "r") as f:
             config = json.loads(f.read())
         restore_dir = mkdtemp(prefix=self.__class__.__name__)
         scratch_dir = mkdtemp(prefix=self.__class__.__name__)
         config["backup_location"] = scratch_dir
+        config["tar_executable"] = tar_executable
+        site = next(iter(config["backup_sites"]))
         fetcher = BasebackupFetcher(app_config=config,
                                     data_files=files,
                                     debug=True,
                                     pgdata=restore_dir,
-                                    site="f73f56ee-6b9f-4ce0-b7aa-a170d58da833",
-                                    tablespaces=[])
+                                    site=site,
+                                    tablespaces=tablespaces or {})
         try:
             logic(fetcher, restore_dir)
         finally:

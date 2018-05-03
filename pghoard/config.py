@@ -45,6 +45,7 @@ def set_and_check_config_defaults(config, *, check_commands=True, check_pgdata=T
     config.setdefault("maintenance_mode_file", "/var/lib/pghoard/maintenance_mode_file")
     config.setdefault("log_level", "INFO")
     config.setdefault("path_prefix", "")  # deprecated, used in the default path for sites
+    config.setdefault("tar_executable", "pghoard_gnutaremu")
     config.setdefault("upload_retries_warning_limit", 3)
 
     # default to cpu_count + 1 compression threads
@@ -57,9 +58,11 @@ def set_and_check_config_defaults(config, *, check_commands=True, check_pgdata=T
         "thread_count",
         min(get_cpu_count() + 3, 20),
     )
-    # Using more than 20 worker processes would require a lot of scratch space and
-    # typically moves the bottleneck from CPU to IO so more than that isn't useful
-    config.setdefault("restore_process_count", min(get_cpu_count() + 2, 20))
+    # With 20 processes the restoration is almost always IO bound so using more CPU
+    # cores isn't typically useful and just adds general overhead.
+    # Only create CPU count + 1 processes as hosts with small number of CPUs often
+    # have little memory too and each restore process can use fair amount of memory.
+    config.setdefault("restore_process_count", min(get_cpu_count() + 1, 20))
     # default to prefetching transfer.thread_count objects
     config.setdefault("restore_prefetch", config["transfer"]["thread_count"])
     # if compression algorithm is not explicitly set prefer snappy if it's available

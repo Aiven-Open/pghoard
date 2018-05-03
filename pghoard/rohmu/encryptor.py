@@ -6,7 +6,7 @@ See LICENSE for details
 """
 
 from . import IO_BLOCK_SIZE
-from .filewrap import FileWrap
+from .filewrap import FileWrap, Sink
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
@@ -16,6 +16,7 @@ from cryptography.hazmat.primitives import serialization
 import cryptography
 import cryptography.hazmat.backends.openssl.backend
 import io
+import logging
 import os
 import struct
 
@@ -25,6 +26,7 @@ if cryptography.__version__ < "1.6":
     cryptography.hazmat.backends.openssl.backend.activate_builtin_random()
 
 FILEMAGIC = b"pghoa1"
+AES_BLOCK_SIZE = 16
 
 
 class EncryptorError(Exception):
@@ -115,23 +117,32 @@ class Decryptor:
             backend=default_backend())
         self.cipher = None
         self.authenticator = None
-        self.buf = b""
+        self._cipher_key_len = None
+        self._header_size = None
+        self._footer_size = 32
 
-    def update(self, data):
-        self.buf += data
-        if self.cipher is None:
-            if len(self.buf) < 8:
-                return b""
-            if self.buf[0:6] != FILEMAGIC:
+    def expected_header_bytes(self):
+        if self._header_size is not None:
+            return 0
+        return self._cipher_key_len or 8
+
+    def header_size(self):
+        return self._header_size
+
+    def footer_size(self):
+        return self._footer_size
+
+    def process_header(self, data):
+        if self._cipher_key_len is None:
+            if data[0:6] != FILEMAGIC:
                 raise EncryptorError("Invalid magic bytes")
-            cipherkeylen = struct.unpack(">H", self.buf[6:8])[0]
-            if len(self.buf) < 8 + cipherkeylen:
-                return b""
+            self._cipher_key_len = struct.unpack(">H", data[6:8])[0]
+        else:
             pad = padding.OAEP(mgf=padding.MGF1(algorithm=SHA1()),
                                algorithm=SHA1(),
                                label=None)
             try:
-                plainkey = self.rsa_private_key.decrypt(self.buf[8:8 + cipherkeylen], pad)
+                plainkey = self.rsa_private_key.decrypt(data, pad)
             except AssertionError:
                 raise EncryptorError("Decrypting key data failed")
             if len(plainkey) != 64:
@@ -139,27 +150,21 @@ class Decryptor:
             key = plainkey[0:16]
             nonce = plainkey[16:32]
             auth_key = plainkey[32:64]
+            self._header_size = 8 + len(data)
 
             self.cipher = Cipher(algorithms.AES(key), modes.CTR(nonce), backend=default_backend()).decryptor()
             self.authenticator = HMAC(auth_key, SHA256(), backend=default_backend())
-            self.buf = self.buf[8 + cipherkeylen:]
 
-        if len(self.buf) < 32:
+    def process_data(self, data):
+        if not data:
             return b""
+        self.authenticator.update(data)
+        return self.cipher.update(data)
 
-        self.authenticator.update(self.buf[:-32])
-        result = self.cipher.update(self.buf[:-32])
-        self.buf = self.buf[-32:]
-
-        return result
-
-    def finalize(self):
-        if self.cipher is None:
-            return b""  # empty encrypted input yields empty plaintext output
-        elif self.buf != self.authenticator.finalize():
+    def finalize(self, footer):
+        if footer != self.authenticator.finalize():
             raise EncryptorError("Integrity check failed")
         result = self.cipher.finalize()
-        self.buf = b""
         self.cipher = None
         self.authenticator = None
         return result
@@ -168,86 +173,124 @@ class Decryptor:
 class DecryptorFile(FileWrap):
     def __init__(self, next_fp, rsa_private_key_pem):
         super().__init__(next_fp)
-        self.key = rsa_private_key_pem
-        self.buffer = None
-        self.buffer_offset = None
-        self.decryptor = None
+        self._key = rsa_private_key_pem
+        self.log = logging.getLogger(self.__class__.__name__)
+        self._decryptor = None
+        self._crypted_size = None
+        self._boundary_block = None
+        self._plaintext_size = None
+        # Our actual plain-text read offset. seek may change self.offset to something
+        # else temporarily but we keep _decrypt_offset intact until we actually do a
+        # read in case the caller just called seek in order to then immediately seek back
+        self._decrypt_offset = None
         self._reset()
 
     def _reset(self):
-        self.buffer = b""
-        self.buffer_offset = 0
-        self.decryptor = Decryptor(self.key)
+        self._decryptor = Decryptor(self._key)
+        self._crypted_size = self._file_size(self.next_fp)
+        self._boundary_block = None
+        self._plaintext_size = None
+        self._decrypt_offset = 0
+        # Plaintext offset
         self.offset = 0
         self.state = "OPEN"
 
-    def close(self):
-        super().close()
-        self.decryptor = None
+    @classmethod
+    def _file_size(cls, file):
+        current_offset = file.seek(0, os.SEEK_SET)
+        file_end_offset = file.seek(0, os.SEEK_END)
+        file.seek(current_offset, os.SEEK_SET)
+        return file_end_offset
 
-    def _get_buffer_blocks(self):
-        if not self.buffer:
-            return []
-        if self.buffer_offset:
-            blocks = [self.buffer[self.buffer_offset:]]
-        else:
-            blocks = [self.buffer]
-        self.buffer = b""
-        self.buffer_offset = 0
-        return blocks
+    def _initialize_decryptor(self):
+        if self._plaintext_size is not None:
+            return
+        while True:
+            required_bytes = self._decryptor.expected_header_bytes()
+            if not required_bytes:
+                break
+            self._decryptor.process_header(self._read_raw_exactly(required_bytes))
+        self._plaintext_size = self._crypted_size - self._decryptor.header_size() - self._decryptor.footer_size()
+
+    def _read_raw_exactly(self, required_bytes):
+        data = self.next_fp.read(required_bytes)
+        while data and len(data) < required_bytes:
+            next_chunk = self.next_fp.read(required_bytes - len(data))
+            if not next_chunk:
+                break
+            data += next_chunk
+        if not data or len(data) != required_bytes:
+            raise EncryptorError("Failed to read {} bytes of header or footer data".format(required_bytes))
+        return data
+
+    def _move_decrypt_offset_to_plaintext_offset(self):
+        if self._decrypt_offset == self.offset:
+            return
+        seek_to = self.offset
+        if self._decrypt_offset > self.offset:
+            self.log.warning("Negative seek from %d to %d, must re-initialize decryptor",
+                             self._decrypt_offset, self.offset)
+            self._reset()
+            self._initialize_decryptor()
+        discard_bytes = seek_to - self._decrypt_offset
+        self.offset = self._decrypt_offset
+        while discard_bytes > 0:
+            data = self._read_block(discard_bytes)
+            discard_bytes -= len(data)
 
     def _read_all(self):
-        blocks = self._get_buffer_blocks()
-        while self.decryptor:
-            data = self.next_fp.read(IO_BLOCK_SIZE)
+        full_data = bytearray()
+        while True:
+            data = self._read_block(IO_BLOCK_SIZE)
             if not data:
-                data = self.decryptor.finalize()
-                self.decryptor = None
-            else:
-                data = self.decryptor.update(data)
-            if data:
-                self.offset += len(data)
-                blocks.append(data)
-        if not self.decryptor:
-            self.state = "EOF"
-        return b"".join(blocks)
+                return bytes(full_data)
+            full_data.extend(data)
 
     def _read_block(self, size):
-        # TODO: this function is used to implement seeking, add a `discard` flag here so we don't have to ready
-        # everything to memory when seeking, but note that we must maintain buffer for the data beyond seek pos
-        readylen = len(self.buffer) - self.buffer_offset
-        if size <= readylen:
-            retval = self.buffer[self.buffer_offset:self.buffer_offset + size]
-            self.buffer_offset += size
-            self.offset += len(retval)
-            return retval
+        self._initialize_decryptor()
 
-        blocks = self._get_buffer_blocks()
-        while self.decryptor and readylen < size:
-            data = self.next_fp.read(IO_BLOCK_SIZE)
-            if not data:
-                data = self.decryptor.finalize()
-                self.decryptor = None
-            else:
-                data = self.decryptor.update(data)
-            if data:
-                blocks.append(data)
-                readylen += len(data)
-        self.buffer = b"".join(blocks)
-        # Return at most `size` bytes, if `size` is higher than equal to ready length and decryptor is None
-        # we've processed the entire file and are at EOF.  We don't say we're at EOF even if the source file is
-        # at EOF if we have data remaining in our internal buffer.
-        if size < readylen:
-            retval = self.buffer[:size]
-            self.buffer_offset = size
-        else:
-            retval = self.buffer
-            self.buffer = b""
-            self.buffer_offset = 0
-            if self.decryptor is None:
-                self.state = "EOF"
-        self.offset += len(retval)
-        return retval
+        if self.offset == self._plaintext_size:
+            return b""
+
+        self._move_decrypt_offset_to_plaintext_offset()
+
+        # If we have an existing boundary block, fulfil the read entirely from that
+        if self._boundary_block:
+            size = min(size, len(self._boundary_block) - self.offset % AES_BLOCK_SIZE)
+            data = self._boundary_block[self.offset % AES_BLOCK_SIZE:self.offset % AES_BLOCK_SIZE + size]
+            if self.offset % AES_BLOCK_SIZE + size == len(self._boundary_block):
+                self._boundary_block = None
+            self.offset += len(data)
+            self._decrypt_offset += len(data)
+            return data
+
+        # Only serve multiples of AES_BLOCK_SIZE whenever possible to keep things simpler
+        read_size = size
+        if self.offset + max(AES_BLOCK_SIZE, size) >= self._plaintext_size:
+            read_size = self._plaintext_size - self.offset
+        elif size > AES_BLOCK_SIZE and size % AES_BLOCK_SIZE != 0 and self.offset + size < self._plaintext_size:
+            read_size = size - size % AES_BLOCK_SIZE
+        elif size < AES_BLOCK_SIZE:
+            read_size = AES_BLOCK_SIZE
+
+        encrypted = self._read_raw_exactly(read_size)
+        decrypted = self._decryptor.process_data(encrypted)
+        if self.offset + read_size == self._plaintext_size:
+            footer = self._read_raw_exactly(self._decryptor.footer_size())
+            last_part = self._decryptor.finalize(footer)
+            if last_part:
+                decrypted += last_part
+
+        if size < AES_BLOCK_SIZE:
+            self._boundary_block = decrypted
+            return self._read_block(size)
+        self.offset += len(decrypted)
+        self._decrypt_offset += len(decrypted)
+        return decrypted
+
+    def close(self):
+        super().close()
+        self._decryptor = None
 
     def read(self, size=-1):
         """Read up to size decrypted bytes"""
@@ -266,20 +309,15 @@ class DecryptorFile(FileWrap):
 
     def seek(self, offset, whence=0):
         self._check_not_closed()
+        self._initialize_decryptor()
         if whence == os.SEEK_SET:
-            if offset < 0:
-                raise ValueError("negative seek position")
-            if self.offset == offset:
-                return self.offset
-            elif self.offset < offset:
-                self.read(offset - self.offset)
-                return self.offset
-            elif self.offset > offset:
-                # simulate backward seek by restarting from the beginning
-                self.next_fp.seek(0)
-                self._reset()
-                self._read_block(offset)
-                return self.offset
+            if offset != self.offset:
+                if offset > self._plaintext_size:
+                    raise io.UnsupportedOperation("DecryptorFile does not support seeking beyond EOF")
+                if offset < 0:
+                    raise ValueError("negative seek position")
+                self.offset = offset
+            return self.offset
         elif whence == os.SEEK_CUR:
             if offset != 0:
                 raise io.UnsupportedOperation("can't do nonzero cur-relative seeks")
@@ -287,7 +325,7 @@ class DecryptorFile(FileWrap):
         elif whence == os.SEEK_END:
             if offset != 0:
                 raise io.UnsupportedOperation("can't do nonzero end-relative seeks")
-            self._read_all()
+            self.offset = self._plaintext_size
             return self.offset
         else:
             raise ValueError("Invalid whence value")
@@ -295,4 +333,58 @@ class DecryptorFile(FileWrap):
     def seekable(self):
         """True if this stream supports random access"""
         self._check_not_closed()
-        return self.next_fp.seekable()
+        return True
+
+
+class DecryptSink(Sink):
+    def __init__(self, next_sink, file_size, encryption_key_data):
+        super().__init__(next_sink)
+        self.data_bytes_received = 0
+        self.data_size = file_size
+        self.decryptor = Decryptor(encryption_key_data)
+        self.file_size = file_size
+        self.footer = b""
+        self.header = b""
+
+    def _extract_encryption_footer_bytes(self, data):
+        expected_data_bytes = self.data_size - self.data_bytes_received
+        if len(data) > expected_data_bytes:
+            self.footer += data[expected_data_bytes:]
+            data = data[:expected_data_bytes]
+        return data
+
+    def _process_encryption_header(self, data):
+        if not data or not self.decryptor.expected_header_bytes():
+            return data
+        if self.header:
+            data = self.header + data
+            self.header = None
+        offset = 0
+        while self.decryptor.expected_header_bytes() > 0:
+            header_bytes = self.decryptor.expected_header_bytes()
+            if header_bytes + offset > len(data):
+                self.header = data[offset:]
+                return b""
+            self.decryptor.process_header(data[offset:offset + header_bytes])
+            offset += header_bytes
+        data = data[offset:]
+        self.data_size = self.file_size - self.decryptor.header_size() - self.decryptor.footer_size()
+        return data
+
+    def write(self, data):
+        written = len(data)
+        data = self._process_encryption_header(data)
+        if not data:
+            return written
+        data = self._extract_encryption_footer_bytes(data)
+        self.data_bytes_received += len(data)
+        if data:
+            data = self.decryptor.process_data(data)
+        if len(self.footer) == self.decryptor.footer_size():
+            final_data = self.decryptor.finalize(self.footer)
+            if final_data:
+                data += final_data
+        if not data:
+            return written
+        self._write_to_next_sink(data)
+        return written

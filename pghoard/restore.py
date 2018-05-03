@@ -5,17 +5,17 @@ Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
 from . import common, config, logutil, version
-from .patchedtarfile import tarfile
 from .postgres_command import PGHOARD_HOST, PGHOARD_PORT
 # ignore pylint/distutils issue, https://github.com/PyCQA/pylint/issues/73
 from distutils.version import LooseVersion  # pylint: disable=no-name-in-module,import-error
-from pghoard.rohmu import compat, dates, get_transfer, IO_BLOCK_SIZE, rohmufile
+from pghoard.rohmu import compat, dates, get_transfer, rohmufile
 from pghoard.rohmu.errors import Error, InvalidConfigurationError
 from psycopg2.extensions import adapt
 from requests import Session
 from threading import RLock
 import argparse
 import datetime
+import errno
 import io
 import logging
 import multiprocessing
@@ -23,6 +23,7 @@ import multiprocessing.pool
 import os
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 import time
@@ -465,6 +466,29 @@ class BasebackupFetcher():
 
         if self.errors:
             raise RestoreError("Backup download/extraction failed with {} errors".format(self.errors))
+        self._create_tablespace_symlinks()
+        with compat.suppress(OSError):
+            os.rmdir(os.path.join(self.pgdata, "pgdata"))
+
+    def _create_tablespace_symlinks(self):
+        if not self.tablespaces:
+            return
+        tblspc_dir = os.path.join(self.pgdata, "pg_tblspc")
+        os.makedirs(tblspc_dir, exist_ok=True)
+        for settings in self.tablespaces.values():
+            if os.path.isdir(settings["path"]):
+                link_name = os.path.join(self.pgdata, "pg_tblspc", str(settings["oid"]))
+                try:
+                    os.symlink(settings["path"], link_name)
+                except OSError as e:
+                    if e.errno != errno.EEXIST:
+                        raise
+        # Remove empty directories that could not be excluded when extracting tar due to
+        # tar's limitations in exclude parameter behavior
+        tsnames = [os.path.join("tablespaces", tsname) for tsname in self.tablespaces.keys()]
+        for exclude in tsnames + ["tablespaces"]:
+            with compat.suppress(OSError):
+                os.rmdir(os.path.join(self.pgdata, exclude))
 
     def _process_count(self):
         return min(self.config["restore_process_count"], len(self.data_files))
@@ -578,99 +602,65 @@ class ChunkFetcher:
         self.log.debug("Processing one chunk: %r", self.data_file)
         if isinstance(self.data_file, tuple):
             data, metadata = self.data_file
-            tmp = io.BytesIO(data)
+            src = io.BytesIO(data)
+            self._fetch_and_extract_one_backup(metadata, len(data), lambda sink: shutil.copyfileobj(src, sink))
         else:
-            tmp, metadata = self.download_one_backup()
+            transfer = self._create_transfer()
+            metadata = transfer.get_metadata_for_key(self.data_file)
 
-        self.extract_one_backup(obj=tmp, metadata=metadata)
+            def fetch_fn(sink):
+                transfer.get_contents_to_fileobj(self.data_file, sink, progress_callback=self._progress_callback)
+            self._fetch_and_extract_one_backup(metadata, self.data_file_size, fetch_fn)
 
-    def download_one_backup(self):
-        dl_dir = os.path.join(
-            self.config["backup_location"],
-            self.config["backup_sites"][self.site]["prefix"],
-            "basebackup_incoming",
-        )
-        compat.makedirs(dl_dir, exist_ok=True)
-        tmp = tempfile.NamedTemporaryFile(dir=dl_dir, prefix="basebackup.", suffix=".pghoard")
-        try:
-            metadata = self._create_transfer().get_contents_to_fileobj(
-                key=self.data_file,
-                fileobj_to_store_to=tmp,
-                progress_callback=self._progress_callback)
-            self._progress_callback(1, 1)
-            self.log.info("Downloaded %r", self.data_file)
-            tmp.seek(0)
-        except:  # pylint: disable=bare-except
-            self.log.exception("Problem downloading a backup file: %r", self.data_file)
-            tmp.close()
-            raise
-        return tmp, metadata
+    def _build_tar_args(self, metadata):
+        base_args = [self.config["tar_executable"], "-xf", "-", "-C", self.pgdata]
+        file_format = metadata.get("format")
+        if not file_format:
+            return base_args
+        elif file_format in {"pghoard-bb-v1", "pghoard-bb-v2"}:
+            extra_args = [
+                "--exclude", ".pghoard_tar_metadata.json",
+                "--transform", "s,^pgdata/,,"
+            ]
+            if self.tablespaces:
+                extra_args.append("--absolute-names")
+            for tsname, settings in self.tablespaces.items():
+                extra_args.append("--transform")
+                extra_args.append(r"s,^tablespaces/{}/\(.*\)$,{}/\1,".format(
+                    tsname.replace("\\", "\\\\").replace(",", "\\,"), settings["path"].replace(",", "\\,")))
+            return base_args + extra_args
+        else:
+            raise RestoreError("Unrecognized basebackup format {!r}".format(file_format))
 
-    def extract_one_backup(self, *, obj, metadata):
-        with obj:
-            with rohmufile.file_reader(fileobj=obj, metadata=metadata,
-                                       key_lookup=config.key_lookup_for_site(self.config, self.site)) as input_obj:
-                if metadata.get("format") in ("pghoard-bb-v1", "pghoard-bb-v2"):
-                    self._extract_pghoard_bb_v1_v2(input_obj)
-                elif not metadata.get("format"):
-                    self._extract_basic(input_obj)
-                else:
-                    raise RestoreError("Unrecognized basebackup format {!r}".format(metadata.get("format")))
-        self.log.info("Extracted %r %r", obj, metadata)
+    def _fetch_and_extract_one_backup(self, metadata, file_size, fetch_fn):
+        with subprocess.Popen(self._build_tar_args(metadata),
+                              bufsize=0,
+                              stdin=subprocess.PIPE,
+                              stdout=subprocess.DEVNULL,
+                              stderr=subprocess.PIPE) as tar:
+            common.increase_pipe_capacity(tar.stdin, tar.stderr)
+            sink = rohmufile.create_sink_pipeline(file_size=file_size,
+                                                  key_lookup=config.key_lookup_for_site(self.config, self.site),
+                                                  metadata=metadata,
+                                                  output=tar.stdin)
+            # It would be prudent to read stderr while we're writing to stdin to avoid deadlocking
+            # if stderr fills up but in practice tar should write very little to stderr and that
+            # should not become a problem.
+            try:
+                fetch_fn(sink)
+            except BrokenPipeError:
+                self.log.error("External tar returned an error: %r", tar.stderr.read())
+                raise
 
-    def _extract_pghoard_bb_v1_v2(self, fileobj):
-        directories = []
-        # | in mode to use tarfile's internal stream buffer manager, currently required because our SnappyFile
-        # interface doesn't do proper buffering for reads
-        with tarfile.open(fileobj=fileobj, mode="r|", bufsize=IO_BLOCK_SIZE) as tar:
-            for tarinfo in tar:
-                if tarinfo.name in (".pghoard_tar_metadata.json", "pgdata", "tablespaces"):
-                    continue  # ignore
-
-                if tarinfo.name.startswith("pgdata/"):
-                    target_name = os.path.join(self.pgdata, tarinfo.name[7:])
-                elif tarinfo.name.startswith("tablespaces/"):
-                    tscomponents = tarinfo.name.split("/", 2)
-                    tsname = tscomponents[1]
-                    tspath = self.tablespaces[tsname]["path"]
-
-                    if len(tscomponents) == 2 and tarinfo.isdir():
-                        # Create tablespace entry
-                        tblspc_dir = os.path.join(self.pgdata, "pg_tblspc")
-                        os.makedirs(tblspc_dir, exist_ok=True)
-                        linkname = os.path.join(self.pgdata, "pg_tblspc", str(self.tablespaces[tsname]["oid"]))
-                        os.symlink(tspath, linkname)
-                        directories.append([tspath, tarinfo])
-                        continue
-
-                    target_name = os.path.join(tspath, tscomponents[2])
-                else:
-                    raise Exception("Unrecognized path {!r} in tar".format(tarinfo.name))
-
-                if tarinfo.isdir():
-                    directories.append([target_name, tarinfo])
-                    compat.makedirs(target_name, exist_ok=True)
-                elif tarinfo.isreg():
-                    target_dir = os.path.dirname(target_name)
-                    if not os.path.exists(target_dir):
-                        compat.makedirs(target_dir, exist_ok=True)
-                    tar.makefile(tarinfo, target_name)
-                    tar.chmod(tarinfo, target_name)
-                    tar.utime(tarinfo, target_name)
-                elif tarinfo.issym():
-                    os.symlink(tarinfo.linkname, target_name)
-                else:
-                    raise Exception("Unrecognized file type for file {!r} in tar".format(tarinfo.name))
-
-        for target_name, tarinfo in directories:
-            tar.chmod(tarinfo, target_name)
-            tar.utime(tarinfo, target_name)
-
-    def _extract_basic(self, fileobj):
-        # | in mode to use tarfile's internal stream buffer manager, currently required because our SnappyFile
-        # interface doesn't do proper buffering for reads
-        with tarfile.open(fileobj=fileobj, mode="r|", bufsize=IO_BLOCK_SIZE) as tar:
-            tar.extractall(self.pgdata)
+            tar.stdin.close()
+            tar.stdin = None
+            output = tar.stderr.read()
+            exit_code = tar.wait()
+            file_name = "<mem_bytes>" if isinstance(self.data_file, tuple) else self.data_file
+            if exit_code != 0:
+                raise Exception("tar exited with code {!r} for file {!r}, output: {!r}".format(
+                    exit_code, file_name, output))
+            self.log.info("Processing of %r completed successfully", file_name)
 
 
 class ObjectStore:

@@ -6,6 +6,7 @@ See LICENSE for details
 """
 
 import io
+import time
 
 
 class FileWrap(io.BufferedIOBase):
@@ -82,3 +83,50 @@ class FileWrap(io.BufferedIOBase):
         """Encrypt and write the given bytes"""
         self._check_not_closed()
         raise io.UnsupportedOperation("Write not supported")
+
+
+class Sink:
+    """Sink performs transformation for received input data and passes it forward to
+    given target sink. Data is fed to this class via it's `write` method and that in
+    turn calls `write` for the next sink.
+
+    Unlike the FileWrap interface, which is useful for performing transformation when
+    data is being pulled from a source, the Sink interface can be used when data is
+    pushed through a pipeline of transformations. This provides better performance as
+    any temporary files or buffers can be omitted."""
+
+    def __init__(self, next_sink):
+        self.next_sink = next_sink
+
+    def _data_written(self, bytes_written, pending_bytes):
+        pass
+
+    def _write_to_next_sink(self, data):
+        data = memoryview(data)
+        offset = 0
+        while offset < len(data):
+            start_offset = offset
+            offset += self.next_sink.write(data[offset:])
+            self._data_written(offset - start_offset, len(data) - offset)
+
+    def write(self, data):
+        """Performs some transformation for given data and writes the transformed
+        data to next sink."""
+        self._write_to_next_sink(data)
+        return len(data)
+
+
+class ThrottleSink(Sink):
+    """Provides simple throttling sink that can be used if the target sink is
+    non-blocking device that can return short if all data cannot be immediately
+    written. In such cases writing again immediately after a small write would
+    result in unnecessary busy-looping."""
+
+    def __init__(self, next_sink, wait_time, sleep_fn=time.sleep):
+        super().__init__(next_sink)
+        self.sleep_fn = sleep_fn
+        self.wait_time = wait_time
+
+    def _data_written(self, bytes_written, pending_bytes):
+        if pending_bytes > 0 and bytes_written < 10 * 1024:
+            self.sleep_fn(self.wait_time)

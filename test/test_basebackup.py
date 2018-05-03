@@ -210,6 +210,9 @@ LABEL: pg_basebackup base backup
     def test_basebackups_basic(self, capsys, db, pghoard, tmpdir):
         self._test_basebackups(capsys, db, pghoard, tmpdir, "basic")
 
+    def test_basebackups_basic_lzma(self, capsys, db, pghoard_lzma, tmpdir):
+        self._test_basebackups(capsys, db, pghoard_lzma, tmpdir, "basic")
+
     def test_basebackups_local_tar_nonexclusive(self, capsys, db, pghoard, tmpdir):
         if db.pgver < "9.6":
             pytest.skip("PostgreSQL 9.6+ required for non-exclusive backups")

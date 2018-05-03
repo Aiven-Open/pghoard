@@ -168,13 +168,16 @@ def recovery_db():
 
 
 @pytest.yield_fixture  # pylint: disable=redefined-outer-name
-def pghoard(db, tmpdir, request):  # pylint: disable=redefined-outer-name
+def pghoard(db, tmpdir, request, compression="snappy"):  # pylint: disable=redefined-outer-name
     test_site = request.function.__name__
 
     if os.environ.get("pghoard_test_walreceiver"):
         active_backup_mode = "walreceiver"
     else:
         active_backup_mode = "pg_receivexlog"
+
+    if compression == "snappy" and not snappy:
+        compression = "lzma"
 
     config = {
         "alert_file_dir": os.path.join(str(tmpdir), "alerts"),
@@ -194,7 +197,7 @@ def pghoard(db, tmpdir, request):  # pylint: disable=redefined-outer-name
             },
         },
         "compression": {
-            "algorithm": "snappy" if snappy else "lzma",
+            "algorithm": compression,
         },
         "http_address": "127.0.0.1",
         "http_port": random.randint(1024, 32000),
@@ -205,6 +208,7 @@ def pghoard(db, tmpdir, request):  # pylint: disable=redefined-outer-name
         # all the fds and other things that are created during typical test setup. There
         # is separate test case that executes the multiprocess version.
         "restore_process_count": 1,
+        "tar_executable": "tar",
     }
 
     confpath = os.path.join(str(tmpdir), "config.json")
@@ -224,7 +228,7 @@ def pghoard(db, tmpdir, request):  # pylint: disable=redefined-outer-name
     pgh = PGHoard(confpath)
     pgh.test_site = test_site
     pgh.start_threads_on_startup()
-    if snappy:
+    if compression == "snappy":
         pgh.Compressor = snappy.StreamCompressor
     else:
         pgh.Compressor = lambda: lzma.LZMACompressor(preset=0)  # pylint: disable=redefined-variable-type
@@ -232,3 +236,8 @@ def pghoard(db, tmpdir, request):  # pylint: disable=redefined-outer-name
     time.sleep(0.05)  # Hack to give the server time to start up
     yield pgh
     pgh.quit()
+
+
+@pytest.yield_fixture  # pylint: disable=redefined-outer-name
+def pghoard_lzma(db, tmpdir, request):  # pylint: disable=redefined-outer-name
+    yield from pghoard(db, tmpdir, request, compression="lzma")

@@ -1,0 +1,23 @@
+{
+    "backup_sites": {
+        "96be37ae-75d8-48ca-92e2-53f838d22f1d": {
+            "encryption_key_id": "517ba091076547cfaba7d4655b7254c8",
+            "encryption_keys": {
+                "517ba091076547cfaba7d4655b7254c8": {
+                    "private": "-----BEGIN PRIVATE KEY-----\n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\nJA2XB0H3xyLWJcy0v3MSyRY=\n-----END PRIVATE KEY-----\n",
+                    "public": "-----BEGIN PUBLIC KEY-----\nMIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAt8JiLfMTmMDKgIuL4AbB\nCquAGeDbSYTV8Z4kMNXHFmrQsBK48+FpEJ1Ac9mkJ5e9rh1U2EmoKlBQyu+p21YP\n4iD1yOnDziU0ek9aH9U7stp1xFEd6WyeOFv6nDaGFEQyzeq0ef20627pv4r659iM\nxQIAWjZREnBwwuxh8qgQK/X9DaBH7AqBJ7YoA4cMgdHXjp9HPi2NXJLfqY6Inn4F\nkGF4z2uHvcvIenubFgi9o7gHBcvdJ7L288gBnphuK2v2MlKVRTIzBdgxL5jkYWYw\nPgzBGzeKnSuhHv5Fe67B49EvCRwGaUEG0A1LZQExahTYtS5Ws4PIreelcbvwqMGg\n7ppNHnNaLMuvIy2lTe+bxQowi9p1AYxnYMd5AGk3v8AhyUpnqe4cMINbiBZFw1vc\ntOJWxsrWgyui0w1bBPvi738K4vGjB/+ijBD5xTdFk5OzOzOTsxSdgVgdtPWoCoyH\nXt/A9ZaRybFuHHQEnZqT5dtUl8WaD6ivNcZG4r7a0MDBAgMBAAE=\n-----END PUBLIC KEY-----\n"
+                }
+            },
+            "object_storage": {
+                "directory": "test/basebackup_with_ts/chunks",
+                "storage_type": "local"
+            },
+            "prefix": "2332f272-198b-46e7-bd34-ef603d04d460/96be37ae-75d8-48ca-92e2-53f838d22f1d"
+        }
+    },
+    "compression": {
+        "algorithm": "snappy"
+    },
+    "log_level": "INFO",
+    "restore_process_count": 2
+}

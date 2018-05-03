@@ -13,6 +13,7 @@ import fcntl
 import json
 import logging
 import os
+import platform
 import re
 import tarfile
 import tempfile
@@ -152,6 +153,7 @@ def default_json_serialization(obj):
             return obj.isoformat().replace("+00:00", "Z")
         # assume UTC for datetime objects without a timezone
         return obj.isoformat() + "Z"
+    return None
 
 
 def json_encode(obj, compact=True, binary=False):
@@ -219,3 +221,15 @@ def get_pg_wal_directory(config):
     if config["pg_data_directory_version"] == "10":
         return os.path.join(config["pg_data_directory"], "pg_wal")
     return os.path.join(config["pg_data_directory"], "pg_xlog")
+
+
+def increase_pipe_capacity(*pipes):
+    if platform.system() != "Linux":
+        return
+    try:
+        with open('/proc/sys/fs/pipe-max-size', 'r') as f:
+            pipe_max_size = int(f.read())
+            for pipe in pipes:
+                fcntl.fcntl(pipe, 1031, pipe_max_size)
+    except FileNotFoundError:
+        pass
