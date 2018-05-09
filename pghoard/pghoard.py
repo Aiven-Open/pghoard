@@ -28,6 +28,7 @@ import datetime
 import io
 import json
 import logging
+import multiprocessing
 import os
 import psycopg2
 import random
@@ -55,12 +56,15 @@ class PGHoard:
         self.transfer_queue = Queue()
         self.syslog_handler = None
         self.config = {}
+        self.mp_manager = None
         self.site_transfers = {}
         self.state = {
             "backup_sites": {},
             "startup_time": datetime.datetime.utcnow().isoformat(),
         }
         self.load_config()
+        if self.config["transfer"]["thread_count"] > 1:
+            self.mp_manager = multiprocessing.Manager()
 
         if not os.path.exists(self.config["backup_location"]):
             os.makedirs(self.config["backup_location"])
@@ -98,6 +102,7 @@ class PGHoard:
             ta = TransferAgent(
                 config=self.config,
                 compression_queue=self.compression_queue,
+                mp_manager=self.mp_manager,
                 transfer_queue=self.transfer_queue,
                 stats=self.stats,
                 shared_state_dict=compressor_state)
@@ -564,6 +569,9 @@ class PGHoard:
         for t in all_threads:
             if t.is_alive():
                 t.join()
+        if self.mp_manager:
+            self.mp_manager.shutdown()
+            self.mp_manager = None
 
 
 def main(args=None):
@@ -592,6 +600,8 @@ def main(args=None):
         return 1
 
     logutil.configure_logging(short_log=arg.short_log, level=logging.DEBUG if arg.debug else logging.INFO)
+
+    multiprocessing.set_start_method("forkserver")
 
     try:
         pghoard = PGHoard(config_path)

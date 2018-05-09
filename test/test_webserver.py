@@ -378,10 +378,17 @@ class TestWebServer:
         headers = {"x-pghoard-target-path": str(tmpdir.join("NA", "test_get_invalid"))}
         conn.request("GET", valid_wal, headers=headers)
         status = conn.getresponse().status
-        assert status == 400
+        assert status == 409
 
+    def test_get_invalid_retry(self, pghoard_no_mp, tmpdir):
         # inject a failure by making a static function fail
         failures = [0, ""]
+        pghoard = pghoard_no_mp
+        valid_wal_seg = "0000DDDD0000000D000000FC"
+        valid_wal = "/{}/xlog/{}".format(pghoard.test_site, valid_wal_seg)
+        store = pghoard.transfer_agents[0].get_object_storage(pghoard.test_site)
+        store.store_file_from_memory(valid_wal, wal_header_for_file(valid_wal_seg), metadata={"a": "b"})
+        conn = HTTPConnection(host="127.0.0.1", port=pghoard.config["http_port"])
 
         def get_failing_func(orig_func):
             def failing_func(*args):
