@@ -264,8 +264,13 @@ class RequestHandler(BaseHTTPRequestHandler):
                     xlog_num += 0xFFFFFF00
                 xlog_num += 1
                 prefetch_name = "{:024X}".format(xlog_num)
-                if os.path.isfile(os.path.join(xlog_dir, prefetch_name)):
-                    continue
+                xlog_path = os.path.join(xlog_dir, prefetch_name)
+                if os.path.isfile(xlog_path):
+                    try:
+                        wal.verify_wal(wal_name=prefetch_name, filepath=xlog_path)
+                        continue
+                    except ValueError as e:
+                        self.server.log.warning("(Prefetch) File %s already exists but is invalid: %r", xlog_path, e)
                 names.append(prefetch_name)
 
         for obname in names:
@@ -331,6 +336,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                         if os.path.isfile(op["target_path"]):
                             self.server.log.warning("Target path for %r already exists, skipping", key)
                             continue
+                        self.server.log.info("Renamed %s to %s", op["tmp_target_path"], op["target_path"])
                         os.rename(op["tmp_target_path"], op["target_path"])
                     else:
                         ex = result.get("exception", Error)
@@ -356,10 +362,12 @@ class RequestHandler(BaseHTTPRequestHandler):
     def _try_save_and_verify_restored_file(self, filetype, filename, prefetch_target_path, target_path, unlink=True):
         try:
             self._save_and_verify_restored_file(filetype, filename, prefetch_target_path, target_path)
+            self.server.log.info("Renamed %s to %s", prefetch_target_path, target_path)
             return None
         except (ValueError, HttpResponse) as e:
             # Just try loading the file again
             with suppress(OSError):
+                self.server.log.warning("Verification of prefetch file %s failed: %r", prefetch_target_path, e)
                 if unlink:
                     os.unlink(prefetch_target_path)
             return e
