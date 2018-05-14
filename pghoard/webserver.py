@@ -270,7 +270,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                         wal.verify_wal(wal_name=prefetch_name, filepath=xlog_path)
                         continue
                     except ValueError as e:
-                        self.server.log.warning("(Prefetch) File %s already exists but is invalid: %r", xlog_path, e)
+                        self.server.log.debug("(Prefetch) File %s already exists but is invalid: %r", xlog_path, e)
                 names.append(prefetch_name)
 
         for obname in names:
