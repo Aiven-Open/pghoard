@@ -5,7 +5,7 @@ python:
   - "3.6"
 
 install:
-  - "pip install astroid==1.5.2 botocore cryptography flake8 httplib2 mock psycopg2 pylint==1.7.4 pytest python-dateutil python-snappy python-systemd requests azure azure-storage"
+  - "pip install astroid==1.5.2 botocore cryptography flake8 httplib2 mock psycopg2 pylint==1.7.4 pytest python-dateutil python-snappy python-systemd requests azure-storage"
 
 script:
   - "make pylint"
