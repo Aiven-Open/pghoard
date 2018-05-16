@@ -211,9 +211,10 @@ class TransferAgent(Thread):
 
     def handle_download(self, site, key, file_to_transfer):
         try:
-            file_size = self.fetch_manager.fetch_file(site, key, file_to_transfer["target_path"])
+            path = file_to_transfer["target_path"]
+            file_size = self.fetch_manager.fetch_file(site, key, path)
             file_to_transfer["file_size"] = file_size
-            return {"success": True, "opaque": file_to_transfer.get("opaque")}
+            return {"success": True, "opaque": file_to_transfer.get("opaque"), "target_path": path}
         except FileNotFoundFromStorageError as ex:
             self.log.warning("%r not found from storage", key)
             return {"success": False, "exception": ex, "opaque": file_to_transfer.get("opaque")}
