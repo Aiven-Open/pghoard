@@ -8,7 +8,7 @@ See LICENSE for details
 from azure.storage.blob import BlockBlobService
 from azure.storage.blob.models import BlobPrefix
 from .base import BaseTransfer
-from ..errors import FileNotFoundFromStorageError, InvalidConfigurationError
+from ..errors import FileNotFoundFromStorageError, InvalidConfigurationError, StorageError
 import azure.common
 import time
 
@@ -100,12 +100,52 @@ class AzureTransfer(BaseTransfer):
             progress_callback(1, 1)
         return self._metadata_for_key(key)
 
+    @classmethod
+    def _parse_length_from_content_range(cls, content_range):
+        """Parses the blob length from the content range header: bytes 1-3/65537"""
+        if not content_range:
+            raise ValueError("File size unavailable")
+
+        return int(content_range.split(" ", 1)[1].split("/", 1)[1])
+
+    def _stream_blob(self, key, fileobj, progress_callback):
+        """Streams contents of given key to given fileobj. Data is read sequentially in chunks
+        without any seeks. This requires duplicating some functionality of the Azure SDK, which only
+        allows reading entire blob into memory at once or returning data from random offsets"""
+        file_size = None
+        start_range = 0
+        chunk_size = self.conn.MAX_CHUNK_GET_SIZE
+        end_range = chunk_size - 1
+        while True:
+            try:
+                # pylint: disable=protected-access
+                blob = self.conn._get_blob(self.container_name, key, start_range=start_range, end_range=end_range)
+                if file_size is None:
+                    file_size = self._parse_length_from_content_range(blob.properties.content_range)
+                fileobj.write(blob.content)
+                start_range += blob.properties.content_length
+                if start_range == file_size:
+                    break
+                if blob.properties.content_length == 0:
+                    raise StorageError(
+                        "Empty response received for {}, range {}-{}".format(key, start_range, end_range)
+                    )
+                end_range += blob.properties.content_length
+                if end_range >= file_size:
+                    end_range = file_size - 1
+                if progress_callback:
+                    progress_callback(start_range, file_size)
+            except azure.common.AzureHttpError as ex:
+                if ex.status_code == 416:  # Empty file
+                    return
+                raise
+
     def get_contents_to_fileobj(self, key, fileobj_to_store_to, *, progress_callback=None):
         key = self.format_key_for_backend(key, remove_slash_prefix=True)
 
         self.log.debug("Starting to fetch the contents of: %r", key)
         try:
-            self.conn.get_blob_to_stream(self.container_name, key, fileobj_to_store_to)
+            self._stream_blob(key, fileobj_to_store_to, progress_callback)
         except azure.common.AzureMissingResourceHttpError as ex:
             raise FileNotFoundFromStorageError(key) from ex
 
