@@ -310,7 +310,6 @@ class RequestHandler(BaseHTTPRequestHandler):
         self.server.pending_download_ops[key] = dict(
             started_at=time.monotonic(),
             target_path=target_path,
-            tmp_target_path=tmp_target_path,
         )
         self.server.transfer_queue.put({
             "callback_queue": self.server.download_results,
@@ -331,13 +330,16 @@ class RequestHandler(BaseHTTPRequestHandler):
                     op = self.server.pending_download_ops.pop(key, None)
                     if not op:
                         self.server.log.warning("Orphaned download operation %r completed: %r", key, result)
+                        if result["success"]:
+                            with suppress(OSError):
+                                os.unlink(result["target_path"])
                         continue
                     if result["success"]:
                         if os.path.isfile(op["target_path"]):
                             self.server.log.warning("Target path for %r already exists, skipping", key)
                             continue
-                        self.server.log.info("Renamed %s to %s", op["tmp_target_path"], op["target_path"])
-                        os.rename(op["tmp_target_path"], op["target_path"])
+                        os.rename(result["target_path"], op["target_path"])
+                        self.server.log.info("Renamed %s to %s", result["target_path"], op["target_path"])
                     else:
                         ex = result.get("exception", Error)
                         if isinstance(ex, FileNotFoundFromStorageError):
