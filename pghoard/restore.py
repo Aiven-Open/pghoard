@@ -27,6 +27,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import uuid
 
 
 class RestoreError(Error):
@@ -441,14 +442,18 @@ class Restore:
 class BasebackupFetcher():
     def __init__(self, *, app_config, debug, site, pgdata, tablespaces, data_files):
         self.log = logging.getLogger(self.__class__.__name__)
+        self.completed_jobs = set()
         self.config = app_config
-        self.data_files = data_files
+        self.data_files = [{"fn_or_data": item[0], "id": str(uuid.uuid4()), "size": item[1]} for item in data_files]
         self.debug = debug
         self.download_progress_per_file = {}
         self.errors = 0
+        self.last_progress_ts = time.monotonic()
+        self.last_total_downloaded = 0
         self.lock = RLock()
         self.manager_class = multiprocessing.Manager if self._process_count() > 1 else ThreadingManager
-        self.pending_jobs = len(self.data_files)
+        self.max_stale_seconds = 120
+        self.pending_jobs = set()
         self.pgdata = pgdata
         # There's no point in spawning child processes if process count is 1
         self.pool_class = multiprocessing.Pool if self._process_count() > 1 else multiprocessing.pool.ThreadPool
@@ -458,11 +463,23 @@ class BasebackupFetcher():
         self.total_download_size = 0
 
     def fetch_all(self):
-        with self.manager_class() as manager:
-            self._setup_progress_tracking(manager)
-            with self.pool_class(processes=self._process_count()) as pool:
-                self._queue_jobs(pool)
-                self._wait_for_jobs_to_complete()
+        for retry in range(3):
+            try:
+                with self.manager_class() as manager:
+                    self._setup_progress_tracking(manager)
+                    with self.pool_class(processes=self._process_count()) as pool:
+                        self._queue_jobs(pool)
+                        self._wait_for_jobs_to_complete()
+                        break
+            except TimeoutError:
+                self.pending_jobs.clear()
+                self.last_progress_ts = time.monotonic()
+                if self.errors:
+                    break
+                elif retry == 2:
+                    self.log.error("Download stalled despite retries, aborting")
+                    self.errors = 1
+                    break
 
         if self.errors:
             raise RestoreError("Backup download/extraction failed with {} errors".format(self.errors))
@@ -494,8 +511,9 @@ class BasebackupFetcher():
         return min(self.config["restore_process_count"], len(self.data_files))
 
     def _setup_progress_tracking(self, manager):
-        self.total_download_size = sum(item[1] for item in self.data_files)
-        initial_progress = [[fn, 0] for fn, _ in self.data_files if not isinstance(fn, tuple)]
+        self.total_download_size = sum(item["size"] for item in self.data_files)
+        initial_progress = [[item["fn_or_data"], item["size"] if item["id"] in self.completed_jobs else 0]
+                            for item in self.data_files if not isinstance(item["fn_or_data"], tuple)]
         self.download_progress_per_file = manager.dict(initial_progress)
 
     def current_progress(self):
@@ -504,6 +522,9 @@ class BasebackupFetcher():
             progress = 0
         else:
             progress = total_downloaded / self.total_download_size
+        if total_downloaded != self.last_total_downloaded:
+            self.last_total_downloaded = total_downloaded
+            self.last_progress_ts = time.monotonic()
         return total_downloaded, progress
 
     def _print_download_progress(self, end=""):
@@ -515,25 +536,35 @@ class BasebackupFetcher():
         ), end=end)
         sys.stdout.flush()
 
-    def job_completed(self, _result):
+    def job_completed(self, key):
+        self.last_progress_ts = time.monotonic()
         with self.lock:
-            self.pending_jobs -= 1
+            if key in self.pending_jobs:
+                self.pending_jobs.remove(key)
+                self.completed_jobs.add(key)
 
-    def job_failed(self, exception):
+    def job_failed(self, key, exception):
         self.log.error("Got error from chunk download: %s", exception)
+        self.last_progress_ts = time.monotonic()
         with self.lock:
-            self.errors += 1
-            self.pending_jobs -= 1
+            if key in self.pending_jobs:
+                self.errors += 1
+                self.pending_jobs.remove(key)
+                self.completed_jobs.add(key)
 
     def jobs_in_progress(self):
         with self.lock:
-            return self.pending_jobs > 0
+            return len(self.completed_jobs) < len(self.data_files)
 
     def _queue_jobs(self, pool):
-        for data_file, data_file_size in self.data_files:
-            self._queue_job(pool, data_file, data_file_size)
+        for item in self.data_files:
+            with self.lock:
+                if item["id"] in self.completed_jobs or item["id"] in self.pending_jobs:
+                    continue
+                self.pending_jobs.add(item["id"])
+            self._queue_job(pool, item["id"], item["fn_or_data"], item["size"])
 
-    def _queue_job(self, pool, data_file, data_file_size):
+    def _queue_job(self, pool, key, data_file, data_file_size):
         pool.apply_async(
             _fetch_and_process_chunk,
             [],
@@ -547,14 +578,18 @@ class BasebackupFetcher():
                 "pgdata": self.pgdata,
                 "tablespaces": self.tablespaces,
             },
-            self.job_completed,
-            self.job_failed,
+            lambda *args: self.job_completed(key),
+            lambda exception: self.job_failed(key, exception),
         )
 
     def _wait_for_jobs_to_complete(self):
         while self.jobs_in_progress():
             self._print_download_progress()
             self.sleep_fn(1)
+            stall_duration = time.monotonic() - self.last_progress_ts
+            if stall_duration > self.max_stale_seconds:
+                self.log.error("Download stalled for %r seconds, aborting downloaders", stall_duration)
+                raise TimeoutError()
 
         self._print_download_progress(end="\n")
 
