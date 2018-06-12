@@ -59,6 +59,12 @@ class BaseTransfer:
         """Returns a tuple (content-byte-string, metadata)"""
         raise NotImplementedError
 
+    def get_file_size(self, key):
+        """Returns an int indicating the size of the file in bytes"""
+        # This method isn't currently used by PGHoard itself, it is merely provided
+        # for applications that use PGHoard's object storage abstraction layer.
+        raise NotImplementedError
+
     def get_metadata_for_key(self, key):
         raise NotImplementedError
 

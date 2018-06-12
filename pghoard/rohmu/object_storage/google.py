@@ -247,6 +247,13 @@ class GoogleTransfer(BaseTransfer):
             data = self._retry_on_reset(req, req.execute)
             return data, self._metadata_for_key(clob, key)
 
+    def get_file_size(self, key):
+        key = self.format_key_for_backend(key)
+        with self._object_client(not_found=key) as clob:
+            req = clob.get(bucket=self.bucket_name, object=key)
+            obj = self._retry_on_reset(req, req.execute)
+            return int(obj["size"])
+
     def _upload(self, upload_type, local_object, key, metadata, extra_props, cache_control):
         key = self.format_key_for_backend(key)
         self.log.debug("Starting to upload %r", key)

@@ -163,6 +163,14 @@ class AzureTransfer(BaseTransfer):
         except azure.common.AzureMissingResourceHttpError as ex:
             raise FileNotFoundFromStorageError(key) from ex
 
+    def get_file_size(self, key):
+        key = self.format_key_for_backend(key, remove_slash_prefix=True)
+        try:
+            blob = self.conn.get_blob_properties(self.container_name, key)
+            return blob.properties.content_length
+        except azure.common.AzureMissingResourceHttpError as ex:
+            raise FileNotFoundFromStorageError(key) from ex
+
     def store_file_from_memory(self, key, memstring, metadata=None, cache_control=None):
         if cache_control is not None:
             raise NotImplementedError("AzureTransfer: cache_control support not implemented")
