@@ -212,6 +212,11 @@ class SwiftTransfer(BaseTransfer):
         metadata = self._headers_to_metadata(headers)
         return data, metadata
 
+    def get_file_size(self, key):
+        # Not implemented due to lack of environment where to test this. This method is not required by
+        # PGHoard itself, this is only called by external apps that utilize PGHoard's object storage abstraction.
+        raise NotImplementedError
+
     def store_file_from_memory(self, key, memstring, metadata=None, cache_control=None):
         if cache_control is not None:
             raise NotImplementedError("SwiftTransfer: cache_control support not implemented")

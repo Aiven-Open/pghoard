@@ -170,6 +170,17 @@ class S3Transfer(BaseTransfer):
         data = stream.read()
         return data, metadata
 
+    def get_file_size(self, key):
+        key = self.format_key_for_backend(key, remove_slash_prefix=True)
+        try:
+            response = self.s3_client.head_object(Bucket=self.bucket_name, Key=key)
+            return int(response["ContentLength"])
+        except botocore.exceptions.ClientError as ex:
+            if ex.response.get("ResponseMetadata", {}).get("HTTPStatusCode") == 404:
+                raise FileNotFoundFromStorageError(key)
+            else:
+                raise StorageError("File size lookup failed for {}".format(key)) from ex
+
     def store_file_from_memory(self, key, memstring, metadata=None, cache_control=None):
         key = self.format_key_for_backend(key, remove_slash_prefix=True)
         args = {

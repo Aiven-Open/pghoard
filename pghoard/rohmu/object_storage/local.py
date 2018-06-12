@@ -101,6 +101,12 @@ class LocalTransfer(BaseTransfer):
         metadata = self.get_contents_to_fileobj(key, bio)
         return bio.getvalue(), metadata
 
+    def get_file_size(self, key):
+        source_path = self.format_key_for_backend(key.strip("/"))
+        if not os.path.exists(source_path):
+            raise FileNotFoundFromStorageError(key)
+        return os.stat(source_path).st_size
+
     def _save_metadata(self, target_path, metadata):
         metadata_path = target_path + ".metadata"
         with open(metadata_path, "w") as fp:
