@@ -84,7 +84,7 @@ LABEL: pg_basebackup base backup
         first_file = next(files)
         os.unlink(sub1)
         # Missing files in sub directories are ok
-        ftbu = [first_file] + list(files)
+        ftbu = [first_file[:-1]] + list(f[:-1] for f in files if f[-1] != "leave")
 
         # Check that missing_ok flag is not set for top-level items
         for bu_path, local_path, missing_ok in ftbu:
@@ -132,6 +132,58 @@ LABEL: pg_basebackup base backup
         assert "pgdata/global/sub1.test" not in arcnameset  # not in set of files to backup
         assert "pgdata/global/sub2.test" not in arcnameset  # acceptable loss
         assert "pgdata/global/sub3.test" in arcnameset  # acceptable
+
+    def test_find_and_split_files_to_backup(self, tmpdir):
+        pgdata = str(tmpdir.mkdir("pgdata"))
+        top = os.path.join(pgdata, "split_top")
+        sub = os.path.join(top, "split_sub")
+        os.makedirs(sub, exist_ok=True)
+        with open(os.path.join(top, "f1"), "w") as f:
+            f.write("a" * 50000)
+        with open(os.path.join(top, "f2"), "w") as f:
+            f.write("a" * 50000)
+        with open(os.path.join(top, "f3"), "w") as f:
+            f.write("a" * 50000)
+        with open(os.path.join(sub, "f1"), "w") as f:
+            f.write("a" * 50000)
+        with open(os.path.join(sub, "f2"), "w") as f:
+            f.write("a" * 50000)
+        with open(os.path.join(sub, "f3"), "w") as f:
+            f.write("a" * 50000)
+
+        pgb = PGBaseBackup(config=None, site="foosite", connection_info=None,
+                           basebackup_path=None, compression_queue=None, transfer_queue=None,
+                           stats=statsd.StatsClient(host=None))
+        total_file_count, chunks = pgb.find_and_split_files_to_backup(
+            pgdata=pgdata, tablespaces={}, target_chunk_size=110000
+        )
+        # 6 files and 2 directories
+        assert total_file_count == 8
+        assert len(chunks) == 3
+        print(chunks)
+
+        # split_top, split_top/f1, split_top/f2
+        chunk1 = [c[0] for c in chunks[0]]
+        assert len(chunk1) == 3
+        assert chunk1[0] == "pgdata/split_top"
+        assert chunk1[1] == "pgdata/split_top/f1"
+        assert chunk1[2] == "pgdata/split_top/f2"
+
+        # split_top, split_top/f3, split_top/split_sub, split_top/split_sub/f1
+        chunk2 = [c[0] for c in chunks[1]]
+        assert len(chunk2) == 4
+        assert chunk2[0] == "pgdata/split_top"
+        assert chunk2[1] == "pgdata/split_top/f3"
+        assert chunk2[2] == "pgdata/split_top/split_sub"
+        assert chunk2[3] == "pgdata/split_top/split_sub/f1"
+
+        # split_top, split_top/split_sub, split_top/split_sub/f2, split_top/split_sub/f3
+        chunk3 = [c[0] for c in chunks[2]]
+        assert len(chunk3) == 4
+        assert chunk3[0] == "pgdata/split_top"
+        assert chunk3[1] == "pgdata/split_top/split_sub"
+        assert chunk3[2] == "pgdata/split_top/split_sub/f2"
+        assert chunk3[3] == "pgdata/split_top/split_sub/f3"
 
     def _test_create_basebackup(self, capsys, db, pghoard, mode, replica=False):
         pghoard.create_backup_site_paths(pghoard.test_site)

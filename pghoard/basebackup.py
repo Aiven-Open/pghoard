@@ -352,7 +352,7 @@ class PGBaseBackup(Thread):
                 self.log.warning("Directory %r went away while scanning, ignoring", local_parent)
                 return
 
-            for fn in contents:
+            for fn in sorted(contents):
                 # Ignore all temporary files and directories as well as well
                 # as pg_control, we'll grab the latest version of pg_control
                 # after everything else has been copied.
@@ -371,11 +371,12 @@ class PGBaseBackup(Thread):
                 return
 
             if stat.S_ISREG(st_mode) or stat.S_ISLNK(st_mode):
-                yield archive_path, local_path, missing_ok
+                yield archive_path, local_path, missing_ok, "add"
             elif stat.S_ISDIR(st_mode):
-                yield archive_path, local_path, missing_ok
+                yield archive_path, local_path, missing_ok, "enter"
                 # Everything but top-level items are allowed to be missing
                 yield from add_directory(archive_path, local_path, missing_ok=True)
+                yield archive_path, local_path, missing_ok, "leave"
             else:
                 self.log.error("File %r is not a directory, file or symlink, ignoring", local_path)
 
@@ -410,8 +411,9 @@ class PGBaseBackup(Thread):
         for spcname, spcinfo in tablespaces.items():
             local_path = spcinfo["path"]
             archive_path = os.path.join("tablespaces", spcname)
-            yield archive_path, local_path, False
+            yield archive_path, local_path, False, "enter"
             yield from add_directory(archive_path, local_path, missing_ok=False)
+            yield archive_path, local_path, False, "leave"
 
     def tar_one_file(self, *, temp_dir, chunk_path, files_to_backup, callback_queue,
                      filetype="basebackup_chunk", extra_metadata=None):
@@ -590,26 +592,9 @@ class PGBaseBackup(Thread):
                               pgdata, len(tablespaces), compressed_base)
                 start_time = time.monotonic()
 
-                total_file_count = 0
-                one_chunk_size = 0
-                one_chunk_files = []
-                chunks = []
-
-                # Generate a list of chunks
-                for archive_path, local_path, missing_ok in \
-                        self.find_files_to_backup(pgdata=pgdata, tablespaces=tablespaces):
-                    file_size = os.path.getsize(local_path)
-
-                    # Switch chunks if the current chunk has at least 20% data and the new chunk would tip it over
-                    if one_chunk_size > target_chunk_size / 5 and one_chunk_size + file_size > target_chunk_size:
-                        chunks.append(one_chunk_files)
-                        one_chunk_size = 0
-                        one_chunk_files = []
-
-                    total_file_count += 1
-                    one_chunk_size += file_size
-                    one_chunk_files.append([archive_path, local_path, missing_ok])
-                chunks.append(one_chunk_files)
+                total_file_count, chunks = self.find_and_split_files_to_backup(
+                    pgdata=pgdata, tablespaces=tablespaces, target_chunk_size=target_chunk_size
+                )
 
                 # Tar up the chunks and submit them for upload; note that we start from chunk 1 here; chunk 0
                 # is reserved for special files and metadata and will be generated last.
@@ -686,6 +671,37 @@ class PGBaseBackup(Thread):
                 "total-size-enc": total_size_enc,
             },
         )
+
+    def find_and_split_files_to_backup(self, *, pgdata, tablespaces, target_chunk_size):
+        total_file_count = 0
+        one_chunk_size = 0
+        one_chunk_files = []
+        chunks = []
+        entered_folders = []
+
+        # Generate a list of chunks
+        for archive_path, local_path, missing_ok, operation in \
+                self.find_files_to_backup(pgdata=pgdata, tablespaces=tablespaces):
+            if operation == "leave":
+                entered_folders.pop()
+                continue
+
+            file_size = os.path.getsize(local_path)
+
+            # Switch chunks if the current chunk has at least 20% data and the new chunk would tip it over
+            if one_chunk_size > target_chunk_size / 5 and one_chunk_size + file_size > target_chunk_size:
+                chunks.append(one_chunk_files)
+                one_chunk_size = 0
+                one_chunk_files = entered_folders.copy()
+
+            total_file_count += 1
+            one_chunk_size += file_size
+            if operation == "enter":
+                entered_folders.append([archive_path, local_path, missing_ok])
+            one_chunk_files.append([archive_path, local_path, missing_ok])
+
+        chunks.append(one_chunk_files)
+        return total_file_count, chunks
 
     def get_backup_end_segment_and_time(self, db_conn, backup_mode):
         """Grab a timestamp and WAL segment name after the end of the backup: this is a point in time to which
