@@ -7,7 +7,7 @@ See LICENSE for details
 from io import BytesIO
 from ..compat import makedirs, suppress
 from ..errors import FileNotFoundFromStorageError, LocalFileIsRemoteFileError
-from . base import BaseTransfer
+from .base import BaseTransfer, IterKeyItem, KEY_TYPE_PREFIX, KEY_TYPE_OBJECT
 import datetime
 import json
 import os
@@ -41,35 +41,68 @@ class LocalTransfer(BaseTransfer):
         with suppress(FileNotFoundError):
             os.unlink(metadata_path)
 
-    def list_iter(self, key, *, with_metadata=True):
+    def yield_item(self, file_name):
+        if file_name.startswith("."):
+            return
+        if file_name.endswith(".metadata"):
+            return
+
+    @staticmethod
+    def _skip_file_name(file_name):
+        return file_name.startswith(".") or file_name.endswith(".metadata")
+
+    @staticmethod
+    def _yield_object(key, full_path, with_metadata):
+        metadata_file = full_path + ".metadata"
+        if not os.path.exists(metadata_file):
+            return
+        if with_metadata:
+            with open(metadata_file, "r") as fp:
+                metadata = json.load(fp)
+        else:
+            metadata = None
+        st = os.stat(full_path)
+        last_modified = datetime.datetime.fromtimestamp(st.st_mtime, tz=datetime.timezone.utc)
+        yield IterKeyItem(
+            type=KEY_TYPE_OBJECT,
+            value={
+                "name": key,
+                "size": st.st_size,
+                "last_modified": last_modified,
+                "metadata": metadata,
+            },
+        )
+
+    def iter_key(self, key, *, with_metadata=True, deep=False, include_key=False):
         target_path = self.format_key_for_backend(key.strip("/"))
         try:
             input_files = os.listdir(target_path)
         except FileNotFoundError:
             return
+        except NotADirectoryError:
+            if include_key:
+                file_name = os.path.basename(target_path)
+                if self._skip_file_name(file_name):
+                    return
+                yield from self._yield_object(key.strip("/"), target_path, with_metadata=with_metadata)
+            return
 
         for file_name in input_files:
-            if file_name.startswith("."):
-                continue
-            if file_name.endswith(".metadata"):
+            if self._skip_file_name(file_name):
                 continue
             full_path = os.path.join(target_path, file_name)
-            metadata_file = full_path + ".metadata"
-            if not os.path.exists(metadata_file):
-                continue
-            if with_metadata:
-                with open(metadata_file, "r") as fp:
-                    metadata = json.load(fp)
+            if os.path.isdir(full_path):
+                file_key = os.path.join(key.strip("/"), file_name)
+                if deep:
+                    yield from self.iter_key(file_key, with_metadata=with_metadata, deep=True)
+                else:
+                    yield IterKeyItem(type=KEY_TYPE_PREFIX, value=file_key)
             else:
-                metadata = None
-            st = os.stat(full_path)
-            last_modified = datetime.datetime.fromtimestamp(st.st_mtime, tz=datetime.timezone.utc)
-            yield {
-                "name": os.path.join(key.strip("/"), file_name),
-                "size": st.st_size,
-                "last_modified": last_modified,
-                "metadata": metadata,
-            }
+                yield from self._yield_object(
+                    key=os.path.join(key.strip("/"), file_name),
+                    full_path=full_path,
+                    with_metadata=with_metadata,
+                )
 
     def get_contents_to_file(self, key, filepath_to_store_to, *, progress_callback=None):
         source_path = self.format_key_for_backend(key.strip("/"))

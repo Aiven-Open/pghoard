@@ -7,7 +7,7 @@ See LICENSE for details
 # pylint: disable=import-error, no-name-in-module
 from azure.storage.blob import BlockBlobService
 from azure.storage.blob.models import BlobPrefix
-from .base import BaseTransfer
+from .base import BaseTransfer, KEY_TYPE_PREFIX, KEY_TYPE_OBJECT, IterKeyItem
 from ..errors import FileNotFoundFromStorageError, InvalidConfigurationError, StorageError
 import azure.common
 import time
@@ -40,44 +40,49 @@ class AzureTransfer(BaseTransfer):
 
     def get_metadata_for_key(self, key):
         path = self.format_key_for_backend(key, remove_slash_prefix=True, trailing_slash=False)
-        results = list(self._list_iter(path))
-        if not results:
+        items = list(self._iter_key(path=path, with_metadata=True, deep=False))
+        if not items:
             raise FileNotFoundFromStorageError(key)
-        return results[0]["metadata"]
+        item, = items
+        if item.type != KEY_TYPE_OBJECT:
+            raise FileNotFoundFromStorageError(key)  # it's a prefix
+        return item.value["metadata"]
 
-    def _metadata_for_key(self, key):
-        return list(self._list_iter(key))[0]["metadata"]
+    def _metadata_for_key(self, path):
+        return list(self._iter_key(path=path, with_metadata=True, deep=False))[0].value["metadata"]
 
-    def list_path(self, key, *, with_metadata=True):
-        # Trailing slash needed when listing directories, without when listing individual files
-        path = self.format_key_for_backend(key, remove_slash_prefix=True, trailing_slash=True)
-        return list(self._list_iter(path, with_metadata=with_metadata))
-
-    def list_iter(self, key, *, with_metadata=True):
-        # Trailing slash needed when listing directories, without when listing individual files
-        path = self.format_key_for_backend(key, remove_slash_prefix=True, trailing_slash=True)
-        yield from self._list_iter(path, with_metadata=with_metadata)
-
-    def _list_iter(self, path, *, with_metadata=True):
+    def iter_key(self, key, *, with_metadata=True, deep=False, include_key=False):
+        path = self.format_key_for_backend(key, remove_slash_prefix=True, trailing_slash=not include_key)
         self.log.debug("Listing path %r", path)
+        yield from self._iter_key(path=path, with_metadata=with_metadata, deep=deep)
+
+    def _iter_key(self, *, path, with_metadata, deep):
         include = "metadata" if with_metadata else None
+        kwargs = {}
         if path:
-            items = self.conn.list_blobs(self.container_name, prefix=path, delimiter="/", include=include)
-        else:  # If you give Azure an empty path, it gives you an authentication error
-            items = self.conn.list_blobs(self.container_name, delimiter="/", include=include)
+            # If you give Azure an empty path, it gives you an authentication error
+            kwargs["prefix"] = path
+        if not deep:
+            kwargs["delimiter"] = "/"
+        items = self.conn.list_blobs(self.container_name, include=include, **kwargs)
         for item in items:
-            if not isinstance(item, BlobPrefix):
+            if isinstance(item, BlobPrefix):
+                yield IterKeyItem(type=KEY_TYPE_PREFIX, value=self.format_key_from_backend(item.name).rstrip("/"))
+            else:
                 if with_metadata:
                     # Azure Storage cannot handle '-' so we turn them into underscores and back again
-                    metadata = dict((k.replace("_", "-"), v) for k, v in item.metadata.items())
+                    metadata = {k.replace("_", "-"): v for k, v in item.metadata.items()}
                 else:
                     metadata = None
-                yield {
-                    "last_modified": item.properties.last_modified,
-                    "metadata": metadata,
-                    "name": self.format_key_from_backend(item.name),
-                    "size": item.properties.content_length,
-                }
+                yield IterKeyItem(
+                    type=KEY_TYPE_OBJECT,
+                    value={
+                        "last_modified": item.properties.last_modified,
+                        "metadata": metadata,
+                        "name": self.format_key_from_backend(item.name),
+                        "size": item.properties.content_length,
+                    },
+                )
 
     def delete_key(self, key):
         key = self.format_key_for_backend(key, remove_slash_prefix=True)
