@@ -77,6 +77,8 @@ def _test_storage(st, driver, tmpdir, storage_config):
     to_disk_file = str(scratch.join("b"))
     assert st.get_contents_to_file("test1/td", to_disk_file) == {"to-disk": "42"}
 
+    created_keys = {"test1/x1", "test1/td"}
+
     if driver == "s3":
         response = st.s3_client.head_object(
             Bucket=st.bucket_name,
@@ -105,6 +107,43 @@ def _test_storage(st, driver, tmpdir, storage_config):
         else:
             assert 0, "unexpected name in directory"
 
+    assert set(st.iter_prefixes("test1")) == set()
+
+    for key in ["test1/sub1/sub1.1", "test1/sub2/sub2.1/sub2.1.1", "test1/sub3"]:
+        st.store_file_from_memory(key, b"1", None)
+        created_keys.add(key)
+
+    if driver == "local":
+        # sub3 is a directory. Actual object storage systems support this, but a file system does not
+        with pytest.raises(NotADirectoryError):
+            st.store_file_from_memory("test1/sub3/sub3.1/sub3.1.1", b"1", None)
+    else:
+        st.store_file_from_memory("test1/sub3/sub3.1/sub3.1.1", b"1", None)
+        created_keys.add("test1/sub3/sub3.1/sub3.1.1")
+
+    if driver == "local":
+        assert set(st.iter_prefixes("test1")) == {"test1/sub1", "test1/sub2"}
+    else:
+        assert set(st.iter_prefixes("test1")) == {"test1/sub1", "test1/sub2", "test1/sub3"}
+    assert {item["name"] for item in st.list_path("test1")} == {"test1/x1", "test1/td", "test1/sub3"}
+    assert set(st.iter_prefixes("test1/sub1")) == set()
+    assert {item["name"] for item in st.list_path("test1/sub1")} == {"test1/sub1/sub1.1"}
+    assert {item["name"] for item in st.list_path("test1/sub2")} == set()
+    if driver == "local":
+        with pytest.raises(NotADirectoryError):
+            st.list_path("test1/sub3")
+    else:
+        assert {item["name"] for item in st.list_path("test1/sub3")} == set()
+    assert set(st.iter_prefixes("test1/sub2")) == {"test1/sub2/sub2.1"}
+    if driver == "local":
+        with pytest.raises(NotADirectoryError):
+            set(st.iter_prefixes("test1/sub3"))
+        with pytest.raises(NotADirectoryError):
+            set(st.iter_prefixes("test1/sub3/3.1"))
+    else:
+        assert set(st.iter_prefixes("test1/sub3")) == {"test1/sub3/sub3.1"}
+        assert set(st.iter_prefixes("test1/sub3/3.1")) == set()
+
     if driver == "google":
         # test extra props for cacheControl in google
         st.store_file_from_memory("test1/x1", b"no cache test",
@@ -125,8 +164,9 @@ def _test_storage(st, driver, tmpdir, storage_config):
         os.unlink(target_file + ".metadata")
         assert st.get_metadata_for_key("test1/x1") == {}
 
-    st.delete_key("test1/x1")
-    st.delete_key("test1/td")
+    for key in created_keys:
+        st.delete_key(key)
+
     assert st.list_path("test1") == []  # empty again
 
     test_hash = hashlib.sha256()

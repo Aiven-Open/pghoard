@@ -47,7 +47,7 @@ except ImportError:
 
 from ..dates import parse_timestamp
 from ..errors import FileNotFoundFromStorageError, InvalidConfigurationError
-from .base import BaseTransfer
+from .base import BaseTransfer, CHILD_TYPE_PREFIX, CHILD_TYPE_OBJECT, Child
 
 # Silence Google API client verbose spamming
 logging.getLogger("googleapiclient.discovery_cache").setLevel(logging.ERROR)
@@ -174,32 +174,46 @@ class GoogleTransfer(BaseTransfer):
         obj = self._retry_on_reset(req, req.execute)
         return obj.get("metadata", {})
 
-    def _unpaginate(self, domain, initial_op):
+    def _unpaginate(self, domain, initial_op, *, on_properties):
         """Iterate thru the request pages until all items have been processed"""
         request = initial_op(domain)
         while request is not None:
             result = self._retry_on_reset(request, request.execute)
-            yield from result.get("items", [])
+            for on_property in on_properties:
+                items = result.get(on_property)
+                if items is not None:
+                    yield on_property, items
             request = domain.list_next(request, result)
 
-    def list_iter(self, key, *, with_metadata=True):  # pylint: disable=unused-argument, unused-variable
+    def iter_children(self, key, *, with_metadata=True):  # pylint: disable=unused-argument, unused-variable
         path = self.format_key_for_backend(key, trailing_slash=True)
         self.log.debug("Listing path %r", path)
         with self._object_client() as clob:
             def initial_op(domain):
                 return domain.list(bucket=self.bucket_name, delimiter="/", prefix=path)
 
-            for item in self._unpaginate(clob, initial_op):
-                if item["name"].endswith("/"):
-                    continue  # skip directory level objects
+            for property_name, items in self._unpaginate(clob, initial_op, on_properties=["items", "prefixes"]):
+                if property_name == "items":
+                    for item in items:
+                        if item["name"].endswith("/"):
+                            self.log.warning("list_iter: directory entry %r", item)
+                            continue  # skip directory level objects
 
-                yield {
-                    "name": self.format_key_from_backend(item["name"]),
-                    "size": int(item["size"]),
-                    "last_modified": parse_timestamp(item["updated"]),
-                    "metadata": item.get("metadata", {}),
-                    "md5": base64_to_hex(item["md5Hash"]),
-                }
+                        yield Child(
+                            type=CHILD_TYPE_OBJECT,
+                            value={
+                                "name": self.format_key_from_backend(item["name"]),
+                                "size": int(item["size"]),
+                                "last_modified": parse_timestamp(item["updated"]),
+                                "metadata": item.get("metadata", {}),
+                                "md5": base64_to_hex(item["md5Hash"]),
+                            },
+                        )
+                elif property_name == "prefixes":
+                    for prefix in items:
+                        yield Child(type=CHILD_TYPE_PREFIX, value=self.format_key_from_backend(prefix).rstrip("/"))
+                else:
+                    raise NotImplementedError(property_name)
 
     def delete_key(self, key):
         key = self.format_key_for_backend(key)

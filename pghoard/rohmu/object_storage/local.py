@@ -7,7 +7,7 @@ See LICENSE for details
 from io import BytesIO
 from ..compat import makedirs, suppress
 from ..errors import FileNotFoundFromStorageError, LocalFileIsRemoteFileError
-from . base import BaseTransfer
+from .base import BaseTransfer, Child, CHILD_TYPE_PREFIX, CHILD_TYPE_OBJECT
 import datetime
 import json
 import os
@@ -41,7 +41,7 @@ class LocalTransfer(BaseTransfer):
         with suppress(FileNotFoundError):
             os.unlink(metadata_path)
 
-    def list_iter(self, key, *, with_metadata=True):
+    def iter_children(self, key, *, with_metadata=True):
         target_path = self.format_key_for_backend(key.strip("/"))
         try:
             input_files = os.listdir(target_path)
@@ -54,22 +54,28 @@ class LocalTransfer(BaseTransfer):
             if file_name.endswith(".metadata"):
                 continue
             full_path = os.path.join(target_path, file_name)
-            metadata_file = full_path + ".metadata"
-            if not os.path.exists(metadata_file):
-                continue
-            if with_metadata:
-                with open(metadata_file, "r") as fp:
-                    metadata = json.load(fp)
+            if os.path.isdir(full_path):
+                yield Child(type=CHILD_TYPE_PREFIX, value=os.path.join(key.strip("/"), file_name))
             else:
-                metadata = None
-            st = os.stat(full_path)
-            last_modified = datetime.datetime.fromtimestamp(st.st_mtime, tz=datetime.timezone.utc)
-            yield {
-                "name": os.path.join(key.strip("/"), file_name),
-                "size": st.st_size,
-                "last_modified": last_modified,
-                "metadata": metadata,
-            }
+                metadata_file = full_path + ".metadata"
+                if not os.path.exists(metadata_file):
+                    continue
+                if with_metadata:
+                    with open(metadata_file, "r") as fp:
+                        metadata = json.load(fp)
+                else:
+                    metadata = None
+                st = os.stat(full_path)
+                last_modified = datetime.datetime.fromtimestamp(st.st_mtime, tz=datetime.timezone.utc)
+                yield Child(
+                    type=CHILD_TYPE_OBJECT,
+                    value={
+                        "name": os.path.join(key.strip("/"), file_name),
+                        "size": st.st_size,
+                        "last_modified": last_modified,
+                        "metadata": metadata,
+                    },
+                )
 
     def get_contents_to_file(self, key, filepath_to_store_to, *, progress_callback=None):
         source_path = self.format_key_for_backend(key.strip("/"))
