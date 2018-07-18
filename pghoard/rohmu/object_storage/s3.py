@@ -5,7 +5,7 @@ Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
 from ..errors import FileNotFoundFromStorageError, InvalidConfigurationError, StorageError
-from .base import BaseTransfer
+from .base import BaseTransfer, CHILD_TYPE_PREFIX, CHILD_TYPE_OBJECT, Child
 import botocore.client
 import botocore.exceptions
 import botocore.session
@@ -94,7 +94,7 @@ class S3Transfer(BaseTransfer):
         self._metadata_for_key(key)  # check that key exists
         self.s3_client.delete_object(Bucket=self.bucket_name, Key=key)
 
-    def list_iter(self, key, *, with_metadata=True):
+    def iter_children(self, key, *, with_metadata=True):
         path = self.format_key_for_backend(key, remove_slash_prefix=True, trailing_slash=True)
         self.log.debug("Listing path %r", path)
         continuation_token = None
@@ -107,19 +107,30 @@ class S3Transfer(BaseTransfer):
             if continuation_token:
                 args["ContinuationToken"] = continuation_token
             response = self.s3_client.list_objects_v2(**args)
+
             for item in response.get("Contents", []):
                 if with_metadata:
                     metadata = self._metadata_for_key(item["Key"])
                 else:
                     metadata = None
                 name = self.format_key_from_backend(item["Key"])
-                yield {
-                    "last_modified": item["LastModified"],
-                    "md5": item["ETag"].strip('"'),
-                    "metadata": metadata,
-                    "name": name,
-                    "size": item["Size"],
-                }
+                yield Child(
+                    type=CHILD_TYPE_OBJECT,
+                    value={
+                        "last_modified": item["LastModified"],
+                        "md5": item["ETag"].strip('"'),
+                        "metadata": metadata,
+                        "name": name,
+                        "size": item["Size"],
+                    },
+                )
+
+            for common_prefix in response.get("CommonPrefixes", []):
+                yield Child(
+                    type=CHILD_TYPE_PREFIX,
+                    value=self.format_key_from_backend(common_prefix["Prefix"]).rstrip("/"),
+                )
+
             if "NextContinuationToken" in response:
                 continuation_token = response["NextContinuationToken"]
             else:

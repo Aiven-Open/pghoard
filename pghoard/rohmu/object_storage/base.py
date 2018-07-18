@@ -4,8 +4,16 @@ rohmu - object_storage.base
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
+from collections import namedtuple
+
 from ..errors import StorageError
 import logging
+
+
+CHILD_TYPE_OBJECT = "object"
+CHILD_TYPE_PREFIX = "prefix"
+
+Child = namedtuple("Child", ["type", "value"])
 
 
 class BaseTransfer:
@@ -72,6 +80,19 @@ class BaseTransfer:
         return list(self.list_iter(key, with_metadata=with_metadata))
 
     def list_iter(self, key, *, with_metadata=True):
+        for child in self.iter_children(key, with_metadata=with_metadata):
+            if child.type == CHILD_TYPE_OBJECT:
+                yield child.value
+
+    def list_prefixes(self, key):
+        return list(self.iter_prefixes(key))
+
+    def iter_prefixes(self, key):
+        for child in self.iter_children(key, with_metadata=False):
+            if child.type == CHILD_TYPE_PREFIX:
+                yield child.value
+
+    def iter_children(self, key, *, with_metadata=True):
         raise NotImplementedError
 
     def sanitize_metadata(self, metadata, replace_hyphen_with="-"):
