@@ -35,6 +35,7 @@ class AzureTransfer(BaseTransfer):
 
         self.conn = BlockBlobService(account_name=self.account_name, account_key=self.account_key,
                                      endpoint_suffix=endpoint_suffix)
+        self.conn.socket_timeout = 120  # Default Azure socket timeout 20s is a bit short
         self.container = self.get_or_create_container(self.container_name)
         self.log.debug("AzureTransfer initialized, %r", self.container_name)
 
