@@ -4,8 +4,16 @@ rohmu - object_storage.base
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
+from collections import namedtuple
+
 from ..errors import StorageError
 import logging
+
+
+KEY_TYPE_OBJECT = "object"
+KEY_TYPE_PREFIX = "prefix"
+
+IterKeyItem = namedtuple("IterKeyItem", ["type", "value"])
 
 
 class BaseTransfer:
@@ -68,10 +76,23 @@ class BaseTransfer:
     def get_metadata_for_key(self, key):
         raise NotImplementedError
 
-    def list_path(self, key, *, with_metadata=True):
-        return list(self.list_iter(key, with_metadata=with_metadata))
+    def list_path(self, key, *, with_metadata=True, deep=False):
+        return list(self.list_iter(key, with_metadata=with_metadata, deep=deep))
 
-    def list_iter(self, key, *, with_metadata=True):
+    def list_iter(self, key, *, with_metadata=True, deep=False):
+        for item in self.iter_key(key, with_metadata=with_metadata, deep=deep):
+            if item.type == KEY_TYPE_OBJECT:
+                yield item.value
+
+    def list_prefixes(self, key):
+        return list(self.iter_prefixes(key))
+
+    def iter_prefixes(self, key):
+        for item in self.iter_key(key, with_metadata=False):
+            if item.type == KEY_TYPE_PREFIX:
+                yield item.value
+
+    def iter_key(self, key, *, with_metadata=True, deep=False, include_key=False):
         raise NotImplementedError
 
     def sanitize_metadata(self, metadata, replace_hyphen_with="-"):

@@ -5,7 +5,7 @@ Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
 from ..errors import FileNotFoundFromStorageError, InvalidConfigurationError, StorageError
-from .base import BaseTransfer
+from .base import BaseTransfer, KEY_TYPE_PREFIX, KEY_TYPE_OBJECT, IterKeyItem
 import botocore.client
 import botocore.exceptions
 import botocore.session
@@ -94,32 +94,44 @@ class S3Transfer(BaseTransfer):
         self._metadata_for_key(key)  # check that key exists
         self.s3_client.delete_object(Bucket=self.bucket_name, Key=key)
 
-    def list_iter(self, key, *, with_metadata=True):
-        path = self.format_key_for_backend(key, remove_slash_prefix=True, trailing_slash=True)
+    def iter_key(self, key, *, with_metadata=True, deep=False, include_key=False):
+        path = self.format_key_for_backend(key, remove_slash_prefix=True, trailing_slash=not include_key)
         self.log.debug("Listing path %r", path)
         continuation_token = None
         while True:
             args = {
                 "Bucket": self.bucket_name,
-                "Delimiter": "/",
                 "Prefix": path,
             }
+            if not deep:
+                args["Delimiter"] = "/"
             if continuation_token:
                 args["ContinuationToken"] = continuation_token
             response = self.s3_client.list_objects_v2(**args)
+
             for item in response.get("Contents", []):
                 if with_metadata:
                     metadata = self._metadata_for_key(item["Key"])
                 else:
                     metadata = None
                 name = self.format_key_from_backend(item["Key"])
-                yield {
-                    "last_modified": item["LastModified"],
-                    "md5": item["ETag"].strip('"'),
-                    "metadata": metadata,
-                    "name": name,
-                    "size": item["Size"],
-                }
+                yield IterKeyItem(
+                    type=KEY_TYPE_OBJECT,
+                    value={
+                        "last_modified": item["LastModified"],
+                        "md5": item["ETag"].strip('"'),
+                        "metadata": metadata,
+                        "name": name,
+                        "size": item["Size"],
+                    },
+                )
+
+            for common_prefix in response.get("CommonPrefixes", []):
+                yield IterKeyItem(
+                    type=KEY_TYPE_PREFIX,
+                    value=self.format_key_from_backend(common_prefix["Prefix"]).rstrip("/"),
+                )
+
             if "NextContinuationToken" in response:
                 continuation_token = response["NextContinuationToken"]
             else:

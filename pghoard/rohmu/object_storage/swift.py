@@ -4,7 +4,7 @@ rohmu - openstack swift object store interface
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
-from .base import BaseTransfer
+from .base import BaseTransfer, KEY_TYPE_PREFIX, KEY_TYPE_OBJECT, IterKeyItem
 from ..compat import suppress
 from ..dates import parse_timestamp
 from ..errors import FileNotFoundFromStorageError
@@ -113,26 +113,34 @@ class SwiftTransfer(BaseTransfer):
 
         return metadata
 
-    def list_iter(self, key, *, with_metadata=True):
-        path = self.format_key_for_backend(key, trailing_slash=True)
+    def iter_key(self, key, *, with_metadata=True, deep=False, include_key=False):
+        path = self.format_key_for_backend(key, trailing_slash=not include_key)
         self.log.debug("Listing path %r", path)
-        _, results = self.conn.get_container(self.container_name, prefix=path, delimiter="/", full_listing=True)
+        if deep:
+            kwargs = {"delimiter": "/"}
+        else:
+            kwargs = {}
+        _, results = self.conn.get_container(self.container_name, prefix=path, full_listing=True, **kwargs)
         for item in results:
             if "subdir" in item:
-                continue  # skip directory entries
-            if with_metadata:
-                metadata = self._metadata_for_key(item["name"], resolve_manifest=True)
-                segments_size = metadata.pop("_segments_size", 0)
+                yield IterKeyItem(type=KEY_TYPE_PREFIX, value=self.format_key_from_backend(item["name"]).rstrip("/"))
             else:
-                metadata = None
-                segments_size = 0
-            last_modified = parse_timestamp(item["last_modified"])
-            yield {
-                "name": self.format_key_from_backend(item["name"]),
-                "size": item["bytes"] + segments_size,
-                "last_modified": last_modified,
-                "metadata": metadata,
-            }
+                if with_metadata:
+                    metadata = self._metadata_for_key(item["name"], resolve_manifest=True)
+                    segments_size = metadata.pop("_segments_size", 0)
+                else:
+                    metadata = None
+                    segments_size = 0
+                last_modified = parse_timestamp(item["last_modified"])
+                yield IterKeyItem(
+                    type=KEY_TYPE_OBJECT,
+                    value={
+                        "name": self.format_key_from_backend(item["name"]),
+                        "size": item["bytes"] + segments_size,
+                        "last_modified": last_modified,
+                        "metadata": metadata,
+                    },
+                )
 
     def _delete_object_plain(self, key):
         try:
