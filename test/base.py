@@ -79,7 +79,7 @@ class PGHoardTestCase:
             "json_state_file_path": os.path.join(self.temp_dir, "state.json"),
             "pg_basebackup_path": os.path.join(bindir, "pg_basebackup"),
         }
-        if ver == "10":
+        if ver in ("10", "11"):
             config["backup_sites"][self.test_site]["pg_receivexlog_path"] = os.path.join(bindir, "pg_receivewal")
         if override:
             all_site_overrides = override.pop("backup_sites", None)
