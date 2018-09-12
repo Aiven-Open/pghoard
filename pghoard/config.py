@@ -15,7 +15,7 @@ import os
 import subprocess
 
 
-SUPPORTED_VERSIONS = ["10", "9.6", "9.5", "9.4", "9.3", "9.2"]
+SUPPORTED_VERSIONS = ["11", "10", "9.6", "9.5", "9.4", "9.3", "9.2"]
 
 
 def get_cpu_count():
@@ -26,7 +26,7 @@ def find_pg_binary(program, versions=None):
     pathformats = ["/usr/pgsql-{ver}/bin/{prog}", "/usr/lib/postgresql/{ver}/bin/{prog}"]
     for ver in versions or SUPPORTED_VERSIONS:
         for pathfmt in pathformats:
-            if ver == "10" and program == "pg_receivexlog":
+            if ver in ("10", "11") and program == "pg_receivexlog":
                 program = "pg_receivewal"
             pgbin = pathfmt.format(ver=ver, prog=program)
             if os.path.exists(pgbin):

@@ -138,11 +138,13 @@ def convert_pg_command_version_to_number(command_version_string):
             raise Error("Unrecognized PostgreSQL version string {!r}".format(command_version_string))
 
     parts = match.group(1).split(".")  # ['9', '6', '5'] or ['10', '1']
-    if len(parts) == 2:
-        if int(parts[0]) >= 10:  # PG 10+: just major and minor
-            return int(parts[0]) * 10000 + int(parts[1])
-        else:
-            parts.append("0")  # padding for development version numbers
+
+    if int(parts[0]) >= 10:  # PG 10+: just major and minor
+        if len(parts) == 1:  # development version above 10
+            return int(parts[0]) * 10000
+        return int(parts[0]) * 10000 + int(parts[1])
+    elif len(parts) == 2:
+        parts.append("0")  # padding for development version numbers
 
     return int(parts[0]) * 10000 + int(parts[1]) * 100 + int(parts[2])
 
@@ -218,7 +220,7 @@ def extract_pghoard_bb_v2_metadata(fileobj):
 
 
 def get_pg_wal_directory(config):
-    if config["pg_data_directory_version"] == "10":
+    if config["pg_data_directory_version"] in ("10", "11"):
         return os.path.join(config["pg_data_directory"], "pg_wal")
     return os.path.join(config["pg_data_directory"], "pg_xlog")
 
