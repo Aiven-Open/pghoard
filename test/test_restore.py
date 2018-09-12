@@ -6,9 +6,9 @@ See LICENSE for details
 """
 from .base import PGHoardTestCase
 from pghoard.common import write_json_file
-from pghoard.restore import create_recovery_conf, Restore, RestoreError, BasebackupFetcher
+from pghoard.restore import create_recovery_conf, BasebackupFetcher, ChunkFetcher, Restore, RestoreError
 from tempfile import mkdtemp
-from unittest.mock import MagicMock, Mock
+from unittest.mock import MagicMock, Mock, patch
 import datetime
 import hashlib
 import multiprocessing
@@ -17,6 +17,7 @@ import json
 import os
 import pytest
 import shutil
+import time
 import unittest
 
 
@@ -175,16 +176,16 @@ class TestBasebackupFetcher(unittest.TestCase):
                 assert fetcher.current_progress() == (0, 0)
                 assert fetcher.jobs_in_progress() is True
                 progress_dict["bar1"] = 1000
-                fetcher.job_completed(None)
+                fetcher.job_completed(fetcher.data_files[0]["id"])
             elif call[0] == 1:
                 assert fetcher.current_progress() == (1000, 1000 / 3000)
                 assert fetcher.jobs_in_progress() is True
                 progress_dict["bar2"] = 1000
-                fetcher.job_failed(Exception("test exception"))
+                fetcher.job_failed(fetcher.data_files[1]["id"], Exception("test exception"))
             elif call[0] == 2:
                 assert fetcher.current_progress() == (2000, 2000 / 3000)
                 assert fetcher.jobs_in_progress() is True
-                fetcher.job_completed(None)
+                fetcher.job_completed(fetcher.data_files[2]["id"])
             elif call[0] == 3:
                 assert False
             call[0] += 1
@@ -225,6 +226,47 @@ class TestBasebackupFetcher(unittest.TestCase):
         fetcher.fetch_all()
         self.check_sha256(os.path.join(restore_dir, "pg_notify", "0000"),
                           "9f1dcbc35c350d6027f98be0f5c8b43b42ca52b7604459c0c42be3aa88913d47")
+
+    def test_real_processing_with_threading_retries_on_timeout(self):
+        for tar in ["tar", "pghoard/gnutaremu.py"]:
+            self.run_restore_test(
+                "basebackup",
+                tar,
+                lambda fetcher, rd: self.real_processing_with_threading_retries_on_timeout(fetcher, rd, 2),
+                files=["00000001.pghoard"],
+            )
+
+    def test_real_processing_with_threading_retries_on_timeout_fails_after_3(self):
+        for tar in ["tar", "pghoard/gnutaremu.py"]:
+            self.run_restore_test(
+                "basebackup",
+                tar,
+                lambda fetcher, rd: self.real_processing_with_threading_retries_on_timeout(fetcher, rd, 3),
+                files=["00000001.pghoard"],
+            )
+
+    def real_processing_with_threading_retries_on_timeout(self, fetcher, restore_dir, max_fails):
+        fail_counter = [0]
+
+        class FailingChunkFetcher(ChunkFetcher):
+            def _fetch_and_extract_one_backup(self, metadata, file_size, fetch_fn):
+                super()._fetch_and_extract_one_backup(metadata, file_size, fetch_fn)
+                fail_counter[0] += 1
+                if fail_counter[0] <= max_fails:
+                    # Corrupt the file to test that retrying failed basebackup chunk yields sensible results
+                    with open(os.path.join(restore_dir, "pg_notify", "0000"), "w") as f:
+                        f.write("foo")
+                    time.sleep(4)
+
+        fetcher.max_stale_seconds = 2
+        with patch("pghoard.restore.ChunkFetcher", new=FailingChunkFetcher):
+            if max_fails <= 2:
+                fetcher.fetch_all()
+                self.check_sha256(os.path.join(restore_dir, "pg_notify", "0000"),
+                                  "9f1dcbc35c350d6027f98be0f5c8b43b42ca52b7604459c0c42be3aa88913d47")
+            else:
+                with pytest.raises(RestoreError):
+                    fetcher.fetch_all()
 
     def test_tablespaces(self):
         def rm_tablespace_paths():
