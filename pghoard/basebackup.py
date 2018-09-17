@@ -441,6 +441,16 @@ class PGBaseBackup(Thread):
             log_func=self.log.info,
         )
 
+        size_ratio = result_size / input_size
+        self.stats.gauge(
+            "pghoard.compressed_size_ratio", size_ratio,
+            tags={
+                "algorithm": self.config["compression"]["algorithm"],
+                "site": self.site,
+                "type": "basebackup",
+            }
+        )
+
         metadata = {
             "compression-algorithm": self.config["compression"]["algorithm"],
             "encryption-key-id": encryption_key_id,
