@@ -12,7 +12,6 @@ import subprocess
 import time
 
 from .common import set_subprocess_stdout_and_stderr_nonblocking, terminate_subprocess
-from .pgutil import get_connection_info
 from threading import Thread
 
 
@@ -40,16 +39,7 @@ class PGReceiveXLog(Thread):
             "--verbose",
             "--directory", self.wal_location,
         ]
-        if self.pg_version_server < 90300:
-            conn_info = get_connection_info(self.connection_string)
-            if "user" in conn_info:
-                command.extend(["--user", conn_info["user"]])
-            if "port" in conn_info:
-                command.extend(["--port", conn_info["port"]])
-            if "host" in conn_info:
-                command.extend(["--host", conn_info["host"]])
-        else:
-            command.extend(["--dbname", self.connection_string])
+        command.extend(["--dbname", self.connection_string])
 
         if self.pg_version_server >= 90400 and self.slot:
             command.extend(["--slot", self.slot])

@@ -14,7 +14,7 @@ TIMELINE_RE = re.compile(r"^[A-F0-9]{8}\.history$")
 WAL_RE = re.compile("^[A-F0-9]{24}$")
 WAL_HEADER_LEN = 20
 WAL_MAGIC = {
-    0xD071: 90200,
+    0xD071: 90200,  # Though PGHoard no longer supports version 9.2, magic number is left for WAL identification purposes
     0xD075: 90300,
     0xD07E: 90400,
     0xD087: 90500,
@@ -36,14 +36,9 @@ def read_header(blob):
         raise ValueError("Need at least {} bytes of input to read WAL header, got {}".format(WAL_HEADER_LEN, len(blob)))
     magic, info, tli, pageaddr, rem_len = struct.unpack("=HHIQI", blob[:WAL_HEADER_LEN])  # pylint: disable=unused-variable
     version = WAL_MAGIC[magic]
-    if version < 90300:
-        # Header format changed, reunpack, field names in PG XLogRecPtr are logid and recoff
-        magic, info, tli, log, pos, _ = struct.unpack("=HHILLI", blob[:WAL_HEADER_LEN])  # pylint: disable=unused-variable
-        seg = pos // WAL_SEG_SIZE
-    else:
-        log = pageaddr >> 32
-        pos = pageaddr & 0xFFFFFFFF
-        seg = pos // WAL_SEG_SIZE
+    log = pageaddr >> 32
+    pos = pageaddr & 0xFFFFFFFF
+    seg = pos // WAL_SEG_SIZE
     lsn = "{:X}/{:X}".format(log, pos)
     filename = name_for_tli_log_seg(tli, log, seg)
     return WalHeader(version=version, timeline=tli, lsn=lsn, filename=filename)
