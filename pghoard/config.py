@@ -15,7 +15,7 @@ import os
 import subprocess
 
 
-SUPPORTED_VERSIONS = ["11", "10", "9.6", "9.5", "9.4", "9.3", "9.2"]
+SUPPORTED_VERSIONS = ["11", "10", "9.6", "9.5", "9.4", "9.3"]
 
 
 def get_cpu_count():

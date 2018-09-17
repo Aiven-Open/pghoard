@@ -23,16 +23,6 @@ def wal_header_for_file(name, version=90500):
     return struct.pack("=HHIQI", wal.WAL_MAGIC_BY_VERSION[version], 0, tli, pageaddr, 0)
 
 
-def test_wal_header_pg92():
-    header = b'q\xd0\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\xef\xfc\rW'
-    walheader = wal.read_header(header)
-    assert walheader.lsn == "0/1000000"
-    assert walheader.filename == "000000010000000000000001"
-    constructed_header = wal_header_for_file("000000010000000000000001", version=90200)
-    # Ignore the useless rem_len field
-    assert constructed_header[:-4] == header[:-4]
-
-
 def test_wal_header_pg95():
     header = b'\x87\xd0\x02\x00\x01\x00\x00\x00\x00\x00\x00\x0b\x00\x00\x00\x00\x00\x00\x00\x00'
     walheader = wal.read_header(header)

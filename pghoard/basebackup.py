@@ -121,20 +121,11 @@ class PGBaseBackup(Thread):
             "--verbose",
             "--pgdata", output_name,
         ]
-        if self.pg_version_server < 90300:
-            conn_info = self.connection_info
-            if "user" in conn_info:
-                command.extend(["--user", conn_info["user"]])
-            if "port" in conn_info:
-                command.extend(["--port", conn_info["port"]])
-            if "host" in conn_info:
-                command.extend(["--host", conn_info["host"]])
-        else:
-            connection_string, _ = replication_connection_string_and_slot_using_pgpass(self.connection_info)
-            command.extend([
-                "--progress",
-                "--dbname", connection_string
-            ])
+        connection_string, _ = replication_connection_string_and_slot_using_pgpass(self.connection_info)
+        command.extend([
+            "--progress",
+            "--dbname", connection_string
+        ])
         if self.pg_version_server >= 100000:
             command.extend(["--wal-method=none"])
         return command

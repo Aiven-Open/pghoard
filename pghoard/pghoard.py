@@ -115,8 +115,8 @@ class PGHoard:
         if pg_version_server is None:
             # remote pg version not available, don't create version alert in this case
             return False
-        if not pg_version_server or pg_version_server <= 90200:
-            self.log.error("pghoard does not support versions earlier than 9.2, found: %r", pg_version_server)
+        if not pg_version_server:
+            self.log.error("pghoard does not support versions earlier than 9.3, found: %r", pg_version_server)
             create_alert_file(self.config, "version_unsupported_error")
             return False
         pg_version_client = self.config["backup_sites"][site][command + "_version"]
