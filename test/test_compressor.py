@@ -51,6 +51,7 @@ class CompressionCase(PGHoardTestCase):
         self.config = self.config_template({
             "backup_sites": {
                 self.test_site: {
+                    "backup_location": self.temp_dir,
                     "encryption_key_id": None,
                     "encryption_keys": {
                         "testkey": {
@@ -62,6 +63,7 @@ class CompressionCase(PGHoardTestCase):
                         "storage_type": "s3",
                     },
                     "pg_version": 90500,
+                    "prefix": "",
                 },
             },
             "compression": {
@@ -70,9 +72,17 @@ class CompressionCase(PGHoardTestCase):
         })
         self.compression_queue = Queue()
         self.transfer_queue = Queue()
-        self.incoming_path = os.path.join(self.temp_dir, self.test_site, "xlog")
+        self.incoming_path = os.path.join(
+            self.config["backup_location"],
+            self.config["backup_sites"][self.test_site]["prefix"],
+            "xlog_incoming",
+        )
         os.makedirs(self.incoming_path)
-        self.handled_path = os.path.join(self.config["backup_location"], self.test_site, "xlog")
+        self.handled_path = os.path.join(
+            self.config["backup_location"],
+            self.config["backup_sites"][self.test_site]["prefix"],
+            "xlog",
+        )
         os.makedirs(self.handled_path)
 
         self.compressor = CompressorThread(
@@ -124,7 +134,7 @@ class CompressionCase(PGHoardTestCase):
         assert self.compressor.get_event_filetype(event) == "basebackup"
 
     def test_write_file(self):
-        ifile = WALTester(self.incoming_path, "00000001000000000000000C", "random")
+        ifile = WALTester(self.incoming_path, "00000001000000000000000D", "random")
         with open(ifile.path, "rb") as input_obj, io.BytesIO() as output_obj:
             orig_len, compr_len = rohmufile.write_file(
                 input_obj=input_obj,
@@ -137,7 +147,7 @@ class CompressionCase(PGHoardTestCase):
             assert orig_len == ifile.size
 
     def test_compress_to_file_wal(self):
-        ifile = WALTester(self.incoming_path, "00000001000000000000000C", "random")
+        ifile = WALTester(self.incoming_path, "00000001000000000000000F", "random")
         self._test_compress_to_file("xlog", ifile.size, ifile.path, ifile.path_partial)
 
     def test_compress_to_file_history(self):
@@ -172,7 +182,7 @@ class CompressionCase(PGHoardTestCase):
             assert transfer_event[key] == value
 
     def test_compress_to_memory(self):
-        ifile = WALTester(self.incoming_path, "00000001000000000000000C", "random")
+        ifile = WALTester(self.incoming_path, "0000000100000000000000FF", "random")
         self.compression_queue.put({
             "compress_to_memory": True,
             "delete_file_after_compression": False,
@@ -201,7 +211,7 @@ class CompressionCase(PGHoardTestCase):
         assert result == ifile.contents
 
     def test_compress_encrypt_to_memory(self):
-        ifile = WALTester(self.incoming_path, "00000001000000000000000C", "random")
+        ifile = WALTester(self.incoming_path, "0000000100000000000000FB", "random")
         self.compressor.config["backup_sites"][self.test_site]["encryption_key_id"] = "testkey"
         event = {
             "compress_to_memory": True,
