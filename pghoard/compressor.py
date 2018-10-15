@@ -7,7 +7,7 @@ See LICENSE for details
 from io import BytesIO
 from pghoard import config, wal
 from pghoard.common import write_json_file
-from pghoard.rohmu import rohmufile
+from pghoard.rohmu import rohmufile, errors
 from queue import Empty
 from tempfile import NamedTemporaryFile
 from threading import Thread
@@ -43,9 +43,11 @@ class CompressorThread(Thread):
         # Formats like:
         # /home/foo/t/default/xlog/000000010000000000000014
         # /home/foo/t/default/basebackup/2015-02-06_3/base.tar
-        if os.path.basename(filepath) == "base.tar":
-            return filepath.split("/")[-4]
-        return filepath.split("/")[-3]
+        for site in self.config["backup_sites"]:
+            site_path = os.path.join(self.config["backup_location"], self.config["backup_sites"][site]["prefix"])
+            if filepath.startswith(site_path):
+                return site
+        raise errors.InvalidConfigurationError("Could not find backup site for {}".format(filepath))
 
     def compression_algorithm(self):
         return self.config["compression"]["algorithm"]

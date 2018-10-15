@@ -55,6 +55,12 @@ class PGHoard:
         self.compression_queue = Queue()
         self.transfer_queue = Queue()
         self.syslog_handler = None
+        self.basebackups = {}
+        self.basebackups_callbacks = {}
+        self.receivexlogs = {}
+        self.compressors = []
+        self.walreceivers = {}
+        self.transfer_agents = []
         self.config = {}
         self.mp_manager = None
         self.site_transfers = {}
@@ -74,12 +80,6 @@ class PGHoard:
         signal.signal(signal.SIGTERM, self.quit)
         self.time_of_last_backup = {}
         self.time_of_last_backup_check = {}
-        self.basebackups = {}
-        self.basebackups_callbacks = {}
-        self.receivexlogs = {}
-        self.compressors = []
-        self.walreceivers = {}
-        self.transfer_agents = []
         self.requested_basebackup_sites = set()
 
         self.inotify = InotifyWatcher(self.compression_queue)
@@ -550,18 +550,27 @@ class PGHoard:
         self.stats = statsd.StatsClient(host=stats.get("host"), port=stats.get("port"),
                                         tags=stats.get("tags"), message_format=stats.get("format"))
 
+        for thread in self._get_all_threads():
+            thread.config = new_config
+
         self.log.debug("Loaded config: %r from: %r", self.config, self.config_path)
 
-    def quit(self, _signal=None, _frame=None):  # pylint: disable=unused-argument
-        self.log.warning("Quitting, signal: %r", _signal)
-        self.running = False
-        self.inotify.running = False
-        all_threads = [self.webserver]
+    def _get_all_threads(self):
+        all_threads = []
+        if hasattr(self, "webserver"):  # on first config load webserver isn't initialized yet
+            all_threads.append(self.webserver)
         all_threads.extend(self.basebackups.values())
         all_threads.extend(self.receivexlogs.values())
         all_threads.extend(self.walreceivers.values())
         all_threads.extend(self.compressors)
         all_threads.extend(self.transfer_agents)
+        return all_threads
+
+    def quit(self, _signal=None, _frame=None):  # pylint: disable=unused-argument
+        self.log.warning("Quitting, signal: %r", _signal)
+        self.running = False
+        self.inotify.running = False
+        all_threads = self._get_all_threads()
         for t in all_threads:
             t.running = False
         # Write state file in the end so we get the last known state
