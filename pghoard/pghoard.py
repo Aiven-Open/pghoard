@@ -432,8 +432,8 @@ class PGHoard:
                     chosen_backup_node=chosen_backup_node,
                     last_flushed_lsn=walreceiver_state.get("last_flushed_lsn"))
 
-        if site not in self.time_of_last_backup_check or \
-                time.monotonic() - self.time_of_last_backup_check[site] > 300:
+        last_check_time = self.time_of_last_backup_check.get(site)
+        if not last_check_time or (time.monotonic() - self.time_of_last_backup_check[site]) > 300:
             self.time_of_last_backup[site] = self.check_backup_count_and_state(site)
             self.time_of_last_backup_check[site] = time.monotonic()
 
