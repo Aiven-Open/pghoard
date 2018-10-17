@@ -5,7 +5,7 @@ Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
 from contextlib import closing
-from pghoard import config, logutil, statsd, version, wal
+from pghoard import config, logutil, metrics, version, wal
 from pghoard.basebackup import PGBaseBackup
 from pghoard.common import (
     create_alert_file,
@@ -47,7 +47,7 @@ except ImportError:
 
 class PGHoard:
     def __init__(self, config_path):
-        self.stats = None
+        self.metrics = None
         self.log = logging.getLogger("pghoard")
         self.log_level = None
         self.running = True
@@ -94,7 +94,7 @@ class PGHoard:
                 config_dict=self.config,
                 compression_queue=self.compression_queue,
                 transfer_queue=self.transfer_queue,
-                stats=self.stats)
+                metrics=self.metrics)
             self.compressors.append(compressor)
 
         compressor_state = {}  # shared among transfer agents
@@ -104,7 +104,7 @@ class PGHoard:
                 compression_queue=self.compression_queue,
                 mp_manager=self.mp_manager,
                 transfer_queue=self.transfer_queue,
-                stats=self.stats,
+                metrics=self.metrics,
                 shared_state_dict=compressor_state)
             self.transfer_agents.append(ta)
 
@@ -144,7 +144,7 @@ class PGHoard:
             transfer_queue=self.transfer_queue,
             callback_queue=callback_queue,
             pg_version_server=pg_version_server,
-            stats=self.stats)
+            metrics=self.metrics)
         thread.start()
         self.basebackups[site] = thread
 
@@ -168,7 +168,7 @@ class PGHoard:
                 create_alert_file(self.config, "configuration_error")
         except Exception as ex:  # log all errors and return None; pylint: disable=broad-except
             self.log.exception("Problem in getting PG server version")
-            self.stats.unexpected_exception(ex, where="check_pg_server_version")
+            self.metrics.unexpected_exception(ex, where="check_pg_server_version")
         return pg_version
 
     def receivexlog_listener(self, site, connection_info, wal_directory):
@@ -203,7 +203,7 @@ class PGHoard:
             pg_version_server=pg_version_server,
             site=site,
             last_flushed_lsn=last_flushed_lsn,
-            stats=self.stats)
+            metrics=self.metrics)
         thread.start()
         self.walreceivers[site] = thread
 
@@ -258,7 +258,7 @@ class PGHoard:
                               "timeline (%s)", wal_path, wal.name_for_tli_log_seg(tli, log, seg))
             except Exception as ex:  # FIXME: don't catch all exceptions; pylint: disable=broad-except
                 self.log.exception("Problem deleting: %r", wal_path)
-                self.stats.unexpected_exception(ex, where="delete_remote_wal_before")
+                self.metrics.unexpected_exception(ex, where="delete_remote_wal_before")
 
     def delete_remote_basebackup(self, site, basebackup, metadata):
         start_time = time.monotonic()
@@ -287,7 +287,7 @@ class PGHoard:
                 self.log.info("Tried to delete non-existent basebackup %r", obj_key)
             except Exception as ex:  # FIXME: don't catch all exceptions; pylint: disable=broad-except
                 self.log.exception("Problem deleting: %r", obj_key)
-                self.stats.unexpected_exception(ex, where="delete_remote_basebackup")
+                self.metrics.unexpected_exception(ex, where="delete_remote_basebackup")
         self.log.info("Deleted basebackup datafiles: %r, took: %.2fs",
                       ', '.join(basebackup_data_files), time.monotonic() - start_time)
 
@@ -486,7 +486,7 @@ class PGHoard:
                 self.log.error("main loop: %s: %s, retrying...", ex.__class__.__name__, ex)
             except Exception as ex:  # pylint: disable=broad-except
                 self.log.exception("Unexpected exception in PGHoard main loop")
-                self.stats.unexpected_exception(ex, where="pghoard_run")
+                self.metrics.unexpected_exception(ex, where="pghoard_run")
             time.sleep(5.0)
 
     def write_backup_state_to_json_file(self):
@@ -545,10 +545,8 @@ class PGHoard:
         except ValueError:
             self.log.exception("Problem with log_level: %r", self.log_level)
 
-        # statsd settings may have changed
-        stats = self.config.get("statsd", {})
-        self.stats = statsd.StatsClient(host=stats.get("host"), port=stats.get("port"),
-                                        tags=stats.get("tags"), message_format=stats.get("format"))
+        # Setup monitoring clients
+        self.metrics = metrics.Metrics(statsd=self.config.get("statsd", {}))
 
         for thread in self._get_all_threads():
             thread.config = new_config

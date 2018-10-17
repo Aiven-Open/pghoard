@@ -23,12 +23,12 @@ _last_stats_transmit_time = 0
 
 
 class TransferAgent(Thread):
-    def __init__(self, config, compression_queue, mp_manager, transfer_queue, stats,
+    def __init__(self, config, compression_queue, mp_manager, transfer_queue, metrics,
                  shared_state_dict):
         super().__init__()
         self.log = logging.getLogger("TransferAgent")
         self.config = config
-        self.stats = stats
+        self.metrics = metrics
         self.compression_queue = compression_queue
         self.mp_manager = mp_manager
         self.fetch_manager = FileFetchManager(self.config, self.mp_manager, self.get_object_storage)
@@ -77,9 +77,9 @@ class TransferAgent(Thread):
             name = name_parts[-1]
         return os.path.join(file_to_transfer["prefix"], file_to_transfer["filetype"], name)
 
-    def transmit_statsd_metrics(self):
+    def transmit_metrics(self):
         """
-        Keep statsd updated about how long time ago each filetype was successfully uploaded.
+        Keep metrics updated about how long time ago each filetype was successfully uploaded.
         Transmits max once per ten seconds, regardless of how many threads are running.
         """
         global _last_stats_transmit_time  # pylint: disable=global-statement
@@ -90,7 +90,7 @@ class TransferAgent(Thread):
             for site in self.state:
                 for filetype, prop in self.state[site]["upload"].items():
                     if prop["last_success"]:
-                        self.stats.gauge(
+                        self.metrics.gauge(
                             "pghoard.last_upload_age",
                             time.time() - prop["last_success"],
                             tags={
@@ -102,7 +102,7 @@ class TransferAgent(Thread):
 
     def run(self):
         while self.running:
-            self.transmit_statsd_metrics()
+            self.transmit_metrics()
             self.fetch_manager.check_state()
             try:
                 file_to_transfer = self.transfer_queue.get(timeout=1.0)
@@ -139,7 +139,7 @@ class TransferAgent(Thread):
                         # reset corresponding xlog stats at basebackup
                         self.state[site][oper]["xlog"]["xlogs_since_basebackup"] = 0
 
-                    self.stats.gauge(
+                    self.metrics.gauge(
                         "pghoard.xlogs_since_basebackup",
                         self.state[site][oper]["xlog"]["xlogs_since_basebackup"],
                         tags={"site": site})
@@ -147,7 +147,7 @@ class TransferAgent(Thread):
                 self.state[site][oper][filetype]["last_success"] = time.time()
                 self.state[site][oper][filetype]["count"] += 1
                 self.state[site][oper][filetype]["data"] += oper_size
-                self.stats.gauge(
+                self.metrics.gauge(
                     "pghoard.total_upload_size",
                     self.state[site][oper][filetype]["data"],
                     tags={
@@ -160,7 +160,7 @@ class TransferAgent(Thread):
                 self.state[site][oper][filetype]["failures"] += 1
 
             if oper == "upload":
-                self.stats.increase(
+                self.metrics.increase(
                     "pghoard.upload_size",
                     inc_value=oper_size,
                     tags={
@@ -192,7 +192,7 @@ class TransferAgent(Thread):
             return {"success": False, "exception": ex, "opaque": file_to_transfer.get("opaque")}
         except Exception as ex:  # pylint: disable=broad-except
             self.log.exception("Problem happened when retrieving metadata: %r, %r", key, file_to_transfer)
-            self.stats.unexpected_exception(ex, where="handle_list")
+            self.metrics.unexpected_exception(ex, where="handle_list")
             return {"success": False, "exception": ex, "opaque": file_to_transfer.get("opaque")}
 
     def handle_metadata(self, site, key, file_to_transfer):
@@ -206,7 +206,7 @@ class TransferAgent(Thread):
             return {"success": False, "exception": ex, "opaque": file_to_transfer.get("opaque")}
         except Exception as ex:  # pylint: disable=broad-except
             self.log.exception("Problem happened when retrieving metadata: %r, %r", key, file_to_transfer)
-            self.stats.unexpected_exception(ex, where="handle_metadata")
+            self.metrics.unexpected_exception(ex, where="handle_metadata")
             return {"success": False, "exception": ex, "opaque": file_to_transfer.get("opaque")}
 
     def handle_download(self, site, key, file_to_transfer):
@@ -220,7 +220,7 @@ class TransferAgent(Thread):
             return {"success": False, "exception": ex, "opaque": file_to_transfer.get("opaque")}
         except Exception as ex:  # pylint: disable=broad-except
             self.log.exception("Problem happened when downloading: %r, %r", key, file_to_transfer)
-            self.stats.unexpected_exception(ex, where="handle_download")
+            self.metrics.unexpected_exception(ex, where="handle_download")
             return {"success": False, "exception": ex, "opaque": file_to_transfer.get("opaque")}
 
     def handle_upload(self, site, key, file_to_transfer):
@@ -250,14 +250,14 @@ class TransferAgent(Thread):
                         os.unlink(metadata_path)
                 except Exception as ex:  # pylint: disable=broad-except
                     self.log.exception("Problem in deleting file: %r", file_to_transfer["local_path"])
-                    self.stats.unexpected_exception(ex, where="handle_upload_unlink")
+                    self.metrics.unexpected_exception(ex, where="handle_upload_unlink")
             return {"success": True, "opaque": file_to_transfer.get("opaque")}
         except Exception as ex:  # pylint: disable=broad-except
             if file_to_transfer.get("retry_number", 0) > 0:
                 self.log.exception("Problem in moving file: %r, need to retry", file_to_transfer["local_path"])
                 # Ignore the exception the first time round as some object stores have frequent Internal Errors
                 # and the upload usually goes through without any issues the second time round
-                self.stats.unexpected_exception(ex, where="handle_upload")
+                self.metrics.unexpected_exception(ex, where="handle_upload")
             else:
                 self.log.warning("Problem in moving file: %r, need to retry (%s: %s)",
                                  file_to_transfer["local_path"], ex.__class__.__name__, ex)

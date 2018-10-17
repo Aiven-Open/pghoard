@@ -16,11 +16,11 @@ import os
 
 
 class CompressorThread(Thread):
-    def __init__(self, config_dict, compression_queue, transfer_queue, stats):
+    def __init__(self, config_dict, compression_queue, transfer_queue, metrics):
         super().__init__()
         self.log = logging.getLogger("Compressor")
         self.config = config_dict
-        self.stats = stats
+        self.metrics = metrics
         self.state = {}
         self.compression_queue = compression_queue
         self.transfer_queue = transfer_queue
@@ -80,7 +80,7 @@ class CompressorThread(Thread):
                     log_event = event
                 self.log.exception("Problem handling: %r: %s: %s",
                                    log_event, ex.__class__.__name__, ex)
-                self.stats.unexpected_exception(ex, where="compressor_run")
+                self.metrics.unexpected_exception(ex, where="compressor_run")
                 if "callback_queue" in event and event["callback_queue"]:
                     event["callback_queue"].put({"success": False, "exception": ex, "opaque": event.get("opaque")})
 
@@ -175,7 +175,7 @@ class CompressorThread(Thread):
         self.state[site][filetype]["count"] += 1
         if original_file_size:
             size_ratio = compressed_file_size / original_file_size
-            self.stats.gauge(
+            self.metrics.gauge(
                 "pghoard.compressed_size_ratio", size_ratio,
                 tags={
                     "algorithm": self.config["compression"]["algorithm"],

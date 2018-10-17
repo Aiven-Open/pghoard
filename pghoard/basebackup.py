@@ -54,7 +54,7 @@ class NoException(BaseException):
 
 class PGBaseBackup(Thread):
     def __init__(self, config, site, connection_info, basebackup_path,
-                 compression_queue, stats, transfer_queue=None,
+                 compression_queue, metrics, transfer_queue=None,
                  callback_queue=None, pg_version_server=None):
         super().__init__()
         self.log = logging.getLogger("PGBaseBackup")
@@ -64,7 +64,7 @@ class PGBaseBackup(Thread):
         self.basebackup_path = basebackup_path
         self.callback_queue = callback_queue
         self.compression_queue = compression_queue
-        self.stats = stats
+        self.metrics = metrics
         self.transfer_queue = transfer_queue
         self.running = True
         self.pid = None
@@ -88,7 +88,7 @@ class PGBaseBackup(Thread):
                 self.log.error(str(ex))
             else:
                 self.log.exception("Backup unexpectedly failed")
-                self.stats.unexpected_exception(ex, where="PGBaseBackup")
+                self.metrics.unexpected_exception(ex, where="PGBaseBackup")
 
             if self.callback_queue:
                 # post a failure event
@@ -173,7 +173,7 @@ class PGBaseBackup(Thread):
 
         if original_input_size:
             size_ratio = compressed_file_size / original_input_size
-            self.stats.gauge(
+            self.metrics.gauge(
                 "pghoard.compressed_size_ratio", size_ratio,
                 tags={
                     "algorithm": compression_algorithm,
@@ -442,7 +442,7 @@ class PGBaseBackup(Thread):
         )
 
         size_ratio = result_size / input_size
-        self.stats.gauge(
+        self.metrics.gauge(
             "pghoard.compressed_size_ratio", size_ratio,
             tags={
                 "algorithm": self.config["compression"]["algorithm"],

@@ -1,0 +1,3 @@
+clients = {
+    "statsd": "StatsClient",
+}
