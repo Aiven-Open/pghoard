@@ -1,10 +1,8 @@
 """
 Interface for monitoring clients
 
-Supports Statsd
-
 """
-from pghoard.statsd import StatsClient # noqa pylint: disable=unused-import
+import pghoard.monitoring # noqa pylint: disable=unused-import
 from pghoard import mapping
 
 
@@ -20,9 +18,11 @@ class Metrics(object):
 
         for k, config in configs.items():
             if isinstance(config, dict) and k in mapping.clients:
-                client_class = globals()[mapping.clients[k]]
-                client = client_class(config)
-                clients.append(client)
+                components = mapping.clients[k].split('.')
+                mod = __import__(components[0])
+                for comp in components[1:]:
+                    mod = getattr(mod, comp)
+                clients.append(mod(config))
         return clients
 
     def gauge(self, metric, value, tags=None):

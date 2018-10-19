@@ -1,3 +1,3 @@
 clients = {
-    "statsd": "StatsClient",
+    "statsd": "pghoard.monitoring.statsd.StatsClient",
 }
