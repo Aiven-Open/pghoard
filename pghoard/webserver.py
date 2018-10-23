@@ -152,6 +152,10 @@ class RequestHandler(BaseHTTPRequestHandler):
             if len(path) != 1:
                 raise HttpResponse("Invalid status request", status=400)
             return (None, "status", None)
+        elif path[0] == "metrics":
+            if len(path) != 1:
+                raise HttpResponse("Invalid request", status=400)
+            return (None, "metrics", None)
 
         if len(path) < 2:
             raise HttpResponse("Invalid path {!r}".format(path), status=400)
@@ -361,6 +365,18 @@ class RequestHandler(BaseHTTPRequestHandler):
             # TODO: Handle site specific status
             raise HttpResponse(status=501)  # Not Implemented
 
+    def get_metrics(self, site):
+        data = ""
+        if site is None:
+            try:
+                with open("/tmp/pghoard-prometheus.txt", "r") as fp:
+                    data = fp.read()
+            except IOError:
+                raise HttpResponse(status=501)  # Not Implemented
+            raise HttpResponse(data, status=200)
+        else:
+            raise HttpResponse(status=501)  # Not Implemented
+
     def _try_save_and_verify_restored_file(self, filetype, filename, prefetch_target_path, target_path, unlink=True):
         try:
             self._save_and_verify_restored_file(filetype, filename, prefetch_target_path, target_path)
@@ -512,5 +528,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                 self.list_basebackups(site)
             elif obtype == "status":
                 self.get_status(site)
+            elif obtype == "metrics":
+                self.get_metrics(site)
             else:
                 self.get_wal_or_timeline_file(site, obname, obtype)
