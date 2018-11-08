@@ -249,7 +249,7 @@ class CompressionCase(PGHoardTestCase):
             "src_path": zero.path_partial,
             "type": "MOVE",
         }
-        transfer_event = self.compression_queue.put(event)
+        self.compression_queue.put(event)
         transfer_event = self.transfer_queue.get(timeout=5.0)
         expected = {
             "callback_queue": callback_queue,

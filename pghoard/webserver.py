@@ -36,7 +36,7 @@ class OwnHTTPServer(PoolMixIn, HTTPServer):
 
 class HttpResponse(Exception):
     def __init__(self, msg=None, headers=None, status=500):
-        self.error = not (status >= 200 and status <= 299)
+        self.error = (status < 200 or status >= 300)
         self.headers = headers or {}
         self.msg = msg
         self.status = status

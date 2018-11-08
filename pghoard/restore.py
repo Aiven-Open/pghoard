@@ -227,7 +227,8 @@ class Restore:
                 tablespace_mapping=tablespace_mapping,
                 tablespace_base_dir=arg.tablespace_base_dir,
             )
-        except RestoreError:
+        except RestoreError:  # pylint: disable=try-except-raise
+            # Pass RestoreErrors thru
             raise
         except Exception as ex:
             if self.log_tracebacks:

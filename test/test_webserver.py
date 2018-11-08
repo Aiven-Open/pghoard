@@ -35,22 +35,22 @@ class TestWebServer:
     def test_requesting_status(self, pghoard):
         pghoard.write_backup_state_to_json_file()
         conn = HTTPConnection(host="127.0.0.1", port=pghoard.config["http_port"])
-        response = conn.request("GET", "/status")
+        conn.request("GET", "/status")
         response = conn.getresponse()
         response_parsed = json.loads(response.read().decode('utf-8'))
         assert response.status == 200
         # "startup_time": "2016-06-23T14:53:25.840787",
         assert response_parsed['startup_time'] is not None
 
-        response = conn.request("GET", "/status/somesite")
+        conn.request("GET", "/status/somesite")
         response = conn.getresponse()
         assert response.status == 400
 
-        response = conn.request("GET", "/somesite/status")
+        conn.request("GET", "/somesite/status")
         response = conn.getresponse()
         assert response.status == 404
 
-        response = conn.request("GET", "/{}/status".format(pghoard.test_site))
+        conn.request("GET", "/{}/status".format(pghoard.test_site))
         response = conn.getresponse()
         assert response.status == 501
 
@@ -545,7 +545,7 @@ class TestWebServer:
     def test_requesting_basebackup(self, pghoard):
         nonexistent_basebackup = "/{}/archive/basebackup".format(pghoard.test_site)
         conn = HTTPConnection(host="127.0.0.1", port=pghoard.config["http_port"])
-        status = conn.request("PUT", nonexistent_basebackup)
+        conn.request("PUT", nonexistent_basebackup)
         status = conn.getresponse().status
         assert status == 201
         assert pghoard.requested_basebackup_sites == {"test_requesting_basebackup"}
