@@ -202,7 +202,7 @@ class TestBasebackupFetcher(unittest.TestCase):
             self.run_restore_test("basebackup", tar, self.real_processing)
 
     def real_processing(self, fetcher, restore_dir):
-        assert fetcher.pool_class == multiprocessing.Pool
+        assert fetcher.pool_class == multiprocessing.Pool  # pylint: disable=comparison-with-callable
         fetcher.fetch_all()
         self.check_sha256(os.path.join(restore_dir, "base", "1", "2996"),
                           "214967296374cae6f099e19910b33a0893f0abc62f50601baa2875ab055cd27b")
