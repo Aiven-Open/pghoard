@@ -13,6 +13,7 @@ from tempfile import NamedTemporaryFile
 from threading import Thread
 import logging
 import os
+import socket
 
 
 class CompressorThread(Thread):
@@ -162,6 +163,7 @@ class CompressorThread(Thread):
             "compression-algorithm": self.config["compression"]["algorithm"],
             "compression-level": self.config["compression"]["level"],
             "original-file-size": original_file_size,
+            "host": socket.gethostname(),
         })
         if encryption_key_id:
             metadata.update({"encryption-key-id": encryption_key_id})

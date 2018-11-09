@@ -16,6 +16,7 @@ import io
 import lzma
 import logging
 import os
+import socket
 import pytest
 
 
@@ -173,6 +174,7 @@ class CompressionCase(PGHoardTestCase):
             "metadata": {
                 "compression-algorithm": self.algorithm,
                 "compression-level": 0,
+                "host": socket.gethostname(),
                 "original-file-size": file_size,
                 "pg-version": 90500,
             },
@@ -197,6 +199,7 @@ class CompressionCase(PGHoardTestCase):
             "metadata": {
                 "compression-algorithm": self.algorithm,
                 "compression-level": 0,
+                "host": socket.gethostname(),
                 "original-file-size": ifile.size,
                 "pg-version": 90500,
             },
@@ -229,6 +232,7 @@ class CompressionCase(PGHoardTestCase):
                 "compression-algorithm": self.algorithm,
                 "compression-level": 0,
                 "encryption-key-id": "testkey",
+                "host": socket.gethostname(),
                 "original-file-size": ifile.size,
                 "pg-version": 90500,
             },
@@ -258,6 +262,7 @@ class CompressionCase(PGHoardTestCase):
             "metadata": {
                 "compression-algorithm": self.algorithm,
                 "compression-level": 0,
+                "host": socket.gethostname(),
                 "original-file-size": zero.size,
                 "pg-version": 90500,
             },
@@ -280,6 +285,7 @@ class CompressionCase(PGHoardTestCase):
             "metadata": {
                 "compression-algorithm": self.algorithm,
                 "compression-level": 0,
+                "host": socket.gethostname(),
                 "original-file-size": ifile.size,
                 "pg-version": 90500,
             },
@@ -316,6 +322,7 @@ class CompressionCase(PGHoardTestCase):
                 "compression-algorithm": self.algorithm,
                 "compression-level": 0,
                 "encryption-key-id": "testkey",
+                "host": socket.gethostname(),
                 "original-file-size": ifile.size,
                 "pg-version": 90500,
             },
