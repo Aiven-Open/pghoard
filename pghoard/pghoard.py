@@ -552,6 +552,7 @@ class PGHoard:
 
         for thread in self._get_all_threads():
             thread.config = new_config
+            thread.site_transfers = {}
 
         self.log.debug("Loaded config: %r from: %r", self.config, self.config_path)
 
