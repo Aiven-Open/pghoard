@@ -7,7 +7,7 @@ See LICENSE for details
 # pylint: disable=attribute-defined-outside-init
 from .base import PGHoardTestCase, CONSTANT_TEST_RSA_PUBLIC_KEY, CONSTANT_TEST_RSA_PRIVATE_KEY
 from .test_wal import wal_header_for_file
-from pghoard import statsd
+from pghoard import metrics
 from pghoard.compressor import CompressorThread
 from pghoard.rohmu import compressor, IO_BLOCK_SIZE, rohmufile
 from pghoard.rohmu.snappyfile import snappy, SnappyFile
@@ -90,7 +90,7 @@ class CompressionCase(PGHoardTestCase):
             config_dict=self.config,
             compression_queue=self.compression_queue,
             transfer_queue=self.transfer_queue,
-            stats=statsd.StatsClient(host=None),
+            metrics=metrics.Metrics(statsd={}),
         )
         self.compressor.start()
 

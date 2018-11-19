@@ -9,12 +9,12 @@ Supports telegraf's statsd protocol extension for 'key=value' tags:
 import socket
 
 
-class StatsClient:
-    def __init__(self, host="127.0.0.1", port=8125, tags=None, message_format=None):
-        self._dest_addr = (host, port)
+class StatsClient(object):
+    def __init__(self, config):
+        self._dest_addr = (config.get("host", "127.0.0.1"), config.get("port", 8125))
         self._socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self._tags = tags or {}
-        self._message_format = message_format or "telegraf"
+        self._tags = config.get("tags", {})
+        self._message_format = config.get("format", "telegraf")
 
     def gauge(self, metric, value, tags=None):
         self._send(metric, b"g", value, tags)

@@ -6,7 +6,7 @@ See LICENSE for details
 """
 from .conftest import PGTester
 from copy import deepcopy
-from pghoard import common, pgutil, statsd
+from pghoard import common, pgutil, metrics
 from pghoard.basebackup import PGBaseBackup
 from pghoard.restore import Restore, RestoreError
 from pghoard.rohmu import get_transfer
@@ -41,7 +41,7 @@ LABEL: pg_basebackup base backup
             tfile.add(os.path.join(td, "backup_label"), arcname="backup_label")
         pgb = PGBaseBackup(config=None, site="foosite", connection_info=None,
                            basebackup_path=None, compression_queue=None, transfer_queue=None,
-                           stats=statsd.StatsClient(host=None))
+                           metrics=metrics.Metrics(statsd={}))
         start_wal_segment, start_time = pgb.parse_backup_label_in_tar(fn)
         assert start_wal_segment == "000000010000000000000004"
         assert start_time == "2015-02-12T14:07:19+00:00"
@@ -65,7 +65,7 @@ LABEL: pg_basebackup base backup
 
         pgb = PGBaseBackup(config=None, site="foosite", connection_info=None,
                            basebackup_path=None, compression_queue=None, transfer_queue=None,
-                           stats=statsd.StatsClient(host=None))
+                           metrics=metrics.Metrics(statsd={}))
         create_test_files()
         files = pgb.find_files_to_backup(pgdata=db.pgdata, tablespaces={})
         first_file = next(files)
@@ -153,7 +153,7 @@ LABEL: pg_basebackup base backup
 
         pgb = PGBaseBackup(config=None, site="foosite", connection_info=None,
                            basebackup_path=None, compression_queue=None, transfer_queue=None,
-                           stats=statsd.StatsClient(host=None))
+                           metrics=metrics.Metrics(statsd={}))
         total_file_count, chunks = pgb.find_and_split_files_to_backup(
             pgdata=pgdata, tablespaces={}, target_chunk_size=110000
         )

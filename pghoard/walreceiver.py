@@ -22,7 +22,7 @@ KEEPALIVE_INTERVAL = 10.0
 
 class WALReceiver(Thread):
     def __init__(self, config, connection_string, compression_queue, replication_slot, pg_version_server, site,
-                 last_flushed_lsn=None, stats=None):
+                 last_flushed_lsn=None, metrics=None):
         super().__init__()
         self.log = logging.getLogger("WALReceiver")
         self.running = True
@@ -41,7 +41,7 @@ class WALReceiver(Thread):
         self.latest_activity = datetime.datetime.utcnow()
         self.callbacks = {}
         self.last_flushed_lsn = last_flushed_lsn
-        self.stats = stats
+        self.metrics = metrics
         self.log.info("WALReceiver initialized with replication_slot: %r, last_flushed_lsn: %r",
                       self.replication_slot, last_flushed_lsn)
 
@@ -157,7 +157,7 @@ class WALReceiver(Thread):
                 msg = self.c.read_message()
             except psycopg2.DatabaseError as ex:
                 self.log.exception("Unexpected exception in reading walreceiver msg")
-                self.stats.unexpected_exception(ex, where="walreceiver_run")
+                self.metrics.unexpected_exception(ex, where="walreceiver_run")
                 continue
             self.log.debug("replication_msg: %r, buffer: %r/%r",
                            msg, self.buffer.tell(), WAL_SEG_SIZE)
