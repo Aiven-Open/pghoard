@@ -25,6 +25,7 @@ import logging
 import os
 import psycopg2
 import select
+import socket
 import stat
 import subprocess
 import time
@@ -184,6 +185,7 @@ class PGBaseBackup(Thread):
         metadata = {
             "compression-algorithm": compression_algorithm,
             "encryption-key-id": encryption_key_id,
+            "host": socket.gethostname(),
         }
         return original_input_size, compressed_file_size, metadata
 
@@ -456,6 +458,7 @@ class PGBaseBackup(Thread):
             "encryption-key-id": encryption_key_id,
             "format": "pghoard-bb-v2",
             "original-file-size": input_size,
+            "host": socket.gethostname(),
         }
         if extra_metadata:
             metadata.update(extra_metadata)
@@ -650,6 +653,7 @@ class PGBaseBackup(Thread):
             "pghoard_object": "basebackup",
             "pghoard_version": version.__version__,
             "tablespaces": tablespaces,
+            "host": socket.gethostname(),
         }
         control_files = list(self.get_control_entries_for_tar(
             metadata=metadata,
