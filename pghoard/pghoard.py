@@ -546,7 +546,9 @@ class PGHoard:
             self.log.exception("Problem with log_level: %r", self.log_level)
 
         # Setup monitoring clients
-        self.metrics = metrics.Metrics(statsd=self.config.get("statsd", None))
+        self.metrics = metrics.Metrics(
+            statsd=self.config.get("statsd", None),
+            pushgateway=self.config.get("pushgateway", None))
 
         for thread in self._get_all_threads():
             thread.config = new_config

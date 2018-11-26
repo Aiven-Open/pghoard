@@ -450,6 +450,21 @@ Determines statsd message format. Following formats are supported:
 
 The ``tags`` setting can be used to enter optional tag values for the metrics.
 
+``pushgateway`` (default: disabled)
+
+Enables metrics sending to a Prometheus Pushgateway with tags.
+
+The value is a JSON object::
+
+  {
+      "endpoint": "<pushgateway address>",
+      "tags": {
+          "<tag>": "<value>"
+      }
+  }
+
+The ``tags`` setting can be used to enter optional tag values for the metrics.
+
 ``syslog`` (default ``false``)
 
 Determines whether syslog logging should be turned on or not.
