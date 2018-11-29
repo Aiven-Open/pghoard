@@ -487,6 +487,10 @@ Determines syslog log facility. (requires syslog to be true as well)
 After this many failed upload attempts for a single file, create an
 alert file.
 
+``restore_max_stale_seconds`` (default ``120``)
+
+Wait for this delay before aborting a staled restore attempt.
+
 ``tar_executable`` (default ``"pghoard_gnutaremu"``)
 
 The tar command to use for restoring basebackups. This must be GNU tar because some

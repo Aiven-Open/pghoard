@@ -453,7 +453,6 @@ class BasebackupFetcher():
         self.last_total_downloaded = 0
         self.lock = RLock()
         self.manager_class = multiprocessing.Manager if self._process_count() > 1 else ThreadingManager
-        self.max_stale_seconds = 120
         self.pending_jobs = set()
         self.pgdata = pgdata
         # There's no point in spawning child processes if process count is 1
@@ -588,7 +587,7 @@ class BasebackupFetcher():
             self._print_download_progress()
             self.sleep_fn(1)
             stall_duration = time.monotonic() - self.last_progress_ts
-            if stall_duration > self.max_stale_seconds:
+            if stall_duration > self.config["restore_max_stale_seconds"]:
                 self.log.error("Download stalled for %r seconds, aborting downloaders", stall_duration)
                 raise TimeoutError()
 

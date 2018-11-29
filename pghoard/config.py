@@ -47,6 +47,7 @@ def set_and_check_config_defaults(config, *, check_commands=True, check_pgdata=T
     config.setdefault("path_prefix", "")  # deprecated, used in the default path for sites
     config.setdefault("tar_executable", "pghoard_gnutaremu")
     config.setdefault("upload_retries_warning_limit", 3)
+    config.setdefault("restore_max_stale_seconds", 120)
 
     # default to cpu_count + 1 compression threads
     config.setdefault("compression", {}).setdefault(
