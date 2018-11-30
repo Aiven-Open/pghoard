@@ -13,6 +13,8 @@ import json
 import os
 import shutil
 
+CHUNK_SIZE = 1024 * 1024
+
 
 class LocalTransfer(BaseTransfer):
     def __init__(self, directory, prefix=None):
@@ -114,19 +116,26 @@ class LocalTransfer(BaseTransfer):
             dst_stat = os.stat(filepath_to_store_to)
             if dst_stat.st_dev == src_stat.st_dev and dst_stat.st_ino == src_stat.st_ino:
                 raise LocalFileIsRemoteFileError(source_path)
-        shutil.copyfile(source_path, filepath_to_store_to)
-        if progress_callback:
-            progress_callback(1, 1)
-        return self.get_metadata_for_key(key)
+        with open(filepath_to_store_to, "wb") as fileobj_to_store_to:
+            return self.get_contents_to_fileobj(key, fileobj_to_store_to, progress_callback=progress_callback)
 
     def get_contents_to_fileobj(self, key, fileobj_to_store_to, *, progress_callback=None):
         source_path = self.format_key_for_backend(key.strip("/"))
         if not os.path.exists(source_path):
             raise FileNotFoundFromStorageError(key)
+
+        input_size = os.stat(source_path).st_size
+        bytes_written = 0
         with open(source_path, "rb") as fp:
-            shutil.copyfileobj(fp, fileobj_to_store_to)
-        if progress_callback:
-            progress_callback(1, 1)
+            while True:
+                buf = fp.read(CHUNK_SIZE)
+                if not buf:
+                    break
+                fileobj_to_store_to.write(buf)
+                bytes_written += len(buf)
+                if progress_callback:
+                    progress_callback(bytes_written, input_size)
+
         return self.get_metadata_for_key(key)
 
     def get_contents_to_string(self, key):
