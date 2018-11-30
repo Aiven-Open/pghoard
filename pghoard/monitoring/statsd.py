@@ -9,7 +9,7 @@ Supports telegraf's statsd protocol extension for 'key=value' tags:
 import socket
 
 
-class StatsClient(object):
+class StatsClient:
     def __init__(self, config):
         self._dest_addr = (config.get("host", "127.0.0.1"), config.get("port", 8125))
         self._socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)

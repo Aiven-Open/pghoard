@@ -5,7 +5,7 @@ Interface for monitoring clients
 import pghoard
 
 
-class Metrics(object):
+class Metrics:
     def __init__(self, **configs):
         self.clients = self._init_clients(configs)
 
