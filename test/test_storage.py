@@ -50,12 +50,24 @@ def _test_storage(st, driver, tmpdir, storage_config):
 
     # Other basic cases
     from_disk_file = str(scratch.join("a"))
+    input_data = b"from disk"
+    if driver == "local":
+        input_data = input_data * 150000
     with open(from_disk_file, "wb") as fp:
-        fp.write(b"from disk")
+        fp.write(input_data)
     st.store_file_from_disk("test1/x1", from_disk_file, None)
     out = BytesIO()
-    assert st.get_contents_to_fileobj("test1/x1", out) == {}
-    assert out.getvalue() == b"from disk"
+
+    reported_positions = []
+
+    def progress_callback(pos, total):
+        reported_positions.append((pos, total))
+
+    assert st.get_contents_to_fileobj("test1/x1", out, progress_callback=progress_callback) == {}
+    assert out.getvalue() == input_data
+    if driver == "local":
+        input_size = len(input_data)
+        assert reported_positions == [(1024 * 1024, input_size), (input_size, input_size)]
 
     if driver == "s3":
         response = st.s3_client.head_object(
