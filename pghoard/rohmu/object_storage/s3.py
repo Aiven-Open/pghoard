@@ -197,7 +197,7 @@ class S3Transfer(BaseTransfer):
         key = self.format_key_for_backend(key, remove_slash_prefix=True)
         args = {
             "Bucket": self.bucket_name,
-            "Body": memstring,
+            "Body": bytes(memstring),  # make sure Body is of type bytes as memoryview's not allowed, only bytes/bytearrays
             "Key": key,
         }
         if metadata:
