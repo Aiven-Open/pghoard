@@ -100,8 +100,9 @@ class PGBaseBackup(Thread):
 
     @staticmethod
     def get_paths_for_backup(basebackup_path):
+        i = 0
         while True:
-            tsdir = datetime.datetime.utcnow().strftime("%Y-%m-%d_%H-%M")
+            tsdir = "{}_{}".format(datetime.datetime.utcnow().strftime("%Y-%m-%d_%H-%M"), i)
             raw_basebackup = os.path.join(basebackup_path + "_incoming", tsdir)
             compressed_basebackup = os.path.join(basebackup_path, tsdir)
             # The backup directory names need not to be a sequence, so we lean towards skipping over any
@@ -111,6 +112,7 @@ class PGBaseBackup(Thread):
                 with suppress(FileExistsError):
                     os.makedirs(raw_basebackup)
                     return raw_basebackup, compressed_basebackup
+            i += 1
 
     def get_command_line(self, output_name):
         command = [
