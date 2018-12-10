@@ -159,9 +159,9 @@ class TransferAgent(Thread):
             else:
                 self.state[site][oper][filetype]["failures"] += 1
 
-            if oper == "upload":
+            if oper in {"download", "upload"}:
                 self.metrics.increase(
-                    "pghoard.upload_size",
+                    "pghoard.{}_size".format(oper),
                     inc_value=oper_size,
                     tags={
                         "result": "ok" if result["success"] else "failed",
