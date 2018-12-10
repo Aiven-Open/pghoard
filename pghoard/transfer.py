@@ -173,10 +173,11 @@ class TransferAgent(Thread):
             if result.get("call_callback", True) and file_to_transfer.get("callback_queue"):
                 file_to_transfer["callback_queue"].put(result)
 
-            self.log.info("%r %stransfer of key: %r, size: %r, took %.3fs",
+            self.log.info("%r %stransfer of key: %r, size: %r, origin: %r took %.3fs",
                           file_to_transfer["type"],
                           "FAILED " if not result["success"] else "",
-                          key, oper_size, time.time() - start_time)
+                          key, oper_size, file_to_transfer.get("metadata", {}).get("host"),
+                          time.time() - start_time)
 
         self.fetch_manager.stop()
         self.log.debug("Quitting TransferAgent")
