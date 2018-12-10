@@ -84,7 +84,7 @@ class TransferAgent(Thread):
         """
         global _last_stats_transmit_time  # pylint: disable=global-statement
         with _STATS_LOCK:  # pylint: disable=not-context-manager
-            if time.time() - _last_stats_transmit_time < 10.0:
+            if time.monotonic() - _last_stats_transmit_time < 10.0:
                 return
 
             for site in self.state:
@@ -92,13 +92,13 @@ class TransferAgent(Thread):
                     if prop["last_success"]:
                         self.metrics.gauge(
                             "pghoard.last_upload_age",
-                            time.time() - prop["last_success"],
+                            time.monotonic() - prop["last_success"],
                             tags={
                                 "site": site,
                                 "type": filetype,
                             }
                         )
-            _last_stats_transmit_time = time.time()
+            _last_stats_transmit_time = time.monotonic()
 
     def run(self):
         while self.running:
@@ -117,7 +117,7 @@ class TransferAgent(Thread):
                            file_to_transfer["type"], file_to_transfer["local_path"],
                            file_to_transfer.get("file_size", "unknown"))
             file_to_transfer.setdefault("prefix", self.config["backup_sites"][site]["prefix"])
-            start_time = time.time()
+            start_time = time.monotonic()
             key = self.form_key_path(file_to_transfer)
             oper = file_to_transfer["type"].lower()
             oper_func = getattr(self, "handle_" + oper, None)
@@ -144,7 +144,7 @@ class TransferAgent(Thread):
                         self.state[site][oper]["xlog"]["xlogs_since_basebackup"],
                         tags={"site": site})
 
-                self.state[site][oper][filetype]["last_success"] = time.time()
+                self.state[site][oper][filetype]["last_success"] = time.monotonic()
                 self.state[site][oper][filetype]["count"] += 1
                 self.state[site][oper][filetype]["data"] += oper_size
                 self.metrics.gauge(
@@ -154,7 +154,7 @@ class TransferAgent(Thread):
                         "type": filetype,
                         "site": site,
                     })
-                self.state[site][oper][filetype]["time_taken"] += time.time() - start_time
+                self.state[site][oper][filetype]["time_taken"] += time.monotonic() - start_time
                 self.state[site][oper][filetype]["latest_filename"] = filename
             else:
                 self.state[site][oper][filetype]["failures"] += 1
@@ -177,7 +177,7 @@ class TransferAgent(Thread):
                           file_to_transfer["type"],
                           "FAILED " if not result["success"] else "",
                           key, oper_size, file_to_transfer.get("metadata", {}).get("host"),
-                          time.time() - start_time)
+                          time.monotonic() - start_time)
 
         self.fetch_manager.stop()
         self.log.debug("Quitting TransferAgent")
