@@ -231,7 +231,7 @@ class SwiftTransfer(BaseTransfer):
 
         key = self.format_key_for_backend(key)
         metadata_to_send = self._metadata_to_headers(self.sanitize_metadata(metadata))
-        self.conn.put_object(self.container_name, key, contents=memstring, headers=metadata_to_send)
+        self.conn.put_object(self.container_name, key, contents=bytes(memstring), headers=metadata_to_send)
 
     def store_file_from_disk(self, key, filepath, metadata=None, multipart=None, cache_control=None):
         if cache_control is not None:

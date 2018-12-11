@@ -181,7 +181,8 @@ class AzureTransfer(BaseTransfer):
         if cache_control is not None:
             raise NotImplementedError("AzureTransfer: cache_control support not implemented")
         key = self.format_key_for_backend(key, remove_slash_prefix=True)
-        self.conn.create_blob_from_bytes(self.container_name, key, memstring,
+        self.conn.create_blob_from_bytes(self.container_name, key,
+                                         bytes(memstring),  # azure would work with memoryview, but validates it's bytes
                                          metadata=self.sanitize_metadata(metadata, replace_hyphen_with="_"))
 
     def store_file_from_disk(self, key, filepath, metadata=None, multipart=None, cache_control=None):
