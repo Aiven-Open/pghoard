@@ -5,7 +5,7 @@ Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
 # pylint: disable=import-error, no-name-in-module
-from azure.storage.blob import BlockBlobService
+from azure.storage.blob import BlockBlobService, ContentSettings
 from azure.storage.blob.models import BlobPrefix
 from .base import BaseTransfer, KEY_TYPE_PREFIX, KEY_TYPE_OBJECT, IterKeyItem
 from ..errors import FileNotFoundFromStorageError, InvalidConfigurationError, StorageError
@@ -177,19 +177,26 @@ class AzureTransfer(BaseTransfer):
         except azure.common.AzureMissingResourceHttpError as ex:
             raise FileNotFoundFromStorageError(key) from ex
 
-    def store_file_from_memory(self, key, memstring, metadata=None, cache_control=None):
+    def store_file_from_memory(self, key, memstring, metadata=None, cache_control=None, mimetype=None):
         if cache_control is not None:
             raise NotImplementedError("AzureTransfer: cache_control support not implemented")
         key = self.format_key_for_backend(key, remove_slash_prefix=True)
+        content_settings = None
+        if mimetype:
+            content_settings = ContentSettings(content_type=mimetype)
         self.conn.create_blob_from_bytes(self.container_name, key,
                                          bytes(memstring),  # azure would work with memoryview, but validates it's bytes
+                                         content_settings=content_settings,
                                          metadata=self.sanitize_metadata(metadata, replace_hyphen_with="_"))
 
-    def store_file_from_disk(self, key, filepath, metadata=None, multipart=None, cache_control=None):
+    def store_file_from_disk(self, key, filepath, metadata=None, multipart=None, cache_control=None, mimetype=None):
         if cache_control is not None:
             raise NotImplementedError("AzureTransfer: cache_control support not implemented")
         key = self.format_key_for_backend(key, remove_slash_prefix=True)
-        self.conn.create_blob_from_path(self.container_name, key, filepath,
+        content_settings = None
+        if mimetype:
+            content_settings = ContentSettings(content_type=mimetype)
+        self.conn.create_blob_from_path(self.container_name, key, filepath, content_settings=content_settings,
                                         metadata=self.sanitize_metadata(metadata, replace_hyphen_with="_"))
 
     def get_or_create_container(self, container_name):

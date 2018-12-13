@@ -273,10 +273,10 @@ class GoogleTransfer(BaseTransfer):
             obj = self._retry_on_reset(req, req.execute)
             return int(obj["size"])
 
-    def _upload(self, upload_type, local_object, key, metadata, extra_props, cache_control):
+    def _upload(self, upload_type, local_object, key, metadata, extra_props, cache_control, mimetype=None):
         key = self.format_key_for_backend(key)
         self.log.debug("Starting to upload %r", key)
-        upload = upload_type(local_object, mimetype="application/octet-stream",
+        upload = upload_type(local_object, mimetype=mimetype or "application/octet-stream",
                              resumable=True, chunksize=UPLOAD_CHUNK_SIZE)
         body = {"metadata": metadata}
         if extra_props:
@@ -293,15 +293,16 @@ class GoogleTransfer(BaseTransfer):
                     self.log.debug("Upload of %r to %r: %d%%", local_object, key, status.progress() * 100)
 
     def store_file_from_memory(self, key, memstring, metadata=None, extra_props=None,  # pylint: disable=arguments-differ
-                               cache_control=None):
+                               cache_control=None, mimetype=None):
         return self._upload(MediaIoBaseUpload, BytesIO(memstring), key,
-                            self.sanitize_metadata(metadata), extra_props, cache_control=cache_control)
+                            self.sanitize_metadata(metadata), extra_props,
+                            cache_control=cache_control, mimetype=mimetype)
 
     def store_file_from_disk(self, key, filepath, metadata=None,  # pylint: disable=arguments-differ, unused-variable
                              *, multipart=None, extra_props=None,  # pylint: disable=arguments-differ, unused-variable
-                             cache_control=None):
+                             cache_control=None, mimetype=None):
         return self._upload(MediaFileUpload, filepath, key, self.sanitize_metadata(metadata), extra_props,
-                            cache_control=cache_control)
+                            cache_control=cache_control, mimetype=mimetype)
 
     def get_or_create_bucket(self, bucket_name):
         """Look up the bucket if it already exists and try to create the

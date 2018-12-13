@@ -154,14 +154,14 @@ class LocalTransfer(BaseTransfer):
         with open(metadata_path, "w") as fp:
             json.dump(self.sanitize_metadata(metadata), fp)
 
-    def store_file_from_memory(self, key, memstring, metadata=None, cache_control=None):
+    def store_file_from_memory(self, key, memstring, metadata=None, cache_control=None, mimetype=None):
         target_path = self.format_key_for_backend(key.strip("/"))
         makedirs(os.path.dirname(target_path), exist_ok=True)
         with open(target_path, "wb") as fp:
             fp.write(memstring)
         self._save_metadata(target_path, metadata)
 
-    def store_file_from_disk(self, key, filepath, metadata=None, multipart=None, cache_control=None):
+    def store_file_from_disk(self, key, filepath, metadata=None, multipart=None, cache_control=None, mimetype=None):
         target_path = self.format_key_for_backend(key.strip("/"))
         src_stat = os.stat(filepath)
         with suppress(FileNotFoundError):

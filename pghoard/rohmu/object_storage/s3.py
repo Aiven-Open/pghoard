@@ -193,7 +193,7 @@ class S3Transfer(BaseTransfer):
             else:
                 raise StorageError("File size lookup failed for {}".format(key)) from ex
 
-    def store_file_from_memory(self, key, memstring, metadata=None, cache_control=None):
+    def store_file_from_memory(self, key, memstring, metadata=None, cache_control=None, mimetype=None):
         key = self.format_key_for_backend(key, remove_slash_prefix=True)
         args = {
             "Bucket": self.bucket_name,
@@ -206,9 +206,11 @@ class S3Transfer(BaseTransfer):
             args["ServerSideEncryption"] = "AES256"
         if cache_control is not None:
             args["CacheControl"] = cache_control
+        if mimetype is not None:
+            args["ContentType"] = mimetype
         self.s3_client.put_object(**args)
 
-    def store_file_from_disk(self, key, filepath, metadata=None, multipart=None, cache_control=None):
+    def store_file_from_disk(self, key, filepath, metadata=None, multipart=None, cache_control=None, mimetype=None):
         size = os.path.getsize(filepath)
         if not multipart or size <= self.multipart_chunk_size:
             with open(filepath, "rb") as fh:
@@ -236,6 +238,8 @@ class S3Transfer(BaseTransfer):
             args["ServerSideEncryption"] = "AES256"
         if cache_control is not None:
             args["CacheControl"] = cache_control
+        if mimetype is not None:
+            args["ContentType"] = mimetype
         try:
             response = self.s3_client.create_multipart_upload(**args)
         except botocore.exceptions.ClientError as ex:
