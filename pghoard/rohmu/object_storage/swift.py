@@ -225,15 +225,16 @@ class SwiftTransfer(BaseTransfer):
         # PGHoard itself, this is only called by external apps that utilize PGHoard's object storage abstraction.
         raise NotImplementedError
 
-    def store_file_from_memory(self, key, memstring, metadata=None, cache_control=None):
+    def store_file_from_memory(self, key, memstring, metadata=None, cache_control=None, mimetype=None):
         if cache_control is not None:
             raise NotImplementedError("SwiftTransfer: cache_control support not implemented")
 
         key = self.format_key_for_backend(key)
         metadata_to_send = self._metadata_to_headers(self.sanitize_metadata(metadata))
-        self.conn.put_object(self.container_name, key, contents=bytes(memstring), headers=metadata_to_send)
+        self.conn.put_object(self.container_name, key, contents=bytes(memstring),
+                             content_type=mimetype, headers=metadata_to_send)
 
-    def store_file_from_disk(self, key, filepath, metadata=None, multipart=None, cache_control=None):
+    def store_file_from_disk(self, key, filepath, metadata=None, multipart=None, cache_control=None, mimetype=None):
         if cache_control is not None:
             raise NotImplementedError("SwiftTransfer: cache_control support not implemented")
 
@@ -270,7 +271,7 @@ class SwiftTransfer(BaseTransfer):
                                segment_no, filepath, key, this_segment_size)
                 segment_key = segment_key_format(segment_no)
                 self.conn.put_object(self.container_name, segment_key,
-                                     contents=fp, content_length=this_segment_size)
+                                     contents=fp, content_length=this_segment_size, content_type=mimetype)
             self.log.info("Uploaded %r segments of %r to %r", segment_no, key, segment_path)
             headers["x-object-manifest"] = "{}/{}".format(self.container_name, segment_path.lstrip("/"))
             self.conn.put_object(self.container_name, key, contents="", headers=headers, content_length=0)

@@ -100,8 +100,8 @@ class BaseTransfer:
         return {str(k).replace("-", replace_hyphen_with): str(v)
                 for k, v in (metadata or {}).items() if v is not None}
 
-    def store_file_from_memory(self, key, memstring, metadata=None, cache_control=None):
+    def store_file_from_memory(self, key, memstring, metadata=None, cache_control=None, mimetype=None):
         raise NotImplementedError
 
-    def store_file_from_disk(self, key, filepath, metadata=None, multipart=None, cache_control=None):
+    def store_file_from_disk(self, key, filepath, metadata=None, multipart=None, cache_control=None, mimetype=None):
         raise NotImplementedError
