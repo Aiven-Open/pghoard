@@ -130,7 +130,7 @@ def write_file(*, input_obj, output_obj, progress_callback=None,
     if log_func:
         log_compression_result(
             elapsed=time.monotonic() - start_time,
-            encrypted=True if rsa_public_key else False,
+            encrypted=bool(rsa_public_key),
             log_func=log_func,
             original_size=original_size,
             result_size=result_size,

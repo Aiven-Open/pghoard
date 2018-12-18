@@ -435,7 +435,7 @@ class PGBaseBackup(Thread):
             os.link(raw_output_obj.name, chunk_path)
 
         rohmufile.log_compression_result(
-            encrypted=True if encryption_key_id else False,
+            encrypted=bool(encryption_key_id),
             elapsed=time.monotonic() - start_time,
             original_size=input_size,
             result_size=result_size,

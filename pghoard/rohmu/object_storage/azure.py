@@ -90,7 +90,7 @@ class AzureTransfer(BaseTransfer):
         self.log.debug("Deleting key: %r", key)
         try:
             return self.conn.delete_blob(self.container_name, key)
-        except azure.common.AzureMissingResourceHttpError as ex:
+        except azure.common.AzureMissingResourceHttpError as ex:  # pylint: disable=no-member
             raise FileNotFoundFromStorageError(key) from ex
 
     def get_contents_to_file(self, key, filepath_to_store_to, *, progress_callback=None):
@@ -99,7 +99,7 @@ class AzureTransfer(BaseTransfer):
         self.log.debug("Starting to fetch the contents of: %r to: %r", key, filepath_to_store_to)
         try:
             self.conn.get_blob_to_path(self.container_name, key, filepath_to_store_to)
-        except azure.common.AzureMissingResourceHttpError as ex:
+        except azure.common.AzureMissingResourceHttpError as ex:  # pylint: disable=no-member
             raise FileNotFoundFromStorageError(key) from ex
 
         if progress_callback:
@@ -141,7 +141,7 @@ class AzureTransfer(BaseTransfer):
                     end_range = file_size - 1
                 if progress_callback:
                     progress_callback(start_range, file_size)
-            except azure.common.AzureHttpError as ex:
+            except azure.common.AzureHttpError as ex:  # pylint: disable=no-member
                 if ex.status_code == 416:  # Empty file
                     return
                 raise
@@ -152,7 +152,7 @@ class AzureTransfer(BaseTransfer):
         self.log.debug("Starting to fetch the contents of: %r", key)
         try:
             self._stream_blob(key, fileobj_to_store_to, progress_callback)
-        except azure.common.AzureMissingResourceHttpError as ex:
+        except azure.common.AzureMissingResourceHttpError as ex:  # pylint: disable=no-member
             raise FileNotFoundFromStorageError(key) from ex
 
         if progress_callback:
@@ -166,7 +166,7 @@ class AzureTransfer(BaseTransfer):
         try:
             blob = self.conn.get_blob_to_bytes(self.container_name, key)
             return blob.content, self._metadata_for_key(key)
-        except azure.common.AzureMissingResourceHttpError as ex:
+        except azure.common.AzureMissingResourceHttpError as ex:  # pylint: disable=no-member
             raise FileNotFoundFromStorageError(key) from ex
 
     def get_file_size(self, key):
@@ -174,7 +174,7 @@ class AzureTransfer(BaseTransfer):
         try:
             blob = self.conn.get_blob_properties(self.container_name, key)
             return blob.properties.content_length
-        except azure.common.AzureMissingResourceHttpError as ex:
+        except azure.common.AzureMissingResourceHttpError as ex:  # pylint: disable=no-member
             raise FileNotFoundFromStorageError(key) from ex
 
     def store_file_from_memory(self, key, memstring, metadata=None, cache_control=None, mimetype=None):
