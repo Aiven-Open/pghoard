@@ -1,11 +1,11 @@
-astroid==1.5.2 
+astroid==2.0.0
 botocore 
 cryptography 
 flake8 
 httplib2 
 mock 
 psycopg2 
-pylint==1.7.4 
+pylint==2.2.2
 pytest 
 python-dateutil 
 python-snappy 
