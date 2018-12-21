@@ -5,7 +5,7 @@ Url:            http://github.com/ohmu/pghoard
 Summary:        PostgreSQL streaming backup service
 License:        ASL 2.0
 Source0:        pghoard-rpm-src.tar
-Requires:       postgresql-server, systemd
+Requires:       systemd
 Requires:       python3-botocore, python3-cryptography >= 0.8, python3-dateutil
 Requires:       python3-psycopg2, python3-requests, python3-snappy
 Conflicts:      pgespresso92 < 1.2, pgespresso93 < 1.2, pgespresso94 < 1.2, pgespresso95 < 1.2
@@ -34,7 +34,6 @@ sed -e s,pghoard_postgres_command,pghoard_postgres_command_go,g -i pghoard/resto
 python3 setup.py install --prefix=%{_prefix} --root=%{buildroot}
 sed -e "s@#!/bin/python@#!%{_bindir}/python@" -i %{buildroot}%{_bindir}/*
 %{__install} -Dm0644 pghoard.unit %{buildroot}%{_unitdir}/pghoard.service
-%{__mkdir_p} %{buildroot}%{_localstatedir}/lib/pghoard
 cp -a pghoard_postgres_command_go %{buildroot}%{_bindir}
 
 
@@ -47,7 +46,6 @@ make test
 %{_bindir}/pghoard*
 %{_unitdir}/pghoard.service
 %{python3_sitelib}/*
-%attr(0755, postgres, postgres) %{_localstatedir}/lib/pghoard
 
 
 %changelog
