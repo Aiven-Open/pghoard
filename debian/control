@@ -9,7 +9,7 @@ Build-Depends: debhelper (>= 8), dh-python,
  python3-setuptools, python3-snappy
 X-Python3-Version: >= 3.3
 Standards-Version: 3.9.4
-Homepage: https://github.com/ohmu/pghoard
+Homepage: https://github.com/aiven/pghoard
 
 Package: pghoard
 Architecture: all

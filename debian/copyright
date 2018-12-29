@@ -1,6 +1,6 @@
 Format: http://dep.debian.net/deps/dep5
 Upstream-Name: pghoard
-Source: https://github.com/ohmu/pghoard/
+Source: https://github.com/aiven/pghoard/
 
 Files: *
 Copyright: 2015 Ohmu Ltd <opensource@ohmu.fi>

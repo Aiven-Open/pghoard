@@ -1,8 +1,8 @@
 PGHoard |BuildStatus|_
 ======================
 
-.. |BuildStatus| image:: https://travis-ci.org/ohmu/pghoard.png?branch=master
-.. _BuildStatus: https://travis-ci.org/ohmu/pghoard
+.. |BuildStatus| image:: https://travis-ci.org/aiven/pghoard.png?branch=master
+.. _BuildStatus: https://travis-ci.org/aiven/pghoard
 
 ``pghoard`` is a PostgreSQL backup daemon and restore tooling for cloud object storages.
 
@@ -723,14 +723,14 @@ Aiven developers <pghoard@ohmu.fi>.
 .. _`Aiven Cloud Database`: https://aiven.io/
 
 Recent contributors are listed on the GitHub project page,
-https://github.com/ohmu/pghoard/graphs/contributors
+https://github.com/aiven/pghoard/graphs/contributors
 
 
 Contact
 =======
 
 Bug reports and patches are very welcome, please post them as GitHub issues
-and pull requests at https://github.com/ohmu/pghoard .  Any possible
+and pull requests at https://github.com/aiven/pghoard .  Any possible
 vulnerabilities or other serious issues should be reported directly to the
 maintainers <opensource@ohmu.fi>.
 

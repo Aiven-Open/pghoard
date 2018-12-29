@@ -44,7 +44,7 @@ setup(
     platforms=["POSIX", "MacOS"],
     description="PostgreSQL automatic backup/restore service daemon",
     long_description=readme_text,
-    url="https://github.com/ohmu/pghoard/",
+    url="https://github.com/aiven/pghoard/",
     classifiers=[
         "Development Status :: 5 - Production/Stable",
         "Intended Audience :: Developers",

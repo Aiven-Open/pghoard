@@ -1,7 +1,7 @@
 Name:           pghoard
 Version:        %{major_version}
 Release:        %{minor_version}%{?dist}
-Url:            http://github.com/ohmu/pghoard
+Url:            http://github.com/aiven/pghoard
 Summary:        PostgreSQL streaming backup service
 License:        ASL 2.0
 Source0:        pghoard-rpm-src.tar
