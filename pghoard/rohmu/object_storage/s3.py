@@ -5,7 +5,7 @@ Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
 from ..errors import FileNotFoundFromStorageError, InvalidConfigurationError, StorageError
-from .base import BaseTransfer, KEY_TYPE_PREFIX, KEY_TYPE_OBJECT, IterKeyItem
+from .base import BaseTransfer, get_total_memory, KEY_TYPE_PREFIX, KEY_TYPE_OBJECT, IterKeyItem
 import botocore.client
 import botocore.exceptions
 import botocore.session
@@ -14,7 +14,17 @@ import os
 import time
 
 
-MULTIPART_CHUNK_SIZE = 1024 * 1024 * 64
+def calculate_chunk_size():
+    total_mem_mib = get_total_memory() or 0
+    # At least 5 MiB, at most 524 MiB. Max block size used for hosts with ~300+ GB of memory
+    return max(min(int(total_mem_mib / 600), 524), 5) * 1024 * 1024
+
+
+# Set chunk size based on host memory. S3 supports up to 10k chunks and up to 5 TiB individual
+# files. Minimum chunk size is 5 MiB, which means max ~50 GB files can be uploaded. In order to get
+# to that 5 TiB increase the block size based on host memory; we don't want to use the max for all
+# hosts to avoid allocating too large portion of all available memory.
+MULTIPART_CHUNK_SIZE = calculate_chunk_size()
 READ_BLOCK_SIZE = 1024 * 1024 * 1
 
 
@@ -218,12 +228,19 @@ class S3Transfer(BaseTransfer):
                 self.store_file_from_memory(key, data, metadata, cache_control=cache_control)
             return
 
-        key = self.format_key_for_backend(key, remove_slash_prefix=True)
+        with open(filepath, "rb") as fp:
+            self.multipart_upload_file_object(cache_control=cache_control, fp=fp, key=key, metadata=metadata,
+                                              mimetype=mimetype, size=size)
 
+    def multipart_upload_file_object(self, *, cache_control, fp, key, metadata, mimetype, progress_fn=None, size=None):
+        key = self.format_key_for_backend(key, remove_slash_prefix=True)
         start_of_multipart_upload = time.monotonic()
-        chunks = math.ceil(size / self.multipart_chunk_size)
-        self.log.debug("Starting to upload multipart file: %r, size: %r, chunks: %d",
-                       filepath, size, chunks)
+        bytes_sent = 0
+
+        chunks = "Unknown"
+        if size is not None:
+            chunks = math.ceil(size / self.multipart_chunk_size)
+        self.log.debug("Starting to upload multipart file: %r, size: %s, chunks: %s", key, size, chunks)
 
         parts = []
         part_number = 1
@@ -247,55 +264,57 @@ class S3Transfer(BaseTransfer):
 
         mp_id = response["UploadId"]
 
-        with open(filepath, "rb") as fp:
+        while True:
+            data = self._read_bytes(fp, self.multipart_chunk_size)
+            if not data:
+                break
+
+            attempts = 10
+            start_of_part_upload = time.monotonic()
             while True:
-                data = fp.read(self.multipart_chunk_size)
-                if not data:
+                attempts -= 1
+                try:
+                    response = self.s3_client.upload_part(
+                        Body=data,
+                        Bucket=self.bucket_name,
+                        Key=key,
+                        PartNumber=part_number,
+                        UploadId=mp_id,
+                    )
+                except botocore.exceptions.ClientError as ex:
+                    self.log.exception("Uploading part %d for %s failed, attempts left: %d", part_number, key, attempts)
+                    if attempts <= 0:
+                        try:
+                            self.s3_client.abort_multipart_upload(
+                                Bucket=self.bucket_name,
+                                Key=key,
+                                UploadId=mp_id,
+                            )
+                        finally:
+                            err = "Multipart upload of {0} failed: {1.__class__.__name__}: {1}".format(key, ex)
+                            raise StorageError(err) from ex
+                    else:
+                        time.sleep(1.0)
+                else:
+                    self.log.info(
+                        "Uploaded part %s of %s, size %s in %.2fs",
+                        part_number,
+                        chunks,
+                        len(data),
+                        time.monotonic() - start_of_part_upload,
+                    )
+                    parts.append({
+                        "ETag": response["ETag"],
+                        "PartNumber": part_number,
+                    })
+                    part_number += 1
+                    bytes_sent += len(data)
+                    if progress_fn:
+                        progress_fn(bytes_sent)
                     break
 
-                attempts = 10
-                start_of_part_upload = time.monotonic()
-                while True:
-                    attempts -= 1
-                    try:
-                        response = self.s3_client.upload_part(
-                            Body=data,
-                            Bucket=self.bucket_name,
-                            Key=key,
-                            PartNumber=part_number,
-                            UploadId=mp_id,
-                        )
-                    except botocore.exceptions.ClientError as ex:
-                        self.log.exception("Uploading part %d for %s failed, attempts left: %d", part_number, key, attempts)
-                        if attempts <= 0:
-                            try:
-                                self.s3_client.abort_multipart_upload(
-                                    Bucket=self.bucket_name,
-                                    Key=key,
-                                    UploadId=mp_id,
-                                )
-                            finally:
-                                err = "Multipart upload of {0} failed: {1.__class__.__name__}: {1}".format(key, ex)
-                                raise StorageError(err) from ex
-                        else:
-                            time.sleep(1.0)
-                    else:
-                        self.log.info(
-                            "Uploaded part %d of %d, size %d in %.2fs",
-                            part_number,
-                            chunks,
-                            len(data),
-                            time.monotonic() - start_of_part_upload,
-                        )
-                        parts.append({
-                            "ETag": response["ETag"],
-                            "PartNumber": part_number,
-                        })
-                        part_number += 1
-                        break
-
         try:
-            response = self.s3_client.complete_multipart_upload(
+            self.s3_client.complete_multipart_upload(
                 Bucket=self.bucket_name,
                 Key=key,
                 MultipartUpload={"Parts": parts},
@@ -313,8 +332,12 @@ class S3Transfer(BaseTransfer):
 
         self.log.info(
             "Multipart upload of %r complete, size: %r, took: %.2fs",
-            filepath, size, time.monotonic() - start_of_multipart_upload
+            key, size, time.monotonic() - start_of_multipart_upload
         )
+
+    def store_file_object(self, key, fd, *, cache_control=None, metadata=None, mimetype=None, upload_progress_fn=None):
+        self.multipart_upload_file_object(cache_control=cache_control, fp=fd, key=key, metadata=metadata,
+                                          mimetype=mimetype, progress_fn=upload_progress_fn)
 
     def check_or_create_bucket(self):
         create_bucket = False
@@ -342,3 +365,22 @@ class S3Transfer(BaseTransfer):
                 }
 
             self.s3_client.create_bucket(**args)
+
+    @classmethod
+    def _read_bytes(cls, stream, length):
+        bytes_remaining = length
+        read_results = []
+        while bytes_remaining > 0:
+            data = stream.read(bytes_remaining)
+            if data:
+                read_results.append(data)
+                bytes_remaining -= len(data)
+            else:
+                break
+
+        if not read_results:
+            return None
+        elif len(read_results) == 1:
+            return read_results[0]
+        else:
+            return b"".join(read_results)

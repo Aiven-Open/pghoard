@@ -7,7 +7,7 @@ See LICENSE for details
 # pylint: disable=import-error, no-name-in-module
 from azure.storage.blob import BlockBlobService, ContentSettings
 from azure.storage.blob.models import BlobPrefix
-from .base import BaseTransfer, KEY_TYPE_PREFIX, KEY_TYPE_OBJECT, IterKeyItem
+from .base import BaseTransfer, get_total_memory, KEY_TYPE_PREFIX, KEY_TYPE_OBJECT, IterKeyItem
 from ..errors import FileNotFoundFromStorageError, InvalidConfigurationError, StorageError
 import azure.common
 import time
@@ -18,6 +18,19 @@ ENDPOINT_SUFFIXES = {
     "germany": "core.cloudapi.de",  # Azure Germany is a completely separate cloud from the regular Azure Public cloud
     "public": None,  # use default
 }
+
+
+def calculate_max_block_size():
+    total_mem_mib = get_total_memory() or 0
+    # At least 4 MiB, at most 100 MiB. Max block size used for hosts with ~100+ GB of memory
+    return max(min(int(total_mem_mib / 1000), 100), 4) * 1024 * 1024
+
+
+# Increase block size based on host memory. Azure supports up to 50k blocks and up to 5 TiB individual
+# files. Default block size is set to 4 MiB so only ~200 GB files can be uploaded. In order to get close
+# to that 5 TiB increase the block size based on host memory; we don't want to use the max 100 for all
+# hosts because the uploader will allocate (with default settings) 3 x block size of memory.
+BlockBlobService.MAX_BLOCK_SIZE = calculate_max_block_size()
 
 
 class AzureTransfer(BaseTransfer):
@@ -198,6 +211,32 @@ class AzureTransfer(BaseTransfer):
             content_settings = ContentSettings(content_type=mimetype)
         self.conn.create_blob_from_path(self.container_name, key, filepath, content_settings=content_settings,
                                         metadata=self.sanitize_metadata(metadata, replace_hyphen_with="_"))
+
+    def store_file_object(self, key, fd, *, cache_control=None, metadata=None, mimetype=None, upload_progress_fn=None):
+        if cache_control is not None:
+            raise NotImplementedError("AzureTransfer: cache_control support not implemented")
+        key = self.format_key_for_backend(key, remove_slash_prefix=True)
+        content_settings = None
+        if mimetype:
+            content_settings = ContentSettings(content_type=mimetype)
+
+        def progress_callback(bytes_sent, _):
+            if upload_progress_fn:
+                upload_progress_fn(bytes_sent)
+
+        # Azure _BlobChunkUploader calls `tell()` on the stream even though it doesn't use the result.
+        # We expect the input stream not to support `tell()` so use dummy implementation for it
+        original_tell = getattr(fd, "tell", None)
+        fd.tell = lambda: None
+        try:
+            self.conn.create_blob_from_stream(self.container_name, key, fd, content_settings=content_settings,
+                                              metadata=self.sanitize_metadata(metadata, replace_hyphen_with="_"),
+                                              progress_callback=progress_callback)
+        finally:
+            if original_tell:
+                fd.tell = original_tell
+            else:
+                delattr(fd, "tell")
 
     def get_or_create_container(self, container_name):
         start_time = time.monotonic()

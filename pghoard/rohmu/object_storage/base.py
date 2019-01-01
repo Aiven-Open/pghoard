@@ -8,6 +8,7 @@ from collections import namedtuple
 
 from ..errors import StorageError
 import logging
+import platform
 
 
 KEY_TYPE_OBJECT = "object"
@@ -105,3 +106,21 @@ class BaseTransfer:
 
     def store_file_from_disk(self, key, filepath, metadata=None, multipart=None, cache_control=None, mimetype=None):
         raise NotImplementedError
+
+    def store_file_object(self, key, fd, *, cache_control=None, metadata=None, mimetype=None, upload_progress_fn=None):
+        raise NotImplementedError
+
+
+def get_total_memory():
+    """return total system memory in mebibytes (or None if parsing meminfo fails)"""
+    if platform.system() != "Linux":
+        return None
+
+    with open("/proc/meminfo", "r") as in_file:
+        for line in in_file:
+            info = line.split()
+            if info[0] == "MemTotal:" and info[-1] == "kB":
+                memory_mb = int(int(info[1]) / 1024)
+                return memory_mb
+
+    return None
