@@ -125,6 +125,7 @@ class Restore:
     def create_parser(self):
         parser = argparse.ArgumentParser()
         parser.add_argument("-D", "--debug", help="Enable debug logging", action="store_true")
+        parser.add_argument("--status-output-file", help="Filename for status output JSON")
         parser.add_argument("--version", action='version', help="show program version",
                             version=version.__version__)
         sub = parser.add_subparsers(help="sub-command help")
@@ -216,6 +217,7 @@ class Restore:
                 basebackup=arg.basebackup,
                 site=site,
                 debug=arg.debug,
+                status_output_file=arg.status_output_file,
                 primary_conninfo=arg.primary_conninfo,
                 recovery_end_command=arg.recovery_end_command,
                 recovery_target_action=arg.recovery_target_action,
@@ -267,6 +269,7 @@ class Restore:
 
     def _get_basebackup(self, pgdata, basebackup, site,
                         debug=False,
+                        status_output_file=None,
                         primary_conninfo=None,
                         recovery_end_command=None,
                         recovery_target_action=None,
@@ -400,6 +403,7 @@ class Restore:
         fetcher = BasebackupFetcher(
             app_config=self.config,
             data_files=basebackup_data_files,
+            status_output_file=status_output_file,
             debug=debug,
             pgdata=pgdata,
             site=site,
@@ -441,7 +445,7 @@ class Restore:
 
 
 class BasebackupFetcher():
-    def __init__(self, *, app_config, debug, site, pgdata, tablespaces, data_files):
+    def __init__(self, *, app_config, debug, site, pgdata, tablespaces, data_files, status_output_file=None):
         self.log = logging.getLogger(self.__class__.__name__)
         self.completed_jobs = set()
         self.config = app_config
@@ -459,6 +463,7 @@ class BasebackupFetcher():
         # There's no point in spawning child processes if process count is 1
         self.pool_class = multiprocessing.Pool if self._process_count() > 1 else multiprocessing.pool.ThreadPool
         self.site = site
+        self.status_output_file = status_output_file
         self.sleep_fn = time.sleep
         self.tablespaces = tablespaces
         self.total_download_size = 0
@@ -583,9 +588,19 @@ class BasebackupFetcher():
             lambda exception: self.job_failed(key, exception),
         )
 
+    def _write_status_output_to_file(self, output_file):
+        total_downloaded, progress = self.current_progress()
+        common.write_json_file(output_file, {
+            "progress_percent": progress,
+            "downloaded_bytes": total_downloaded,
+            "total_bytes": self.total_download_size,
+        })
+
     def _wait_for_jobs_to_complete(self):
         while self.jobs_in_progress():
             self._print_download_progress()
+            if self.status_output_file:
+                self._write_status_output_to_file(self.status_output_file)
             self.sleep_fn(1)
             stall_duration = time.monotonic() - self.last_progress_ts
             if stall_duration > self.max_stale_seconds:
