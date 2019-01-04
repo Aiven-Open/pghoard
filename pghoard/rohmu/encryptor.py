@@ -183,6 +183,7 @@ class DecryptorFile(FileWrap):
         # else temporarily but we keep _decrypt_offset intact until we actually do a
         # read in case the caller just called seek in order to then immediately seek back
         self._decrypt_offset = None
+        self.offset = None
         self._reset()
 
     def _reset(self):
@@ -260,8 +261,9 @@ class DecryptorFile(FileWrap):
             data = self._boundary_block[self.offset % AES_BLOCK_SIZE:self.offset % AES_BLOCK_SIZE + size]
             if self.offset % AES_BLOCK_SIZE + size == len(self._boundary_block):
                 self._boundary_block = None
-            self.offset += len(data)
-            self._decrypt_offset += len(data)
+            data_len = len(data)
+            self.offset += data_len
+            self._decrypt_offset += data_len
             return data
 
         # Only serve multiples of AES_BLOCK_SIZE whenever possible to keep things simpler
@@ -284,8 +286,9 @@ class DecryptorFile(FileWrap):
         if size < AES_BLOCK_SIZE:
             self._boundary_block = decrypted
             return self._read_block(size)
-        self.offset += len(decrypted)
-        self._decrypt_offset += len(decrypted)
+        decrypted_len = len(decrypted)
+        self.offset += decrypted_len
+        self._decrypt_offset += decrypted_len
         return decrypted
 
     def close(self):
