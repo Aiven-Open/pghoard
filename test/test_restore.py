@@ -148,12 +148,15 @@ class TestBasebackupFetcher(unittest.TestCase):
     def test_progress_tracking_and_error_handling(self):
         config = {"restore_process_count": 4}
         site = "some-site"
+        test_output_file_tmp = mkdtemp(suffix="pghoard-test")
+        status_output_file = os.path.join(test_output_file_tmp, "pghoard-restore-status.json")
         pgdata = "/tmp/test_restore"
         tablespaces = {"foo": {"oid": 1234, "path": "/tmp/test_restore2"}}
         data_files = [("bar1", 1000), ("bar2", 2000), ((b"baz", {}), 0)]
         fetcher = BasebackupFetcher(app_config=config,
                                     data_files=data_files,
                                     debug=True,
+                                    status_output_file=status_output_file,
                                     pgdata=pgdata,
                                     site=site,
                                     tablespaces=tablespaces)
@@ -170,9 +173,15 @@ class TestBasebackupFetcher(unittest.TestCase):
         manager_enter.dict.return_value = progress_dict
         call = [0]
 
+        def check_status_output_file(*, expected_progress):
+            with open(status_output_file) as status_file:
+                progress_info = json.load(status_file)
+            assert progress_info["progress_percent"] == expected_progress
+
         def sleep_mock(sleep_time):
             assert sleep_time == 1
             if call[0] == 0:
+                check_status_output_file(expected_progress=0)
                 assert fetcher.current_progress() == (0, 0)
                 assert fetcher.jobs_in_progress() is True
                 progress_dict["bar1"] = 1000
@@ -182,10 +191,12 @@ class TestBasebackupFetcher(unittest.TestCase):
                 assert fetcher.jobs_in_progress() is True
                 progress_dict["bar2"] = 1000
                 fetcher.job_failed(fetcher.data_files[1]["id"], Exception("test exception"))
+                check_status_output_file(expected_progress=1000 / 3000)
             elif call[0] == 2:
                 assert fetcher.current_progress() == (2000, 2000 / 3000)
                 assert fetcher.jobs_in_progress() is True
                 fetcher.job_completed(fetcher.data_files[2]["id"])
+                check_status_output_file(expected_progress=2000 / 3000)
             elif call[0] == 3:
                 assert False
             call[0] += 1
@@ -195,6 +206,7 @@ class TestBasebackupFetcher(unittest.TestCase):
             fetcher.fetch_all()
         assert str(context.exception) == "Backup download/extraction failed with 1 errors"
         manager_enter.dict.assert_called_with([["bar1", 0], ["bar2", 0]])
+        shutil.rmtree(test_output_file_tmp)
 
     # Runs actual sub processes to decrypt and decompress basebackup chunks
     def test_real_processing(self):
