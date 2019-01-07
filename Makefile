@@ -32,7 +32,7 @@ rpm: $(generated)
 	$(RM) pghoard-rpm-src.tar
 
 build-dep-fed:
-	sudo dnf -y install \
+	sudo dnf -y install --best --allowerasing \
 		golang \
 		postgresql-server \
 		python3-botocore python3-cryptography python3-dateutil python3-devel \
