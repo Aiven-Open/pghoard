@@ -302,7 +302,6 @@ class PGHoard:
         for entry in results:
             # drop path from resulting list and convert timestamps
             entry["name"] = os.path.basename(entry["name"])
-            entry["metadata"] = {k.lower(): v for k, v in entry["metadata"].items()}
             entry["metadata"]["start-time"] = dates.parse_timestamp(entry["metadata"]["start-time"])
 
         results.sort(key=lambda entry: entry["metadata"]["start-time"])
