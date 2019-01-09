@@ -111,7 +111,7 @@ class S3Transfer(BaseTransfer):
 
             for item in response.get("Contents", []):
                 if with_metadata:
-                    metadata = self._metadata_for_key(item["Key"])
+                    metadata = {k.lower(): v for k, v in self._metadata_for_key(item["Key"]).items()}
                 else:
                     metadata = None
                 name = self.format_key_from_backend(item["Key"])
