@@ -644,8 +644,8 @@ Optional keys for Amazon Web Services S3:
 
 Array of one or more nodes from which the backups are taken.  A node can be
 described as an object of libpq key: value connection info pairs or libpq
-connection string or a ``postgres://`` connection uri.
-
+connection string or a ``postgres://`` connection uri. If for example you'd
+like to use a streaming replication slot use the syntax {... "slot": "slotname"}.
 
 ``pg_bin_directory`` (default: find binaries from well-known directories)
 
