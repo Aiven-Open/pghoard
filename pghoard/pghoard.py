@@ -548,7 +548,8 @@ class PGHoard:
         # Setup monitoring clients
         self.metrics = metrics.Metrics(
             statsd=self.config.get("statsd", None),
-            pushgateway=self.config.get("pushgateway", None))
+            pushgateway=self.config.get("pushgateway", None),
+            prometheus=self.config.get("prometheus", None))
 
         for thread in self._get_all_threads():
             thread.config = new_config
