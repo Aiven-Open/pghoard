@@ -87,7 +87,8 @@ class PGHoard:
             self.config,
             self.requested_basebackup_sites,
             self.compression_queue,
-            self.transfer_queue)
+            self.transfer_queue,
+            self.metrics)
 
         for _ in range(self.config["compression"]["thread_count"]):
             compressor = CompressorThread(
