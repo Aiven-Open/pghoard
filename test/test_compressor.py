@@ -16,6 +16,7 @@ import io
 import lzma
 import logging
 import os
+import random
 import socket
 import pytest
 
@@ -44,6 +45,9 @@ class CompressionCase(PGHoardTestCase):
         raise NotImplementedError
 
     def decompress(self, data):
+        raise NotImplementedError
+
+    def make_compress_stream(self, src_fp):
         raise NotImplementedError
 
     def setup_method(self, method):
@@ -375,6 +379,30 @@ class CompressionCase(PGHoardTestCase):
 
             assert plaintext == result
 
+    def test_compress_decompress_stream(self):
+        plaintext = WALTester(self.incoming_path, "00000001000000000000000E", "random").contents
+        compressed_stream = self.make_compress_stream(io.BytesIO(plaintext))
+        result_data = io.BytesIO()
+        while True:
+            bytes_requested = random.randrange(1, 12345)
+            data = compressed_stream.read(bytes_requested)
+            if not data:
+                break
+            result_data.write(data)
+            # Must return exactly the amount of data requested except when reaching end of stream
+            if len(data) < bytes_requested:
+                assert not compressed_stream.read(1)
+                break
+            assert len(data) == bytes_requested
+        assert result_data.tell() > 0
+        result_data.seek(0)
+        decompressed = self.decompress(result_data.read())
+        assert plaintext == decompressed
+
+        compressed_stream = self.make_compress_stream(io.BytesIO(plaintext))
+        decompressed = self.decompress(compressed_stream.read())
+        assert plaintext == decompressed
+
 
 class TestLzmaCompression(CompressionCase):
     algorithm = "lzma"
@@ -384,6 +412,9 @@ class TestLzmaCompression(CompressionCase):
 
     def decompress(self, data):
         return lzma.decompress(data)
+
+    def make_compress_stream(self, src_fp):
+        return compressor.CompressionStream(src_fp, "lzma")
 
 
 @pytest.mark.skipif(not snappy, reason="snappy not installed")
@@ -395,6 +426,9 @@ class TestSnappyCompression(CompressionCase):
 
     def decompress(self, data):
         return snappy.StreamDecompressor().decompress(data)
+
+    def make_compress_stream(self, src_fp):
+        return compressor.CompressionStream(src_fp, "snappy")
 
     def test_snappy_read(self, tmpdir):
         comp = snappy.StreamCompressor()

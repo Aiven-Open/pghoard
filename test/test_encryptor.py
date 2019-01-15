@@ -6,11 +6,12 @@ See LICENSE for details
 """
 from .base import CONSTANT_TEST_RSA_PUBLIC_KEY, CONSTANT_TEST_RSA_PRIVATE_KEY
 from pghoard.rohmu import IO_BLOCK_SIZE
-from pghoard.rohmu.encryptor import Decryptor, DecryptorFile, Encryptor, EncryptorFile
+from pghoard.rohmu.encryptor import Decryptor, DecryptorFile, Encryptor, EncryptorFile, EncryptorStream
 import io
 import json
 import os
 import pytest
+import random
 import tarfile
 
 
@@ -37,6 +38,34 @@ def test_encryptor_decryptor():
         decrypted = decryptor.process_data(encrypted[decryptor.header_size():decryptor.header_size() + decrypted_size])
         decrypted += decryptor.finalize(encrypted[-decryptor.footer_size():])
         assert plaintext == decrypted
+
+
+def test_encryptor_stream():
+    plaintext = os.urandom(2 * 1024 * 1024)
+    encrypted_stream = EncryptorStream(io.BytesIO(plaintext), CONSTANT_TEST_RSA_PUBLIC_KEY)
+    result_data = io.BytesIO()
+    while True:
+        bytes_requested = random.randrange(1, 12345)
+        data = encrypted_stream.read(bytes_requested)
+        if not data:
+            break
+        result_data.write(data)
+        # Must return exactly the amount of data requested except when reaching end of stream
+        if len(data) < bytes_requested:
+            assert not encrypted_stream.read(1)
+            break
+        assert len(data) == bytes_requested
+    assert result_data.tell() > 0
+    result_data.seek(0)
+    decrypted = DecryptorFile(result_data, CONSTANT_TEST_RSA_PRIVATE_KEY).read()
+    assert plaintext == decrypted
+
+    encrypted_stream = EncryptorStream(io.BytesIO(plaintext), CONSTANT_TEST_RSA_PUBLIC_KEY)
+    result_data = io.BytesIO()
+    result_data.write(encrypted_stream.read())
+    result_data.seek(0)
+    decrypted = DecryptorFile(result_data, CONSTANT_TEST_RSA_PRIVATE_KEY).read()
+    assert plaintext == decrypted
 
 
 def test_decryptorfile(tmpdir):

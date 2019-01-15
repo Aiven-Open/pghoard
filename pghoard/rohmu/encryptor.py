@@ -6,7 +6,7 @@ See LICENSE for details
 """
 
 from . import IO_BLOCK_SIZE
-from .filewrap import FileWrap, Sink
+from .filewrap import FileWrap, Sink, Stream
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
@@ -56,8 +56,10 @@ class Encryptor:
             ret = FILEMAGIC + struct.pack(">H", len(cipherkey)) + cipherkey
         cur = self.cipher.update(data)
         self.authenticator.update(cur)
-        ret += cur
-        return ret
+        if ret:
+            return ret + cur
+        else:
+            return cur
 
     def finalize(self):
         if self.cipher is None:
@@ -105,6 +107,20 @@ class EncryptorFile(FileWrap):
         self.next_fp.write(enc_data)
         self.offset += len(data)
         return len(data)
+
+
+class EncryptorStream(Stream):
+    """Non-seekable stream of data that adds encryption on top of given source stream"""
+
+    def __init__(self, src_fp, rsa_public_key_pem):
+        super().__init__(src_fp)
+        self._encryptor = Encryptor(rsa_public_key_pem)
+
+    def _process_chunk(self, data):
+        return self._encryptor.update(data)
+
+    def _finalize(self):
+        return self._encryptor.finalize()
 
 
 class Decryptor:
