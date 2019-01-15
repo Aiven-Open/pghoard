@@ -137,8 +137,8 @@ def setup_pg():
             tmpdir_obj.remove(rec=1)
 
 
-@pytest.yield_fixture(scope="session")
-def db():
+@pytest.yield_fixture(scope="session", name="db")
+def fixture_db():
     with setup_pg() as pg:
         yield pg
 
@@ -168,7 +168,11 @@ def recovery_db():
 
 
 @pytest.yield_fixture  # pylint: disable=redefined-outer-name
-def pghoard(db, tmpdir, request, compression="snappy", transfer_count=None):  # pylint: disable=redefined-outer-name
+def pghoard(db, tmpdir, request):  # pylint: disable=redefined-outer-name
+    yield from pghoard_base(db, tmpdir, request)
+
+
+def pghoard_base(db, tmpdir, request, compression="snappy", transfer_count=None):
     test_site = request.function.__name__
 
     if os.environ.get("pghoard_test_walreceiver"):
@@ -242,9 +246,9 @@ def pghoard(db, tmpdir, request, compression="snappy", transfer_count=None):  # 
 
 @pytest.yield_fixture  # pylint: disable=redefined-outer-name
 def pghoard_lzma(db, tmpdir, request):  # pylint: disable=redefined-outer-name
-    yield from pghoard(db, tmpdir, request, compression="lzma")
+    yield from pghoard_base(db, tmpdir, request, compression="lzma")
 
 
 @pytest.yield_fixture  # pylint: disable=redefined-outer-name
 def pghoard_no_mp(db, tmpdir, request):  # pylint: disable=redefined-outer-name
-    yield from pghoard(db, tmpdir, request, transfer_count=1)
+    yield from pghoard_base(db, tmpdir, request, transfer_count=1)
