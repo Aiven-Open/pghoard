@@ -172,3 +172,20 @@ class LocalTransfer(BaseTransfer):
         makedirs(os.path.dirname(target_path), exist_ok=True)
         shutil.copyfile(filepath, target_path)
         self._save_metadata(target_path, metadata)
+
+    def store_file_object(self, key, fd, *, cache_control=None,  # pylint: disable=unused-argument
+                          metadata=None, mimetype=None, upload_progress_fn=None):  # pylint: disable=unused-argument
+        target_path = self.format_key_for_backend(key.strip("/"))
+        makedirs(os.path.dirname(target_path), exist_ok=True)
+        bytes_written = 0
+        with open(target_path, "wb") as output_fp:
+            while True:
+                data = fd.read(1024 * 1024)
+                if not data:
+                    break
+                output_fp.write(data)
+                bytes_written += len(data)
+                if upload_progress_fn:
+                    upload_progress_fn(bytes_written)
+
+        self._save_metadata(target_path, metadata)

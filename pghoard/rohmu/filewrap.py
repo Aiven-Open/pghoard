@@ -130,3 +130,58 @@ class ThrottleSink(Sink):
     def _data_written(self, bytes_written, pending_bytes):
         if pending_bytes > 0 and bytes_written < 10 * 1024:
             self.sleep_fn(self.wait_time)
+
+
+class Stream:
+    """Non-seekable stream of data that performs some kind of processing for given source stream"""
+
+    def __init__(self, src_fp, *, minimum_read_size=8 * 1024):
+        self._eof = False
+        self._remainder = b""
+        self._src = src_fp
+        self.minimum_read_size = minimum_read_size
+
+    def _process_chunk(self, data):
+        raise NotImplementedError
+
+    def _finalize(self):
+        raise NotImplementedError
+
+    def read(self, size=-1):
+        bytes_available = len(self._remainder)
+        chunks = [self._remainder] if self._remainder else []
+        while not self._eof and (size < 0 or bytes_available < size):
+            bytes_to_read = -1 if size < 0 else size - bytes_available
+            # Always read at least self.minimum_read_size bytes even if fewer bytes are requested to avoid
+            # looping with very small buffers when stream processor needs non-trivial amount of input to
+            # make progress
+            if 0 < bytes_to_read < self.minimum_read_size:
+                bytes_to_read = self.minimum_read_size
+            src_data = self._src.read(bytes_to_read)
+            if not src_data:
+                dst_data = self._finalize()
+            else:
+                dst_data = self._process_chunk(src_data)
+            if dst_data:
+                chunks.append(dst_data)
+                bytes_available += len(dst_data)
+            if not src_data:
+                self._eof = True
+
+        if size < 0 or bytes_available < size:
+            data = b"".join(chunks)
+            self._remainder = b""
+        else:
+            # We only read up to one chunk beyond the required amount of data so all but
+            # the last chunk will necessarily always be included in the response
+            data = b"".join(chunks[:-1])
+            bytes_missing = size - len(data)
+            if bytes_missing == len(chunks[-1]):
+                data += chunks[-1]
+                self._remainder = b""
+            elif bytes_missing > 0:
+                data += chunks[-1][:bytes_missing]
+                self._remainder = chunks[-1][bytes_missing:]
+            else:
+                self._remainder = chunks[-1]
+        return data

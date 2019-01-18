@@ -26,7 +26,7 @@ import time
 
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-from googleapiclient.http import MediaFileUpload, MediaIoBaseUpload, MediaIoBaseDownload
+from googleapiclient.http import MediaFileUpload, MediaIoBaseUpload, MediaIoBaseDownload, MediaUpload
 from oauth2client import GOOGLE_TOKEN_URI
 from oauth2client.client import GoogleCredentials
 
@@ -273,11 +273,9 @@ class GoogleTransfer(BaseTransfer):
             obj = self._retry_on_reset(req, req.execute)
             return int(obj["size"])
 
-    def _upload(self, upload_type, local_object, key, metadata, extra_props, cache_control, mimetype=None):
+    def _upload(self, upload, key, metadata, extra_props, cache_control, upload_progress_fn=None):
         key = self.format_key_for_backend(key)
         self.log.debug("Starting to upload %r", key)
-        upload = upload_type(local_object, mimetype=mimetype or "application/octet-stream",
-                             resumable=True, chunksize=UPLOAD_CHUNK_SIZE)
         body = {"metadata": metadata}
         if extra_props:
             body.update(extra_props)
@@ -290,19 +288,35 @@ class GoogleTransfer(BaseTransfer):
             while response is None:
                 status, response = self._retry_on_reset(req, req.next_chunk)
                 if status:
-                    self.log.debug("Upload of %r to %r: %d%%", local_object, key, status.progress() * 100)
+                    self.log.debug("Upload of %r to %r: %d%%, %s bytes", upload, key, status.progress() * 100,
+                                   status.resumable_progress)
+                    if upload_progress_fn:
+                        upload_progress_fn(status.resumable_progress)
 
     def store_file_from_memory(self, key, memstring, metadata=None, extra_props=None,  # pylint: disable=arguments-differ
                                cache_control=None, mimetype=None):
-        return self._upload(MediaIoBaseUpload, BytesIO(memstring), key,
-                            self.sanitize_metadata(metadata), extra_props,
-                            cache_control=cache_control, mimetype=mimetype)
+        upload = MediaIoBaseUpload(
+            BytesIO(memstring), mimetype or "application/octet-stream", chunksize=UPLOAD_CHUNK_SIZE, resumable=True
+        )
+        return self._upload(upload, key, self.sanitize_metadata(metadata), extra_props, cache_control=cache_control)
 
     def store_file_from_disk(self, key, filepath, metadata=None,  # pylint: disable=arguments-differ, unused-variable
                              *, multipart=None, extra_props=None,  # pylint: disable=arguments-differ, unused-variable
                              cache_control=None, mimetype=None):
-        return self._upload(MediaFileUpload, filepath, key, self.sanitize_metadata(metadata), extra_props,
-                            cache_control=cache_control, mimetype=mimetype)
+        mimetype = mimetype or "application/octet-stream"
+        upload = MediaFileUpload(filepath, mimetype, chunksize=UPLOAD_CHUNK_SIZE, resumable=True)
+        return self._upload(upload, key, self.sanitize_metadata(metadata), extra_props, cache_control=cache_control)
+
+    def store_file_object(self, key, fd, *, cache_control=None, metadata=None, mimetype=None, upload_progress_fn=None):
+        mimetype = mimetype or "application/octet-stream"
+        return self._upload(
+            MediaStreamUpload(fd, chunk_size=UPLOAD_CHUNK_SIZE, mime_type=mimetype, name=key),
+            key,
+            self.sanitize_metadata(metadata),
+            None,
+            cache_control=cache_control,
+            upload_progress_fn=upload_progress_fn,
+        )
 
     def get_or_create_bucket(self, bucket_name):
         """Look up the bucket if it already exists and try to create the
@@ -347,3 +361,75 @@ class GoogleTransfer(BaseTransfer):
                 raise
 
         return bucket_name
+
+
+class MediaStreamUpload(MediaUpload):
+    """Support streaming arbitrary amount of data from non-seekable object supporting read method."""
+
+    def __init__(self, fd, *, chunk_size, mime_type, name):
+        self._data = []
+        self._chunk_size = chunk_size
+        self._fd = fd
+        self._mime_type = mime_type
+        self._name = name
+        self._position = None
+
+    def chunksize(self):
+        return self._chunk_size
+
+    def mimetype(self):
+        return self._mime_type
+
+    def size(self):
+        return None
+
+    def resumable(self):
+        return True
+
+    def getbytes(self, begin, end):
+        length = end
+        if begin < (self._position or 0):
+            msg = "Requested position {} for {!r} preceeds already fulfilled position {}".format(
+                begin, self._name, self._position
+            )
+            raise IndexError(msg)
+        elif begin > (self._position or 0) + len(self._data):
+            msg = "Requested position {} for {!r} has gap from previous position {} and {} byte chunk".format(
+                begin, self._name, self._position, len(self._data)
+            )
+            raise IndexError(msg)
+
+        if self._position is None or begin == self._position + len(self._data):
+            self._data = self._read_bytes(length)
+        elif begin != self._position:
+            retain_chunk = self._data[begin - self._position]
+            self._data = self._read_bytes(length - len(retain_chunk), initial_data=retain_chunk)
+
+        self._position = begin
+        return self._data
+
+    def has_stream(self):
+        return False
+
+    def stream(self):
+        raise NotImplementedError
+
+    def _read_bytes(self, length, *, initial_data=None):
+        bytes_remaining = length
+        read_results = []
+        if initial_data:
+            read_results.append(initial_data)
+        while bytes_remaining > 0:
+            data = self._fd.read(bytes_remaining)
+            if data:
+                read_results.append(data)
+                bytes_remaining -= len(data)
+            else:
+                break
+
+        if not read_results:
+            return None
+        elif len(read_results) == 1:
+            return read_results[0]
+        else:
+            return b"".join(read_results)

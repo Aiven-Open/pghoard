@@ -276,6 +276,27 @@ def _test_storage(st, driver, tmpdir, storage_config):
     if driver == "swift":
         assert st.list_path("test1_segments/30m") == []
 
+    progress_reports = []
+
+    def upload_progress(progress):
+        progress_reports.append(progress)
+
+    for size in (300, 3 * 1024 * 1024, 11 * 1024 * 1024):
+        progress_reports = []
+        rds = RandomDataSource(size)
+        key = "test1/{}b".format(size)
+        st.store_file_object(key, rds, upload_progress_fn=upload_progress)
+        # Progress may be reported after each chunk and chunk size depends on available memory
+        # on current machine so there's no straightforward way of checking reasonable progress
+        # updates were made. Just ensure they're ordered correctly if something was provided
+        assert sorted(progress_reports) == progress_reports
+        bio = BytesIO()
+        st.get_contents_to_fileobj(key, bio)
+        buffer = bio.getbuffer()
+        assert len(buffer) == size
+        assert buffer == rds.data
+        st.delete_key(key)
+
 
 def _test_storage_init(storage_type, with_prefix, tmpdir, config_overrides=None):
     if storage_type == "local":
@@ -391,3 +412,21 @@ def test_storage_config(tmpdir):
     with pytest.raises(errors.InvalidConfigurationError) as excinfo:
         get_transfer(foo_type_conf)
     assert "unsupported storage type 'foo'" in str(excinfo.value)
+
+
+class RandomDataSource:
+    def __init__(self, stream_size):
+        # Loading all the data into memory is a bit unnecessary but allows
+        # easier verification that correct data got uploaded
+        self.data = os.urandom(stream_size)
+        self.bytes_returned = 0
+
+    def read(self, size=-1):
+        size = len(self.data) if size < 0 else size
+        bytes_remaining = len(self.data) - self.bytes_returned
+        if bytes_remaining == 0:
+            return b""
+        bytes_to_return = min(bytes_remaining, size)
+        data = self.data[self.bytes_returned:bytes_to_return + self.bytes_returned]
+        self.bytes_returned += bytes_to_return
+        return data
