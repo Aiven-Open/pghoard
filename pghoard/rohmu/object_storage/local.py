@@ -43,6 +43,13 @@ class LocalTransfer(BaseTransfer):
         with suppress(FileNotFoundError):
             os.unlink(metadata_path)
 
+    def delete_tree(self, key):
+        self.log.debug("Deleting tree: %r", key)
+        target_path = self.format_key_for_backend(key.strip("/"))
+        if not os.path.isdir(target_path):
+            raise FileNotFoundFromStorageError(key)
+        shutil.rmtree(target_path)
+
     def yield_item(self, file_name):
         if file_name.startswith("."):
             return

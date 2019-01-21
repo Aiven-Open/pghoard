@@ -128,7 +128,7 @@ def _test_storage(st, driver, tmpdir, storage_config):
         created_keys.add(key)
 
     if driver == "local":
-        # sub3 is a directory. Actual object storage systems support this, but a file system does not
+        # sub3 is a file. Actual object storage systems support this, but a file system does not
         with pytest.raises(NotADirectoryError):
             st.store_file_from_memory("test1/sub3/sub3.1/sub3.1.1", b"1", None)
     else:
@@ -202,8 +202,15 @@ def _test_storage(st, driver, tmpdir, storage_config):
 
     for key in created_keys:
         st.delete_key(key)
-
     assert st.list_path("test1") == []  # empty again
+
+    for name in ["test2/foo", "test2/suba/foo", "test2/subb/bar", "test2/subb/subsub/zob"]:
+        st.store_file_from_memory(name, b"somedata")
+    names = sorted(item["name"] for item in st.list_path("test2", deep=True))
+    assert names == ["test2/foo", "test2/suba/foo", "test2/subb/bar", "test2/subb/subsub/zob"]
+
+    st.delete_tree("test2")
+    assert st.list_path("test2", deep=True) == []
 
     test_hash = hashlib.sha256()
     test_file = str(scratch.join("30m"))

@@ -104,6 +104,14 @@ class S3Transfer(BaseTransfer):
         self._metadata_for_key(key)  # check that key exists
         self.s3_client.delete_object(Bucket=self.bucket_name, Key=key)
 
+    def delete_tree(self, key):
+        key = self.format_key_for_backend(key, remove_slash_prefix=True, trailing_slash=True)
+        self.log.debug("Deleting tree: %r", key)
+        objects_to_delete = self.s3_client.list_objects(Bucket=self.bucket_name, Prefix=key)
+        delete_keys = [{"Key": key} for key in [obj["Key"] for obj in objects_to_delete.get("Contents", [])]]
+        if delete_keys:
+            self.s3_client.delete_objects(Bucket=self.bucket_name, Delete={"Objects": delete_keys})
+
     def iter_key(self, key, *, with_metadata=True, deep=False, include_key=False):
         path = self.format_key_for_backend(key, remove_slash_prefix=True, trailing_slash=not include_key)
         self.log.debug("Listing path %r", path)
