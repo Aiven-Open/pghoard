@@ -196,9 +196,10 @@ def _test_storage(st, driver, tmpdir, storage_config):
         with pytest.raises(errors.LocalFileIsRemoteFileError):
             st.get_contents_to_file("test1/x1", target_file)
 
-        # unlink metadata file, this shouldn't break anything
+        # Missing metadata is an error situation that should fail
         os.unlink(target_file + ".metadata")
-        assert st.get_metadata_for_key("test1/x1") == {}
+        with pytest.raises(errors.FileNotFoundFromStorageError):
+            st.get_metadata_for_key("test1/x1")
 
     for key in created_keys:
         st.delete_key(key)
