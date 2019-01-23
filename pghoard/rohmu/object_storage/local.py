@@ -8,10 +8,12 @@ from io import BytesIO
 from ..compat import makedirs, suppress
 from ..errors import FileNotFoundFromStorageError, LocalFileIsRemoteFileError
 from .base import BaseTransfer, IterKeyItem, KEY_TYPE_PREFIX, KEY_TYPE_OBJECT
+import contextlib
 import datetime
 import json
 import os
 import shutil
+import tempfile
 
 CHUNK_SIZE = 1024 * 1024
 
@@ -31,7 +33,7 @@ class LocalTransfer(BaseTransfer):
             with open(metadata_path, "r") as fp:
                 return json.load(fp)
         except FileNotFoundError:
-            return {}
+            raise FileNotFoundFromStorageError(key)
 
     def delete_key(self, key):
         self.log.debug("Deleting key: %r", key)
@@ -39,19 +41,23 @@ class LocalTransfer(BaseTransfer):
         if not os.path.exists(target_path):
             raise FileNotFoundFromStorageError(key)
         os.unlink(target_path)
+        metadata_tmp_path = target_path + ".metadata_tmp"
+        with suppress(FileNotFoundError):
+            os.unlink(metadata_tmp_path)
         metadata_path = target_path + ".metadata"
         with suppress(FileNotFoundError):
             os.unlink(metadata_path)
 
-    def yield_item(self, file_name):
-        if file_name.startswith("."):
-            return
-        if file_name.endswith(".metadata"):
-            return
+    def delete_tree(self, key):
+        self.log.debug("Deleting tree: %r", key)
+        target_path = self.format_key_for_backend(key.strip("/"))
+        if not os.path.isdir(target_path):
+            raise FileNotFoundFromStorageError(key)
+        shutil.rmtree(target_path)
 
     @staticmethod
     def _skip_file_name(file_name):
-        return file_name.startswith(".") or file_name.endswith(".metadata")
+        return file_name.startswith(".") or file_name.endswith(".metadata") or ".metadata_tmp" in file_name
 
     @staticmethod
     def _yield_object(key, full_path, with_metadata):
@@ -100,6 +106,10 @@ class LocalTransfer(BaseTransfer):
                 else:
                     yield IterKeyItem(type=KEY_TYPE_PREFIX, value=file_key)
             else:
+                # Don't return files if metadata file is not present; files are written in two phases and
+                # should be considered available only after also metadata has been written
+                if not os.path.exists(full_path + ".metadata"):
+                    continue
                 yield from self._yield_object(
                     key=os.path.join(key.strip("/"), file_name),
                     full_path=full_path,
@@ -151,7 +161,7 @@ class LocalTransfer(BaseTransfer):
 
     def _save_metadata(self, target_path, metadata):
         metadata_path = target_path + ".metadata"
-        with open(metadata_path, "w") as fp:
+        with atomic_create_file(metadata_path) as fp:
             json.dump(self.sanitize_metadata(metadata), fp)
 
     def store_file_from_memory(self, key, memstring, metadata=None, cache_control=None, mimetype=None):
@@ -189,3 +199,20 @@ class LocalTransfer(BaseTransfer):
                     upload_progress_fn(bytes_written)
 
         self._save_metadata(target_path, metadata)
+
+
+@contextlib.contextmanager
+def atomic_create_file(file_path):
+    """Open a temporary file for writing, rename to final name when done"""
+    fd, tmp_file_path = tempfile.mkstemp(
+        prefix=os.path.basename(file_path), dir=os.path.dirname(file_path), suffix=".metadata_tmp"
+    )
+    try:
+        with os.fdopen(fd, "w") as out_file:
+            yield out_file
+
+        os.rename(tmp_file_path, file_path)
+    except Exception:  # pytest: disable=broad-except
+        with contextlib.suppress(Exception):
+            os.unlink(tmp_file_path)
+        raise

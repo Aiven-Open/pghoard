@@ -51,6 +51,14 @@ class BaseTransfer:
     def delete_key(self, key):
         raise NotImplementedError
 
+    def delete_tree(self, key):
+        """Delete all keys under given root key. Basic implementation works by just listing all available
+        keys and deleting them individually but storage providers can implement more efficient logic."""
+        self.log.debug("Deleting tree: %r", key)
+        names = [item["name"] for item in self.list_path(key, with_metadata=False, deep=True)]
+        for name in names:
+            self.delete_key(name)
+
     def get_contents_to_file(self, key, filepath_to_store_to, *, progress_callback=None):
         """Write key contents to file pointed by `path` and return metadata.  If `progress_callback` is
         provided it must be a function which accepts two numeric arguments: current state of progress and the
