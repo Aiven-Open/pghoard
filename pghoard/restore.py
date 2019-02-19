@@ -263,8 +263,8 @@ class Restore:
             "" if len(applicable_basebackups) == 1 else "s")
         print_basebackup_list(applicable_basebackups, caption=caption)
 
-        selected = applicable_basebackups[-1]["name"]
-        print("\nSelecting {!r} for restore".format(selected))
+        selected = applicable_basebackups[-1]
+        print("\nSelecting {!r} for restore".format(selected["name"]))
         return selected
 
     def _get_basebackup(self, pgdata, basebackup, site,
@@ -296,7 +296,7 @@ class Restore:
             basebackup = self._find_nearest_basebackup()
 
         # Grab basebackup metadata to make sure it exists and to look up tablespace requirements
-        metadata = self.storage.get_basebackup_metadata(basebackup)
+        metadata = self.storage.get_basebackup_metadata(basebackup["name"])
         tablespaces = {}
 
         # Make sure we have a proper place to write the $PGDATA and possible tablespaces
@@ -318,7 +318,7 @@ class Restore:
 
         if metadata.get("format") == "pghoard-bb-v2":
             # "Backup file" is a metadata object, fetch it to get more information
-            bmeta_compressed = self.storage.get_file_bytes(basebackup)
+            bmeta_compressed = self.storage.get_file_bytes(basebackup["name"])
             with rohmufile.file_reader(fileobj=io.BytesIO(bmeta_compressed), metadata=metadata,
                                        key_lookup=config.key_lookup_for_site(self.config, site)) as input_obj:
                 bmeta = common.extract_pghoard_bb_v2_metadata(input_obj)
@@ -350,11 +350,11 @@ class Restore:
                     "path": tspath,
                 }
 
-            basebackup_data_files = [[basebackup, -1]]
+            basebackup_data_files = [[basebackup["name"], basebackup["size"]]]
 
         else:
             # Object is a raw (encrypted, compressed) basebackup
-            basebackup_data_files = [[basebackup, -1]]
+            basebackup_data_files = [[basebackup["name"], basebackup["size"]]]
 
         if tablespace_base_dir and not os.path.exists(tablespace_base_dir) and not overwrite:
             # we just care that the dir exists, but we're OK if there are other objects there
