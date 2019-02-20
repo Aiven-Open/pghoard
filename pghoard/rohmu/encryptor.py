@@ -358,6 +358,8 @@ class DecryptorFile(FileWrap):
 class DecryptSink(Sink):
     def __init__(self, next_sink, file_size, encryption_key_data):
         super().__init__(next_sink)
+        if file_size <= 0:
+            raise ValueError("Invalid file_size: " + str(file_size))
         self.data_bytes_received = 0
         self.data_size = file_size
         self.decryptor = Decryptor(encryption_key_data)
