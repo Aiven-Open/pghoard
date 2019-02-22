@@ -244,6 +244,7 @@ class GoogleTransfer(BaseTransfer):
         key = self.format_key_for_backend(key)
         self.log.debug("Starting to fetch the contents of: %r to %r", key, fileobj_to_store_to)
         next_prog_report = 0.0
+        last_log_output = 0.0
         with self._object_client(not_found=key) as clob:
             req = clob.get_media(bucket=self.bucket_name, object=key)
             download = MediaIoBaseDownload(fileobj_to_store_to, req, chunksize=DOWNLOAD_CHUNK_SIZE)
@@ -252,7 +253,11 @@ class GoogleTransfer(BaseTransfer):
                 status, done = self._retry_on_reset(getattr(download, "_request", None), download.next_chunk)
                 if status:
                     progress_pct = status.progress() * 100
-                    self.log.debug("Download of %r: %d%%", key, progress_pct)
+                    now = time.monotonic()
+                    if (now - last_log_output) >= 5.0:
+                        self.log.debug("Download of %r: %d%%", key, progress_pct)
+                        last_log_output = now
+
                     if progress_callback and progress_pct > next_prog_report:
                         progress_callback(progress_pct, 100)
                         next_prog_report = progress_pct + 0.1
@@ -282,14 +287,19 @@ class GoogleTransfer(BaseTransfer):
         if cache_control is not None:
             body["cacheControl"] = cache_control
 
+        last_log_output = 0.0
         with self._object_client() as clob:
             req = clob.insert(bucket=self.bucket_name, name=key, media_body=upload, body=body)
             response = None
             while response is None:
                 status, response = self._retry_on_reset(req, req.next_chunk)
                 if status:
-                    self.log.debug("Upload of %r to %r: %d%%, %s bytes", upload, key, status.progress() * 100,
-                                   status.resumable_progress)
+                    now = time.monotonic()
+                    if (now - last_log_output) >= 5.0:
+                        self.log.debug("Upload of %r to %r: %d%%, %s bytes", upload, key, status.progress() * 100,
+                                       status.resumable_progress)
+                        last_log_output = now
+
                     if upload_progress_fn:
                         upload_progress_fn(status.resumable_progress)
 
