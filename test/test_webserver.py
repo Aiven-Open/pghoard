@@ -54,6 +54,28 @@ class TestWebServer:
         response = conn.getresponse()
         assert response.status == 501
 
+    def test_requesting_metrics_disabled(self, pghoard):
+        pghoard.write_backup_state_to_json_file()
+        conn = HTTPConnection(host="127.0.0.1", port=pghoard.config["http_port"])
+        conn.request("GET", "/metrics")
+        response = conn.getresponse()
+        assert response.status == 501
+
+        conn.request("GET", "/metrics/foo")
+        response = conn.getresponse()
+        assert response.status == 400
+
+        conn.request("GET", "/{}/metrics".format(pghoard.test_site))
+        response = conn.getresponse()
+        assert response.status == 400
+
+    def test_requesting_metrics_enabled(self, pghoard_metrics):
+        pghoard_metrics.write_backup_state_to_json_file()
+        conn = HTTPConnection(host="127.0.0.1", port=pghoard_metrics.config["http_port"])
+        conn.request("GET", "/metrics")
+        response = conn.getresponse()
+        assert response.status == 200
+
     def test_list_empty_basebackups(self, pghoard, http_restore, capsys):  # pylint: disable=redefined-outer-name
         # List with direct HttpRestore access
         assert http_restore.list_basebackups() == []

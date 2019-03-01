@@ -87,7 +87,8 @@ class PGHoard:
             self.config,
             self.requested_basebackup_sites,
             self.compression_queue,
-            self.transfer_queue)
+            self.transfer_queue,
+            self.metrics)
 
         for _ in range(self.config["compression"]["thread_count"]):
             compressor = CompressorThread(
@@ -548,7 +549,8 @@ class PGHoard:
         # Setup monitoring clients
         self.metrics = metrics.Metrics(
             statsd=self.config.get("statsd", None),
-            pushgateway=self.config.get("pushgateway", None))
+            pushgateway=self.config.get("pushgateway", None),
+            prometheus=self.config.get("prometheus", None))
 
         for thread in self._get_all_threads():
             thread.config = new_config

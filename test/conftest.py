@@ -172,7 +172,8 @@ def pghoard(db, tmpdir, request):  # pylint: disable=redefined-outer-name
     yield from pghoard_base(db, tmpdir, request)
 
 
-def pghoard_base(db, tmpdir, request, compression="snappy", transfer_count=None):
+def pghoard_base(db, tmpdir, request, compression="snappy",   # pylint: disable=redefined-outer-name
+                 transfer_count=None, metrics_cfg=None):
     test_site = request.function.__name__
 
     if os.environ.get("pghoard_test_walreceiver"):
@@ -215,8 +216,12 @@ def pghoard_base(db, tmpdir, request, compression="snappy", transfer_count=None)
         "tar_executable": "tar",
     }
 
+    if metrics_cfg is not None:
+        config.update(metrics_cfg)
+
     if transfer_count is not None:
         config["transfer"] = {"thread_count": transfer_count}
+
     confpath = os.path.join(str(tmpdir), "config.json")
     with open(confpath, "w") as fp:
         json.dump(config, fp)
@@ -252,3 +257,15 @@ def pghoard_lzma(db, tmpdir, request):  # pylint: disable=redefined-outer-name
 @pytest.yield_fixture  # pylint: disable=redefined-outer-name
 def pghoard_no_mp(db, tmpdir, request):  # pylint: disable=redefined-outer-name
     yield from pghoard_base(db, tmpdir, request, transfer_count=1)
+
+
+@pytest.yield_fixture  # pylint: disable=redefined-outer-name
+def pghoard_metrics(db, tmpdir, request):  # pylint: disable=redefined-outer-name
+    metrics_cfg = {
+        "prometheus": {
+            "tags": {
+                "foo": "bar",
+            },
+        },
+    }
+    yield from pghoard_base(db, tmpdir, request, metrics_cfg=metrics_cfg)

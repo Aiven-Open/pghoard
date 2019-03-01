@@ -47,13 +47,14 @@ class HttpResponse(Exception):
 
 
 class WebServer(Thread):
-    def __init__(self, config, requested_basebackup_sites, compression_queue, transfer_queue):
+    def __init__(self, config, requested_basebackup_sites, compression_queue, transfer_queue, metrics):
         super().__init__()
         self.log = logging.getLogger("WebServer")
         self.config = config
         self.requested_basebackup_sites = requested_basebackup_sites
         self.compression_queue = compression_queue
         self.transfer_queue = transfer_queue
+        self.metrics = metrics
         self.address = self.config["http_address"]
         self.port = self.config["http_port"]
         self.server = None
@@ -79,6 +80,7 @@ class WebServer(Thread):
         # aren't there.  This isn't used for explicit download requests as it's possible that a file appears
         # later on in the object store.
         self.server.prefetch_404 = deque(maxlen=32)  # pylint: disable=attribute-defined-outside-init
+        self.server.metrics = self.metrics  # pylint: disable=attribute-defined-outside-init
         self.server.serve_forever()
 
     def close(self):
@@ -152,6 +154,10 @@ class RequestHandler(BaseHTTPRequestHandler):
             if len(path) != 1:
                 raise HttpResponse("Invalid status request", status=400)
             return (None, "status", None)
+        if path[0] == "metrics":
+            if len(path) != 1:
+                raise HttpResponse("Invalid request", status=400)
+            return (None, "metrics", None)
 
         if len(path) < 2:
             raise HttpResponse("Invalid path {!r}".format(path), status=400)
@@ -361,6 +367,14 @@ class RequestHandler(BaseHTTPRequestHandler):
             # TODO: Handle site specific status
             raise HttpResponse(status=501)  # Not Implemented
 
+    def get_metrics(self, site):
+        data = ""
+        if site is None and "prometheus" in self.server.metrics.clients:
+            data = '\n'.join(self.server.metrics.clients["prometheus"].get_metrics())
+            raise HttpResponse(data, status=200)
+        else:
+            raise HttpResponse(status=501)  # Not Implemented
+
     def _try_save_and_verify_restored_file(self, filetype, filename, prefetch_target_path, target_path, unlink=True):
         try:
             self._save_and_verify_restored_file(filetype, filename, prefetch_target_path, target_path)
@@ -512,5 +526,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                 self.list_basebackups(site)
             elif obtype == "status":
                 self.get_status(site)
+            elif obtype == "metrics":
+                self.get_metrics(site)
             else:
                 self.get_wal_or_timeline_file(site, obname, obtype)

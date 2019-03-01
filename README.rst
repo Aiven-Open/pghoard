@@ -465,6 +465,20 @@ The value is a JSON object::
 
 The ``tags`` setting can be used to enter optional tag values for the metrics.
 
+``prometheus`` (default: disabled)
+
+Expose metrics through a Prometheus endpoint.
+
+The value is a JSON object::
+
+  {
+      "tags": {
+          "<tag>": "<value>"
+      }
+  }
+
+The ``tags`` setting can be used to enter optional tag values for the metrics.
+
 ``syslog`` (default ``false``)
 
 Determines whether syslog logging should be turned on or not.
