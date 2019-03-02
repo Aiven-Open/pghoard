@@ -4,7 +4,7 @@ PGHoard |BuildStatus|_
 .. |BuildStatus| image:: https://travis-ci.org/aiven/pghoard.png?branch=master
 .. _BuildStatus: https://travis-ci.org/aiven/pghoard
 
-``pghoard`` is a PostgreSQL backup daemon and restore tooling for cloud object storages.
+``pghoard`` is a PostgreSQL backup daemon and restore tooling that stores backup data in cloud object stores.
 
 Features:
 
