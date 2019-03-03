@@ -665,7 +665,7 @@ like to use a streaming replication slot use the syntax {... "slot": "slotname"}
 
 Site-specific option for finding ``pg_basebackup`` and ``pg_receivexlog``
 commands matching the given backup site's PostgreSQL version.  If a value is
-not supplied PGHoard will attepmt to find matching binaries from various
+not supplied PGHoard will attempt to find matching binaries from various
 well-known locations.  In case ``pg_data_directory`` is set and points to a
 valid data directory the lookup is restricted to the version contained in
 the given data directory.
