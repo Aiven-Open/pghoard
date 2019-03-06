@@ -38,6 +38,7 @@ class S3Transfer(BaseTransfer):
                  host=None,
                  port=None,
                  is_secure=False,
+                 is_verify_tls=False,
                  segment_size=MULTIPART_CHUNK_SIZE,
                  encrypted=False):
         super().__init__(prefix=prefix)
@@ -73,7 +74,7 @@ class S3Transfer(BaseTransfer):
                 config=custom_config,
                 endpoint_url=custom_url,
                 region_name=region,
-                verify=False,
+                verify=is_verify_tls,
             )
 
         self.check_or_create_bucket()

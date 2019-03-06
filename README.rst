@@ -617,6 +617,7 @@ Optional keys for Amazon Web Services S3:
  * ``host`` for overriding host for non AWS-S3 implementations
  * ``port`` for overriding port for non AWS-S3 implementations
  * ``is_secure`` for overriding the requirement for https for non AWS-S3
+ * ``is_verify_tls`` for configuring tls verify for non AWS-S3
    implementations
 
 * ``azure`` for Microsoft Azure Storage, required configuration keys:
