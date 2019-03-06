@@ -370,7 +370,9 @@ class RequestHandler(BaseHTTPRequestHandler):
     def get_metrics(self, site):
         data = ""
         if site is None and "prometheus" in self.server.metrics.clients:
-            data = '\n'.join(self.server.metrics.clients["prometheus"].get_metrics())
+            metrics = self.server.metrics.clients["prometheus"].get_metrics()
+            if len(metrics) > 0:
+                data = '\n'.join(metrics) + '\n'
             raise HttpResponse(data, status=200)
         else:
             raise HttpResponse(status=501)  # Not Implemented
