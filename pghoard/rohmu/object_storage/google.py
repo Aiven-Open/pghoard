@@ -164,6 +164,23 @@ class GoogleTransfer(BaseTransfer):
             retries -= 1
             time.sleep(retry_wait)
 
+    def copy_file(self, *, source_key, destination_key, metadata=None, **_kwargs):
+        source_object = self.format_key_for_backend(source_key)
+        destination_object = self.format_key_for_backend(destination_key)
+        body = {}
+        if metadata is not None:
+            body["metadata"] = metadata
+
+        with self._object_client(not_found=source_key) as clob:
+            request = clob.copy(
+                body=body,
+                destinationBucket=self.bucket_name,
+                destinationObject=destination_object,
+                sourceBucket=self.bucket_name,
+                sourceObject=source_object,
+            )
+            self._retry_on_reset(request, request.execute)
+
     def get_metadata_for_key(self, key):
         key = self.format_key_for_backend(key)
         with self._object_client(not_found=key) as clob:

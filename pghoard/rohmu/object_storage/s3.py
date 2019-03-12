@@ -83,6 +83,24 @@ class S3Transfer(BaseTransfer):
         self.encrypted = encrypted
         self.log.debug("S3Transfer initialized")
 
+    def copy_file(self, *, source_key, destination_key, metadata=None, **_kwargs):
+        source_path = self.bucket_name + "/" + self.format_key_for_backend(source_key, remove_slash_prefix=True)
+        destination_path = self.format_key_for_backend(destination_key, remove_slash_prefix=True)
+        try:
+            self.s3_client.copy_object(
+                Bucket=self.bucket_name,
+                CopySource=source_path,
+                Key=destination_path,
+                Metadata=metadata or {},
+                MetadataDirective="COPY" if metadata is None else "REPLACE",
+            )
+        except botocore.exceptions.ClientError as ex:
+            status_code = ex.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+            if status_code == 404:
+                raise FileNotFoundFromStorageError(source_key)
+            else:
+                raise StorageError("Copying {!r} to {!r} failed: {!r}".format(source_key, destination_key, ex)) from ex
+
     def get_metadata_for_key(self, key):
         key = self.format_key_for_backend(key, remove_slash_prefix=True)
         return self._metadata_for_key(key)
