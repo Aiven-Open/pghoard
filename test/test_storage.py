@@ -81,6 +81,12 @@ def _test_storage(st, driver, tmpdir, storage_config):
     assert st.get_contents_to_fileobj("test1/x1", out) == {"k": "v"}
     assert out.getvalue() == b"dummy"
 
+    # Copy file
+    st.copy_file(source_key="test1/x1", destination_key="test_copy/copy1")
+    assert st.get_contents_to_string("test_copy/copy1") == (b"dummy", {"k": "v"})
+    st.copy_file(source_key="test1/x1", destination_key="test_copy/copy2", metadata={"new": "meta"})
+    assert st.get_contents_to_string("test_copy/copy2") == (b"dummy", {"new": "meta"})
+
     st.store_file_from_memory("test1/x1", b"l", {"fancymetadata": "value"})
     assert st.get_contents_to_string("test1/x1") == (b"l", {"fancymetadata": "value"})
 

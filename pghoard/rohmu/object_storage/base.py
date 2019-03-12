@@ -26,6 +26,11 @@ class BaseTransfer:
             prefix += "/"
         self.prefix = prefix
 
+    def copy_file(self, *, source_key, destination_key, metadata=None, **_kwargs):
+        """Performs remote copy from source key name to destination key name. Key must identify a file, trees
+        cannot be copied with this method. If no metadata is given copies the existing metadata."""
+        raise NotImplementedError
+
     def format_key_for_backend(self, key, remove_slash_prefix=False, trailing_slash=False):
         """Add a possible prefix to the key before sending it to the backend"""
         path = self.prefix + key

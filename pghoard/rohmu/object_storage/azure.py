@@ -52,6 +52,37 @@ class AzureTransfer(BaseTransfer):
         self.container = self.get_or_create_container(self.container_name)
         self.log.debug("AzureTransfer initialized, %r", self.container_name)
 
+    def copy_file(self, *, source_key, destination_key, metadata=None, **kwargs):
+        timeout = kwargs.get("timeout") or 15
+        source_path = self.format_key_for_backend(source_key, remove_slash_prefix=True, trailing_slash=False)
+        destination_path = self.format_key_for_backend(destination_key, remove_slash_prefix=True, trailing_slash=False)
+        source_url = self.conn.make_blob_url(self.container_name, source_path)
+        start = time.monotonic()
+        self.conn.copy_blob(self.container_name, destination_path, source_url, metadata=metadata, timeout=timeout)
+        while True:
+            blob_properties = self.conn.get_blob_properties(self.container_name, destination_path, timeout=timeout)
+            copy_props = blob_properties.properties.copy
+            if copy_props.status == "success":
+                return
+            elif copy_props.status == "pending":
+                if time.monotonic() - start < timeout:
+                    time.sleep(0.1)
+                else:
+                    self.conn.abort_copy_blob(self.container_name, destination_key, copy_props.id, timeout=timeout)
+                    raise StorageError(
+                        "Copying {!r} to {!r} did not complete in {} seconds".format(source_key, destination_key, timeout)
+                    )
+            elif copy_props.status == "failed":
+                raise StorageError(
+                    "Copying {!r} to {!r} failed: {!r}".format(source_key, destination_key, copy_props.status_description)
+                )
+            else:
+                raise StorageError(
+                    "Copying {!r} to {!r} failed, unexpected status: {!r}".format(
+                        source_key, destination_key, copy_props.status
+                    )
+                )
+
     def get_metadata_for_key(self, key):
         path = self.format_key_for_backend(key, remove_slash_prefix=True, trailing_slash=False)
         items = list(self._iter_key(path=path, with_metadata=True, deep=False))

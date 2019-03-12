@@ -24,6 +24,18 @@ class LocalTransfer(BaseTransfer):
         super().__init__(prefix=prefix)
         self.log.debug("LocalTransfer initialized")
 
+    def copy_file(self, *, source_key, destination_key, metadata=None, **_kwargs):
+        source_path = self.format_key_for_backend(source_key.strip("/"))
+        destination_path = self.format_key_for_backend(destination_key.strip("/"))
+        if not os.path.isfile(source_path):
+            raise FileNotFoundFromStorageError(source_key)
+        os.makedirs(os.path.dirname(destination_path), exist_ok=True)
+        shutil.copy(source_path, destination_path)
+        if metadata is None:
+            shutil.copy(source_path + ".metadata", destination_path + ".metadata")
+        else:
+            self._save_metadata(destination_path, metadata)
+
     def get_metadata_for_key(self, key):
         source_path = self.format_key_for_backend(key.strip("/"))
         if not os.path.exists(source_path):
