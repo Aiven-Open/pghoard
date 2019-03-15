@@ -154,7 +154,22 @@ class PGBaseBackup(Thread):
         self.log.debug("Compressing basebackup directly to file: %r", basebackup_path)
         set_stream_nonblocking(proc.stderr)
 
+        metadata = {
+            "compression-algorithm": compression_algorithm,
+            "encryption-key-id": encryption_key_id,
+            "host": socket.gethostname(),
+        }
+
         with NamedTemporaryFile(prefix=basebackup_path, suffix=".tmp-compress") as output_obj:
+            def extract_header_func(input_data):
+                # backup_label should always be first in the tar ball
+                if input_data[0:12].startswith(b"backup_label"):
+                    # skip the 512 byte tar header to get to the actual backup label content
+                    start_wal_segment, start_time = self.parse_backup_label(input_data[512:1024])
+
+                    metadata.update({"start-wal-segment": start_wal_segment,
+                                     "start-time": start_time})
+
             def progress_callback():
                 stderr_data = proc.stderr.read()
                 if stderr_data:
@@ -169,6 +184,7 @@ class PGBaseBackup(Thread):
                 rsa_public_key=rsa_public_key,
                 progress_callback=progress_callback,
                 log_func=self.log.info,
+                header_func=extract_header_func
             )
             os.link(output_obj.name, basebackup_path)
 
@@ -182,11 +198,6 @@ class PGBaseBackup(Thread):
                     "type": "basebackup",
                 })
 
-        metadata = {
-            "compression-algorithm": compression_algorithm,
-            "encryption-key-id": encryption_key_id,
-            "host": socket.gethostname(),
-        }
         return original_input_size, compressed_file_size, metadata
 
     def run_piped_basebackup(self):
@@ -214,19 +225,26 @@ class PGBaseBackup(Thread):
             self.basebackup_compression_pipe(proc, stream_target)
         self.check_command_success(proc, stream_target)
         os.rename(stream_target, compressed_basebackup)
-        # Since we can't parse the backup label we cheat with the start-wal-segment and
+
+        # Since we might not be able to parse the backup label we cheat with the start-wal-segment and
         # start-time a bit. The start-wal-segment is the segment currently being written before
         # the backup and the start_time is taken _after_ the backup has completed and so is conservatively
         # in the future but not exactly correct. These both are valid only as long as no other
         # basebackups than those controlled by pghoard are currently running at the same time.
         # pg_basebackups are taken simultaneously directly or through other backup managers the WAL
         # file will be incorrect since a new checkpoint will not be issued for a parallel backup
+
+        if 'start-wal-segment' not in metadata:
+            metadata.update({"start-wal-segment": start_wal_segment})
+
+        if 'start-time' not in metadata:
+            metadata.update({"start-time": datetime.datetime.now(datetime.timezone.utc).isoformat()})
+
         metadata.update({
-            "start-time": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-            "start-wal-segment": start_wal_segment,
             "original-file-size": original_input_size,
             "pg-version": self.pg_version_server,
         })
+
         self.transfer_queue.put({
             "callback_queue": self.callback_queue,
             "file_size": compressed_file_size,
