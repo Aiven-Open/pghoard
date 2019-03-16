@@ -114,6 +114,32 @@ flake8_, pylint_ and pytest_.
 PGHoard has been developed and tested on modern Linux x86-64 systems, but
 should work on other platforms that provide the required modules.
 
+Vagrant
+=======
+
+The Vagrantfile can be used to setup a vagrant development environment::
+
+  vagrant up
+  vagrant ssh
+  cd /vagrant
+  make test
+
+By default when you ssh to the vagrant instance it will be setup with python 3.5.x, the
+vagrant instance also has venv.
+
+For python 3.6::
+
+  source ~/venv3.6/bin/activate
+
+For python 3.7::
+
+  source ~/venv3.7/bin/activate
+
+For python 3.5::
+
+  source ~/venv3/bin/activate
+
+Note: make deb does not work from vagrant at the moment, hopefully this will be resolved soon
 
 Building
 ========
