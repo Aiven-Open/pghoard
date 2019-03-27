@@ -18,6 +18,9 @@ def get_class_for_transfer(obj_store):
     elif storage_type == "google":
         from .object_storage.google import GoogleTransfer
         return GoogleTransfer
+    elif storage_type == "sftp":
+        from .object_storage.sftp import SFTPTransfer
+        return SFTPTransfer
     elif storage_type == "local":
         from .object_storage.local import LocalTransfer
         return LocalTransfer
