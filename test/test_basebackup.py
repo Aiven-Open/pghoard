@@ -185,12 +185,14 @@ LABEL: pg_basebackup base backup
         assert chunk3[2] == "pgdata/split_top/split_sub/f2"
         assert chunk3[3] == "pgdata/split_top/split_sub/f3"
 
-    def _test_create_basebackup(self, capsys, db, pghoard, mode, replica=False):
+    def _test_create_basebackup(self, capsys, db, pghoard, mode, replica=False, active_backup_mode='archive_command'):
         pghoard.create_backup_site_paths(pghoard.test_site)
         basebackup_path = os.path.join(pghoard.config["backup_location"], pghoard.test_site, "basebackup")
         q = Queue()
 
         pghoard.config["backup_sites"][pghoard.test_site]["basebackup_mode"] = mode
+        pghoard.config["backup_sites"][pghoard.test_site]["active_backup_mode"] = active_backup_mode
+
         pghoard.create_basebackup(pghoard.test_site, db.user, basebackup_path, q)
         result = q.get(timeout=60)
         assert result["success"]
@@ -225,7 +227,7 @@ LABEL: pg_basebackup base backup
                 assert "end-time" in backup["metadata"]
                 assert dateutil.parser.parse(backup["metadata"]["end-time"]).tzinfo  # pylint: disable=no-member
 
-    def _test_restore_basebackup(self, db, pghoard, tmpdir):
+    def _test_restore_basebackup(self, db, pghoard, tmpdir, active_backup_mode="archive_command"):
         backup_out = tmpdir.join("test-restore").strpath
         # Restoring to empty directory works
         os.makedirs(backup_out)
@@ -274,9 +276,28 @@ LABEL: pg_basebackup base backup
         assert start_wal_segment == backups[0]['metadata']['start-wal-segment']
         assert start_time == backups[0]['metadata']['start-time']
 
+        # for a standalone hot backup, the start wal file will be in the pg_xlog / pg_wal directory
+        wal_dir = "pg_xlog"
+        if float(db.pgver) >= float("10.0"):
+            wal_dir = "pg_wal"
+
+        path = os.path.join(backup_out, wal_dir, backups[0]['metadata']['start-wal-segment'])
+        if active_backup_mode == "standalone_hot_backup":
+            assert os.path.isfile(path) is True
+        else:
+            assert os.path.isfile(path) is False
+
     def _test_basebackups(self, capsys, db, pghoard, tmpdir, mode, *, replica=False):
         self._test_create_basebackup(capsys, db, pghoard, mode, replica=replica)
         self._test_restore_basebackup(db, pghoard, tmpdir)
+
+    def test_basic_standalone_hot_backups(self, capsys, db, pghoard, tmpdir):
+        self._test_create_basebackup(capsys, db, pghoard, "basic", False, "standalone_hot_backup")
+        self._test_restore_basebackup(db, pghoard, tmpdir, "standalone_hot_backup")
+
+    def test_pipe_standalone_hot_backups(self, capsys, db, pghoard, tmpdir):
+        self._test_create_basebackup(capsys, db, pghoard, "pipe", False, "standalone_hot_backup")
+        self._test_restore_basebackup(db, pghoard, tmpdir, "standalone_hot_backup")
 
     def test_basebackups_basic(self, capsys, db, pghoard, tmpdir):
         self._test_basebackups(capsys, db, pghoard, tmpdir, "basic")
