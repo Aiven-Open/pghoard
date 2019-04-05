@@ -237,6 +237,15 @@ class Restore:
                 self.log.exception("Unexpected _get_basebackup failure")
             raise RestoreError("{}: {}".format(ex.__class__.__name__, ex))
 
+    def _find_basebackup_for_name(self, name):
+        basebackups = self.storage.list_basebackups()
+        for basebackup in basebackups:
+            if basebackup["name"] == name:
+                print("\nSelecting {!r} for restore".format(basebackup["name"]))
+                return basebackup
+
+        raise RestoreError("No applicable basebackup found, exiting")
+
     def _find_nearest_basebackup(self, recovery_target_time=None):
         applicable_basebackups = []
 
@@ -294,6 +303,8 @@ class Restore:
             basebackup = self._find_nearest_basebackup(recovery_target_time)
         elif basebackup == "latest":
             basebackup = self._find_nearest_basebackup()
+        elif isinstance(basebackup, str):
+            basebackup = self._find_basebackup_for_name(basebackup)
 
         # Grab basebackup metadata to make sure it exists and to look up tablespace requirements
         metadata = self.storage.get_basebackup_metadata(basebackup["name"])
