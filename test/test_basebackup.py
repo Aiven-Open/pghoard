@@ -255,6 +255,25 @@ LABEL: pg_basebackup base backup
         check_call([os.path.join(db.pgbin, "pg_controldata"), backup_out])
         # TODO: check that the backup is valid
 
+        # there should only be a single backup so lets compare what was in the metadata with what
+        # was in the backup label
+        storage_config = common.get_object_storage_config(pghoard.config, pghoard.test_site)
+        storage = get_transfer(storage_config)
+        backups = storage.list_path(os.path.join(pghoard.config["backup_sites"][pghoard.test_site]["prefix"], "basebackup"))
+
+        # lets grab the backup label details for what we restored
+        pgb = PGBaseBackup(config=None, site="foosite", connection_info=None,
+                           basebackup_path=None, compression_queue=None, transfer_queue=None,
+                           metrics=metrics.Metrics(statsd={}))
+
+        path = os.path.join(backup_out, "backup_label")
+        with open(path, "r") as myfile:
+            data = myfile.read()
+            start_wal_segment, start_time = pgb.parse_backup_label(data)
+
+        assert start_wal_segment == backups[0]['metadata']['start-wal-segment']
+        assert start_time == backups[0]['metadata']['start-time']
+
     def _test_basebackups(self, capsys, db, pghoard, tmpdir, mode, *, replica=False):
         self._test_create_basebackup(capsys, db, pghoard, mode, replica=replica)
         self._test_restore_basebackup(db, pghoard, tmpdir)
