@@ -210,8 +210,18 @@ class PGBaseBackup(Thread):
                       command, self.pid, compressed_basebackup)
 
         stream_target = os.path.join(temp_basebackup_dir, "data.tmp")
-        original_input_size, compressed_file_size, metadata = \
-            self.basebackup_compression_pipe(proc, stream_target)
+
+        # catch any os level exceptions such out of disk space, so that the underlying
+        # OS process gets properly cleaned up by check_command_success
+        try:
+            original_input_size, compressed_file_size, metadata = \
+                self.basebackup_compression_pipe(proc, stream_target)
+        except OSError as e:
+            self.log.error("basebackup_compression_pipe(%r, %r) failed with %r. "
+                           "Ignoring; check_command_success will detect this.",
+                           proc, stream_target, e)
+            self.metrics.unexpected_exception(e, where="PGBaseBackup")
+
         self.check_command_success(proc, stream_target)
         os.rename(stream_target, compressed_basebackup)
         # Since we can't parse the backup label we cheat with the start-wal-segment and
