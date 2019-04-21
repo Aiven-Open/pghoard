@@ -1,10 +1,13 @@
 *.pyc
 *.pyo
+*.log
 *~
 /.cache
 /.coverage
 /.project
 /.pydevproject
+/.vagrant
+/.idea
 __pycache__/
 /build/
 /dist/

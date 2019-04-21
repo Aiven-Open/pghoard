@@ -11,6 +11,7 @@ Features:
 * Automatic periodic basebackups
 * Automatic transaction log (WAL/xlog) backups (using either ``pg_receivexlog``,
   ``archive_command`` or experimental PG native replication protocol support with ``walreceiver``)
+* Optional Standalone Hot Backup support
 * Cloud object storage support (AWS S3, Google Cloud, OpenStack Swift, Azure, Ceph)
 * Backup restoration directly from object storage, compressed and encrypted
 * Point-in-time-recovery (PITR)
@@ -117,27 +118,24 @@ should work on other platforms that provide the required modules.
 Vagrant
 =======
 
-The Vagrantfile can be used to setup a vagrant development environment::
+The Vagrantfile can be used to setup a vagrant development environment, consisting of two
+vagrant virtual machines.
+
+1) Postgresql 9.4, python 3.5 and 3.6::
 
   vagrant up
-  vagrant ssh
+  vagrant ssh postgres9
   cd /vagrant
+  source ~/venv3/bin/activate
+  make test
+  source ~/venv3.6/bin/activate
   make test
 
-By default when you ssh to the vagrant instance it will be setup with python 3.5.x, the
-vagrant instance also has venv.
+2) Postgresql 10 and python 3.7::
 
-For python 3.6::
-
-  source ~/venv3.6/bin/activate
-
-For python 3.7::
-
-  source ~/venv3.7/bin/activate
-
-For python 3.5::
-
-  source ~/venv3/bin/activate
+  vagrant ssh postgres10
+  cd /vagrant
+  make test
 
 Note: make deb does not work from vagrant at the moment, hopefully this will be resolved soon
 
@@ -255,7 +253,8 @@ Backing up your database
 
 PostgreSQL backups consist of full database backups, *basebackups*, plus
 write ahead logs and related metadata, *WAL*.  Both *basebackups* and *WAL*
-are required to create and restore a consistent database.
+are required to create and restore a consistent database (does not apply
+for standalone hot backups).
 
 To enable backups with PGHoard the ``pghoard`` daemon must be running
 locally.  The daemon will periodically take full basebackups of the database
@@ -297,6 +296,31 @@ While ``pghoard`` is running it may be useful to read the JSON state file
 ``pghoard_state.json`` that exists where ``json_state_file_path`` points.
 The JSON state file is human readable and is meant to describe the current
 state of ``pghoard`` 's backup activities.
+
+
+Standalone Hot Backup Support
+=============================
+
+Pghoard has the option to enable standalone hot backups.
+
+To do this ``archive_mode`` must be disabled in ``postgresql.conf`` and
+``pghoard.json`` must set ``active_backup_mode`` to ``standalone_hot_backup``
+in the relevant site, for example::
+
+
+    {
+        "backup_sites": {
+            "default": {
+                "active_backup_mode": "standalone_hot_backup",
+                ...
+             },
+         },
+         ...
+     }
+
+
+For more information refer to the postgresql documentation
+https://www.postgresql.org/docs/9.5/continuous-archiving.html#BACKUP-STANDALONE
 
 
 Restoring databases

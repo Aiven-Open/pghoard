@@ -122,13 +122,21 @@ class PGBaseBackup(Thread):
             "--verbose",
             "--pgdata", output_name,
         ]
+
+        if self.config["backup_sites"][self.site]['active_backup_mode'] == 'standalone_hot_backup':
+            if self.pg_version_server >= 100000:
+                command.extend(["--wal-method=fetch"])
+            else:
+                command.extend(["--xlog-method=fetch"])
+        elif self.pg_version_server >= 100000:
+            command.extend(["--wal-method=none"])
+
         connection_string, _ = replication_connection_string_and_slot_using_pgpass(self.connection_info)
         command.extend([
             "--progress",
             "--dbname", connection_string
         ])
-        if self.pg_version_server >= 100000:
-            command.extend(["--wal-method=none"])
+
         return command
 
     def check_command_success(self, proc, output_file):
