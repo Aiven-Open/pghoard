@@ -84,6 +84,7 @@ class ArchiveSync:
         wal_files.sort(key=lambda f: (f.endswith(".history"), f), reverse=True)
         need_archival = []
         hash_checks_done = 0
+        existing_wal_without_checksum_count = 0
         for wal_file in wal_files:
             archive_type = None
             if wal.TIMELINE_RE.match(wal_file):
@@ -110,6 +111,18 @@ class ArchiveSync:
                     check_hash = bool(
                         archive_type == "WAL" and (hash_checks_done < max_hash_checks or max_hash_checks < 0) and remote_hash
                     )
+                    if archive_type == "WAL" and not remote_hash:
+                        # If we don't have hashes available (old pghoard was running on previous master), re-upload first
+                        # file that already exists in remote storage and doesn't have a checksum since it might be the last
+                        # WAL file of previous timeline uploaded by old master and invalid because it doesn't have the
+                        # timeline switch event and have some writes that are not valid for our timeline
+                        existing_wal_without_checksum_count += 1
+                        if existing_wal_without_checksum_count == 1:
+                            self.log.info(
+                                "%s file %r already archived but no hash is available, reuploading", archive_type, wal_file
+                            )
+                            need_archival.append(wal_file)
+                            continue
                     if check_hash:
                         hash_checks_done += 1
                         our_hash = self.calculate_hash(os.path.join(wal_dir, wal_file), hash_algorithm)

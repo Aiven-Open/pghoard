@@ -132,6 +132,7 @@ def test_check_and_upload_missing_local_files(requests_put_mock, requests_head_m
 
     head_call_indexes = []
     put_call_indexes = []
+    missing_hash_indexes = {0xf, 0x10}
 
     def requests_head(*args, **kwargs):  # pylint: disable=unused-argument
         wal_index = int(os.path.split(args[0])[1], 16)
@@ -143,7 +144,7 @@ def test_check_and_upload_missing_local_files(requests_put_mock, requests_head_m
         if wal_index in {0x1, 0xb, 0xd, 0xf, 0x11, 0x13}:
             sha1 += "invalid"
         # For some files don't return sha1 header to test the code copes with missing header correctly
-        if wal_index in {0xf, 0x10}:
+        if wal_index in missing_hash_indexes:
             headers = {}
         else:
             headers = {"metadata-hash": sha1, "metadata-hash-algorithm": "sha1"}
@@ -169,5 +170,13 @@ def test_check_and_upload_missing_local_files(requests_put_mock, requests_head_m
     # Files above 0x1a in future, 0x1a is current. 0x14 and under are already uploaded but 0x13, 0x11, 0xf,
     # 0xd, 0xb and 0x1 have invalid hash. Of those 0x1 doesn't get re-uploaded because we set max hashes to
     # check to a value that is exceeded before reaching that and 0xf doesn't get reuploaded because remote
-    # hash for that isn't available so hash cannot be validated
-    assert put_call_indexes == [0xb, 0xd, 0x11, 0x13, 0x15, 0x16, 0x17, 0x18, 0x19]
+    # hash for that isn't available so hash cannot be validated but 0x10 does get reuploaded because it is
+    # the first file missing a hash.
+    assert put_call_indexes == [0xb, 0xd, 0x10, 0x11, 0x13, 0x15, 0x16, 0x17, 0x18, 0x19]
+
+    missing_hash_indexes.update(set(range(0x20)))
+    head_call_indexes.clear()
+    put_call_indexes.clear()
+    arsy.check_and_upload_missing_local_files(15)
+    # The first file that already existed (0x14) should've been re-uploaded due to missing sha1
+    assert put_call_indexes == [0x14, 0x15, 0x16, 0x17, 0x18, 0x19]
