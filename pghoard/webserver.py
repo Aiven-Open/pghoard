@@ -518,8 +518,13 @@ class RequestHandler(BaseHTTPRequestHandler):
             site, obtype, obname = self._parse_request(path)
             if self.headers.get("x-pghoard-target-path"):
                 raise HttpResponse("x-pghoard-target-path header is only valid for downloads", status=400)
-            self._transfer_agent_op(site, obname, obtype, "METADATA")
-            raise HttpResponse(status=200)
+            response = self._transfer_agent_op(site, obname, obtype, "METADATA")
+            metadata = response["metadata"]
+            headers = {}
+            if metadata.get("hash") and metadata.get("hash-algorithm"):
+                headers["metadata-hash"] = metadata["hash"]
+                headers["metadata-hash-algorithm"] = metadata["hash-algorithm"]
+            raise HttpResponse(status=200, headers=headers)
 
     def do_GET(self):
         with self._response_handler("GET") as path:

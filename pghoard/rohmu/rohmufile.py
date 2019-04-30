@@ -107,7 +107,8 @@ def file_writer(*, fileobj, compression_algorithm=None, compression_level=0, rsa
 
 def write_file(*, input_obj, output_obj, progress_callback=None,
                compression_algorithm=None, compression_level=0,
-               rsa_public_key=None, log_func=None, header_func=None):
+               rsa_public_key=None, log_func=None, header_func=None,
+               data_callback=None):
     start_time = time.monotonic()
 
     original_size = 0
@@ -121,6 +122,9 @@ def write_file(*, input_obj, output_obj, progress_callback=None,
             input_data = input_obj.read(IO_BLOCK_SIZE)
             if not input_data:
                 break
+
+            if data_callback:
+                data_callback(input_data)
 
             if header_block and header_func:
                 header_func(input_data)
