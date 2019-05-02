@@ -345,7 +345,11 @@ class RequestHandler(BaseHTTPRequestHandler):
                             self.server.log.warning("Target path for %r already exists, skipping", key)
                             continue
                         os.rename(result["target_path"], op["target_path"])
-                        self.server.log.info("Renamed %s to %s", result["target_path"], op["target_path"])
+                        metadata = result["metadata"] or {}
+                        self.server.log.info(
+                            "Renamed %s to %s. Original upload from %r, hash %s:%s", result["target_path"],
+                            op["target_path"], metadata.get("host"), metadata.get("hash-algorithm"), metadata.get("hash")
+                        )
                     else:
                         ex = result.get("exception", Error)
                         if isinstance(ex, FileNotFoundFromStorageError):
