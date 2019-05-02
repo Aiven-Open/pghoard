@@ -596,12 +596,12 @@ class PGBaseBackup(Thread):
                                                            "to take `local-tar` backups from a replica")
 
                 if pgespresso_version and pgespresso_version >= "1.2":
-                    cursor.execute("SELECT pgespresso_start_backup(%s, false)", [BASEBACKUP_NAME])
+                    cursor.execute("SELECT pgespresso_start_backup(%s, true)", [BASEBACKUP_NAME])
                     backup_label = cursor.fetchone()[0]
                     backup_mode = "pgespresso"
                 else:
                     try:
-                        cursor.execute("SELECT pg_start_backup(%s)", [BASEBACKUP_NAME])
+                        cursor.execute("SELECT pg_start_backup(%s, true)", [BASEBACKUP_NAME])
                     except psycopg2.OperationalError as ex:
                         self.log.warning("Exclusive pg_start_backup() failed: %s: %s", ex.__class__.__name__, ex)
                         db_conn.rollback()
@@ -609,7 +609,7 @@ class PGBaseBackup(Thread):
                             raise
                         self.log.info("Calling pg_stop_backup() and retrying")
                         cursor.execute("SELECT pg_stop_backup()")
-                        cursor.execute("SELECT pg_start_backup(%s)", [BASEBACKUP_NAME])
+                        cursor.execute("SELECT pg_start_backup(%s, true)", [BASEBACKUP_NAME])
 
                     with open(os.path.join(pgdata, "backup_label"), "r") as fp:
                         backup_label = fp.read()
@@ -777,11 +777,11 @@ class PGBaseBackup(Thread):
             cursor.execute("SELECT pg_start_backup(%s, true, false)", [backup_end_name])
             cursor.execute("SELECT pg_stop_backup(false)")
         elif backup_mode == "pgespresso":
-            cursor.execute("SELECT pgespresso_start_backup(%s, false)", [backup_end_name])
+            cursor.execute("SELECT pgespresso_start_backup(%s, true)", [backup_end_name])
             backup_label = cursor.fetchone()[0]
             cursor.execute("SELECT pgespresso_stop_backup(%s)", [backup_label])
         else:
-            cursor.execute("SELECT pg_start_backup(%s)", [backup_end_name])
+            cursor.execute("SELECT pg_start_backup(%s, true)", [backup_end_name])
             cursor.execute("SELECT pg_stop_backup()")
         db_conn.commit()
 
