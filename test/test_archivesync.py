@@ -1,11 +1,13 @@
 from pghoard.common import write_json_file
 from unittest.mock import Mock, patch
+import hashlib
 import os
 import pytest
 
 
 class HTTPResult:
-    def __init__(self, result):
+    def __init__(self, result, headers=None):
+        self.headers = headers or {}
         self.status_code = result
 
 
@@ -105,3 +107,76 @@ def test_check_wal_archive_integrity(requests_put_mock, requests_head_mock, tmpd
     arsy.get_first_required_wal_segment = Mock(return_value=("000000020000000A000000FD", 90300))
     assert arsy.check_wal_archive_integrity(new_backup_on_failure=True) == 0
     assert requests_put_mock.call_count == 1
+
+
+@patch("requests.head")
+@patch("requests.put")
+def test_check_and_upload_missing_local_files(requests_put_mock, requests_head_mock, tmpdir):
+    from pghoard.archive_sync import ArchiveSync
+
+    data_dir = str(tmpdir)
+    wal_dir = os.path.join(data_dir, "pg_xlog")
+    os.makedirs(wal_dir)
+    open(os.path.join(data_dir, "PG_VERSION"), "w").write("9.6")
+
+    # Write a bunch of local files
+    file_hashes = {}
+    for index in range(32):
+        fn = "{:024X}".format(index + 1)
+        data = os.urandom(32)
+        sha1_hasher = hashlib.sha1()
+        sha1_hasher.update(data)
+        file_hashes[index + 1] = sha1_hasher.hexdigest()
+        with open(os.path.join(wal_dir, fn), "wb") as f:
+            f.write(data)
+
+    head_call_indexes = []
+    put_call_indexes = []
+    missing_hash_indexes = {0xf, 0x10}
+
+    def requests_head(*args, **kwargs):  # pylint: disable=unused-argument
+        wal_index = int(os.path.split(args[0])[1], 16)
+        head_call_indexes.append(wal_index)
+        if wal_index > 0x14:
+            return HTTPResult(404)
+        sha1 = file_hashes[wal_index]
+        # For some files return invalid hash
+        if wal_index in {0x1, 0xb, 0xd, 0xf, 0x11, 0x13}:
+            sha1 += "invalid"
+        # For some files don't return sha1 header to test the code copes with missing header correctly
+        if wal_index in missing_hash_indexes:
+            headers = {}
+        else:
+            headers = {"metadata-hash": sha1, "metadata-hash-algorithm": "sha1"}
+        return HTTPResult(200, headers=headers)
+
+    def requests_put(*args, **kwargs):  # pylint: disable=unused-argument
+        wal_index = int(os.path.split(args[0])[1], 16)
+        put_call_indexes.append(wal_index)
+        return HTTPResult(201)
+
+    config_file = tmpdir.join("arsy.conf").strpath
+    write_json_file(config_file, {"http_port": 8080, "backup_sites": {"foo": {"pg_data_directory": data_dir}}})
+    arsy = ArchiveSync()
+    arsy.set_config(config_file, site="foo")
+    requests_put_mock.side_effect = requests_put
+    requests_head_mock.side_effect = requests_head
+    arsy.get_current_wal_file = Mock(return_value="00000000000000000000001A")
+    arsy.get_first_required_wal_segment = Mock(return_value=("000000000000000000000001", 90300))
+
+    arsy.check_and_upload_missing_local_files(15)
+
+    assert head_call_indexes == list(reversed([index + 1 for index in range(0x19)]))
+    # Files above 0x1a in future, 0x1a is current. 0x14 and under are already uploaded but 0x13, 0x11, 0xf,
+    # 0xd, 0xb and 0x1 have invalid hash. Of those 0x1 doesn't get re-uploaded because we set max hashes to
+    # check to a value that is exceeded before reaching that and 0xf doesn't get reuploaded because remote
+    # hash for that isn't available so hash cannot be validated but 0x10 does get reuploaded because it is
+    # the first file missing a hash.
+    assert put_call_indexes == [0xb, 0xd, 0x10, 0x11, 0x13, 0x15, 0x16, 0x17, 0x18, 0x19]
+
+    missing_hash_indexes.update(set(range(0x20)))
+    head_call_indexes.clear()
+    put_call_indexes.clear()
+    arsy.check_and_upload_missing_local_files(15)
+    # The first file that already existed (0x14) should've been re-uploaded due to missing sha1
+    assert put_call_indexes == [0x14, 0x15, 0x16, 0x17, 0x18, 0x19]

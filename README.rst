@@ -387,7 +387,8 @@ failures and other interruptions can cause the WAL deletion process to leave
 orphan WAL files behind, they can be deleted with this tool.
 
 ``pghoard_archive_sync`` can be used to see if any local files should
-be archived but haven't been. The other usecase it has is to determine
+be archived but haven't been or if any of the archived files have unexpected
+content and need to be archived again. The other usecase it has is to determine
 if there are any gaps in the required files in the WAL archive
 from the current WAL file on to to the latest basebackup's first WAL file.
 
@@ -441,6 +442,11 @@ configuration keys for sites are listed below.
  * ``algorithm`` default ``"snappy"`` if available, otherwise ``"lzma"``
  * ``level`` default ``"0"`` compression level for ``"lzma"`` compression
  * ``thread_count`` (default max(cpu_count, ``5``)) number of parallel compression threads
+
+``hash_algorithm`` (default ``"sha1"``)
+
+The hash algorithm used for calculating checksums for WAL or other files. Must
+be one of the algorithms supported by Python's hashlib.
 
 ``http_address`` (default ``"127.0.0.1"``)
 

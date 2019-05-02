@@ -43,7 +43,7 @@ class FileFetchManager:
                 raise queue.Empty
             elif isinstance(result[1], Exception):
                 raise result[1]
-            return result[1]
+            return result[1], result[2]
         else:
             transfer = self.transfer_provider(site)
             return FileFetcher(self.config, transfer).fetch(site, key, target_path)
@@ -91,7 +91,7 @@ class FileFetcher:
                 output = create_sink_pipeline(
                     output=target_file, file_size=file_size, metadata=metadata, key_lookup=lookup, throttle_time=0)
                 output.write(data)
-            return file_size
+            return file_size, metadata
         except Exception:
             if os.path.isfile(target_path):
                 os.unlink(target_path)
@@ -110,7 +110,7 @@ def _remote_file_fetch_loop(app_config, task_queue, result_queue):
             if not transfer:
                 transfer = get_transfer(get_object_storage_config(app_config, site))
                 transfers[site] = transfer
-            file_size = FileFetcher(app_config, transfer).fetch(site, key, target_path)
-            result_queue.put((task, file_size))
+            file_size, metadata = FileFetcher(app_config, transfer).fetch(site, key, target_path)
+            result_queue.put((task, file_size, metadata))
         except Exception as e:  # pylint: disable=broad-except
             result_queue.put((task, e))

@@ -185,6 +185,9 @@ class CompressionCase(PGHoardTestCase):
             "site": self.test_site,
         }
         for key, value in expected.items():
+            if key == "metadata" and filetype == "xlog":
+                assert transfer_event[key].pop("hash")
+                assert transfer_event[key].pop("hash-algorithm") == "sha1"
             assert transfer_event[key] == value
 
     def test_compress_to_memory(self):
@@ -211,6 +214,9 @@ class CompressionCase(PGHoardTestCase):
         }
         transfer_event = self.transfer_queue.get(timeout=3.0)
         for key, value in expected.items():
+            if key == "metadata":
+                assert transfer_event[key].pop("hash")
+                assert transfer_event[key].pop("hash-algorithm") == "sha1"
             assert transfer_event[key] == value
 
         result = self.decompress(transfer_event["blob"])
@@ -244,6 +250,9 @@ class CompressionCase(PGHoardTestCase):
         }
         transfer_event = self.transfer_queue.get(timeout=5.0)
         for key, value in expected.items():
+            if key == "metadata":
+                assert transfer_event[key].pop("hash")
+                assert transfer_event[key].pop("hash-algorithm") == "sha1"
             assert transfer_event[key] == value
 
     def test_archive_command_compression(self):
@@ -273,6 +282,9 @@ class CompressionCase(PGHoardTestCase):
             "site": self.test_site,
         }
         for key, value in expected.items():
+            if key == "metadata":
+                assert transfer_event[key].pop("hash")
+                assert transfer_event[key].pop("hash-algorithm") == "sha1"
             assert transfer_event[key] == value
 
         assert self.decompress(transfer_event["blob"]) == zero.contents

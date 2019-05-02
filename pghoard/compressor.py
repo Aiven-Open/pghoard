@@ -11,6 +11,7 @@ from pghoard.rohmu import rohmufile, errors
 from queue import Empty
 from tempfile import NamedTemporaryFile
 from threading import Thread
+import hashlib
 import logging
 import os
 import socket
@@ -137,10 +138,14 @@ class CompressorThread(Thread):
         if not input_obj:
             input_obj = open(event["full_path"], "rb")
         with output_obj, input_obj:
+            hash_algorithm = self.config["hash_algorithm"]
+            hasher = None
             if filetype == "xlog":
                 wal.verify_wal(wal_name=os.path.basename(event["full_path"]), fileobj=input_obj)
+                hasher = hashlib.new(hash_algorithm)
 
             original_file_size, compressed_file_size = rohmufile.write_file(
+                data_callback=hasher.update if hasher else None,
                 input_obj=input_obj,
                 output_obj=output_obj,
                 compression_algorithm=self.config["compression"]["algorithm"],
@@ -165,6 +170,9 @@ class CompressorThread(Thread):
             "original-file-size": original_file_size,
             "host": socket.gethostname(),
         })
+        if hasher:
+            metadata["hash"] = hasher.hexdigest()
+            metadata["hash-algorithm"] = hash_algorithm
         if encryption_key_id:
             metadata.update({"encryption-key-id": encryption_key_id})
         if compressed_filepath:
