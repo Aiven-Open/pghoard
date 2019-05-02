@@ -1,5 +1,15 @@
+pghoard 2.1.0 (unreleased)
+==========================
+
+* Support for passing statistics to Prometheus
+* Progress monitoring of basebackups
+* Fix incompatibility with legacy PGHoard backups (2.0.0 was unable to
+  restore backups taken with much older versions)
+* Compatibility improvements for different S3 api implementations
+
 pghoard 2.0.0 (2018-11-08)
 ==========================
+
 * Support for PostgreSQL 11
 * Drop support for PosgreSQL 9.2
 * Multiprocess parallel basebackup restore

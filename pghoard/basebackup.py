@@ -596,12 +596,12 @@ class PGBaseBackup(Thread):
                                                            "to take `local-tar` backups from a replica")
 
                 if pgespresso_version and pgespresso_version >= "1.2":
-                    cursor.execute("SELECT pgespresso_start_backup(%s, false)", [BASEBACKUP_NAME])
+                    cursor.execute("SELECT pgespresso_start_backup(%s, true)", [BASEBACKUP_NAME])
                     backup_label = cursor.fetchone()[0]
                     backup_mode = "pgespresso"
                 else:
                     try:
-                        cursor.execute("SELECT pg_start_backup(%s)", [BASEBACKUP_NAME])
+                        cursor.execute("SELECT pg_start_backup(%s, true)", [BASEBACKUP_NAME])
                     except psycopg2.OperationalError as ex:
                         self.log.warning("Exclusive pg_start_backup() failed: %s: %s", ex.__class__.__name__, ex)
                         db_conn.rollback()
@@ -609,7 +609,7 @@ class PGBaseBackup(Thread):
                             raise
                         self.log.info("Calling pg_stop_backup() and retrying")
                         cursor.execute("SELECT pg_stop_backup()")
-                        cursor.execute("SELECT pg_start_backup(%s)", [BASEBACKUP_NAME])
+                        cursor.execute("SELECT pg_start_backup(%s, true)", [BASEBACKUP_NAME])
 
                     with open(os.path.join(pgdata, "backup_label"), "r") as fp:
                         backup_label = fp.read()
@@ -756,9 +756,11 @@ class PGBaseBackup(Thread):
         cursor = db_conn.cursor()
 
         # Get backup end time and end segment and forcibly register a transaction in the current segment
+        # Also check if we're a superuser and can directly call pg_switch_xlog()/pg_switch_wal() later.
         # Note that we can't call pg_walfile_name() or pg_current_wal_lsn() in recovery
-        cursor.execute("SELECT now(), pg_is_in_recovery()")
-        backup_end_time, in_recovery = cursor.fetchone()
+        cursor.execute("SELECT now(), pg_is_in_recovery(), "
+                       "       (SELECT rolsuper FROM pg_catalog.pg_roles WHERE rolname = current_user)")
+        backup_end_time, in_recovery, is_superuser = cursor.fetchone()
         if in_recovery:
             db_conn.commit()
             return None, backup_end_time
@@ -773,15 +775,20 @@ class PGBaseBackup(Thread):
         # Now force switch of the WAL segment to make sure we have archived a segment with a known
         # timestamp after pg_stop_backup() was called.
         backup_end_name = "pghoard_end_of_backup"
-        if backup_mode == "non-exclusive":
+        if is_superuser:
+            if self.pg_version_server >= 100000:
+                cursor.execute("SELECT pg_switch_wal()")
+            else:
+                cursor.execute("SELECT pg_switch_xlog()")
+        elif backup_mode == "non-exclusive":
             cursor.execute("SELECT pg_start_backup(%s, true, false)", [backup_end_name])
             cursor.execute("SELECT pg_stop_backup(false)")
         elif backup_mode == "pgespresso":
-            cursor.execute("SELECT pgespresso_start_backup(%s, false)", [backup_end_name])
+            cursor.execute("SELECT pgespresso_start_backup(%s, true)", [backup_end_name])
             backup_label = cursor.fetchone()[0]
             cursor.execute("SELECT pgespresso_stop_backup(%s)", [backup_label])
         else:
-            cursor.execute("SELECT pg_start_backup(%s)", [backup_end_name])
+            cursor.execute("SELECT pg_start_backup(%s, true)", [backup_end_name])
             cursor.execute("SELECT pg_stop_backup()")
         db_conn.commit()
 

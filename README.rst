@@ -77,7 +77,7 @@ if the host running PGHoard is incapacitated.
 Requirements
 ============
 
-PGHoard can backup and restore PostgreSQL versions 9.2 and above.  The
+PGHoard can backup and restore PostgreSQL versions 9.3 and above.  The
 daemon is implemented in Python and works with CPython version 3.3 or newer.
 The following Python modules are required:
 
