@@ -12,7 +12,7 @@ matrix:
       sudo: true
 
 install:
-  - "pip install astroid==2.0.0 botocore cryptography flake8 httplib2 mock psycopg2 pylint==2.2.2 pytest python-dateutil python-snappy python-systemd requests azure-storage"
+  - "pip install astroid==2.0.0 cryptography pysftp>=0.2.9 botocore flake8 httplib2 mock psycopg2 pylint==2.2.2 pytest python-dateutil python-snappy python-systemd requests azure-storage"
 
 script:
   - "make pylint"
