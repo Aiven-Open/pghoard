@@ -242,3 +242,15 @@ def test_encryptorfile_for_tarfile(tmpdir):
             content = content_file.read()  # pylint: disable=no-member
             content_file.close()  # pylint: disable=no-member
             assert testdata == content
+
+
+def test_empty_file():
+    bio = io.BytesIO()
+    ef = EncryptorFile(bio, CONSTANT_TEST_RSA_PUBLIC_KEY)
+    ef.write(b"")
+    ef.close()
+    assert bio.tell() == 0
+
+    df = DecryptorFile(bio, CONSTANT_TEST_RSA_PRIVATE_KEY)
+    data = df.read()
+    assert data == b""
