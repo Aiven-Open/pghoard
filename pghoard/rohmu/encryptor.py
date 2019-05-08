@@ -264,6 +264,9 @@ class DecryptorFile(FileWrap):
             full_data.extend(data)
 
     def _read_block(self, size):
+        if self._crypted_size == 0:
+            return b""
+
         self._initialize_decryptor()
 
         if self.offset == self._plaintext_size:
