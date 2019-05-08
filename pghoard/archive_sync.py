@@ -126,7 +126,11 @@ class ArchiveSync:
                     if check_hash:
                         hash_checks_done += 1
                         our_hash = self.calculate_hash(os.path.join(wal_dir, wal_file), hash_algorithm)
-                        if remote_hash.lower().strip() != our_hash.lower().strip():
+                        if not our_hash:
+                            self.log.info(
+                                "%s file %r already archived (file deleted before getting hash)", archive_type, wal_file
+                            )
+                        elif remote_hash.lower().strip() != our_hash.lower().strip():
                             self.log.warning(
                                 "%s file %r already archived but existing hash %r differs from our hash %r, reuploading",
                                 archive_type, wal_file, remote_hash, our_hash
@@ -205,12 +209,15 @@ class ArchiveSync:
     @staticmethod
     def calculate_hash(full_name, hash_algorithm):
         hasher = hashlib.new(hash_algorithm)
-        with open(full_name, "rb") as file_obj:
-            while True:
-                data = file_obj.read(128 * 1024)
-                if not data:
-                    break
-                hasher.update(data)
+        try:
+            with open(full_name, "rb") as file_obj:
+                while True:
+                    data = file_obj.read(128 * 1024)
+                    if not data:
+                        break
+                    hasher.update(data)
+        except FileNotFoundError:
+            return None
         return hasher.hexdigest()
 
     def run(self, args=None):
