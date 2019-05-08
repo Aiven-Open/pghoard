@@ -81,13 +81,11 @@ def _test_storage(st, driver, tmpdir, storage_config):
     assert st.get_contents_to_fileobj("test1/x1", out) == {"k": "v"}
     assert out.getvalue() == b"dummy"
 
-    # sftp does not support remote copy
-    if driver != "sftp":
-        # Copy file
-        st.copy_file(source_key="test1/x1", destination_key="test_copy/copy1")
-        assert st.get_contents_to_string("test_copy/copy1") == (b"dummy", {"k": "v"})
-        st.copy_file(source_key="test1/x1", destination_key="test_copy/copy2", metadata={"new": "meta"})
-        assert st.get_contents_to_string("test_copy/copy2") == (b"dummy", {"new": "meta"})
+    # Copy file
+    st.copy_file(source_key="test1/x1", destination_key="test_copy/copy1")
+    assert st.get_contents_to_string("test_copy/copy1") == (b"dummy", {"k": "v"})
+    st.copy_file(source_key="test1/x1", destination_key="test_copy/copy2", metadata={"new": "meta"})
+    assert st.get_contents_to_string("test_copy/copy2") == (b"dummy", {"new": "meta"})
 
     st.store_file_from_memory("test1/x1", b"l", {"fancymetadata": "value"})
     assert st.get_contents_to_string("test1/x1") == (b"l", {"fancymetadata": "value"})
@@ -106,7 +104,7 @@ def _test_storage(st, driver, tmpdir, storage_config):
             Bucket=st.bucket_name,
             Key=st.format_key_for_backend("test1/x1"),
         )
-        assert bool(response.get("ServerSideEncryption")) == bool(storage_config.get("encrypted"))
+        assert bool(response.get("ServerSideEncryption")) == bool(storage_config.get('encrypted'))
 
     assert st.list_path("") == []  # nothing at top level (directories not listed)
     if driver == "local":
@@ -139,15 +137,11 @@ def _test_storage(st, driver, tmpdir, storage_config):
         # sub3 is a file. Actual object storage systems support this, but a file system does not
         with pytest.raises(NotADirectoryError):
             st.store_file_from_memory("test1/sub3/sub3.1/sub3.1.1", b"1", None)
-    elif driver == "sftp":
-        # sub3 is a file. Actual object storage systems support this, but a file system does not
-        with pytest.raises(errors.StorageError):
-            st.store_file_from_memory("test1/sub3/sub3.1/sub3.1.1", b"1", None)
     else:
         st.store_file_from_memory("test1/sub3/sub3.1/sub3.1.1", b"1", None)
         created_keys.add("test1/sub3/sub3.1/sub3.1.1")
 
-    if driver in ["local", "sftp"]:
+    if driver == "local":
         assert set(st.iter_prefixes("test1")) == {"test1/sub1", "test1/sub2"}
     else:
         assert set(st.iter_prefixes("test1")) == {"test1/sub1", "test1/sub2", "test1/sub3"}
@@ -157,7 +151,7 @@ def _test_storage(st, driver, tmpdir, storage_config):
     assert {item["name"] for item in st.list_path("test1/sub2")} == set()
     assert {item["name"] for item in st.list_path("test1/sub3")} == set()
     assert set(st.iter_prefixes("test1/sub2")) == {"test1/sub2/sub2.1"}
-    if driver in ["local", "sftp"]:
+    if driver == "local":
         assert set(st.iter_prefixes("test1/sub3")) == set()  # sub3 is a file
     else:
         assert set(st.iter_prefixes("test1/sub3")) == {"test1/sub3/sub3.1"}
@@ -170,7 +164,7 @@ def _test_storage(st, driver, tmpdir, storage_config):
         "test1/sub2/sub2.1/sub2.1.1",
         "test1/sub3",
     }
-    if driver not in ["local", "sftp"]:
+    if driver != "local":
         expected_deep_iter_test1_names.add("test1/sub3/sub3.1/sub3.1.1")
 
     assert {item["name"] for item in st.list_path("test1", deep=True)} == expected_deep_iter_test1_names
@@ -185,7 +179,7 @@ def _test_storage(st, driver, tmpdir, storage_config):
     deep_names_with_key = _object_names(st.iter_key("test1/sub3", deep=True, include_key=True))
     deep_names_without_key = _object_names(st.iter_key("test1/sub3", deep=True, include_key=False))
 
-    if driver in ["local", "sftp"]:
+    if driver == "local":
         assert deep_names_with_key == {"test1/sub3"}
         assert deep_names_without_key == set()
     else:
@@ -318,27 +312,17 @@ def _test_storage(st, driver, tmpdir, storage_config):
         st.delete_key(key)
 
 
-# sftp test support is available in vagrant, so can test just like for local if running in vagrant
 def _test_storage_init(storage_type, with_prefix, tmpdir, config_overrides=None):
     if storage_type == "local":
         storage_config = {"directory": str(tmpdir.join("rohmu"))}
-    elif storage_type == "sftp" and os.path.isfile("/home/vagrant/pghoard-test-sftp-user"):
-        with open("/home/vagrant/pghoard-test-sftp-user", "r") as sftpuser:
-            username, password = sftpuser.read().strip().split(":")
-
-        if username:
-            storage_config = {"server": "localhost", "port": 22, "username": username, "password": password}
-
-            # for no prefix testing, we need to cleanup existing files
-            os.system("sudo rm -rf /home/{}/*".format(username))
     else:
         try:
-            conf_func = getattr(test_storage_configs, "config_{}".format(storage_type))
+            conf_func = getattr(test_storage_configs, "config_" + storage_type)
         except AttributeError:
-            pytest.skip("{} config isn't available".format(storage_type))
+            pytest.skip(storage_type + " config isn't available")
         storage_config = conf_func()
 
-    if storage_type in ["aws_s3", "ceph_s3"]:
+    if storage_type in ("aws_s3", "ceph_s3"):
         driver = "s3"
     elif storage_type == "ceph_swift":
         driver = "swift"
@@ -367,7 +351,7 @@ def test_storage_aws_s3_with_prefix(tmpdir):
 
 def test_storage_aws_s3_no_prefix_with_encryption(tmpdir):
     _test_storage_init("aws_s3", False, tmpdir,
-                       config_overrides={"encrypted": True})
+                       config_overrides={'encrypted': True})
 
 
 def test_storage_azure_no_prefix(tmpdir):
@@ -416,14 +400,6 @@ def test_storage_swift_no_prefix(tmpdir):
 
 def test_storage_swift_with_prefix(tmpdir):
     _test_storage_init("swift", True, tmpdir)
-
-
-def test_storage_sftp_no_prefix(tmpdir):
-    _test_storage_init("sftp", False, tmpdir)
-
-
-def test_storage_sftp_with_prefix(tmpdir):
-    _test_storage_init("sftp", True, tmpdir)
 
 
 def test_storage_config(tmpdir):

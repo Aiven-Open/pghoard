@@ -96,8 +96,6 @@ Optional requirements include:
 * snappy_ for Snappy compression and decompression
 * systemd_ for systemd integration
 * swiftclient_ for OpenStack Swift object storage
-* pysftp_  for sftp object storage
-* paramiko_  for sftp object storage
 
 .. _`azure`: https://github.com/Azure/azure-sdk-for-python
 .. _`botocore`: https://github.com/boto/botocore
@@ -106,8 +104,6 @@ Optional requirements include:
 .. _`snappy`: https://github.com/andrix/python-snappy
 .. _`systemd`: https://github.com/systemd/python-systemd
 .. _`swiftclient`: https://github.com/openstack/python-swiftclient
-.. _`pysftp`: https://bitbucket.org/dundeemt/pysftp
-.. _`paramiko`: https://github.com/paramiko/paramiko
 
 Developing and testing PGHoard also requires the following utilities:
 flake8_, pylint_ and pytest_.
@@ -140,7 +136,6 @@ vagrant virtual machines.
   vagrant ssh postgres10
   cd /vagrant
   make test
-
 
 Note: make deb does not work from vagrant at the moment, hopefully this will be resolved soon
 
@@ -651,12 +646,6 @@ The following object storage types are supported:
   for example. Required keys:
 
  * ``directory`` for the path to the backup target (local) storage directory
-
-* ``sftp`` makes backups to a sftp server, required keys:
- * ``server``
- * ``port``
- * ``username``
- * ``password`` or ``private_key``
 
 * ``google`` for Google Cloud Storage, required configuration keys:
 

@@ -2,39 +2,26 @@
 # vi: set ft=ruby :
 
 Vagrant.configure("2") do |config|
-    config.vm.box = "ubuntu/xenial64"
+	config.vm.box = "ubuntu/xenial64"
+    config.vm.network "private_network", type: "dhcp"
 
-    $script = <<-SCRIPT
+    $suscript = <<-SCRIPT
         echo "deb http://apt.postgresql.org/pub/repos/apt/ xenial-pgdg main" > /etc/apt/sources.list.d/pgdg.list
         wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add -
-        add-apt-repository -y ppa:deadsnakes/ppa
+        sudo add-apt-repository -y ppa:deadsnakes/ppa
 
         apt-get update
         apt-get install -y build-essential libsnappy-dev
-
-        sed -i 's/PasswordAuthentication no/PasswordAuthentication yes/g' /etc/ssh/sshd_config
-        systemctl reload ssh
-
-        username="$(< /dev/urandom tr -dc a-z | head -c${1:-32};echo;)"
-        password=$(< /dev/urandom tr -dc _A-Z-a-z-0-9 | head -c${1:-32};echo;)
-        useradd -m -U $username
-        echo "$username:$password" > /home/vagrant/pghoard-test-sftp-user
-        echo "$username:$password" | chpasswd
     SCRIPT
-    config.vm.provision "shell", inline: $script, privileged: true
-
-    $script = <<-SCRIPT
-        ssh-keyscan localhost >> .ssh/known_hosts
-    SCRIPT
-    config.vm.provision "shell", inline: $script, privileged: false
+    config.vm.provision "shell", inline: $suscript, privileged: true
 
     config.vm.define "postgres9" do |postgres9|
         postgres9.vm.hostname = "postgres9.test"
 
-        $script = <<-SCRIPT
+        $suscript = <<-SCRIPT
             apt-get install -y postgresql-9.4 postgresql-server-dev-9.4 python3 python3-dev python3-venv python3.6 python3.6-dev python3.6-venv
         SCRIPT
-        postgres9.vm.provision "shell", inline: $script, privileged: true
+        postgres9.vm.provision "shell", inline: $suscript, privileged: true
 
         $script = <<-SCRIPT
             versions=(3 3.6)
@@ -42,7 +29,7 @@ Vagrant.configure("2") do |config|
                 python${version} -m venv venv${version}
                 source ~/venv${version}/bin/activate
                 pip install --upgrade pip
-                pip install astroid==2.0.0 cryptography pysftp>=0.2.9 botocore flake8 httplib2 mock psycopg2 pylint==2.2.2 pytest python-dateutil python-snappy python-systemd requests azure-storage
+                pip install astroid==2.0.0 botocore cryptography flake8 httplib2 mock psycopg2 pylint==2.2.2 pytest python-dateutil python-snappy python-systemd requests azure-storage
             done
 
             echo "source ~/venv3/bin/activate" >> ~/.bashrc
@@ -53,16 +40,16 @@ Vagrant.configure("2") do |config|
     config.vm.define "postgres10" do |postgres10|
         postgres10.vm.hostname = "postgres10.test"
 
-        $script = <<-SCRIPT
+        $suscript = <<-SCRIPT
             apt-get install -y postgresql-10 postgresql-server-dev-10 python3.7 python3.7-dev python3.7-venv
         SCRIPT
-        postgres10.vm.provision "shell", inline: $script, privileged: true
+        postgres10.vm.provision "shell", inline: $suscript, privileged: true
 
         $script = <<-SCRIPT
             python3.7 -m venv venv3.7
             source ~/venv3.7/bin/activate
             pip install --upgrade pip
-            pip install astroid==2.0.0 cryptography pysftp>=0.2.9 botocore flake8 httplib2 mock psycopg2 pylint==2.2.2 pytest python-dateutil python-snappy python-systemd requests azure-storage
+            pip install astroid==2.0.0 botocore cryptography flake8 httplib2 mock psycopg2 pylint==2.2.2 pytest python-dateutil python-snappy python-systemd requests azure-storage
 
             echo "source ~/venv3.7/bin/activate" >> ~/.bashrc
         SCRIPT
