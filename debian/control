@@ -6,7 +6,7 @@ Build-Depends: debhelper (>= 8), dh-python,
  postgresql-9.3 | postgresql-9.4 | postgresql-9.5 | postgresql-9.6,
  python3-all (>= 3.3), python3-cryptography (>= 0.8), python3-dateutil,
  python3-flake8, python3-psycopg2, python3-pytest, python3-requests,
- python3-setuptools, python3-snappy
+ python3-paramiko, python3-setuptools, python3-snappy
 X-Python3-Version: >= 3.3
 Standards-Version: 3.9.4
 Homepage: https://github.com/aiven/pghoard
@@ -15,7 +15,7 @@ Package: pghoard
 Architecture: all
 Depends: ${misc:Depends}, ${python3:Depends},
  python3-cryptography (>= 0.8), python3-dateutil, python3-psycopg2,
- python3-requests, python3-snappy, postgresql-common
+ python3-requests, python3-snappy, postgresql-common, python3-paramiko
 Breaks: postgresql-9.3-pgespresso (< 1.2),
  postgresql-9.4-pgespresso (< 1.2), postgresql-9.5-pgespresso (< 1.2)
 Description: PostgreSQL streaming backup service

@@ -35,7 +35,7 @@ build-dep-fed:
 	sudo dnf -y install --best --allowerasing \
 		golang \
 		postgresql-server \
-		python3-botocore python3-cryptography python3-dateutil python3-devel \
+		python3-botocore python3-cryptography python3-paramiko python3-dateutil python3-devel \
 		python3-flake8 python3-psycopg2 python3-pylint python3-pytest \
 		python3-pytest-cov python3-requests python3-snappy \
 		python3-azure-storage \
