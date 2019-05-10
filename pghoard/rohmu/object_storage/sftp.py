@@ -14,6 +14,7 @@ import json
 import logging
 import os
 import paramiko
+import warnings
 
 
 class SFTPTransfer(BaseTransfer):
@@ -36,7 +37,10 @@ class SFTPTransfer(BaseTransfer):
 
         logging.getLogger("paramiko").setLevel(logging.WARNING)
 
-        transport = paramiko.Transport(self.server, self.port)
+        # https://github.com/paramiko/paramiko/issues/1386#issuecomment-470847772
+        warnings.filterwarnings(action='ignore', module='.*paramiko.*')
+
+        transport = paramiko.Transport((self.server, self.port))
 
         if private_key:
             pkey = paramiko.RSAKey.from_private_key_file(self.private_key)

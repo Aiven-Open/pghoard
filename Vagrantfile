@@ -18,9 +18,6 @@ Vagrant.configure("2") do |config|
         apt-get update
         apt-get install -y build-essential libsnappy-dev
 
-        sed -i 's/PasswordAuthentication no/PasswordAuthentication yes/g' /etc/ssh/sshd_config
-        systemctl reload ssh
-
         username="$(< /dev/urandom tr -dc a-z | head -c${1:-32};echo;)"
         password=$(< /dev/urandom tr -dc _A-Z-a-z-0-9 | head -c${1:-32};echo;)
         useradd -m -U $username
@@ -31,6 +28,13 @@ Vagrant.configure("2") do |config|
         cat /home/vagrant/.ssh/id_rsa.pub >> /home/$username/.ssh/authorized_keys
         chown -R $username: /home/$username/.ssh
         chmod -R go-rwx /home/$username/.ssh
+
+        sed -i 's/PasswordAuthentication no/PasswordAuthentication yes/g' /etc/ssh/sshd_config
+
+        echo "Port 23" >> /etc/ssh/sshd_config
+        echo "Match LocalPort 22" >> /etc/ssh/sshd_config
+        echo "	DenyUsers $username" >> /etc/ssh/sshd_config
+        systemctl reload ssh
     SCRIPT
     config.vm.provision "shell", inline: $script, privileged: true
 
