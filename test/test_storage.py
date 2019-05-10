@@ -51,7 +51,7 @@ def _test_storage(st, driver, tmpdir, storage_config):
     # Other basic cases
     from_disk_file = str(scratch.join("a"))
     input_data = b"from disk"
-    if driver == "local":
+    if driver in ["local", "sftp"]:
         input_data = input_data * 150000
     with open(from_disk_file, "wb") as fp:
         fp.write(input_data)
@@ -65,8 +65,11 @@ def _test_storage(st, driver, tmpdir, storage_config):
 
     assert st.get_contents_to_fileobj("test1/x1", out, progress_callback=progress_callback) == {}
     assert out.getvalue() == input_data
-    if driver == "local":
+    if driver in ["local", "sftp"]:
         input_size = len(input_data)
+        assert reported_positions[-1] == (input_size, input_size)
+
+    if driver == "local":
         assert reported_positions == [(1024 * 1024, input_size), (input_size, input_size)]
 
     if driver == "s3":
@@ -327,7 +330,8 @@ def _test_storage_init(storage_type, with_prefix, tmpdir, config_overrides=None)
             username, password = sftpuser.read().strip().split(":")
 
         if username:
-            storage_config = {"server": "localhost", "port": 22, "username": username, "password": password}
+            # to ensure we are testing that you can use other than port 22, vagrant uses port 23
+            storage_config = {"server": "localhost", "port": 23, "username": username, "password": password}
 
             # for no prefix testing, we need to cleanup existing files
             os.system("sudo rm -rf /home/{}/*".format(username))
@@ -428,12 +432,14 @@ def test_storage_sftp_with_prefix(tmpdir):
 
 def test_storage_sftp_no_prefix_private_key(tmpdir):
     _test_storage_init("sftp", False, tmpdir,
-                       config_overrides={"private_key": "/home/vagrant/.ssh/id_rsa"})
+                       config_overrides={"private_key": "/home/vagrant/.ssh/id_rsa",
+                                         "password": "wrongpassword"})
 
 
 def test_storage_sftp_with_prefix_private_key(tmpdir):
     _test_storage_init("sftp", True, tmpdir,
-                       config_overrides={"private_key": "/home/vagrant/.ssh/id_rsa"})
+                       config_overrides={"private_key": "/home/vagrant/.ssh/id_rsa",
+                                         "password": "wrongpassword"})
 
 
 def test_storage_config(tmpdir):
