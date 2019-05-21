@@ -11,6 +11,7 @@ from pghoard import metrics
 from pghoard.compressor import CompressorThread
 from pghoard.rohmu import compressor, IO_BLOCK_SIZE, rohmufile
 from pghoard.rohmu.snappyfile import snappy, SnappyFile
+from pghoard.rohmu.compressor import zstd
 from queue import Queue
 import io
 import lzma
@@ -460,3 +461,17 @@ class TestSnappyCompression(CompressionCase):
 
         full = b"".join(out)
         assert full == b"hello, world"
+
+
+@pytest.mark.skipif(not zstd, reason="zstd not installed")
+class TestZstdCompression(CompressionCase):
+    algorithm = "zstd"
+
+    def compress(self, data):
+        return zstd.ZstdCompressor().compress(data)
+
+    def decompress(self, data):
+        return zstd.ZstdDecompressor().decompressobj().decompress(data)
+
+    def make_compress_stream(self, src_fp):
+        return compressor.CompressionStream(src_fp, "zstd")

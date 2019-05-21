@@ -54,11 +54,12 @@ With both modes of operations PGHoard creates periodic basebackups using
 ``pg_basebackup`` that is run against the database in question.
 
 The PostgreSQL write-ahead log (WAL) and basebackups are compressed with
-Snappy (default) or LZMA (configurable, level 0 by default) in order to
-ensure good compression speed and relatively small backup size.  For
-performance critical applications it is recommended to test both compression
-algorithms to find the most suitable trade-off for the particular use-case:
-snappy is much faster but yields larger compressed files.
+Snappy (default), Zstandard (configurable, level 3 by default) or LZMA (configurable,
+level 0 by default) in order to ensure good compression speed and relatively small backup size.
+For performance critical applications it is recommended to test compression
+algorithms to find the most suitable trade-off for the particular use-case.
+E.g. Snappy is fast but yields larger compressed files, Zstandard (zstd) on the other hand
+offers a very wide range of compression/speed trade-off.
 
 Optionally, PGHoard can encrypt backed up data at rest. Each individual
 file is encrypted and authenticated with file specific keys. The file
@@ -94,6 +95,7 @@ Optional requirements include:
 * google-api-client_ for Google Cloud object storage
 * cryptography_ for backup encryption and decryption (version 0.8 or newer required)
 * snappy_ for Snappy compression and decompression
+* zstandard_ for Zstandard (zstd) compression and decompression
 * systemd_ for systemd integration
 * swiftclient_ for OpenStack Swift object storage
 * paramiko_  for sftp object storage
@@ -103,6 +105,7 @@ Optional requirements include:
 .. _`google-api-client`: https://github.com/google/google-api-python-client
 .. _`cryptography`: https://cryptography.io/
 .. _`snappy`: https://github.com/andrix/python-snappy
+.. _`zstandard`: https://github.com/indygreg/python-zstandard
 .. _`systemd`: https://github.com/systemd/python-systemd
 .. _`swiftclient`: https://github.com/openstack/python-swiftclient
 .. _`paramiko`: https://github.com/paramiko/paramiko
@@ -441,8 +444,8 @@ configuration keys for sites are listed below.
 
 * ``compression`` WAL/basebackup compression parameters
 
- * ``algorithm`` default ``"snappy"`` if available, otherwise ``"lzma"``
- * ``level`` default ``"0"`` compression level for ``"lzma"`` compression
+ * ``algorithm`` default ``"snappy"`` if available, otherwise ``"lzma"`` or ``"zstd"``
+ * ``level`` default ``"0"`` compression level for ``"lzma"`` or ``"zstd"`` compression
  * ``thread_count`` (default max(cpu_count, ``5``)) number of parallel compression threads
 
 ``hash_algorithm`` (default ``"sha1"``)
