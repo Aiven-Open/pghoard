@@ -23,6 +23,7 @@ setup(
         "python-dateutil",
         "python-snappy >= 0.5",
         "requests >= 1.2.0",
+        "zstandard >= 0.11.1",
     ],
     extras_require={},
     dependency_links=[],

@@ -6,6 +6,7 @@ pghoard 2.1.0 (unreleased)
 * Fix incompatibility with legacy PGHoard backups (2.0.0 was unable to
   restore backups taken with much older versions)
 * Compatibility improvements for different S3 api implementations
+* Support for Zstandard (zstd) compression
 
 pghoard 2.0.0 (2018-11-08)
 ==========================

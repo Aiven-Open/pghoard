@@ -8,12 +8,18 @@ See LICENSE for details
 from .errors import InvalidConfigurationError
 from .filewrap import Sink, Stream
 from .snappyfile import SnappyFile
+from .zstdfile import open as zstd_open
 import lzma
 
 try:
     import snappy
 except ImportError:
     snappy = None
+
+try:
+    import zstandard as zstd
+except ImportError:
+    zstd = None
 
 
 def CompressionFile(dst_fp, algorithm, level=0):
@@ -23,6 +29,9 @@ def CompressionFile(dst_fp, algorithm, level=0):
 
     if algorithm == "snappy":
         return SnappyFile(dst_fp, "wb")
+
+    if algorithm == "zstd":
+        return zstd_open(dst_fp, "wb")
 
     if algorithm:
         raise InvalidConfigurationError("invalid compression algorithm: {!r}".format(algorithm))
@@ -39,6 +48,8 @@ class CompressionStream(Stream):
             self._compressor = lzma.LZMACompressor(lzma.FORMAT_XZ, -1, level, None)
         elif algorithm == "snappy":
             self._compressor = snappy.StreamCompressor()
+        elif algorithm == "zstd":
+            self._compressor = zstd.ZstdCompressor(level=level).compressobj()
         else:
             InvalidConfigurationError("invalid compression algorithm: {!r}".format(algorithm))
 
@@ -57,6 +68,9 @@ def DecompressionFile(src_fp, algorithm):
     if algorithm == "snappy":
         return SnappyFile(src_fp, "rb")
 
+    if algorithm == "zstd":
+        return zstd_open(src_fp, "rb")
+
     if algorithm:
         raise InvalidConfigurationError("invalid compression algorithm: {!r}".format(algorithm))
 
@@ -73,6 +87,8 @@ class DecompressSink(Sink):
             return snappy.StreamDecompressor()
         elif alg == "lzma":
             return lzma.LZMADecompressor()
+        elif alg == "zstd":
+            return zstd.ZstdDecompressor().decompressobj()
         raise InvalidConfigurationError("invalid compression algorithm: {!r}".format(alg))
 
     def write(self, data):
