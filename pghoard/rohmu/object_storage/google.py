@@ -394,7 +394,7 @@ class MediaStreamUpload(MediaUpload):
     """Support streaming arbitrary amount of data from non-seekable object supporting read method."""
 
     def __init__(self, fd, *, chunk_size, mime_type, name):
-        self._data = []
+        self._data = b""
         self._chunk_size = chunk_size
         self._fd = fd
         self._mime_type = mime_type
@@ -455,7 +455,7 @@ class MediaStreamUpload(MediaUpload):
                 break
 
         if not read_results:
-            return None
+            return b""
         elif len(read_results) == 1:
             return read_results[0]
         else:
