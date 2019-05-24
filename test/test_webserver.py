@@ -450,6 +450,73 @@ class TestWebServer:
             for ta in pghoard.transfer_agents:
                 ta.site_transfers = {}
 
+    def test_retry_fetches_remote(self, pghoard_no_mp, tmpdir):
+        """First fetch request for file returns data from local disk, second from cloud object storage"""
+        pghoard = pghoard_no_mp
+        valid_wal_seg = "0000DDDD0000000D000000FC"
+        valid_wal = "/{}/xlog/{}".format(pghoard.test_site, valid_wal_seg)
+        base_data = wal_header_for_file(valid_wal_seg)
+        storage_data = base_data + b"storage"
+        on_disk_data = base_data + b"on_disk"
+
+        store = pghoard.transfer_agents[0].get_object_storage(pghoard.test_site)
+        store.store_file_from_memory(valid_wal, storage_data, metadata={"a": "b"})
+
+        other_segments = ["0000DDDD0000000D000000F{}".format(i) for i in range(10)]
+        other_paths = ["/{}/xlog/{}".format(pghoard.test_site, other_segment) for other_segment in other_segments]
+        for other_segment, other_path in zip(other_segments, other_paths):
+            store.store_file_from_memory(other_path, wal_header_for_file(other_segment), metadata={"a": "b"})
+
+        datadir = pghoard.config["backup_sites"]["test_retry_fetches_remote"]["pg_data_directory"]
+        # Actual directory might depend on the PG version available, write to both
+        for dirname in ["pg_xlog", "pg_wal"]:
+            full_dir = os.path.join(datadir, dirname)
+            os.makedirs(full_dir, exist_ok=True)
+            file_name = os.path.join(full_dir, valid_wal_seg)
+            with open(file_name, "wb") as f:
+                f.write(on_disk_data)
+            for other_segment in other_segments:
+                file_name = os.path.join(full_dir, other_segment)
+                with open(file_name, "wb") as f:
+                    f.write(wal_header_for_file(other_segment))
+
+        conn = HTTPConnection(host="127.0.0.1", port=pghoard.config["http_port"])
+
+        local_name = str(tmpdir.join("test_get_local"))
+        headers = {"x-pghoard-target-path": local_name}
+        conn.request("GET", valid_wal, headers=headers)
+        status = conn.getresponse().status
+        assert status == 201
+
+        storage_name = str(tmpdir.join("test_get_storage"))
+        headers = {"x-pghoard-target-path": storage_name}
+        conn.request("GET", valid_wal, headers=headers)
+        status = conn.getresponse().status
+        assert status == 201
+
+        with open(local_name, "rb") as f:
+            assert f.read() == on_disk_data
+        with open(storage_name, "rb") as f:
+            assert f.read() == storage_data
+
+        # Fetch another 10 WAL segments that are also available on disk,
+        # after which the other one is fetched from disk again
+        for other_path in other_paths:
+            headers = {"x-pghoard-target-path": str(tmpdir.join("RECOVERYXLOG"))}
+            conn.request("GET", other_path, headers=headers)
+            status = conn.getresponse().status
+            assert status == 201
+
+        # Now get the original one again
+        storage_name = str(tmpdir.join("test_get_storage2"))
+        headers = {"x-pghoard-target-path": storage_name}
+        conn.request("GET", valid_wal, headers=headers)
+        status = conn.getresponse().status
+        assert status == 201
+
+        with open(storage_name, "rb") as f:
+            assert f.read() == storage_data
+
     def test_restore_command_retry(self, pghoard):
         failures = [0, ""]
         orig_http_request = postgres_command.http_request
