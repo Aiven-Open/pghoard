@@ -455,7 +455,7 @@ class MediaStreamUpload(MediaUpload):
                 break
 
         if not read_results:
-            return None
+            return b""
         elif len(read_results) == 1:
             return read_results[0]
         else:
