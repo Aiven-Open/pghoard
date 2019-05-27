@@ -653,6 +653,7 @@ The following object storage types are supported:
  * ``directory`` for the path to the backup target (local) storage directory
 
 * ``sftp`` makes backups to a sftp server, required keys:
+
  * ``server``
  * ``port``
  * ``username``
