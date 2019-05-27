@@ -1,4 +1,4 @@
-pghoard 2.1.0 (unreleased)
+pghoard 2.1.0 (2019-05-27)
 ==========================
 
 * Support for passing statistics to Prometheus
@@ -7,6 +7,8 @@ pghoard 2.1.0 (unreleased)
   restore backups taken with much older versions)
 * Compatibility improvements for different S3 api implementations
 * Support for Zstandard (zstd) compression
+* Support SFTP file storage
+* File storage APIs (rohmu) support streaming
 
 pghoard 2.0.0 (2018-11-08)
 ==========================
