@@ -21,6 +21,9 @@ Swift and Ceph (using S3 or Swift interfaces with RadosGW.)
 Support for Microsoft Azure is experimental.
 
 
+%{?python_disable_dependency_generator}
+
+
 %prep
 %setup -q -n pghoard
 
