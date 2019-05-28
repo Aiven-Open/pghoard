@@ -9,7 +9,7 @@ PYTHON_SOURCE_DIRS = pghoard/ test/
 PYTEST_ARG ?= -v
 
 clean:
-	$(RM) -r *.egg-info/ build/ dist/
+	$(RM) -r *.egg-info/ build/ dist/ rpm/
 	$(RM) ../pghoard_* test-*.xml $(generated)
 
 pghoard/version.py: version.py
