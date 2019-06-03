@@ -55,7 +55,7 @@ class PGReceiveXLog(Thread):
             for fd in rlist:
                 content = fd.read()
                 if content:
-                    self.log.debug(content)
+                    self.log.info(content)
                     self.latest_activity = datetime.datetime.utcnow()
             if proc.poll() is not None:
                 break
