@@ -88,6 +88,9 @@ def set_and_check_config_defaults(config, *, check_commands=True, check_pgdata=T
                                "pipe" if site_config.get("stream_compression") else "basic")
         site_config.setdefault("encryption_key_id", None)
         site_config.setdefault("object_storage", None)
+        pg_receivexlog_config = site_config.setdefault("pg_receivexlog", {})
+        pg_receivexlog_config.setdefault("disk_space_check_interval", 10.0)
+        pg_receivexlog_config.setdefault("resume_multiplier", 1.5)
         site_config.setdefault("prefix", os.path.join(config["path_prefix"], site_name))
 
         # NOTE: pg_data_directory doesn't have a default value

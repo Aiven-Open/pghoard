@@ -9,6 +9,7 @@ from pghoard.pghoard import PGHoard
 from pghoard.rohmu.compat import suppress
 from pghoard.rohmu.snappyfile import snappy
 from py import path as py_path  # pylint: disable=no-name-in-module
+from unittest import SkipTest
 import contextlib
 import json
 import lzma
@@ -172,11 +173,44 @@ def pghoard(db, tmpdir, request):  # pylint: disable=redefined-outer-name
     yield from pghoard_base(db, tmpdir, request)
 
 
+@pytest.yield_fixture  # pylint: disable=redefined-outer-name
+def pghoard_separate_volume(db, tmpdir, request):
+    tmpfs_volume = os.path.join(str(tmpdir), "tmpfs")
+    os.makedirs(tmpfs_volume, exist_ok=True)
+    # Tests that require separate volume with restricted space can only be run in
+    # environments where sudo can be executed without password prompts.
+    try:
+        subprocess.check_call(
+            ["sudo", "-S", "mount", "-t", "tmpfs", "-o", "size=100m", "tmpfs", tmpfs_volume], stdin=subprocess.DEVNULL,
+        )
+    except subprocess.CalledProcessError as ex:
+        raise SkipTest("Failed to create tmpfs: {!r}".format(ex))
+
+    backup_location = os.path.join(tmpfs_volume, "backupspool")
+    try:
+        yield from pghoard_base(
+            db,
+            tmpdir,
+            request,
+            backup_location=backup_location,
+            pg_receivexlog_config={
+                "disk_space_check_interval": 0.0001,
+                "min_disk_free_bytes": 70 * 1024 * 1024,
+                "resume_multiplier": 1.2,
+            },
+        )
+    finally:
+        subprocess.check_call(["sudo", "umount", tmpfs_volume])
+
+
 def pghoard_base(db, tmpdir, request, compression="snappy",   # pylint: disable=redefined-outer-name
-                 transfer_count=None, metrics_cfg=None):
+                 transfer_count=None, metrics_cfg=None, *,
+                 backup_location=None, pg_receivexlog_config=None):
     test_site = request.function.__name__
 
-    if os.environ.get("pghoard_test_walreceiver"):
+    if pg_receivexlog_config:
+        active_backup_mode = "pg_receivexlog"
+    elif os.environ.get("pghoard_test_walreceiver"):
         active_backup_mode = "walreceiver"
     else:
         active_backup_mode = "pg_receivexlog"
@@ -184,9 +218,10 @@ def pghoard_base(db, tmpdir, request, compression="snappy",   # pylint: disable=
     if compression == "snappy" and not snappy:
         compression = "lzma"
 
+    backup_location = backup_location or os.path.join(str(tmpdir), "backupspool")
     config = {
         "alert_file_dir": os.path.join(str(tmpdir), "alerts"),
-        "backup_location": os.path.join(str(tmpdir), "backupspool"),
+        "backup_location": backup_location,
         "backup_sites": {
             test_site: {
                 "active_backup_mode": active_backup_mode,
@@ -194,6 +229,7 @@ def pghoard_base(db, tmpdir, request, compression="snappy",   # pylint: disable=
                 "basebackup_interval_hours": 24,
                 "pg_bin_directory": db.pgbin,
                 "pg_data_directory": db.pgdata,
+                "pg_receivexlog": pg_receivexlog_config or {},
                 "nodes": [db.user],
                 "object_storage": {
                     "storage_type": "local",

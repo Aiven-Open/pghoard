@@ -13,6 +13,8 @@ from unittest.mock import Mock, patch
 import datetime
 import json
 import os
+import psycopg2
+import time
 
 
 class TestPGHoard(PGHoardTestCase):
@@ -287,3 +289,33 @@ class TestPGHoardWithPG:
         conn_str = create_connection_string(dict(db.user, user="passwordy"))
         assert pghoard.check_pg_server_version(conn_str, pghoard.test_site) is None
         assert os.listdir(pghoard.config["alert_file_dir"]) == ["authentication_error"]
+
+    def test_pause_on_disk_full(self, db, pghoard_separate_volume):
+        pghoard = pghoard_separate_volume
+        conn_str = create_connection_string(db.user)
+        conn = psycopg2.connect(conn_str)
+        conn.autocommit = True
+        cursor = conn.cursor()
+
+        wal_directory = os.path.join(pghoard.config["backup_location"], pghoard.test_site, "xlog_incoming")
+        os.makedirs(wal_directory, exist_ok=True)
+
+        pghoard.receivexlog_listener(pghoard.test_site, db.user, wal_directory)
+        # Create 20 new WAL segments in very quick succession. Our volume for incoming WALs is only 100
+        # MiB so if logic for automatically suspending pg_receive(xlog|wal) wasn't working the volume
+        # would certainly fill up and the files couldn't be processed. Now this should work fine.
+        for _ in range(21):
+            if conn.server_version >= 100000:
+                cursor.execute("SELECT txid_current(), pg_switch_wal()")
+            else:
+                cursor.execute("SELECT txid_current(), pg_switch_xlog()")
+
+        start = time.monotonic()
+        site = "test_pause_on_disk_full"
+        while True:
+            xlogs = pghoard.transfer_agents[0].state[site]["upload"]["xlog"]["xlogs_since_basebackup"]
+            if xlogs >= 20:
+                break
+            elif time.monotonic() - start > 10:
+                assert False, "Expected at least 20 xlog uploads, got {}".format(xlogs)
+            time.sleep(0.1)

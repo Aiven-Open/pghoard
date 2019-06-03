@@ -476,6 +476,35 @@ Determines log level of ``pghoard``.
 
 If a file exists in this location, no new backup actions will be started.
 
+``pg_receivexlog``
+
+When active backup mode is set to ``"pg_receivexlog"`` this object may
+optionally specify additional configuration options. The currently available
+options are all related to monitoring disk space availability and optionally
+pausing xlog/WAL receiving when disk space goes below configured threshold.
+This is useful when PGHoard is configured to create its temporary files on
+a different volume than where the main PostgreSQL data directory resides. By
+default this logic is disabled and the minimum free bytes must be configured
+to enable it.
+
+``pg_receivexlog.disk_space_check_interval`` (default ``10``)
+
+How often to check available disk space.
+
+``pg_receivexlog.min_disk_free_bytes`` (default undefined)
+
+Minimum bytes (as an integer) that must be available in order to keep on
+receiving xlogs/WAL from PostgreSQL. If available disk space goes below this
+limit a ``STOP`` signal is sent to the ``pg_receivexlog`` / ``pg_receivewal``
+application.
+
+``pg_receivexlog.resume_multiplier`` (default ``1.5``)
+
+Number of times the ``min_disk_free_bytes`` bytes of disk space that is
+required to start receiving xlog/WAL again (i.e. send the ``CONT`` signal to
+the ``pg_receivexlog`` / ``pg_receivewal`` process). Multiplier above 1
+should be used to avoid stopping and continuing the process constantly.
+
 ``restore_prefetch`` (default ``transfer.thread_count``)
 
 Number of files to prefetch when performing archive recovery.  The default
