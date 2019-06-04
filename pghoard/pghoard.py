@@ -355,17 +355,20 @@ class PGHoard:
             last_backup_time = None
 
         site_config = self.config["backup_sites"][site]
-        basebackups_to_delete = self.determine_backups_to_delete(basebackups=basebackups, site_config=site_config)
+        # Never delete backups from a recovery site. This check is already elsewhere as well
+        # but still check explicitly here to ensure we certainly won't delete anything unexpectedly
+        if site_config["active"]:
+            basebackups_to_delete = self.determine_backups_to_delete(basebackups=basebackups, site_config=site_config)
 
-        for basebackup_to_be_deleted in basebackups_to_delete:
-            pg_version = basebackup_to_be_deleted["metadata"].get("pg-version")
-            last_wal_segment_still_needed = 0
-            if basebackups:
-                last_wal_segment_still_needed = basebackups[0]["metadata"]["start-wal-segment"]
+            for basebackup_to_be_deleted in basebackups_to_delete:
+                pg_version = basebackup_to_be_deleted["metadata"].get("pg-version")
+                last_wal_segment_still_needed = 0
+                if basebackups:
+                    last_wal_segment_still_needed = basebackups[0]["metadata"]["start-wal-segment"]
 
-            if last_wal_segment_still_needed:
-                self.delete_remote_wal_before(last_wal_segment_still_needed, site, pg_version)
-            self.delete_remote_basebackup(site, basebackup_to_be_deleted["name"], basebackup_to_be_deleted["metadata"])
+                if last_wal_segment_still_needed:
+                    self.delete_remote_wal_before(last_wal_segment_still_needed, site, pg_version)
+                self.delete_remote_basebackup(site, basebackup_to_be_deleted["name"], basebackup_to_be_deleted["metadata"])
         self.state["backup_sites"][site]["basebackups"] = basebackups
 
         return last_backup_time
