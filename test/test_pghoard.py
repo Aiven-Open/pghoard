@@ -304,7 +304,7 @@ class TestPGHoardWithPG:
         # Create 20 new WAL segments in very quick succession. Our volume for incoming WALs is only 100
         # MiB so if logic for automatically suspending pg_receive(xlog|wal) wasn't working the volume
         # would certainly fill up and the files couldn't be processed. Now this should work fine.
-        for _ in range(21):
+        for _ in range(16):
             if conn.server_version >= 100000:
                 cursor.execute("SELECT txid_current(), pg_switch_wal()")
             else:
@@ -314,8 +314,8 @@ class TestPGHoardWithPG:
         site = "test_pause_on_disk_full"
         while True:
             xlogs = pghoard.transfer_agents[0].state[site]["upload"]["xlog"]["xlogs_since_basebackup"]
-            if xlogs >= 20:
+            if xlogs >= 15:
                 break
-            elif time.monotonic() - start > 10:
-                assert False, "Expected at least 20 xlog uploads, got {}".format(xlogs)
+            elif time.monotonic() - start > 15:
+                assert False, "Expected at least 15 xlog uploads, got {}".format(xlogs)
             time.sleep(0.1)
