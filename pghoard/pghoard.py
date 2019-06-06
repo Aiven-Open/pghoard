@@ -78,7 +78,6 @@ class PGHoard:
         signal.signal(signal.SIGHUP, self.load_config)
         signal.signal(signal.SIGINT, self.quit)
         signal.signal(signal.SIGTERM, self.quit)
-        self.time_of_last_backup = {}
         self.time_of_last_backup_check = {}
         self.requested_basebackup_sites = set()
 
@@ -128,7 +127,7 @@ class PGHoard:
             return False
         return True
 
-    def create_basebackup(self, site, connection_info, basebackup_path, callback_queue=None):
+    def create_basebackup(self, site, connection_info, basebackup_path, callback_queue=None, metadata=None):
         connection_string, _ = replication_connection_string_and_slot_using_pgpass(connection_info)
         pg_version_server = self.check_pg_server_version(connection_string, site)
         if not self.check_pg_versions_ok(site, pg_version_server, "pg_basebackup"):
@@ -145,7 +144,9 @@ class PGHoard:
             transfer_queue=self.transfer_queue,
             callback_queue=callback_queue,
             pg_version_server=pg_version_server,
-            metrics=self.metrics)
+            metrics=self.metrics,
+            metadata=metadata,
+        )
         thread.start()
         self.basebackups[site] = thread
 
@@ -299,14 +300,31 @@ class PGHoard:
             storage = get_transfer(storage_config)
             self.site_transfers[site] = storage
 
-        results = storage.list_path(os.path.join(self.config["backup_sites"][site]["prefix"], "basebackup"))
+        site_config = self.config["backup_sites"][site]
+        results = storage.list_path(os.path.join(site_config["prefix"], "basebackup"))
         for entry in results:
-            # drop path from resulting list and convert timestamps
-            entry["name"] = os.path.basename(entry["name"])
-            entry["metadata"]["start-time"] = dates.parse_timestamp(entry["metadata"]["start-time"])
+            self.patch_basebackup_info(entry=entry, site_config=site_config)
 
         results.sort(key=lambda entry: entry["metadata"]["start-time"])
         return results
+
+    def patch_basebackup_info(self, *, entry, site_config):
+        # drop path from resulting list and convert timestamps
+        entry["name"] = os.path.basename(entry["name"])
+        metadata = entry["metadata"]
+        metadata["start-time"] = dates.parse_timestamp(metadata["start-time"])
+        # If backup was created by old PGHoard version some fields related to backup scheduling might be missing.
+        # Set "best guess" values for those fields here to simplify logic elsewhere.
+        if "backup-decision-time" in metadata:
+            metadata["backup-decision-time"] = dates.parse_timestamp(metadata["backup-decision-time"])
+        else:
+            metadata["backup-decision-time"] = metadata["start-time"]
+        # Backups are usually scheduled
+        if "backup-reason" not in metadata:
+            metadata["backup-reason"] = "scheduled"
+        # Calculate normalized backup time based on start time if missing
+        if "normalized-backup-time" not in metadata:
+            metadata["normalized-backup-time"] = self.get_normalized_backup_time(site_config, now=metadata["start-time"])
 
     def determine_backups_to_delete(self, *, basebackups, site_config):
         """Returns the basebackups in the given list that need to be deleted based on the given site configuration.
@@ -343,16 +361,11 @@ class PGHoard:
 
         return basebackups_to_delete
 
-    def check_backup_count_and_state(self, site):
+    def refresh_backup_list_and_delete_old(self, site):
         """Look up basebackups from the object store, prune any extra
         backups and return the datetime of the latest backup."""
         basebackups = self.get_remote_basebackups_info(site)
         self.log.debug("Found %r basebackups", basebackups)
-
-        if basebackups:
-            last_backup_time = basebackups[-1]["metadata"]["start-time"]
-        else:
-            last_backup_time = None
 
         site_config = self.config["backup_sites"][site]
         # Never delete backups from a recovery site. This check is already elsewhere as well
@@ -371,7 +384,26 @@ class PGHoard:
                 self.delete_remote_basebackup(site, basebackup_to_be_deleted["name"], basebackup_to_be_deleted["metadata"])
         self.state["backup_sites"][site]["basebackups"] = basebackups
 
-        return last_backup_time
+    def get_normalized_backup_time(self, site_config, *, now=None):
+        """Returns the closest historical backup time that current time matches to (or current time if it matches).
+        E.g. if backup hour is 13, backup minute is 50, current time is 15:40 and backup interval is 60 minutes,
+        the return value is 14:50 today. If backup hour and minute are as before, backup interval is 1440 and
+        current time is 13:45 the return value is 13:50 yesterday."""
+        backup_hour = site_config.get("basebackup_hour")
+        backup_minute = site_config.get("basebackup_minute")
+        backup_interval_hours = site_config.get("basebackup_interval_hours")
+        if backup_hour is None or backup_minute is None or backup_interval_hours is None:
+            return None
+
+        if not now:
+            now = datetime.datetime.now(datetime.timezone.utc)
+        normalized = now
+        if normalized.hour < backup_hour or (normalized.hour == backup_hour and normalized.minute < backup_minute):
+            normalized = normalized - datetime.timedelta(days=1)
+        normalized = normalized.replace(hour=backup_hour, minute=backup_minute, second=0, microsecond=0)
+        while normalized + datetime.timedelta(hours=backup_interval_hours) < now:
+            normalized = normalized + datetime.timedelta(hours=backup_interval_hours)
+        return normalized.isoformat()
 
     def set_state_defaults(self, site):
         if site not in self.state["backup_sites"]:
@@ -469,7 +501,7 @@ class PGHoard:
 
         last_check_time = self.time_of_last_backup_check.get(site)
         if not last_check_time or (time.monotonic() - self.time_of_last_backup_check[site]) > 300:
-            self.time_of_last_backup[site] = self.check_backup_count_and_state(site)
+            self.refresh_backup_list_and_delete_old(site)
             self.time_of_last_backup_check[site] = time.monotonic()
 
         # check if a basebackup is running, or if a basebackup has just completed
@@ -484,30 +516,78 @@ class PGHoard:
             del self.basebackups[site]
             del self.basebackups_callbacks[site]
             self.log.debug("Basebackup has finished for %r: %r", site, result)
-            self.time_of_last_backup[site] = self.check_backup_count_and_state(site)
+            self.refresh_backup_list_and_delete_old(site)
             self.time_of_last_backup_check[site] = time.monotonic()
 
-        new_backup_needed = False
+        metadata = self.get_new_backup_details(site=site, site_config=site_config)
+        if metadata and not os.path.exists(self.config["maintenance_mode_file"]):
+            self.basebackups_callbacks[site] = Queue()
+            self.create_basebackup(site, chosen_backup_node, basebackup_path, self.basebackups_callbacks[site], metadata)
+
+    def get_new_backup_details(self, *, now=None, site, site_config):
+        """Returns metadata to associate with new backup that needs to be created or None in case no backup should
+        be created at this time"""
+        if not now:
+            now = datetime.datetime.now(datetime.timezone.utc)
+        basebackups = self.state["backup_sites"][site]["basebackups"]
+        backup_hour = site_config.get("basebackup_hour")
+        backup_minute = site_config.get("basebackup_minute")
+        backup_reason = None
+        normalized_backup_time = self.get_normalized_backup_time(site_config, now=now)
+
         if site in self.requested_basebackup_sites:
             self.log.info("Creating a new basebackup for %r due to request", site)
             self.requested_basebackup_sites.discard(site)
-            new_backup_needed = True
+            backup_reason = "requested"
         elif site_config["basebackup_interval_hours"] is None:
             # Basebackups are disabled for this site (but they can still be requested over the API.)
             pass
-        elif self.time_of_last_backup.get(site) is None:
+        elif not basebackups:
             self.log.info("Creating a new basebackup for %r because there are currently none", site)
-            new_backup_needed = True
+            backup_reason = "scheduled"
+        elif backup_hour is not None and backup_minute is not None:
+            most_recent_scheduled = None
+            last_normalized_backup_time = basebackups[-1]["metadata"]["normalized-backup-time"]
+            scheduled_backups = [backup for backup in basebackups if backup["metadata"]["backup-reason"] == "scheduled"]
+            if scheduled_backups:
+                most_recent_scheduled = scheduled_backups[-1]["metadata"]["backup-decision-time"]
+
+            # Don't create new backup unless at least half of interval has elapsed since scheduled last backup. Otherwise
+            # we would end up creating a new backup each time when backup hour/minute changes, which is typically undesired.
+            # With the "half of interval" check the backup time will quickly drift towards the selected time without backup
+            # spamming in case of repeated setting changes.
+            delta = datetime.timedelta(hours=site_config["basebackup_interval_hours"] / 2)
+            normalized_time_changed = (last_normalized_backup_time != normalized_backup_time)
+            last_scheduled_isnt_too_recent = (not most_recent_scheduled or most_recent_scheduled + delta <= now)
+            if normalized_time_changed and last_scheduled_isnt_too_recent:
+                self.log.info(
+                    "Normalized backup time %r differs from previous %r, creating new basebackup", normalized_backup_time,
+                    last_normalized_backup_time
+                )
+                backup_reason = "scheduled"
         else:
-            delta_since_last_backup = datetime.datetime.now(datetime.timezone.utc) - self.time_of_last_backup[site]
+            # No backup schedule defined, create new backup if backup interval hours has passed since last backup
+            time_of_last_backup = basebackups[-1]["metadata"]["start-time"]
+            delta_since_last_backup = now - time_of_last_backup
             if delta_since_last_backup >= datetime.timedelta(hours=site_config["basebackup_interval_hours"]):
                 self.log.info("Creating a new basebackup for %r by schedule (%s from previous)",
                               site, delta_since_last_backup)
-                new_backup_needed = True
+                backup_reason = "scheduled"
 
-        if new_backup_needed and not os.path.exists(self.config["maintenance_mode_file"]):
-            self.basebackups_callbacks[site] = Queue()
-            self.create_basebackup(site, chosen_backup_node, basebackup_path, self.basebackups_callbacks[site])
+        if not backup_reason:
+            return None
+
+        return {
+            # The time when it was decided that a new backup should be taken. This is usually almost the same as
+            # start-time but if taking the backup gets delayed for any reason this is more accurate for deciding
+            # when next backup should be taken
+            "backup-decision-time": now.isoformat(),
+            # Whether this backup was taken due to schedule or explicit request. Affects scheduling of next backup
+            # (explicitly requested backups don't affect the schedule)
+            "backup-reason": backup_reason,
+            # The closest backup schedule time this backup matches to (if schedule has been defined)
+            "normalized-backup-time": normalized_backup_time,
+        }
 
     def run(self):
         self.start_threads_on_startup()

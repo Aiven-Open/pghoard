@@ -13,6 +13,7 @@ from pghoard.rohmu import get_transfer
 from pghoard.rohmu.compat import makedirs
 from queue import Queue
 from subprocess import check_call
+import datetime
 import dateutil.parser
 import os
 import psycopg2
@@ -193,7 +194,13 @@ LABEL: pg_basebackup base backup
         pghoard.config["backup_sites"][pghoard.test_site]["basebackup_mode"] = mode
         pghoard.config["backup_sites"][pghoard.test_site]["active_backup_mode"] = active_backup_mode
 
-        pghoard.create_basebackup(pghoard.test_site, db.user, basebackup_path, q)
+        now = datetime.datetime.now(datetime.timezone.utc)
+        metadata = {
+            "backup-reason": "scheduled",
+            "backup-decision-time": now.isoformat(),
+            "normalized-backup-time": now.isoformat(),
+        }
+        pghoard.create_basebackup(pghoard.test_site, db.user, basebackup_path, q, metadata)
         result = q.get(timeout=60)
         assert result["success"]
 
@@ -221,6 +228,9 @@ LABEL: pg_basebackup base backup
             assert "start-wal-segment" in backup["metadata"]
             assert "start-time" in backup["metadata"]
             assert dateutil.parser.parse(backup["metadata"]["start-time"]).tzinfo  # pylint: disable=no-member
+            assert backup["metadata"]["backup-reason"] == "scheduled"
+            assert backup["metadata"]["backup-decision-time"] == now.isoformat()
+            assert backup["metadata"]["normalized-backup-time"] == now.isoformat()
             if mode == "local-tar":
                 if replica is False:
                     assert "end-wal-segment" in backup["metadata"]
@@ -540,7 +550,6 @@ LABEL: pg_basebackup base backup
 
         # create a new backup now that we have some state
         time.sleep(2)
-        backup_start = time.monotonic()
         pghoard.handle_site(pghoard.test_site, site_config)
         assert pghoard.test_site in pghoard.basebackups
         # wait for backup to complete and put the event back in so pghoard finds it, too
@@ -548,7 +557,10 @@ LABEL: pg_basebackup base backup
         # now call handle_site so it notices the backup has finished (this must not start a new one)
         pghoard.handle_site(pghoard.test_site, site_config)
         assert pghoard.test_site not in pghoard.basebackups
-        first_time_of = pghoard.time_of_last_backup[pghoard.test_site]
+        first_basebackups = pghoard.state["backup_sites"][pghoard.test_site]["basebackups"]
+        assert first_basebackups[0]["metadata"]["backup-reason"] == "scheduled"
+        assert first_basebackups[0]["metadata"]["backup-decision-time"]
+        assert first_basebackups[0]["metadata"]["normalized-backup-time"] is None
         first_time_of_check = pghoard.time_of_last_backup_check[pghoard.test_site]
 
         # reset the timer to something more sensible and make sure we don't trigger any new basebackups
@@ -558,9 +570,9 @@ LABEL: pg_basebackup base backup
         pghoard.handle_site(pghoard.test_site, site_config)
         assert pghoard.test_site not in pghoard.basebackups
 
-        second_time_of = pghoard.time_of_last_backup[pghoard.test_site]
+        second_basebackups = pghoard.state["backup_sites"][pghoard.test_site]["basebackups"]
         second_time_of_check = pghoard.time_of_last_backup_check[pghoard.test_site]
-        assert second_time_of == first_time_of
+        assert second_basebackups == first_basebackups
         assert second_time_of_check > first_time_of_check
 
         # create another backup by using the triggering mechanism
@@ -572,9 +584,9 @@ LABEL: pg_basebackup base backup
         pghoard.handle_site(pghoard.test_site, site_config)
         assert pghoard.test_site not in pghoard.basebackups
 
-        third_time_of = pghoard.time_of_last_backup[pghoard.test_site]
+        third_basebackups = pghoard.state["backup_sites"][pghoard.test_site]["basebackups"]
         third_time_of_check = pghoard.time_of_last_backup_check[pghoard.test_site]
-        assert third_time_of > second_time_of
+        assert third_basebackups != second_basebackups
         assert third_time_of_check > second_time_of_check
 
         # call handle_site yet again - nothing should happen and no timestamps should be updated
@@ -582,9 +594,145 @@ LABEL: pg_basebackup base backup
         pghoard.handle_site(pghoard.test_site, site_config)
         assert pghoard.test_site not in pghoard.basebackups
 
-        fourth_time_of = pghoard.time_of_last_backup[pghoard.test_site]
+        fourth_basebackups = pghoard.state["backup_sites"][pghoard.test_site]["basebackups"]
         fourth_time_of_check = pghoard.time_of_last_backup_check[pghoard.test_site]
-        assert fourth_time_of == third_time_of
+        assert fourth_basebackups == third_basebackups
         assert fourth_time_of_check == third_time_of_check
 
         pghoard.write_backup_state_to_json_file()
+
+    def test_get_new_backup_details(self, pghoard):
+        now = datetime.datetime.now(datetime.timezone.utc).replace(hour=15, minute=20, second=30, microsecond=0)
+
+        site = pghoard.test_site
+        pghoard.set_state_defaults(site)
+        site_config = pghoard.config["backup_sites"][site]
+
+        # No backups, one should be created. No backup schedule defined so normalized backup time is None
+        metadata = pghoard.get_new_backup_details(now=now, site=pghoard.test_site, site_config=site_config)
+        assert metadata
+        assert metadata["backup-reason"] == "scheduled"
+        assert metadata["backup-decision-time"] == now.isoformat()
+        assert metadata["normalized-backup-time"] is None
+
+        # No backups, one should be created. Backup schedule defined so normalized backup time is set
+        site_config["basebackup_hour"] = 13
+        site_config["basebackup_minute"] = 10
+        metadata = pghoard.get_new_backup_details(now=now, site=pghoard.test_site, site_config=site_config)
+        assert metadata
+        assert metadata["backup-reason"] == "scheduled"
+        assert metadata["backup-decision-time"] == now.isoformat()
+        assert "T13:10:00+00:00" in metadata["normalized-backup-time"]
+
+        # No backups, one should be created. Backup schedule defined so normalized backup time is set
+        site_config["basebackup_interval_hours"] = 1.5
+        metadata = pghoard.get_new_backup_details(now=now, site=pghoard.test_site, site_config=site_config)
+        assert metadata
+        assert metadata["backup-reason"] == "scheduled"
+        assert metadata["backup-decision-time"] == now.isoformat()
+        assert "T14:40:00+00:00" in metadata["normalized-backup-time"]
+
+        pghoard.state["backup_sites"][site]["basebackups"].append(
+            {
+                "metadata": {
+                    "start-time": now - datetime.timedelta(hours=1),
+                    "backup-decision-time": now - datetime.timedelta(hours=1),
+                    "backup-reason": "scheduled",
+                    "normalized-backup-time": metadata["normalized-backup-time"],
+                },
+                "name": "name01",
+            }
+        )
+
+        # A backup already exists. Current time yields the same normalized backup time so no new one is created
+        assert not pghoard.get_new_backup_details(now=now, site=pghoard.test_site, site_config=site_config)
+
+        # A backup already exists. Current time yields different normalized backup time so new one is created
+        now2 = now + datetime.timedelta(hours=1)
+        metadata = pghoard.get_new_backup_details(now=now2, site=pghoard.test_site, site_config=site_config)
+        assert metadata
+        assert metadata["backup-reason"] == "scheduled"
+        assert metadata["backup-decision-time"] == now2.isoformat()
+        assert "T16:10:00+00:00" in metadata["normalized-backup-time"]
+
+        # A backup already exists. Current time yields different normalized backup time but not enough time has
+        # elapsed since the last backup so no new one is created
+        site_config["basebackup_interval_hours"] = 12
+        site_config["basebackup_hour"] = 14
+        site_config["basebackup_minute"] = 50
+        assert not pghoard.get_new_backup_details(now=now2, site=pghoard.test_site, site_config=site_config)
+
+        # A backup already exists. Current time yields different normalized backup time and enough time has
+        # elapsed since the last backup so new one is created
+        now3 = now + datetime.timedelta(hours=7)
+        metadata = pghoard.get_new_backup_details(now=now3, site=pghoard.test_site, site_config=site_config)
+        assert metadata
+        assert metadata["backup-reason"] == "scheduled"
+        assert metadata["backup-decision-time"] == now3.isoformat()
+        assert "T14:50:00+00:00" in metadata["normalized-backup-time"]
+
+        # Having manual backup that is very recent doesn't prevent new scheduled backup from being created
+        # so long as the normalized-backup-time of the manual backup differs
+        pghoard.state["backup_sites"][site]["basebackups"].append(
+            {
+                "metadata": {
+                    "start-time": now3 - datetime.timedelta(hours=1),
+                    "backup-decision-time": now - datetime.timedelta(hours=1),
+                    "backup-reason": "requested",
+                    "normalized-backup-time": metadata["normalized-backup-time"] + "different",
+                },
+                "name": "name02",
+            }
+        )
+        metadata2 = pghoard.get_new_backup_details(now=now3, site=pghoard.test_site, site_config=site_config)
+        assert metadata2 == metadata
+
+        # normalized-backup-time of requested backup is the same as current normalized backup time so new backup is
+        # not created
+        pghoard.state["backup_sites"][site]["basebackups"][-1]["metadata"]["normalized-backup-time"] = \
+            metadata["normalized-backup-time"]
+        assert not pghoard.get_new_backup_details(now=now3, site=pghoard.test_site, site_config=site_config)
+
+        # New manual backups are always created
+        pghoard.requested_basebackup_sites.add(site)
+        metadata2 = pghoard.get_new_backup_details(now=now3, site=pghoard.test_site, site_config=site_config)
+        assert metadata2
+        assert metadata2["backup-reason"] == "requested"
+        assert metadata2["backup-decision-time"] == now3.isoformat()
+        assert metadata2["normalized-backup-time"] == metadata["normalized-backup-time"]
+
+    def test_patch_basebackup_info(self, pghoard):
+        now = datetime.datetime.now(datetime.timezone.utc)
+        site_config = {
+            "basebackup_hour": 10,
+            "basebackup_interval_hours": 24,
+            "basebackup_minute": 20,
+        }
+        entry = {
+            "name": "foo/bar",
+            "metadata": {
+                "start-time": now.isoformat(),
+            }
+        }
+        pghoard.patch_basebackup_info(entry=entry, site_config=site_config)
+        assert entry["name"] == "bar"
+        assert entry["metadata"]["start-time"] == now
+        assert entry["metadata"]["backup-reason"] == "scheduled"
+        assert entry["metadata"]["backup-decision-time"] == now
+        assert isinstance(entry["metadata"]["normalized-backup-time"], str)
+
+        entry = {
+            "name": "foo/bar",
+            "metadata": {
+                "start-time": now.isoformat(),
+                "backup-decision-time": (now - datetime.timedelta(seconds=30)).isoformat(),
+                "backup-reason": "requested",
+                "normalized-backup-time": None,
+            }
+        }
+        pghoard.patch_basebackup_info(entry=entry, site_config=site_config)
+        assert entry["name"] == "bar"
+        assert entry["metadata"]["start-time"] == now
+        assert entry["metadata"]["backup-reason"] == "requested"
+        assert entry["metadata"]["backup-decision-time"] == now - datetime.timedelta(seconds=30)
+        assert entry["metadata"]["normalized-backup-time"] is None

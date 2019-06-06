@@ -642,12 +642,27 @@ old. However, in that case it is usually not desirable to immediately delete
 all old backups. This setting allows specifying a minimum number of backups
 that should always be preserved regardless of their age.
 
+``basebackup_hour`` (default undefined)
+
+The hour of day during which to start new basebackup. If backup interval is
+less than 24 hours this is the base hour used to calculate the hours at which
+backup should be taken. E.g. if backup interval is 6 hours and this value is
+set to 1 backups will be taken at hours 1, 7, 13 and 19. This value is only
+effective if also ``basebackup_interval_hours`` and ``basebackup_minute`` are
+set.
+
 ``basebackup_interval_hours`` (default ``24``)
 
 How often to take a new basebackup of a cluster.  The shorter the interval,
 the faster your recovery will be, but the more CPU/IO usage is required from
 the servers it takes the basebackup from.  If set to a null value basebackups
 are not automatically taken at all.
+
+``basebackup_minute`` (default undefined)
+
+The minute of hour during which to start new basebackup. This value is only
+effective if also ``basebackup_interval_hours`` and ``basebackup_hour`` are
+set.
 
 ``basebackup_mode`` (default ``"basic"``)
 

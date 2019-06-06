@@ -56,7 +56,8 @@ class NoException(BaseException):
 class PGBaseBackup(Thread):
     def __init__(self, config, site, connection_info, basebackup_path,
                  compression_queue, metrics, transfer_queue=None,
-                 callback_queue=None, pg_version_server=None):
+                 callback_queue=None, pg_version_server=None,
+                 metadata=None):
         super().__init__()
         self.log = logging.getLogger("PGBaseBackup")
         self.config = config
@@ -65,6 +66,7 @@ class PGBaseBackup(Thread):
         self.basebackup_path = basebackup_path
         self.callback_queue = callback_queue
         self.compression_queue = compression_queue
+        self.metadata = metadata or {}
         self.metrics = metrics
         self.transfer_queue = transfer_queue
         self.running = True
@@ -262,6 +264,7 @@ class PGBaseBackup(Thread):
             "original-file-size": original_input_size,
             "pg-version": self.pg_version_server,
         })
+        metadata.update(self.metadata)
 
         self.transfer_queue.put({
             "callback_queue": self.callback_queue,
@@ -322,6 +325,7 @@ class PGBaseBackup(Thread):
             "callback_queue": self.callback_queue,
             "full_path": basebackup_tar_file,
             "metadata": {
+                **self.metadata,
                 "start-time": start_time,
                 "start-wal-segment": start_wal_segment,
             },
@@ -703,6 +707,7 @@ class PGBaseBackup(Thread):
             files_to_backup=control_files,
             filetype="basebackup",
             extra_metadata={
+                **self.metadata,
                 "end-time": backup_end_time,
                 "end-wal-segment": backup_end_wal_segment,
                 "pg-version": self.pg_version_server,
