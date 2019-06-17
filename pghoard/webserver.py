@@ -76,6 +76,10 @@ class WebServer(Thread):
         self.server.lock = self.lock  # pylint: disable=attribute-defined-outside-init
         self.server.pending_download_ops = self.pending_download_ops  # pylint: disable=attribute-defined-outside-init
         self.server.download_results = self.download_results  # pylint: disable=attribute-defined-outside-init
+        # Bounded list of files returned from local disk. Sometimes the file on disk is in some way "bad"
+        # and PostgreSQL doesn't accept it and keeps on requesting it again. If the file was recently served
+        # from disk serve it from file storage instead because the file there could be different.
+        self.server.served_from_disk = deque(maxlen=10)  # pylint: disable=attribute-defined-outside-init
         # Bounded negative cache for failed prefetch operations - we don't want to try prefetching files that
         # aren't there.  This isn't used for explicit download requests as it's possible that a file appears
         # later on in the object store.
@@ -416,14 +420,18 @@ class RequestHandler(BaseHTTPRequestHandler):
         # already earlier. Check if we have the files already and if we do, don't go over the network to refetch
         # them yet again but just rename them to the path that PG is requesting.
         xlog_path = os.path.join(xlog_dir, filename)
-        if os.path.exists(xlog_path):
+        exists_on_disk = os.path.exists(xlog_path)
+        if exists_on_disk and filename not in self.server.served_from_disk:
             self.server.log.info("Requested %r, found it in pg_xlog directory as: %r, returning directly",
                                  filename, xlog_path)
             ex = self._try_save_and_verify_restored_file(filetype, filename, xlog_path, target_path, unlink=False)
             if ex:
                 self.server.log.warning("Found file: %r but it was invalid: %s", xlog_path, ex)
             else:
+                self.server.served_from_disk.append(filename)
                 raise HttpResponse(status=201)
+        elif exists_on_disk:
+            self.server.log.info("Found file %r but it was recently already served from disk, fetching remote", xlog_path)
 
         key = self._make_file_key(site, filetype, filename)
         with suppress(ValueError):
