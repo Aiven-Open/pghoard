@@ -79,7 +79,10 @@ dbname|"""
         available_backup = self.pghoard.get_remote_basebackups_info(self.test_site)[0]
         assert available_backup["name"] == "2015-07-03_0"
         start_time = datetime.datetime(2015, 7, 3, 12, tzinfo=datetime.timezone.utc)
-        assert available_backup["metadata"] == {"start-time": start_time}
+        assert available_backup["metadata"]["start-time"] == start_time
+        assert available_backup["metadata"]["backup-reason"] == "scheduled"
+        assert available_backup["metadata"]["normalized-backup-time"] is None
+        assert available_backup["metadata"]["backup-decision-time"]
 
         bb_path = os.path.join(basebackup_storage_path, "2015-07-02_9")
         metadata_file_path = bb_path + ".metadata"
@@ -171,7 +174,7 @@ dbname|"""
         assert to_delete == bbs[:len(to_delete)]
         assert bbs_copy == bbs[len(to_delete):]
 
-    def test_local_check_backup_count_and_state(self):
+    def test_local_refresh_backup_list_and_delete_old(self):
         basebackup_storage_path = os.path.join(self.local_storage_dir, "basebackup")
         wal_storage_path = os.path.join(self.local_storage_dir, "xlog")
         os.makedirs(basebackup_storage_path)
@@ -221,7 +224,7 @@ dbname|"""
         write_backup_and_wal_files(backups_and_wals)
         basebackups = self.pghoard.get_remote_basebackups_info(self.test_site)
         assert len(basebackups) == 4
-        self.pghoard.check_backup_count_and_state(self.test_site)
+        self.pghoard.refresh_backup_list_and_delete_old(self.test_site)
         basebackups = self.pghoard.get_remote_basebackups_info(self.test_site)
         assert len(basebackups) == 1
         assert len(os.listdir(wal_storage_path)) == 3
@@ -244,7 +247,7 @@ dbname|"""
         }
         write_backup_and_wal_files(new_backups_and_wals)
         assert len(os.listdir(wal_storage_path)) == 11
-        self.pghoard.check_backup_count_and_state(self.test_site)
+        self.pghoard.refresh_backup_list_and_delete_old(self.test_site)
         basebackups = self.pghoard.get_remote_basebackups_info(self.test_site)
         assert len(basebackups) == 1
         expected_wal_count = len(backups_and_wals["2015-08-25_0"])
@@ -263,7 +266,7 @@ dbname|"""
         }
         write_backup_and_wal_files(gapless_backups_and_wals)
         assert len(os.listdir(wal_storage_path)) >= 10
-        self.pghoard.check_backup_count_and_state(self.test_site)
+        self.pghoard.refresh_backup_list_and_delete_old(self.test_site)
         basebackups = self.pghoard.get_remote_basebackups_info(self.test_site)
         assert len(basebackups) == 1
         assert len(os.listdir(wal_storage_path)) == 1
