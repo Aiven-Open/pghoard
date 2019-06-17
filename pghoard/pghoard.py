@@ -308,6 +308,41 @@ class PGHoard:
         results.sort(key=lambda entry: entry["metadata"]["start-time"])
         return results
 
+    def determine_backups_to_delete(self, *, basebackups, site_config):
+        """Returns the basebackups in the given list that need to be deleted based on the given site configuration.
+        Note that `basebackups` is edited in place: any basebackups that need to be deleted are removed from it."""
+        allowed_basebackup_count = site_config["basebackup_count"]
+        if allowed_basebackup_count is None:
+            allowed_basebackup_count = len(basebackups)
+
+        basebackups_to_delete = []
+        while len(basebackups) > allowed_basebackup_count:
+            self.log.warning("Too many basebackups: %d > %d, %r, starting to get rid of %r",
+                             len(basebackups), allowed_basebackup_count, basebackups, basebackups[0]["name"])
+            basebackups_to_delete.append(basebackups.pop(0))
+
+        backup_interval = datetime.timedelta(hours=site_config["basebackup_interval_hours"])
+        min_backups = site_config["basebackup_count_min"]
+        max_age_days = site_config.get("basebackup_age_days_max")
+        current_time = datetime.datetime.now(datetime.timezone.utc)
+        if max_age_days and min_backups > 0:
+            while basebackups and len(basebackups) > min_backups:
+                # For age checks we treat the age as current_time - (backup_start_time + backup_interval). So when
+                # backup interval is set to 24 hours a backup started 2.5 days ago would be considered to be 1.5 days old.
+                completed_at = basebackups[0]["metadata"]["start-time"] + backup_interval
+                backup_age = current_time - completed_at
+                # timedelta would have direct `days` attribute but that's an integer rounded down. We want a float
+                # so that we can react immediately when age is too old
+                backup_age_days = backup_age.total_seconds() / 60.0 / 60.0 / 24.0
+                if backup_age_days > max_age_days:
+                    self.log.warning("Basebackup %r too old: %.3f > %.3f, %r, starting to get rid of it",
+                                     basebackups[0]["name"], backup_age_days, max_age_days, basebackups)
+                    basebackups_to_delete.append(basebackups.pop(0))
+                else:
+                    break
+
+        return basebackups_to_delete
+
     def check_backup_count_and_state(self, site):
         """Look up basebackups from the object store, prune any extra
         backups and return the datetime of the latest backup."""
@@ -319,22 +354,21 @@ class PGHoard:
         else:
             last_backup_time = None
 
-        allowed_basebackup_count = self.config["backup_sites"][site]["basebackup_count"]
-        if allowed_basebackup_count is None:
-            allowed_basebackup_count = len(basebackups)
+        site_config = self.config["backup_sites"][site]
+        # Never delete backups from a recovery site. This check is already elsewhere as well
+        # but still check explicitly here to ensure we certainly won't delete anything unexpectedly
+        if site_config["active"]:
+            basebackups_to_delete = self.determine_backups_to_delete(basebackups=basebackups, site_config=site_config)
 
-        while len(basebackups) > allowed_basebackup_count:
-            self.log.warning("Too many basebackups: %d > %d, %r, starting to get rid of %r",
-                             len(basebackups), allowed_basebackup_count, basebackups, basebackups[0]["name"])
-            basebackup_to_be_deleted = basebackups.pop(0)
-            pg_version = basebackup_to_be_deleted["metadata"].get("pg-version")
-            last_wal_segment_still_needed = 0
-            if basebackups:
-                last_wal_segment_still_needed = basebackups[0]["metadata"]["start-wal-segment"]
+            for basebackup_to_be_deleted in basebackups_to_delete:
+                pg_version = basebackup_to_be_deleted["metadata"].get("pg-version")
+                last_wal_segment_still_needed = 0
+                if basebackups:
+                    last_wal_segment_still_needed = basebackups[0]["metadata"]["start-wal-segment"]
 
-            if last_wal_segment_still_needed:
-                self.delete_remote_wal_before(last_wal_segment_still_needed, site, pg_version)
-            self.delete_remote_basebackup(site, basebackup_to_be_deleted["name"], basebackup_to_be_deleted["metadata"])
+                if last_wal_segment_still_needed:
+                    self.delete_remote_wal_before(last_wal_segment_still_needed, site, pg_version)
+                self.delete_remote_basebackup(site, basebackup_to_be_deleted["name"], basebackup_to_be_deleted["metadata"])
         self.state["backup_sites"][site]["basebackups"] = basebackups
 
         return last_backup_time

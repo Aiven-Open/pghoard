@@ -102,6 +102,75 @@ dbname|"""
         assert basebackups[1]["name"] == "2015-07-02_10"
         assert basebackups[2]["name"] == "2015-07-03_0"
 
+    def test_determine_backups_to_delete(self):
+        now = datetime.datetime.now(datetime.timezone.utc)
+        bbs = [
+            {"name": "bb1", "metadata": {"start-time": now - datetime.timedelta(days=10, hours=4)}},
+            {"name": "bb1", "metadata": {"start-time": now - datetime.timedelta(days=9, hours=4)}},
+            {"name": "bb1", "metadata": {"start-time": now - datetime.timedelta(days=9, hours=1)}},
+            {"name": "bb1", "metadata": {"start-time": now - datetime.timedelta(days=8, hours=4)}},
+            {"name": "bb1", "metadata": {"start-time": now - datetime.timedelta(days=7, hours=4)}},
+            {"name": "bb1", "metadata": {"start-time": now - datetime.timedelta(days=6, hours=4)}},
+            {"name": "bb1", "metadata": {"start-time": now - datetime.timedelta(days=6, hours=20)}},
+            {"name": "bb1", "metadata": {"start-time": now - datetime.timedelta(days=5, hours=4)}},
+            {"name": "bb1", "metadata": {"start-time": now - datetime.timedelta(days=4, hours=4)}},
+            {"name": "bb1", "metadata": {"start-time": now - datetime.timedelta(days=3, hours=4)}},
+            {"name": "bb1", "metadata": {"start-time": now - datetime.timedelta(days=2, hours=4)}},
+            {"name": "bb1", "metadata": {"start-time": now - datetime.timedelta(days=1, hours=4)}},
+            {"name": "bb1", "metadata": {"start-time": now - datetime.timedelta(hours=4)}},
+        ]
+
+        site_config = {
+            "basebackup_count": 4,
+            "basebackup_count_min": 2,
+            "basebackup_interval_hours": 24,
+        }
+        bbs_copy = list(bbs)
+        to_delete = self.pghoard.determine_backups_to_delete(basebackups=bbs_copy, site_config=site_config)
+        assert len(bbs_copy) == 4
+        assert len(to_delete) == len(bbs) - len(bbs_copy)
+        assert to_delete == bbs[:len(to_delete)]
+        assert bbs_copy == bbs[len(to_delete):]
+
+        site_config["basebackup_count"] = 16
+        site_config["basebackup_age_days_max"] = 8
+        bbs_copy = list(bbs)
+        to_delete = self.pghoard.determine_backups_to_delete(basebackups=bbs_copy, site_config=site_config)
+        # 3 of the backups are too old (start time + interval is over 8 days in the past)
+        assert len(bbs_copy) == 10
+        assert len(to_delete) == len(bbs) - len(bbs_copy)
+        assert to_delete == bbs[:len(to_delete)]
+        assert bbs_copy == bbs[len(to_delete):]
+
+        site_config["basebackup_count"] = 9
+        bbs_copy = list(bbs)
+        to_delete = self.pghoard.determine_backups_to_delete(basebackups=bbs_copy, site_config=site_config)
+        # basebackup_count trumps backup age and backups are removed even though they're not too old
+        assert len(bbs_copy) == 9
+        assert len(to_delete) == len(bbs) - len(bbs_copy)
+        assert to_delete == bbs[:len(to_delete)]
+        assert bbs_copy == bbs[len(to_delete):]
+
+        site_config["basebackup_count"] = 16
+        site_config["basebackup_age_days_max"] = 2
+        site_config["basebackup_count_min"] = 6
+        bbs_copy = list(bbs)
+        to_delete = self.pghoard.determine_backups_to_delete(basebackups=bbs_copy, site_config=site_config)
+        # basebackup_count_min ensures not that many backups are removed even though they're too old
+        assert len(bbs_copy) == 6
+        assert len(to_delete) == len(bbs) - len(bbs_copy)
+        assert to_delete == bbs[:len(to_delete)]
+        assert bbs_copy == bbs[len(to_delete):]
+
+        site_config["basebackup_count_min"] = 2
+        bbs_copy = list(bbs)
+        to_delete = self.pghoard.determine_backups_to_delete(basebackups=bbs_copy, site_config=site_config)
+        # 3 of the backups are new enough (start time less than 3 days in the past)
+        assert len(bbs_copy) == 3
+        assert len(to_delete) == len(bbs) - len(bbs_copy)
+        assert to_delete == bbs[:len(to_delete)]
+        assert bbs_copy == bbs[len(to_delete):]
+
     def test_local_check_backup_count_and_state(self):
         basebackup_storage_path = os.path.join(self.local_storage_dir, "basebackup")
         wal_storage_path = os.path.join(self.local_storage_dir, "xlog")

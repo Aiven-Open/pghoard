@@ -607,6 +607,12 @@ The following options control the behavior of each backup site.  A backup
 site means an individual PostgreSQL installation ("cluster" in PostgreSQL
 terminology) from which to take backups.
 
+``basebackup_age_days_max`` (default undefined)
+
+Maximum age for basebackups. Basebackups older than this will be removed. By
+default this value is not defined and basebackups are deleted based on total
+count instead.
+
 ``basebackup_chunks_in_progress`` (default ``5``)
 
 How many basebackup chunks can there be simultaneously on disk while
@@ -621,7 +627,20 @@ space needed for a successful backup is this variable multiplied by
 ``basebackup_count`` (default ``2``)
 
 How many basebackups should be kept around for restoration purposes.  The
-more there are the more diskspace will be used.
+more there are the more diskspace will be used. If ``basebackup_max_age`` is
+defined this controls the maximum number of basebackups to keep; if backup
+interval is less than 24 hour or extra backups are created there can be more
+than one basebackup per day and it is often desirable to set
+``basebackup_count`` to something slightly higher than the max age in days.
+
+``basebackup_count_min`` (default ``2``)
+
+Minimum number of basebackups to keep. This is only effective when
+``basebackup_age_days_max`` has been defined. If for example the server is
+powered off and then back on a month later, all existing backups would be very
+old. However, in that case it is usually not desirable to immediately delete
+all old backups. This setting allows specifying a minimum number of backups
+that should always be preserved regardless of their age.
 
 ``basebackup_interval_hours`` (default ``24``)
 
