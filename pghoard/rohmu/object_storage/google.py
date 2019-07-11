@@ -47,15 +47,17 @@ except ImportError:
 
 from ..dates import parse_timestamp
 from ..errors import FileNotFoundFromStorageError, InvalidConfigurationError
-from .base import BaseTransfer, KEY_TYPE_PREFIX, KEY_TYPE_OBJECT, IterKeyItem
+from .base import BaseTransfer, get_total_memory, KEY_TYPE_PREFIX, KEY_TYPE_OBJECT, IterKeyItem
 
 # Silence Google API client verbose spamming
 logging.getLogger("googleapiclient.discovery_cache").setLevel(logging.ERROR)
 logging.getLogger("googleapiclient").setLevel(logging.WARNING)
 logging.getLogger("oauth2client").setLevel(logging.WARNING)
 
-# googleapiclient download performs some 3-4 times better with 50 MB chunk size than 5 MB chunk size
-DOWNLOAD_CHUNK_SIZE = 1024 * 1024 * 50
+# googleapiclient download performs some 3-4 times better with 50 MB chunk size than 5 MB chunk size;
+# but decrypting/decompressing big chunks needs a lot of memory so use smaller chunks on systems with less
+# than 2 GB RAM
+DOWNLOAD_CHUNK_SIZE = 1024 * 1024 * 5 if get_total_memory() < 2048 else 1024 * 1024 * 50
 UPLOAD_CHUNK_SIZE = 1024 * 1024 * 5
 
 
