@@ -55,6 +55,7 @@ def test_encryptor_stream():
             assert not encrypted_stream.read(1)
             break
         assert len(data) == bytes_requested
+        assert encrypted_stream.tell() == result_data.tell()
     assert result_data.tell() > 0
     result_data.seek(0)
     decrypted = DecryptorFile(result_data, CONSTANT_TEST_RSA_PRIVATE_KEY).read()

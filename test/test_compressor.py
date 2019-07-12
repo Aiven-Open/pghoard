@@ -408,12 +408,15 @@ class CompressionCase(PGHoardTestCase):
                 break
             assert len(data) == bytes_requested
         assert result_data.tell() > 0
+        assert compressed_stream.tell() > 0
         result_data.seek(0)
         decompressed = self.decompress(result_data.read())
         assert plaintext == decompressed
 
         compressed_stream = self.make_compress_stream(io.BytesIO(plaintext))
-        decompressed = self.decompress(compressed_stream.read())
+        compressed_data = compressed_stream.read()
+        assert compressed_stream.tell() == len(compressed_data)
+        decompressed = self.decompress(compressed_data)
         assert plaintext == decompressed
 
 

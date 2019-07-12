@@ -140,6 +140,7 @@ class Stream:
         self._remainder = b""
         self._src = src_fp
         self.minimum_read_size = minimum_read_size
+        self._offset = 0
 
     def _process_chunk(self, data):
         raise NotImplementedError
@@ -184,4 +185,8 @@ class Stream:
                 self._remainder = chunks[-1][bytes_missing:]
             else:
                 self._remainder = chunks[-1]
+        self._offset += len(data)
         return data
+
+    def tell(self):
+        return self._offset
