@@ -69,12 +69,21 @@ class PGHoard:
             "backup_sites": {},
             "startup_time": datetime.datetime.utcnow().isoformat(),
         }
+        self.transfer_agent_state = {}  # shared among transfer agents
         self.load_config()
         if self.config["transfer"]["thread_count"] > 1:
             self.mp_manager = multiprocessing.Manager()
 
         if not os.path.exists(self.config["backup_location"]):
             os.makedirs(self.config["backup_location"])
+
+        # Read transfer_agent_state from state file if available so that there's no disruption
+        # in the metrics we send out as a result of process restart
+        state_file_path = self.config["json_state_file_path"]
+        if os.path.exists(state_file_path):
+            with open(state_file_path, "r") as fp:
+                state = json.load(fp)
+                self.transfer_agent_state = state.get("transfer_agent_state") or {}
 
         signal.signal(signal.SIGHUP, self.load_config)
         signal.signal(signal.SIGINT, self.quit)
@@ -98,7 +107,6 @@ class PGHoard:
                 metrics=self.metrics)
             self.compressors.append(compressor)
 
-        compressor_state = {}  # shared among transfer agents
         for _ in range(self.config["transfer"]["thread_count"]):
             ta = TransferAgent(
                 config=self.config,
@@ -106,7 +114,7 @@ class PGHoard:
                 mp_manager=self.mp_manager,
                 transfer_queue=self.transfer_queue,
                 metrics=self.metrics,
-                shared_state_dict=compressor_state)
+                shared_state_dict=self.transfer_agent_state)
             self.transfer_agents.append(ta)
 
         logutil.notify_systemd("READY=1")
@@ -642,7 +650,8 @@ class PGHoard:
             for key, value in self.basebackups.items()
         }
         self.state["compressors"] = [compressor.state for compressor in self.compressors]
-        self.state["transfer_agents"] = [ta.state for ta in self.transfer_agents]
+        # All transfer agents share the same state, no point in writing it multiple times
+        self.state["transfer_agent_state"] = self.transfer_agent_state
         self.state["queues"] = {
             "compression_queue": self.compression_queue.qsize(),
             "transfer_queue": self.transfer_queue.qsize(),

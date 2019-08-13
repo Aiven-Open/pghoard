@@ -291,7 +291,7 @@ dbname|"""
                 "compression_queue": 0,
                 "transfer_queue": 0,
             },
-            "transfer_agents": [{}] * self.config["transfer"]["thread_count"],
+            "transfer_agent_state": {},
             "pg_receivexlogs": {},
             "pg_basebackups": {},
             "walreceivers": {},
@@ -385,7 +385,7 @@ class TestPGHoardWithPG:
         start = time.monotonic()
         site = "test_pause_on_disk_full"
         while True:
-            xlogs = pghoard.transfer_agents[0].state[site]["upload"]["xlog"]["xlogs_since_basebackup"]
+            xlogs = pghoard.transfer_agent_state[site]["upload"]["xlog"]["xlogs_since_basebackup"]
             if xlogs >= 15:
                 break
             elif time.monotonic() - start > 15:
