@@ -32,6 +32,7 @@ import multiprocessing
 import os
 import psycopg2
 import random
+import shutil
 import signal
 import socket
 import subprocess
@@ -419,7 +420,26 @@ class PGHoard:
             # Process uncompressed files (ie WAL pg_receivexlog received)
             for filename in os.listdir(uncompressed_xlog_path):
                 full_path = os.path.join(uncompressed_xlog_path, filename)
-                if not wal.WAL_RE.match(filename) and not wal.TIMELINE_RE.match(filename):
+                if wal.PARTIAL_WAL_RE.match(filename):
+                    # pg_receivewal may have been in the middle of storing WAL file when PGHoard was stopped.
+                    # If the file is 0 or 16 MiB in size it will continue normally but in some cases the file can be
+                    # incomplete causing pg_receivewal to halt processing. Truncating the file to zero bytes correctly
+                    # makes it continue streaming from the beginning of that segment.
+                    file_size = os.stat(full_path).st_size
+                    if file_size in {0, wal.WAL_SEG_SIZE}:
+                        self.log.info("Found partial file %r, size %d bytes", full_path, file_size)
+                    else:
+                        self.log.warning(
+                            "Found partial file %r with unexpected size %d, truncating to zero bytes", full_path, file_size
+                        )
+                        # Make a copy of the file for safekeeping. The data should still be available on PG
+                        # side but just in case it isn't the incomplete segment could still be relevant for
+                        # manual processing later
+                        shutil.copyfile(full_path, full_path + "_incomplete")
+                        self.metrics.increase("pghoard.incomplete_partial_wal_segment")
+                        os.truncate(full_path, 0)
+                    continue
+                elif not wal.WAL_RE.match(filename) and not wal.TIMELINE_RE.match(filename):
                     self.log.warning("Found invalid file %r from incoming xlog directory", full_path)
                     continue
                 compression_event = {

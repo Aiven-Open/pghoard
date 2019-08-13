@@ -10,6 +10,7 @@ import re
 import struct
 import subprocess
 
+PARTIAL_WAL_RE = re.compile(r"^[A-F0-9]{24}\.partial$")
 TIMELINE_RE = re.compile(r"^[A-F0-9]{8}\.history$")
 WAL_RE = re.compile("^[A-F0-9]{24}$")
 WAL_HEADER_LEN = 20
