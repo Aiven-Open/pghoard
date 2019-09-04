@@ -291,6 +291,7 @@ dbname|"""
                 "compression_queue": 0,
                 "transfer_queue": 0,
             },
+            "served_files": {},
             "transfer_agent_state": {},
             "pg_receivexlogs": {},
             "pg_basebackups": {},

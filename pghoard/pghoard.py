@@ -656,6 +656,7 @@ class PGHoard:
             "compression_queue": self.compression_queue.qsize(),
             "transfer_queue": self.transfer_queue.qsize(),
         }
+        self.state["served_files"] = self.webserver.get_most_recently_served_files() if self.webserver else {}
         self.log.debug("Writing JSON state file to %r", state_file_path)
         write_json_file(state_file_path, self.state)
         self.log.debug("Wrote JSON state file to disk, took %.4fs", time.time() - start_time)
