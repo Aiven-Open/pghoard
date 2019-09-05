@@ -459,6 +459,8 @@ class TestWebServer:
         storage_data = base_data + b"storage"
         on_disk_data = base_data + b"on_disk"
 
+        assert pghoard.webserver.get_most_recently_served_files() == {}
+
         store = pghoard.transfer_agents[0].get_object_storage(pghoard.test_site)
         store.store_file_from_memory(valid_wal, storage_data, metadata={"a": "b"})
 
@@ -487,6 +489,10 @@ class TestWebServer:
         conn.request("GET", valid_wal, headers=headers)
         status = conn.getresponse().status
         assert status == 201
+        recent_files = pghoard.webserver.get_most_recently_served_files()
+        assert list(recent_files) == ["xlog"]
+        assert recent_files["xlog"]["name"] == valid_wal_seg
+        assert 0 < (time.time() - recent_files["xlog"]["time"]) < 1
 
         storage_name = str(tmpdir.join("test_get_storage"))
         headers = {"x-pghoard-target-path": storage_name}

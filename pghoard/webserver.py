@@ -76,6 +76,7 @@ class WebServer(Thread):
         self.server.lock = self.lock  # pylint: disable=attribute-defined-outside-init
         self.server.pending_download_ops = self.pending_download_ops  # pylint: disable=attribute-defined-outside-init
         self.server.download_results = self.download_results  # pylint: disable=attribute-defined-outside-init
+        self.server.most_recently_served_files = {}  # pylint: disable=attribute-defined-outside-init
         # Bounded list of files returned from local disk. Sometimes the file on disk is in some way "bad"
         # and PostgreSQL doesn't accept it and keeps on requesting it again. If the file was recently served
         # from disk serve it from file storage instead because the file there could be different.
@@ -93,6 +94,11 @@ class WebServer(Thread):
             self.server.shutdown()
         self.log.debug("Closed WebServer")
         self._running = False
+
+    def get_most_recently_served_files(self):
+        if not self.server:
+            return {}
+        return self.server.most_recently_served_files
 
     @property
     def running(self):
@@ -413,6 +419,10 @@ class RequestHandler(BaseHTTPRequestHandler):
             ex = self._try_save_and_verify_restored_file(filetype, filename, prefetch_target_path, target_path)
             if not ex:
                 self._create_prefetch_operations(site, filetype, filename)
+                self.server.most_recently_served_files[filetype] = {
+                    "name": filename,
+                    "time": time.time(),
+                }
                 raise HttpResponse(status=201)
 
         # After reaching a recovery_target and restart of a PG server, PG wants to replay and refetch
@@ -429,6 +439,10 @@ class RequestHandler(BaseHTTPRequestHandler):
                 self.server.log.warning("Found file: %r but it was invalid: %s", xlog_path, ex)
             else:
                 self.server.served_from_disk.append(filename)
+                self.server.most_recently_served_files[filetype] = {
+                    "name": filename,
+                    "time": time.time(),
+                }
                 raise HttpResponse(status=201)
         elif exists_on_disk:
             self.server.log.info("Found file %r but it was recently already served from disk, fetching remote", xlog_path)
@@ -448,6 +462,10 @@ class RequestHandler(BaseHTTPRequestHandler):
                 if os.path.isfile(prefetch_target_path):
                     ex = self._try_save_and_verify_restored_file(filetype, filename, prefetch_target_path, target_path)
                     if not ex:
+                        self.server.most_recently_served_files[filetype] = {
+                            "name": filename,
+                            "time": time.time(),
+                        }
                         raise HttpResponse(status=201)
                     elif ex and retries == 0:
                         raise ex  # pylint: disable=raising-bad-type
