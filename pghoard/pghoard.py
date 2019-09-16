@@ -70,6 +70,9 @@ class PGHoard:
             "startup_time": datetime.datetime.utcnow().isoformat(),
         }
         self.transfer_agent_state = {}  # shared among transfer agents
+        # Keep track of remote xlog
+        self.remote_xlog = {}
+        self.remote_basebackup = {}
         self.load_config()
         if self.config["transfer"]["thread_count"] > 1:
             self.mp_manager = multiprocessing.Manager()
@@ -114,7 +117,8 @@ class PGHoard:
                 mp_manager=self.mp_manager,
                 transfer_queue=self.transfer_queue,
                 metrics=self.metrics,
-                shared_state_dict=self.transfer_agent_state)
+                shared_state_dict=self.transfer_agent_state,
+                remote_xlog=self.remote_xlog)
             self.transfer_agents.append(ta)
 
         logutil.notify_systemd("READY=1")
@@ -271,15 +275,15 @@ class PGHoard:
                 self.log.exception("Problem deleting: %r", wal_path)
                 self.metrics.unexpected_exception(ex, where="delete_remote_wal_before")
 
-    def delete_remote_basebackup(self, site, basebackup, metadata):
+    def delete_remote_basebackup(self, site, basebackup):
         start_time = time.monotonic()
         storage = self.site_transfers.get(site)
-        main_backup_key = os.path.join(self.config["backup_sites"][site]["prefix"], "basebackup", basebackup)
+        main_backup_key = os.path.join(self.config["backup_sites"][site]["prefix"], "basebackup", basebackup["name"])
         basebackup_data_files = [main_backup_key]
 
-        if metadata.get("format") == "pghoard-bb-v2":
+        if basebackup['metadata'].get("format") == "pghoard-bb-v2":
             bmeta_compressed = storage.get_contents_to_string(main_backup_key)[0]
-            with rohmufile.file_reader(fileobj=io.BytesIO(bmeta_compressed), metadata=metadata,
+            with rohmufile.file_reader(fileobj=io.BytesIO(bmeta_compressed), metadata=basebackup['metadata'],
                                        key_lookup=config.key_lookup_for_site(self.config, site)) as input_obj:
                 bmeta = extract_pghoard_bb_v2_metadata(input_obj)
                 self.log.debug("PGHoard chunk metadata: %r", bmeta)
@@ -299,6 +303,7 @@ class PGHoard:
             except Exception as ex:  # FIXME: don't catch all exceptions; pylint: disable=broad-except
                 self.log.exception("Problem deleting: %r", obj_key)
                 self.metrics.unexpected_exception(ex, where="delete_remote_basebackup")
+        self.remote_basebackup[site].remove(basebackup)
         self.log.info("Deleted basebackup datafiles: %r, took: %.2fs",
                       ', '.join(basebackup_data_files), time.monotonic() - start_time)
 
@@ -316,6 +321,17 @@ class PGHoard:
 
         results.sort(key=lambda entry: entry["metadata"]["start-time"])
         return results
+
+    def get_remote_xlogs_info(self, site):
+        storage = self.site_transfers.get(site)
+        if not storage:
+            storage_config = get_object_storage_config(self.config, site)
+            storage = get_transfer(storage_config)
+            self.site_transfers[site] = storage
+
+        site_config = self.config["backup_sites"][site]
+        results = storage.list_path(os.path.join(site_config["prefix"], "xlog"), with_metadata=False)
+        return [os.path.basename(x['name']) for x in results]
 
     def patch_basebackup_info(self, *, entry, site_config):
         # drop path from resulting list and convert timestamps
@@ -335,36 +351,43 @@ class PGHoard:
         if "normalized-backup-time" not in metadata:
             metadata["normalized-backup-time"] = self.get_normalized_backup_time(site_config, now=metadata["start-time"])
 
-    def determine_backups_to_delete(self, *, basebackups, site_config):
+    def determine_backups_to_delete(self, site):
         """Returns the basebackups in the given list that need to be deleted based on the given site configuration.
         Note that `basebackups` is edited in place: any basebackups that need to be deleted are removed from it."""
+        site_config = self.config["backup_sites"][site]
         allowed_basebackup_count = site_config["basebackup_count"]
         if allowed_basebackup_count is None:
-            allowed_basebackup_count = len(basebackups)
+            allowed_basebackup_count = len(self.remote_basebackup[site])
 
         basebackups_to_delete = []
-        while len(basebackups) > allowed_basebackup_count:
+        while len(self.remote_basebackup[site]) > allowed_basebackup_count:
             self.log.warning("Too many basebackups: %d > %d, %r, starting to get rid of %r",
-                             len(basebackups), allowed_basebackup_count, basebackups, basebackups[0]["name"])
-            basebackups_to_delete.append(basebackups.pop(0))
+                             len(self.remote_basebackup[site]),
+                             allowed_basebackup_count,
+                             self.remote_basebackup[site],
+                             self.remote_basebackup[site][0]["name"])
+            basebackups_to_delete.append(self.remote_basebackup[site].pop(0))
 
         backup_interval = datetime.timedelta(hours=site_config["basebackup_interval_hours"])
         min_backups = site_config["basebackup_count_min"]
         max_age_days = site_config.get("basebackup_age_days_max")
         current_time = datetime.datetime.now(datetime.timezone.utc)
         if max_age_days and min_backups > 0:
-            while basebackups and len(basebackups) > min_backups:
+            while len(self.remote_basebackup[site]) > min_backups:
                 # For age checks we treat the age as current_time - (backup_start_time + backup_interval). So when
                 # backup interval is set to 24 hours a backup started 2.5 days ago would be considered to be 1.5 days old.
-                completed_at = basebackups[0]["metadata"]["start-time"] + backup_interval
+                completed_at = self.remote_basebackup[site][0]["metadata"]["start-time"] + backup_interval
                 backup_age = current_time - completed_at
                 # timedelta would have direct `days` attribute but that's an integer rounded down. We want a float
                 # so that we can react immediately when age is too old
                 backup_age_days = backup_age.total_seconds() / 60.0 / 60.0 / 24.0
                 if backup_age_days > max_age_days:
                     self.log.warning("Basebackup %r too old: %.3f > %.3f, %r, starting to get rid of it",
-                                     basebackups[0]["name"], backup_age_days, max_age_days, basebackups)
-                    basebackups_to_delete.append(basebackups.pop(0))
+                                     self.remote_basebackup[site][0]["name"],
+                                     backup_age_days,
+                                     max_age_days,
+                                     self.remote_basebackup)
+                    basebackups_to_delete.append(self.remote_basebackup[site].pop(0))
                 else:
                     break
 
@@ -373,25 +396,24 @@ class PGHoard:
     def refresh_backup_list_and_delete_old(self, site):
         """Look up basebackups from the object store, prune any extra
         backups and return the datetime of the latest backup."""
-        basebackups = self.get_remote_basebackups_info(site)
-        self.log.debug("Found %r basebackups", basebackups)
+        self.log.debug("Found %r basebackups", self.remote_basebackup[site])
 
         site_config = self.config["backup_sites"][site]
         # Never delete backups from a recovery site. This check is already elsewhere as well
         # but still check explicitly here to ensure we certainly won't delete anything unexpectedly
         if site_config["active"]:
-            basebackups_to_delete = self.determine_backups_to_delete(basebackups=basebackups, site_config=site_config)
+            basebackups_to_delete = self.determine_backups_to_delete(site)
 
             for basebackup_to_be_deleted in basebackups_to_delete:
                 pg_version = basebackup_to_be_deleted["metadata"].get("pg-version")
                 last_wal_segment_still_needed = 0
-                if basebackups:
-                    last_wal_segment_still_needed = basebackups[0]["metadata"]["start-wal-segment"]
+                if len(self.remote_basebackup[site]) > 0:
+                    last_wal_segment_still_needed = self.remote_basebackup[site][0]["metadata"]["start-wal-segment"]
 
                 if last_wal_segment_still_needed:
                     self.delete_remote_wal_before(last_wal_segment_still_needed, site, pg_version)
                 self.delete_remote_basebackup(site, basebackup_to_be_deleted["name"], basebackup_to_be_deleted["metadata"])
-        self.state["backup_sites"][site]["basebackups"] = basebackups
+        self.state["backup_sites"][site]["basebackups"] = self.remote_basebackup[site]
 
     def get_normalized_backup_time(self, site_config, *, now=None):
         """Returns the closest historical backup time that current time matches to (or current time if it matches).
