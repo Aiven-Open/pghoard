@@ -134,7 +134,10 @@ class S3Transfer(BaseTransfer):
     def iter_key(self, key, *, with_metadata=True, deep=False, include_key=False):
         path = self.format_key_for_backend(key, remove_slash_prefix=True, trailing_slash=not include_key)
         self.log.debug("Listing path %r", path)
+
         continuation_token = None
+        marker = None
+        fetch_method = "V2"
         while True:
             args = {
                 "Bucket": self.bucket_name,
@@ -142,9 +145,25 @@ class S3Transfer(BaseTransfer):
             }
             if not deep:
                 args["Delimiter"] = "/"
-            if continuation_token:
+            if fetch_method == "V2" and continuation_token:
                 args["ContinuationToken"] = continuation_token
-            response = self.s3_client.list_objects_v2(**args)
+            if fetch_method == "V1" and marker:
+                args["Marker"] = marker
+
+            # Fetch results based on method
+            if fetch_method == "V1":
+                response = self.s3_client.list_objects(**args)
+            elif fetch_method == "V2":
+                response = self.s3_client.list_objects_v2(**args)
+            else:
+                raise Exception("Invalid fetch method")
+
+            # Check if pagination is broken in V2
+            if fetch_method == "V2" and response.get("IsTruncated") and "NextContinuationToken" not in response:
+                # Fallback to list_object() V1 if NextContinuationToken is not in response
+                self.log.info("Pagination broken, falling back to list_object V1")
+                fetch_method = "V1"
+                response = self.s3_client.list_objects(**args)
 
             for item in response.get("Contents", []):
                 if with_metadata:
@@ -169,8 +188,13 @@ class S3Transfer(BaseTransfer):
                     value=self.format_key_from_backend(common_prefix["Prefix"]).rstrip("/"),
                 )
 
-            if "NextContinuationToken" in response:
-                continuation_token = response["NextContinuationToken"]
+            if response.get("IsTruncated"):
+                if fetch_method == "V1":
+                    marker = response.get('NextMarker')
+                elif fetch_method == "V2":
+                    continuation_token = response["NextContinuationToken"]
+                else:
+                    raise Exception("Invalid fetch method")
             else:
                 break
 
