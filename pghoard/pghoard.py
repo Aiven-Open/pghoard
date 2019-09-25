@@ -531,10 +531,10 @@ class PGHoard:
             return  # If a site has been marked inactive, don't bother checking anything
 
         if site not in self.remote_xlog or site not in self.remote_basebackup:
-            self.log.info("Retrieving info from remote storage for %s" % site)
+            self.log.info("Retrieving info from remote storage for %s", site)
             self.remote_xlog[site] = self.get_remote_xlogs_info(site)
             self.remote_basebackup[site] = self.get_remote_basebackups_info(site)
-            self.log.info("Remote info updated for %s" % site)
+            self.log.info("Remote info updated for %s", site)
 
         self._cleanup_inactive_receivexlogs(site)
 
