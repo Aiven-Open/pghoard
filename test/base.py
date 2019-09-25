@@ -6,7 +6,7 @@ See LICENSE for details
 """
 # pylint: disable=attribute-defined-outside-init
 from pghoard.config import find_pg_binary, set_and_check_config_defaults
-from pghoard.rohmu import compat
+from pghoard.rohmu import compat, dates
 from shutil import rmtree
 from tempfile import mkdtemp
 import logging
@@ -101,5 +101,12 @@ class PGHoardTestCase:
         self.remote_xlog[self.test_site] = []
         self.remote_basebackup[self.test_site] = []
 
-    def teardown_method(self, method):  # pylint: disable=unused-argument
+    def teardown_method(self, method):
         rmtree(self.temp_dir)
+
+    def patch_basebackup_info(self, *, entry, site_config):  # pylint: disable=unused-argument
+        # drop path from resulting list and convert timestamps
+        entry["name"] = os.path.basename(entry["name"])
+        metadata = entry["metadata"]
+        metadata["start-time"] = dates.parse_timestamp(metadata["start-time"])
+
