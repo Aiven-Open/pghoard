@@ -32,6 +32,12 @@ class MockStorageRaising(Mock):
         raise StorageError("foo")
 
 
+class MockPGHoard(Mock):
+    def __init__(self):
+        self.remote_xlog = {}
+        self.remote_basebackup = {}
+
+
 class TestTransferAgent(PGHoardTestCase):
     def setup_method(self, method):
         super().setup_method(method)
@@ -64,7 +70,8 @@ class TestTransferAgent(PGHoardTestCase):
             mp_manager=None,
             transfer_queue=self.transfer_queue,
             metrics=metrics.Metrics(statsd={}),
-            shared_state_dict={})
+            shared_state_dict={},
+            pghoard=MockPGHoard())
         self.transfer_agent.start()
 
     def teardown_method(self, method):

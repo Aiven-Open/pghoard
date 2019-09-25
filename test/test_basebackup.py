@@ -193,6 +193,8 @@ LABEL: pg_basebackup base backup
 
         pghoard.config["backup_sites"][pghoard.test_site]["basebackup_mode"] = mode
         pghoard.config["backup_sites"][pghoard.test_site]["active_backup_mode"] = active_backup_mode
+        pghoard.remote_xlog[pghoard.test_site] = []
+        pghoard.remote_basebackup[pghoard.test_site] = []
 
         now = datetime.datetime.now(datetime.timezone.utc)
         metadata = {

@@ -96,6 +96,10 @@ class PGHoardTestCase:
     def setup_method(self, method):
         self.temp_dir = mkdtemp(prefix=self.__class__.__name__)
         self.test_site = "site_{}".format(method.__name__)
+        self.remote_xlog = {}
+        self.remote_basebackup = {}
+        self.remote_xlog[self.test_site] = []
+        self.remote_basebackup[self.test_site] = []
 
     def teardown_method(self, method):  # pylint: disable=unused-argument
         rmtree(self.temp_dir)

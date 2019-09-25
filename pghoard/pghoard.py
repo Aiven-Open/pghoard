@@ -366,7 +366,7 @@ class PGHoard:
                              allowed_basebackup_count,
                              self.remote_basebackup[site],
                              self.remote_basebackup[site][0]["name"])
-            basebackups_to_delete.append(self.remote_basebackup[site].pop(0))
+            basebackups_to_delete.append(self.remote_basebackup[site][0])
 
         backup_interval = datetime.timedelta(hours=site_config["basebackup_interval_hours"])
         min_backups = site_config["basebackup_count_min"]
@@ -412,7 +412,7 @@ class PGHoard:
 
                 if last_wal_segment_still_needed:
                     self.delete_remote_wal_before(last_wal_segment_still_needed, site, pg_version)
-                self.delete_remote_basebackup(site, basebackup_to_be_deleted["name"], basebackup_to_be_deleted["metadata"])
+                self.delete_remote_basebackup(site, basebackup_to_be_deleted)
         self.state["backup_sites"][site]["basebackups"] = self.remote_basebackup[site]
 
     def get_normalized_backup_time(self, site_config, *, now=None):
@@ -529,6 +529,12 @@ class PGHoard:
 
         if not site_config["active"]:
             return  # If a site has been marked inactive, don't bother checking anything
+
+        if site not in self.remote_xlog or site not in self.remote_basebackup:
+            self.log.info("Retrieving info from remote storage for %s" % site)
+            self.remote_xlog[site] = self.get_remote_xlogs_info(site)
+            self.remote_basebackup[site] = self.get_remote_basebackups_info(site)
+            self.log.info("Remote info updated for %s" % site)
 
         self._cleanup_inactive_receivexlogs(site)
 
