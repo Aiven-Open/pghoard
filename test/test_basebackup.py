@@ -536,6 +536,7 @@ LABEL: pg_basebackup base backup
         site_config = deepcopy(pghoard.config["backup_sites"][pghoard.test_site])
         site_config["basebackup_interval_hours"] = 1 / 3600
         assert pghoard.basebackups == {}
+        assert pghoard.test_site not in pghoard.remote_basebackup
 
         # initialize with a single backup
         backup_start = time.monotonic()
@@ -559,7 +560,7 @@ LABEL: pg_basebackup base backup
         # now call handle_site so it notices the backup has finished (this must not start a new one)
         pghoard.handle_site(pghoard.test_site, site_config)
         assert pghoard.test_site not in pghoard.basebackups
-        first_basebackups = pghoard.state["backup_sites"][pghoard.test_site]["basebackups"]
+        first_basebackups = pghoard.remote_basebackup[pghoard.test_site][:]
         assert first_basebackups[0]["metadata"]["backup-reason"] == "scheduled"
         assert first_basebackups[0]["metadata"]["backup-decision-time"]
         assert first_basebackups[0]["metadata"]["normalized-backup-time"] is None
@@ -572,7 +573,7 @@ LABEL: pg_basebackup base backup
         pghoard.handle_site(pghoard.test_site, site_config)
         assert pghoard.test_site not in pghoard.basebackups
 
-        second_basebackups = pghoard.state["backup_sites"][pghoard.test_site]["basebackups"]
+        second_basebackups = pghoard.remote_basebackup[pghoard.test_site][:]
         second_time_of_check = pghoard.time_of_last_backup_check[pghoard.test_site]
         assert second_basebackups == first_basebackups
         assert second_time_of_check > first_time_of_check
@@ -586,7 +587,7 @@ LABEL: pg_basebackup base backup
         pghoard.handle_site(pghoard.test_site, site_config)
         assert pghoard.test_site not in pghoard.basebackups
 
-        third_basebackups = pghoard.state["backup_sites"][pghoard.test_site]["basebackups"]
+        third_basebackups = pghoard.remote_basebackup[pghoard.test_site][:]
         third_time_of_check = pghoard.time_of_last_backup_check[pghoard.test_site]
         assert third_basebackups != second_basebackups
         assert third_time_of_check > second_time_of_check
@@ -596,7 +597,7 @@ LABEL: pg_basebackup base backup
         pghoard.handle_site(pghoard.test_site, site_config)
         assert pghoard.test_site not in pghoard.basebackups
 
-        fourth_basebackups = pghoard.state["backup_sites"][pghoard.test_site]["basebackups"]
+        fourth_basebackups = pghoard.remote_basebackup[pghoard.test_site][:]
         fourth_time_of_check = pghoard.time_of_last_backup_check[pghoard.test_site]
         assert fourth_basebackups == third_basebackups
         assert fourth_time_of_check == third_time_of_check
