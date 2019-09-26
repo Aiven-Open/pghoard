@@ -415,7 +415,6 @@ class PGHoard:
                 if last_wal_segment_still_needed:
                     self.delete_remote_wal_before(last_wal_segment_still_needed, site, pg_version)
                 self.delete_remote_basebackup(site, basebackup_to_be_deleted)
-        self.state["backup_sites"][site]["basebackups"] = self.remote_basebackup[site]
 
     def get_normalized_backup_time(self, site_config, *, now=None):
         """Returns the closest historical backup time that current time matches to (or current time if it matches).
@@ -536,6 +535,7 @@ class PGHoard:
             self.log.info("Retrieving info from remote storage for %s", site)
             self.remote_xlog[site] = self.get_remote_xlogs_info(site)
             self.remote_basebackup[site] = self.get_remote_basebackups_info(site)
+            self.state["backup_sites"][site]["basebackups"] = self.remote_basebackup[site]
             self.log.info("Remote info updated for %s", site)
 
         self._cleanup_inactive_receivexlogs(site)
@@ -587,7 +587,7 @@ class PGHoard:
         be created at this time"""
         if not now:
             now = datetime.datetime.now(datetime.timezone.utc)
-        basebackups = self.state["backup_sites"][site]["basebackups"]
+        basebackups = self.remote_basebackup[site]
         backup_hour = site_config.get("basebackup_hour")
         backup_minute = site_config.get("basebackup_minute")
         backup_reason = None
