@@ -360,13 +360,15 @@ class PGHoard:
             allowed_basebackup_count = len(self.remote_basebackup[site])
 
         basebackups_to_delete = []
-        while len(self.remote_basebackup[site]) > allowed_basebackup_count:
+        for basebackup in self.remote_basebackup[site]:
+            if (len(self.remote_basebackup[site]) - len(basebackups_to_delete)) <= allowed_basebackup_count:
+                break;
             self.log.warning("Too many basebackups: %d > %d, %r, starting to get rid of %r",
                              len(self.remote_basebackup[site]),
                              allowed_basebackup_count,
                              self.remote_basebackup[site],
                              self.remote_basebackup[site][0]["name"])
-            basebackups_to_delete.append(self.remote_basebackup[site][0])
+            basebackups_to_delete.append(basebackup)
 
         backup_interval = datetime.timedelta(hours=site_config["basebackup_interval_hours"])
         min_backups = site_config["basebackup_count_min"]
