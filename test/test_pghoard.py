@@ -109,50 +109,46 @@ dbname|"""
         now = datetime.datetime.now(datetime.timezone.utc)
         bbs = [
             {"name": "bb1", "metadata": {"start-time": now - datetime.timedelta(days=10, hours=4)}},
-            {"name": "bb1", "metadata": {"start-time": now - datetime.timedelta(days=9, hours=4)}},
-            {"name": "bb1", "metadata": {"start-time": now - datetime.timedelta(days=9, hours=1)}},
-            {"name": "bb1", "metadata": {"start-time": now - datetime.timedelta(days=8, hours=4)}},
-            {"name": "bb1", "metadata": {"start-time": now - datetime.timedelta(days=7, hours=4)}},
-            {"name": "bb1", "metadata": {"start-time": now - datetime.timedelta(days=6, hours=4)}},
-            {"name": "bb1", "metadata": {"start-time": now - datetime.timedelta(days=6, hours=20)}},
-            {"name": "bb1", "metadata": {"start-time": now - datetime.timedelta(days=5, hours=4)}},
-            {"name": "bb1", "metadata": {"start-time": now - datetime.timedelta(days=4, hours=4)}},
-            {"name": "bb1", "metadata": {"start-time": now - datetime.timedelta(days=3, hours=4)}},
-            {"name": "bb1", "metadata": {"start-time": now - datetime.timedelta(days=2, hours=4)}},
-            {"name": "bb1", "metadata": {"start-time": now - datetime.timedelta(days=1, hours=4)}},
-            {"name": "bb1", "metadata": {"start-time": now - datetime.timedelta(hours=4)}},
+            {"name": "bb2", "metadata": {"start-time": now - datetime.timedelta(days=9, hours=4)}},
+            {"name": "bb3", "metadata": {"start-time": now - datetime.timedelta(days=9, hours=1)}},
+            {"name": "bb4", "metadata": {"start-time": now - datetime.timedelta(days=8, hours=4)}},
+            {"name": "bb5", "metadata": {"start-time": now - datetime.timedelta(days=7, hours=4)}},
+            {"name": "bb6", "metadata": {"start-time": now - datetime.timedelta(days=6, hours=4)}},
+            {"name": "bb7", "metadata": {"start-time": now - datetime.timedelta(days=6, hours=20)}},
+            {"name": "bb8", "metadata": {"start-time": now - datetime.timedelta(days=5, hours=4)}},
+            {"name": "bb9", "metadata": {"start-time": now - datetime.timedelta(days=4, hours=4)}},
+            {"name": "bb10", "metadata": {"start-time": now - datetime.timedelta(days=3, hours=4)}},
+            {"name": "bb11", "metadata": {"start-time": now - datetime.timedelta(days=2, hours=4)}},
+            {"name": "bb12", "metadata": {"start-time": now - datetime.timedelta(days=1, hours=4)}},
+            {"name": "bb13", "metadata": {"start-time": now - datetime.timedelta(hours=4)}},
         ]
 
+        basebackup_count = 4
         site_config = {
-            "basebackup_count": 4,
+            "basebackup_count": basebackup_count,
             "basebackup_count_min": 2,
             "basebackup_interval_hours": 24,
         }
-        bbs_copy = list(bbs)
+        self.pghoard.config["backup_sites"][self.test_site] = site_config
+        self.pghoard.remote_basebackup[self.test_site] = bbs
         to_delete = self.pghoard.determine_backups_to_delete(self.test_site)
-        assert len(bbs_copy) == 4
-        assert len(to_delete) == len(bbs) - len(bbs_copy)
+        a = len(to_delete)
+        assert len(bbs) - len(to_delete) == 4
         assert to_delete == bbs[:len(to_delete)]
-        assert bbs_copy == bbs[len(to_delete):]
 
         site_config["basebackup_count"] = 16
         site_config["basebackup_age_days_max"] = 8
-        bbs_copy = list(bbs)
         to_delete = self.pghoard.determine_backups_to_delete(self.test_site)
         # 3 of the backups are too old (start time + interval is over 8 days in the past)
-        assert len(bbs_copy) == 10
-        assert len(to_delete) == len(bbs) - len(bbs_copy)
+        assert len(to_delete) == 3
         assert to_delete == bbs[:len(to_delete)]
-        assert bbs_copy == bbs[len(to_delete):]
 
         site_config["basebackup_count"] = 9
-        bbs_copy = list(bbs)
         to_delete = self.pghoard.determine_backups_to_delete(self.test_site)
         # basebackup_count trumps backup age and backups are removed even though they're not too old
-        assert len(bbs_copy) == 9
-        assert len(to_delete) == len(bbs) - len(bbs_copy)
+        a = len(to_delete)
+        assert len(to_delete) == 9
         assert to_delete == bbs[:len(to_delete)]
-        assert bbs_copy == bbs[len(to_delete):]
 
         site_config["basebackup_count"] = 16
         site_config["basebackup_age_days_max"] = 2
