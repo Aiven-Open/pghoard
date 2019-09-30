@@ -132,7 +132,8 @@ dbname|"""
         self.pghoard.config["backup_sites"][self.test_site] = site_config
         self.pghoard.remote_basebackup[self.test_site] = bbs
         to_delete = self.pghoard.determine_backups_to_delete(self.test_site)
-        assert len(bbs) - len(to_delete) == 4
+        assert len(bbs) - len(to_delete) == basebackup_count
+        # check that pghoard delete oldest basebackups (first items of the list)
         assert to_delete == bbs[:len(to_delete)]
 
         site_config["basebackup_count"] = 16
@@ -143,30 +144,29 @@ dbname|"""
         assert to_delete == bbs[:len(to_delete)]
 
         site_config["basebackup_count"] = 9
+        site_config["basebackup_age_days_max"] = 10
         to_delete = self.pghoard.determine_backups_to_delete(self.test_site)
         # basebackup_count trumps backup age and backups are removed even though they're not too old
-        assert len(to_delete) == 9
+        # We have 13 basebackups, 12 with start-time < 8 days
+        # So based with basebackup_count = 9 pghoard should delete 4 backups (bb1, bb2, bb3, bb4)
+        # And with basebackup_age_days_max = 10 days pghoard should delete 1 backup (bb1)
+        assert len(to_delete) == 4
         assert to_delete == bbs[:len(to_delete)]
 
+        basebackup_count_min = 6
         site_config["basebackup_count"] = 16
         site_config["basebackup_age_days_max"] = 2
-        site_config["basebackup_count_min"] = 6
-        bbs_copy = list(bbs)
+        site_config["basebackup_count_min"] = basebackup_count_min
         to_delete = self.pghoard.determine_backups_to_delete(self.test_site)
         # basebackup_count_min ensures not that many backups are removed even though they're too old
-        assert len(bbs_copy) == 6
-        assert len(to_delete) == len(bbs) - len(bbs_copy)
+        assert len(to_delete) == len(self.pghoard.remote_basebackup[self.test_site]) - basebackup_count_min
         assert to_delete == bbs[:len(to_delete)]
-        assert bbs_copy == bbs[len(to_delete):]
 
         site_config["basebackup_count_min"] = 2
-        bbs_copy = list(bbs)
         to_delete = self.pghoard.determine_backups_to_delete(self.test_site)
         # 3 of the backups are new enough (start time less than 3 days in the past)
-        assert len(bbs_copy) == 3
-        assert len(to_delete) == len(bbs) - len(bbs_copy)
+        assert len(to_delete) == len(self.pghoard.remote_basebackup[self.test_site]) - 3
         assert to_delete == bbs[:len(to_delete)]
-        assert bbs_copy == bbs[len(to_delete):]
 
     def test_local_refresh_backup_list_and_delete_old(self):
         basebackup_storage_path = os.path.join(self.local_storage_dir, "basebackup")

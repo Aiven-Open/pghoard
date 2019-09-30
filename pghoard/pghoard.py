@@ -360,36 +360,41 @@ class PGHoard:
             allowed_basebackup_count = len(self.remote_basebackup[site])
 
         basebackups_to_delete = []
-        for basebackup in self.remote_basebackup[site]:
-            if (len(self.remote_basebackup[site]) - len(basebackups_to_delete)) <= allowed_basebackup_count:
+        remote_basebackups = self.remote_basebackup[site][:]
+        for basebackup in remote_basebackups:
+            if (len(remote_basebackups) - len(basebackups_to_delete)) <= allowed_basebackup_count:
                 break
             self.log.warning("Too many basebackups: %d > %d, %r, starting to get rid of %r",
                              len(self.remote_basebackup[site]),
                              allowed_basebackup_count,
                              self.remote_basebackup[site],
-                             self.remote_basebackup[site][0]["name"])
+                             basebackup["name"])
             basebackups_to_delete.append(basebackup)
+        for basebackup in basebackups_to_delete:
+            remote_basebackups.remove(basebackup)
 
         backup_interval = datetime.timedelta(hours=site_config["basebackup_interval_hours"])
         min_backups = site_config["basebackup_count_min"]
         max_age_days = site_config.get("basebackup_age_days_max")
         current_time = datetime.datetime.now(datetime.timezone.utc)
         if max_age_days and min_backups > 0:
-            while len(self.remote_basebackup[site]) > min_backups:
+            for basebackup in remote_basebackups:
+                if (len(remote_basebackups) - len(basebackups_to_delete)) <= min_backups:
+                    break
                 # For age checks we treat the age as current_time - (backup_start_time + backup_interval). So when
                 # backup interval is set to 24 hours a backup started 2.5 days ago would be considered to be 1.5 days old.
-                completed_at = self.remote_basebackup[site][0]["metadata"]["start-time"] + backup_interval
+                completed_at = basebackup["metadata"]["start-time"] + backup_interval
                 backup_age = current_time - completed_at
                 # timedelta would have direct `days` attribute but that's an integer rounded down. We want a float
                 # so that we can react immediately when age is too old
                 backup_age_days = backup_age.total_seconds() / 60.0 / 60.0 / 24.0
                 if backup_age_days > max_age_days:
                     self.log.warning("Basebackup %r too old: %.3f > %.3f, %r, starting to get rid of it",
-                                     self.remote_basebackup[site][0]["name"],
+                                     basebackup["name"],
                                      backup_age_days,
                                      max_age_days,
                                      self.remote_basebackup)
-                    basebackups_to_delete.append(self.remote_basebackup[site].pop(0))
+                    basebackups_to_delete.append(basebackup)
                 else:
                     break
 
