@@ -609,6 +609,9 @@ LABEL: pg_basebackup base backup
 
         site = pghoard.test_site
         pghoard.set_state_defaults(site)
+        pghoard.remote_xlog[site] = pghoard.get_remote_xlogs_info(site)
+        pghoard.remote_basebackup[site] = pghoard.get_remote_basebackups_info(site)
+        pghoard.state["backup_sites"][site]["basebackups"] = pghoard.remote_basebackup[site]
         site_config = pghoard.config["backup_sites"][site]
 
         # No backups, one should be created. No backup schedule defined so normalized backup time is None

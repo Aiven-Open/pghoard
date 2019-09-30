@@ -109,4 +109,3 @@ class PGHoardTestCase:
         entry["name"] = os.path.basename(entry["name"])
         metadata = entry["metadata"]
         metadata["start-time"] = dates.parse_timestamp(metadata["start-time"])
-

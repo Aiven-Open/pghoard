@@ -26,12 +26,11 @@ import time
 class MockStorage(Mock):
 
     def init(self):
-        if self.init_ok != True:
+        if self.init_ok is not True:
             self.objects = {}
             now = datetime.datetime.now(dateutil.tz.tzlocal())
             self.sample_storage_date = "{} {}".format(now.isoformat().split("+", 1)[0], now.tzname())
             self.init_ok = True
-
 
     def setup_method(self, method):
         super().setup_method(method)

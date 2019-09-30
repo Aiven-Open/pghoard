@@ -362,7 +362,7 @@ class PGHoard:
         basebackups_to_delete = []
         for basebackup in self.remote_basebackup[site]:
             if (len(self.remote_basebackup[site]) - len(basebackups_to_delete)) <= allowed_basebackup_count:
-                break;
+                break
             self.log.warning("Too many basebackups: %d > %d, %r, starting to get rid of %r",
                              len(self.remote_basebackup[site]),
                              allowed_basebackup_count,

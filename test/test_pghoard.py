@@ -132,7 +132,6 @@ dbname|"""
         self.pghoard.config["backup_sites"][self.test_site] = site_config
         self.pghoard.remote_basebackup[self.test_site] = bbs
         to_delete = self.pghoard.determine_backups_to_delete(self.test_site)
-        a = len(to_delete)
         assert len(bbs) - len(to_delete) == 4
         assert to_delete == bbs[:len(to_delete)]
 
@@ -146,7 +145,6 @@ dbname|"""
         site_config["basebackup_count"] = 9
         to_delete = self.pghoard.determine_backups_to_delete(self.test_site)
         # basebackup_count trumps backup age and backups are removed even though they're not too old
-        a = len(to_delete)
         assert len(to_delete) == 9
         assert to_delete == bbs[:len(to_delete)]
 
