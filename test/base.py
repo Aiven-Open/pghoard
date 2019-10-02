@@ -101,7 +101,7 @@ class PGHoardTestCase:
         self.remote_xlog[self.test_site] = []
         self.remote_basebackup[self.test_site] = []
 
-    def teardown_method(self, method):
+    def teardown_method(self, method):  # pylint: disable=unused-argument
         rmtree(self.temp_dir)
 
     def patch_basebackup_info(self, *, entry, site_config):  # pylint: disable=unused-argument
