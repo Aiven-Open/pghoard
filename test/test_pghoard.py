@@ -147,7 +147,7 @@ dbname|"""
         site_config["basebackup_age_days_max"] = 10
         to_delete = self.pghoard.determine_backups_to_delete(self.test_site)
         # basebackup_count trumps backup age and backups are removed even though they're not too old
-        # We have 13 basebackups, 12 with start-time < 8 days
+        # We have 13 basebackups, 12 with start-time < 10 days
         # So based with basebackup_count = 9 pghoard should delete 4 backups (bb1, bb2, bb3, bb4)
         # And with basebackup_age_days_max = 10 days pghoard should delete 1 backup (bb1)
         assert len(to_delete) == 4
