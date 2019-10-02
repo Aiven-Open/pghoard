@@ -175,7 +175,10 @@ dbname|"""
         os.makedirs(wal_storage_path)
 
         self.pghoard.set_state_defaults(self.test_site)
-        assert self.pghoard.get_remote_basebackups_info(self.test_site) == []
+        self.pghoard.remote_basebackup[self.test_site] = self.pghoard.get_remote_basebackups_info(self.test_site)
+        self.pghoard.remote_xlog[self.test_site] = self.pghoard.get_remote_xlogs_info(self.test_site)
+        assert self.pghoard.remote_basebackup[self.test_site] == []
+        assert self.pghoard.remote_xlog[self.test_site] == []
 
         def write_backup_and_wal_files(what):
             for bb, wals in what.items():
@@ -191,8 +194,11 @@ dbname|"""
                             "start-time": start_time.isoformat(),
                         }, fp)
                 for wal in wals:
-                    with open(os.path.join(wal_storage_path, wal), "wb") as fp:
+                    wal_path = os.path.join(wal_storage_path, wal)
+                    with open(wal_path, "wb") as fp:
                         fp.write(b"something")
+                    with open(wal_path + ".metadata", "w") as fp:
+                        json.dump({}, fp)
 
         backups_and_wals = {
             "2015-08-25_0": [
@@ -216,12 +222,15 @@ dbname|"""
             ],
         }
         write_backup_and_wal_files(backups_and_wals)
-        basebackups = self.pghoard.get_remote_basebackups_info(self.test_site)
-        assert len(basebackups) == 4
+        self.pghoard.remote_basebackup[self.test_site] = self.pghoard.get_remote_basebackups_info(self.test_site)
+        self.pghoard.remote_xlog[self.test_site] = self.pghoard.get_remote_xlogs_info(self.test_site)
+        assert len(self.pghoard.remote_basebackup[self.test_site]) == 4
+        assert len(self.pghoard.remote_xlog[self.test_site]) == 9
         self.pghoard.refresh_backup_list_and_delete_old(self.test_site)
-        basebackups = self.pghoard.get_remote_basebackups_info(self.test_site)
-        assert len(basebackups) == 1
-        assert len(os.listdir(wal_storage_path)) == 3
+        self.pghoard.remote_basebackup[self.test_site] = self.pghoard.get_remote_basebackups_info(self.test_site)
+        assert len(self.pghoard.remote_basebackup[self.test_site]) == 1
+        assert len(self.pghoard.remote_xlog[self.test_site]) == 3
+        assert len(os.listdir(wal_storage_path)) == 2 * len(self.pghoard.remote_xlog[self.test_site])
         # Put all WAL segments between 1 and 9 in place to see that they're deleted and we don't try to go back
         # any further from TLI 1.  Note that timeline 3 is now "empty" so deletion shouldn't touch timelines 2
         # or 1.
@@ -240,14 +249,17 @@ dbname|"""
             ],
         }
         write_backup_and_wal_files(new_backups_and_wals)
-        assert len(os.listdir(wal_storage_path)) == 11
+        self.pghoard.remote_basebackup[self.test_site] = self.pghoard.get_remote_basebackups_info(self.test_site)
+        self.pghoard.remote_xlog[self.test_site] = self.pghoard.get_remote_xlogs_info(self.test_site)
+        assert len(self.pghoard.remote_xlog[self.test_site]) == 11
+        assert len(os.listdir(wal_storage_path)) == 2 * len(self.pghoard.remote_xlog[self.test_site])
         self.pghoard.refresh_backup_list_and_delete_old(self.test_site)
-        basebackups = self.pghoard.get_remote_basebackups_info(self.test_site)
-        assert len(basebackups) == 1
+        assert len(self.pghoard.remote_basebackup[self.test_site]) == 1
         expected_wal_count = len(backups_and_wals["2015-08-25_0"])
         expected_wal_count += len(new_backups_and_wals[""])
         expected_wal_count += len(new_backups_and_wals["2015-08-25_4"])
-        assert len(os.listdir(wal_storage_path)) == expected_wal_count
+        assert len(self.pghoard.remote_xlog[self.test_site]) == expected_wal_count
+        assert len(os.listdir(wal_storage_path)) == 2 * len(self.pghoard.remote_xlog[self.test_site])
         # Now put WAL files in place with no gaps anywhere
         gapless_backups_and_wals = {
             "2015-08-25_3": [
@@ -259,11 +271,14 @@ dbname|"""
             ],
         }
         write_backup_and_wal_files(gapless_backups_and_wals)
-        assert len(os.listdir(wal_storage_path)) >= 10
+        self.pghoard.remote_basebackup[self.test_site] = self.pghoard.get_remote_basebackups_info(self.test_site)
+        self.pghoard.remote_xlog[self.test_site] = self.pghoard.get_remote_xlogs_info(self.test_site)
+        assert len(self.pghoard.remote_xlog[self.test_site]) >= 10
+        assert len(os.listdir(wal_storage_path)) == 2 * len(self.pghoard.remote_xlog[self.test_site])
         self.pghoard.refresh_backup_list_and_delete_old(self.test_site)
-        basebackups = self.pghoard.get_remote_basebackups_info(self.test_site)
-        assert len(basebackups) == 1
-        assert len(os.listdir(wal_storage_path)) == 1
+        assert len(self.pghoard.remote_basebackup[self.test_site]) == 1
+        assert len(self.pghoard.remote_xlog[self.test_site]) == 1
+        assert len(os.listdir(wal_storage_path)) == 2 * len(self.pghoard.remote_xlog[self.test_site])
 
     def test_alert_files(self):
         alert_file_path = os.path.join(self.config["alert_file_dir"], "test_alert")
