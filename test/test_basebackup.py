@@ -193,8 +193,6 @@ LABEL: pg_basebackup base backup
 
         pghoard.config["backup_sites"][pghoard.test_site]["basebackup_mode"] = mode
         pghoard.config["backup_sites"][pghoard.test_site]["active_backup_mode"] = active_backup_mode
-        pghoard.remote_xlog[pghoard.test_site] = []
-        pghoard.remote_basebackup[pghoard.test_site] = []
 
         now = datetime.datetime.now(datetime.timezone.utc)
         metadata = {
@@ -536,7 +534,6 @@ LABEL: pg_basebackup base backup
         site_config = deepcopy(pghoard.config["backup_sites"][pghoard.test_site])
         site_config["basebackup_interval_hours"] = 1 / 3600
         assert pghoard.basebackups == {}
-        assert pghoard.test_site not in pghoard.remote_basebackup
 
         # initialize with a single backup
         backup_start = time.monotonic()
