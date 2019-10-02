@@ -274,6 +274,10 @@ def pghoard_base(db, tmpdir, request, compression="snappy",   # pylint: disable=
 
     pgh = PGHoard(confpath)
     pgh.test_site = test_site
+    pgh.remote_xlog = {}
+    pgh.remote_basebackup = {}
+    pgh.remote_xlog[pgh.test_site] = []
+    pgh.remote_basebackup[pgh.test_site] = []
     pgh.start_threads_on_startup()
     if compression == "snappy":
         pgh.Compressor = snappy.StreamCompressor
