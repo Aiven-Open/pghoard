@@ -26,14 +26,13 @@ import time
 class MockStorage(Mock):
 
     def init(self):
-        if self.init_ok is not True:
+        if self.init_ok is not True:  # pylint: disable=access-member-before-definition
             self.objects = {}
             now = datetime.datetime.now(dateutil.tz.tzlocal())
             self.sample_storage_date = "{} {}".format(now.isoformat().split("+", 1)[0], now.tzname())
             self.init_ok = True
 
-    def setup_method(self, method):
-        super().setup_method(method)
+    def setup_method(self):
         self.init()
 
     def get_contents_to_string(self, key):  # pylint: disable=unused-argument
@@ -44,9 +43,9 @@ class MockStorage(Mock):
         self.init()
         self.objects[key] = local_path
 
-    def iter_key(self, key, *, with_metadata=True, deep=False, include_key=False):
+    def iter_key(self, key, *, with_metadata=True, deep=False, include_key=False):  # pylint: disable=unused-argument
         self.init()
-        for item in self.objects.keys():
+        for item in self.objects:
             if key == item[0:len(key)]:
                 yield IterKeyItem(
                     type=KEY_TYPE_OBJECT,
