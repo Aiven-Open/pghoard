@@ -258,6 +258,7 @@ class PGHoard:
             self.log.debug("Deleting wal_file: %r", wal_path)
             try:
                 storage.delete_key(wal_path)
+                self.remote_xlog[site].remove(wal.name_for_tli_log_seg(tli, log, seg))
                 valid_timeline = True
             except FileNotFoundFromStorageError:
                 if not valid_timeline or tli <= 1:
@@ -410,16 +411,13 @@ class PGHoard:
         # but still check explicitly here to ensure we certainly won't delete anything unexpectedly
         if site_config["active"]:
             basebackups_to_delete = self.determine_backups_to_delete(site)
-
             for basebackup_to_be_deleted in basebackups_to_delete:
-                pg_version = basebackup_to_be_deleted["metadata"].get("pg-version")
-                last_wal_segment_still_needed = 0
-                if len(self.remote_basebackup[site]) > 0:
-                    last_wal_segment_still_needed = self.remote_basebackup[site][0]["metadata"]["start-wal-segment"]
-
-                if last_wal_segment_still_needed:
-                    self.delete_remote_wal_before(last_wal_segment_still_needed, site, pg_version)
                 self.delete_remote_basebackup(site, basebackup_to_be_deleted)
+
+            if len(basebackups_to_delete) > 0 and len(self.remote_basebackup[site]) > 0:
+                pg_version = basebackups_to_delete[0]["metadata"].get("pg-version")
+                last_wal_segment_still_needed = self.remote_basebackup[site][0]["metadata"]["start-wal-segment"]
+                self.delete_remote_wal_before(last_wal_segment_still_needed, site, pg_version)
 
     def get_normalized_backup_time(self, site_config, *, now=None):
         """Returns the closest historical backup time that current time matches to (or current time if it matches).
