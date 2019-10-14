@@ -3,8 +3,6 @@ Prometheus client (used to create a Prometheus endpoint)
 
 """
 
-import time
-
 
 class PrometheusClient:
     def __init__(self, config):
@@ -31,13 +29,11 @@ class PrometheusClient:
     def get_metrics(self):
         data = []
         for metric, value in self.metrics.items():
-            line = '{} {} {}'.format(metric, value.get("value"), value.get("ts"))
+            line = '{} {}'.format(metric, value.get("value"))
             data.append(line)
         return data
 
     def _update(self, metric, value, tags):
-        ts = str(int(time.time())) + "000"
-
         metric = metric.replace(".", "_")
         tags = {**self._tags, **tags}
         tag_list = []
@@ -45,4 +41,4 @@ class PrometheusClient:
             tag_list.append("{}=\"{}\"".format(k, tags[k]))
         encoded_tags = "{{{}}}".format(",".join(tag_list))
         formatted_metric = "{}{}".format(metric, encoded_tags)
-        self.metrics[formatted_metric] = {"value": value, "ts": ts}
+        self.metrics[formatted_metric] = value
