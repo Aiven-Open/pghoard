@@ -4,6 +4,7 @@ pghoard - configuration validation
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
+from distutils.version import LooseVersion
 from pghoard.common import convert_pg_command_version_to_number
 from pghoard.postgres_command import PGHOARD_HOST, PGHOARD_PORT
 from pghoard.rohmu import get_class_for_transfer
@@ -15,7 +16,7 @@ import os
 import subprocess
 
 
-SUPPORTED_VERSIONS = ["11", "10", "9.6", "9.5", "9.4", "9.3"]
+SUPPORTED_VERSIONS = ["12", "11", "10", "9.6", "9.5", "9.4", "9.3"]
 
 
 def get_cpu_count():
@@ -26,7 +27,7 @@ def find_pg_binary(program, versions=None):
     pathformats = ["/usr/pgsql-{ver}/bin/{prog}", "/usr/lib/postgresql/{ver}/bin/{prog}"]
     for ver in versions or SUPPORTED_VERSIONS:
         for pathfmt in pathformats:
-            if ver in ("10", "11") and program == "pg_receivexlog":
+            if LooseVersion(ver) >= "10" and program == "pg_receivexlog":
                 program = "pg_receivewal"
             pgbin = pathfmt.format(ver=ver, prog=program)
             if os.path.exists(pgbin):

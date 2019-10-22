@@ -5,6 +5,7 @@ Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
 # pylint: disable=attribute-defined-outside-init
+from distutils.version import LooseVersion
 from pghoard.config import find_pg_binary, set_and_check_config_defaults
 from pghoard.rohmu import compat
 from shutil import rmtree
@@ -79,7 +80,7 @@ class PGHoardTestCase:
             "json_state_file_path": os.path.join(self.temp_dir, "state.json"),
             "pg_basebackup_path": os.path.join(bindir, "pg_basebackup"),
         }
-        if ver in ("10", "11"):
+        if LooseVersion(ver) >= "10":
             config["backup_sites"][self.test_site]["pg_receivexlog_path"] = os.path.join(bindir, "pg_receivewal")
         if override:
             all_site_overrides = override.pop("backup_sites", None)
