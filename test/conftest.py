@@ -4,6 +4,7 @@ pghoard: fixtures for tests
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
+from distutils.version import LooseVersion
 from pghoard import config as pghconfig, logutil, pgutil
 from pghoard.pghoard import PGHoard
 from pghoard.rohmu.compat import suppress
@@ -158,12 +159,24 @@ def recovery_db():
         conn.close()
         # Now perform a clean shutdown and restart in recovery
         pg.kill(force=False, immediate=False)
-        with open(os.path.join(pg.pgdata, "recovery.conf"), "w") as fp:
-            fp.write(
-                "standby_mode = 'on'\n"
-                "recovery_target_timeline = 'latest'\n"
-                "restore_command = 'false'\n"
-            )
+
+        recovery_conf = [
+            "recovery_target_timeline = 'latest'",
+            "restore_command = 'false'",
+        ]
+        if LooseVersion(pg.ver) >= "12":
+            with open(os.path.join(pg.pgdata, "standby.signal"), "w") as fp:
+                pass
+
+            recovery_conf_path = "postgresql.auto.conf"
+            open_mode = "a"  # As it might exist already in some cases
+        else:
+            recovery_conf.append("standby_mode = 'on'")
+            recovery_conf_path = "recovery.conf"
+            open_mode = "w"
+
+        with open(os.path.join(pg.pgdata, recovery_conf_path), open_mode) as fp:
+            fp.write("\n".join(recovery_conf) + "\n")
         pg.run_pg()
         yield pg
 

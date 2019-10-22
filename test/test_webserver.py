@@ -7,6 +7,7 @@ See LICENSE for details
 # pylint: disable=attribute-defined-outside-init
 from .base import CONSTANT_TEST_RSA_PUBLIC_KEY, CONSTANT_TEST_RSA_PRIVATE_KEY
 from .test_wal import wal_header_for_file
+from distutils.version import LooseVersion
 from http.client import HTTPConnection
 from pghoard import postgres_command, wal
 from pghoard.archive_sync import ArchiveSync
@@ -293,12 +294,26 @@ class TestWebServer:
         # let's do a little dance to turn our DB into a standby and then
         # promote it, forcing a timeline switch
         db.kill(force=False)
-        with open(os.path.join(db.pgdata, "recovery.conf"), "w") as fp:
-            fp.write(
-                "standby_mode = 'on'\n"
-                "recovery_target_timeline = 'latest'\n"
-                "restore_command = 'false'\n"
-            )
+
+        recovery_conf = [
+            "\n",  # Start with a newline for the append case
+            "recovery_target_timeline = 'latest'",
+            "restore_command = 'false'",
+        ]
+        if LooseVersion(db.ver) >= "12":
+            with open(os.path.join(db.pgdata, "standby.signal"), "w") as fp:
+                pass
+
+            recovery_conf_path = "postgresql.auto.conf"
+            open_mode = "a"
+        else:
+            recovery_conf.append("standby_mode = 'on'")
+            recovery_conf_path = "recovery.conf"
+            open_mode = "w"
+
+        with open(os.path.join(db.pgdata, recovery_conf_path), open_mode) as fp:
+            fp.write("\n".join(recovery_conf) + "\n")
+
         # start PG and promote it
         db.run_pg()
         db.run_cmd("pg_ctl", "-D", db.pgdata, "promote")
