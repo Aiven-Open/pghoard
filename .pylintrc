@@ -3,6 +3,7 @@ disable=
     bad-option-value,
     duplicate-code,
     fixme,
+    import-outside-toplevel,
     invalid-name,
     len-as-condition,
     locally-disabled,

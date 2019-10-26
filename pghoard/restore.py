@@ -522,7 +522,8 @@ class BasebackupFetcher():
                 self.last_progress_ts = time.monotonic()
                 if self.errors:
                     break
-                elif retry == 2:
+
+                if retry == 2:
                     self.log.error("Download stalled despite retries, aborting")
                     self.errors = 1
                     break
