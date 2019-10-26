@@ -483,7 +483,13 @@ LABEL: pg_basebackup base backup
                 os.path.dirname(os.path.dirname(__file__)))
             new_go_restore_cmd = "{}/pghoard_postgres_command_go --mode restore".format(
                 os.path.dirname(os.path.dirname(__file__)))
-            with open(os.path.join(backup_out, "recovery.conf"), "r+") as fp:
+
+            if conn.server_version >= 120000:
+                target_recovery_conf = "postgresql.auto.conf"
+            else:
+                target_recovery_conf = "recovery.conf"
+
+            with open(os.path.join(backup_out, target_recovery_conf), "r+") as fp:
                 rconf = fp.read()
                 rconf = rconf.replace("pghoard_postgres_command_go --mode restore", new_go_restore_cmd)
                 rconf = rconf.replace("pghoard_postgres_command --mode restore", new_py_restore_cmd)

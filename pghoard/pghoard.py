@@ -447,9 +447,11 @@ class PGHoard:
                         self.metrics.increase("pghoard.incomplete_partial_wal_segment")
                         os.truncate(full_path, 0)
                     continue
-                elif not wal.WAL_RE.match(filename) and not wal.TIMELINE_RE.match(filename):
+
+                if not wal.WAL_RE.match(filename) and not wal.TIMELINE_RE.match(filename):
                     self.log.warning("Found invalid file %r from incoming xlog directory", full_path)
                     continue
+
                 compression_event = {
                     "delete_file_after_compression": True,
                     "full_path": full_path,

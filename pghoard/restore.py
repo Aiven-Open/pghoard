@@ -34,6 +34,11 @@ class RestoreError(Error):
     """Restore error"""
 
 
+def create_signal_file(file_path):
+    """Just ensure the file exists"""
+    open(file_path, "w")
+
+
 def create_recovery_conf(dirpath, site, *,
                          port=PGHOARD_PORT,
                          primary_conninfo=None,
@@ -51,22 +56,35 @@ def create_recovery_conf(dirpath, site, *,
         "--output", "%p",
         "--xlog", "%f",
     ]
+    with open(os.path.join(dirpath, "PG_VERSION"), "r") as fp:
+        pg_version = LooseVersion(fp.read().strip())
+
+    if pg_version >= "12":
+        trigger_file_setting = "promote_trigger_file"
+    else:
+        trigger_file_setting = "trigger_file"
+
     lines = [
         "# pghoard created recovery.conf",
         "recovery_target_timeline = 'latest'",
-        "trigger_file = {}".format(adapt(os.path.join(dirpath, "trigger_file"))),
+        "{} = {}".format(trigger_file_setting, adapt(os.path.join(dirpath, "trigger_file"))),
         "restore_command = '{}'".format(" ".join(restore_command)),
     ]
+
+    use_recovery_conf = (pg_version < "12")  # no more recovery.conf in PG >= 12
     if not restore_to_master:
-        lines.append("standby_mode = 'on'")
+        if use_recovery_conf:
+            lines.append("standby_mode = 'on'")
+        else:
+            # Indicates the server should start up as a hot standby
+            create_signal_file(os.path.join(dirpath, "standby.signal"))
+
     if primary_conninfo:
         lines.append("primary_conninfo = {}".format(adapt(primary_conninfo)))
     if recovery_end_command:
         lines.append("recovery_end_command = {}".format(adapt(recovery_end_command)))
     if recovery_target_action:
-        with open(os.path.join(dirpath, "PG_VERSION"), "r") as fp:
-            pg_version = fp.read().strip()
-        if LooseVersion(pg_version) >= "9.5":
+        if pg_version >= "9.5":
             lines.append("recovery_target_action = '{}'".format(recovery_target_action))
         elif recovery_target_action == "promote":
             pass  # default action
@@ -82,10 +100,21 @@ def create_recovery_conf(dirpath, site, *,
     if recovery_target_xid:
         lines.append("recovery_target_xid = '{}'".format(recovery_target_xid))
     content = "\n".join(lines) + "\n"
-    filepath = os.path.join(dirpath, "recovery.conf")
+
+    if use_recovery_conf:
+        # Overwrite the recovery.conf
+        open_mode = "w"
+        filepath = os.path.join(dirpath, "recovery.conf")
+    else:
+        # Append to an existing postgresql.auto.conf (PG >= 12)
+        open_mode = "a"
+        lines.insert(0, "\n")  # in case postgresql.conf does not end with a newline
+        filepath = os.path.join(dirpath, "postgresql.auto.conf")
+
     filepath_tmp = filepath + ".tmp"
-    with open(filepath_tmp, "w") as fp:
+    with open(filepath_tmp, open_mode) as fp:
         fp.write(content)
+
     os.rename(filepath_tmp, filepath)
     return content
 
@@ -493,7 +522,8 @@ class BasebackupFetcher():
                 self.last_progress_ts = time.monotonic()
                 if self.errors:
                     break
-                elif retry == 2:
+
+                if retry == 2:
                     self.log.error("Download stalled despite retries, aborting")
                     self.errors = 1
                     break

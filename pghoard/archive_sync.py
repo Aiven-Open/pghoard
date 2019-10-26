@@ -185,7 +185,8 @@ class ArchiveSync:
                     return 0
                 valid_timeline = True
                 continue
-            elif not valid_timeline:
+
+            if not valid_timeline:
                 msg = "{} file {} missing, integrity check from {} to {} failed".format(
                     archive_type, wal_file, current_wal_file, first_required_wal_file)
                 if not new_backup_on_failure:
@@ -193,11 +194,11 @@ class ArchiveSync:
                 self.log.error("Requesting new basebackup: %s", msg)
                 self.request_basebackup()
                 return 0
-            else:
-                # Go back one timeline and flag the current timeline as invalid, this will prevent segment
-                # number from being decreased on the next iteration.
-                valid_timeline = False
-                current_tli -= 1
+
+            # Go back one timeline and flag the current timeline as invalid, this will prevent segment
+            # number from being decreased on the next iteration.
+            valid_timeline = False
+            current_tli -= 1
 
     def request_basebackup(self):
         resp = requests.put("{base}/archive/basebackup".format(base=self.base_url))

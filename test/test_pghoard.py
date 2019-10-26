@@ -389,6 +389,8 @@ class TestPGHoardWithPG:
             xlogs = pghoard.transfer_agent_state[site]["upload"]["xlog"]["xlogs_since_basebackup"]
             if xlogs >= 15:
                 break
-            elif time.monotonic() - start > 15:
+
+            if time.monotonic() - start > 15:
                 assert False, "Expected at least 15 xlog uploads, got {}".format(xlogs)
+
             time.sleep(0.1)
