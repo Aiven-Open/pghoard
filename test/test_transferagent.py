@@ -124,6 +124,7 @@ class TestTransferAgent(PGHoardTestCase):
         assert callback_queue.get(timeout=1.0) == {"success": True, "opaque": None}
         assert os.path.exists(self.foo_basebackup_path) is False
 
+    @pytest.mark.timeout(10)
     def test_handle_failing_upload_xlog(self):
         sleeps = []
 
@@ -145,8 +146,9 @@ class TestTransferAgent(PGHoardTestCase):
             "site": self.test_site,
             "type": "UPLOAD",
         })
-        with pytest.raises(Empty):
-            callback_queue.get(timeout=0.1)
+        while len(sleeps) < 8:
+            with pytest.raises(Empty):
+                callback_queue.get(timeout=0.01)
         alert_file_path = os.path.join(self.config["alert_file_dir"], "upload_retries_warning")
         assert os.path.exists(alert_file_path) is True
         os.unlink(alert_file_path)
