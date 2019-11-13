@@ -486,6 +486,9 @@ LABEL: pg_basebackup base backup
 
             if conn.server_version >= 120000:
                 target_recovery_conf = "postgresql.auto.conf"
+                # PG 12+: indicate the server should start up in targeted recovery mode
+                with open(os.path.join(backup_out, "recovery.signal"), "w"):
+                    pass
             else:
                 target_recovery_conf = "recovery.conf"
 
