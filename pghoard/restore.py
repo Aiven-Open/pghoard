@@ -36,7 +36,8 @@ class RestoreError(Error):
 
 def create_signal_file(file_path):
     """Just ensure the file exists"""
-    open(file_path, "w")
+    with open(file_path, "w"):
+        pass
 
 
 def create_recovery_conf(dirpath, site, *,
