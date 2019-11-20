@@ -95,12 +95,12 @@ def read_file(*, input_obj, output_obj, metadata, key_lookup, progress_callback=
     return original_size, result_size
 
 
-def file_writer(*, fileobj, compression_algorithm=None, compression_level=0, rsa_public_key=None):
+def file_writer(*, fileobj, compression_algorithm=None, compression_level=0, compression_threads=0, rsa_public_key=None):
     if rsa_public_key:
         fileobj = EncryptorFile(fileobj, rsa_public_key)
 
     if compression_algorithm:
-        fileobj = CompressionFile(fileobj, compression_algorithm, compression_level)
+        fileobj = CompressionFile(fileobj, compression_algorithm, compression_level, compression_threads)
 
     return fileobj
 

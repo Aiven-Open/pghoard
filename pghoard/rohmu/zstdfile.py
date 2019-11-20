@@ -17,8 +17,8 @@ except ImportError:
 
 class _ZstdFileWriter(FileWrap):
 
-    def __init__(self, next_fp, level):
-        self._zstd = zstd.ZstdCompressor(level=level).compressobj()
+    def __init__(self, next_fp, level, threads=0):
+        self._zstd = zstd.ZstdCompressor(level=level, threads=threads).compressobj()
         super().__init__(next_fp)
 
     def close(self):
@@ -74,12 +74,12 @@ class _ZtsdFileReader(FileWrap):
         return True
 
 
-def open(fp, mode, level=0):  # pylint: disable=redefined-builtin
+def open(fp, mode, level=0, threads=0):  # pylint: disable=redefined-builtin
     if zstd is None:
         raise io.UnsupportedOperation("zstd is not available")
 
     if mode == "wb":
-        return _ZstdFileWriter(fp, level)
+        return _ZstdFileWriter(fp, level, threads)
 
     if mode == "rb":
         return _ZtsdFileReader(fp)

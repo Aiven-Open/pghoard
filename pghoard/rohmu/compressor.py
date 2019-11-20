@@ -22,7 +22,7 @@ except ImportError:
     zstd = None
 
 
-def CompressionFile(dst_fp, algorithm, level=0):
+def CompressionFile(dst_fp, algorithm, level=0, threads=0):
     """This looks like a class to users, but is actually a function that instantiates a class based on algorithm."""
     if algorithm == "lzma":
         return lzma.open(dst_fp, "w", preset=level)
@@ -31,7 +31,7 @@ def CompressionFile(dst_fp, algorithm, level=0):
         return SnappyFile(dst_fp, "wb")
 
     if algorithm == "zstd":
-        return zstd_open(dst_fp, "wb")
+        return zstd_open(dst_fp, "wb", threads=threads)
 
     if algorithm:
         raise InvalidConfigurationError("invalid compression algorithm: {!r}".format(algorithm))

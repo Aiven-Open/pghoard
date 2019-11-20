@@ -14,6 +14,7 @@ from .common import (
     terminate_subprocess,
 )
 from .patchedtarfile import tarfile
+from concurrent.futures import ThreadPoolExecutor
 from pghoard.rohmu import dates, errors, rohmufile
 from pghoard.rohmu.compat import suppress
 from queue import Empty, Queue
@@ -65,6 +66,7 @@ class PGBaseBackup(Thread):
         self.connection_info = connection_info
         self.basebackup_path = basebackup_path
         self.callback_queue = callback_queue
+        self.chunks_on_disk = 0
         self.compression_queue = compression_queue
         self.metadata = metadata or {}
         self.metrics = metrics
@@ -452,9 +454,10 @@ class PGBaseBackup(Thread):
                      filetype="basebackup_chunk", extra_metadata=None):
         start_time = time.monotonic()
 
-        encryption_key_id = self.config["backup_sites"][self.site]["encryption_key_id"]
+        site_config = self.config["backup_sites"][self.site]
+        encryption_key_id = site_config["encryption_key_id"]
         if encryption_key_id:
-            rsa_public_key = self.config["backup_sites"][self.site]["encryption_keys"][encryption_key_id]["public"]
+            rsa_public_key = site_config["encryption_keys"][encryption_key_id]["public"]
         else:
             rsa_public_key = None
 
@@ -463,6 +466,7 @@ class PGBaseBackup(Thread):
             with rohmufile.file_writer(
                     compression_algorithm=self.config["compression"]["algorithm"],
                     compression_level=self.config["compression"]["level"],
+                    compression_threads=site_config["basebackup_compression_threads"],
                     rsa_public_key=rsa_public_key,
                     fileobj=raw_output_obj) as output_obj:
                 with tarfile.TarFile(fileobj=output_obj, mode="w") as output_tar:
@@ -526,39 +530,66 @@ class PGBaseBackup(Thread):
                              time.monotonic() - start_time)
         return False
 
+    def handle_single_chunk(self, *, chunk_callback_queue, chunk_path, chunks, index, temp_dir):
+        one_chunk_files = chunks[index]
+        chunk_name, input_size, result_size = self.tar_one_file(
+            callback_queue=chunk_callback_queue,
+            chunk_path=chunk_path,
+            temp_dir=temp_dir,
+            files_to_backup=one_chunk_files,
+        )
+        self.log.info(
+            "Queued backup chunk %r for transfer, chunks on disk (including partial): %r, current: %r, total chunks: %r",
+            chunk_name, self.chunks_on_disk + 1, index, len(chunks)
+        )
+        return {
+            "chunk_filename": chunk_name,
+            "input_size": input_size,
+            "result_size": result_size,
+            "files": [chunk[0] for chunk in one_chunk_files]
+        }
+
     def create_and_upload_chunks(self, chunks, data_file_format, temp_base_dir):
         start_time = time.monotonic()
         chunk_files = []
         upload_results = []
         chunk_callback_queue = Queue()
-        chunks_on_disk = 0
+        self.chunks_on_disk = 0
         i = 0
 
-        while i < len(chunks):
-            if chunks_on_disk < self.config["backup_sites"][self.site]["basebackup_chunks_in_progress"]:
-                chunk_id = i + 1
-                one_chunk_files = chunks[i]
+        site_config = self.config["backup_sites"][self.site]
+        max_chunks_on_disk = site_config["basebackup_chunks_in_progress"]
+        threads = site_config["basebackup_threads"]
+        with ThreadPoolExecutor(max_workers=threads) as tpe:
+            pending_compress_and_encrypt_tasks = []
+            while i < len(chunks):
+                if len(pending_compress_and_encrypt_tasks) >= threads:
+                    # Always expect tasks to complete in order. This can slow down the progress a bit in case
+                    # one chunk is much slower to process than others but typically the chunks don't differ much
+                    # and this assumption greatly simplifies the logic.
+                    task_to_wait = pending_compress_and_encrypt_tasks.pop(0)
+                    chunk_files.append(task_to_wait.result())
 
-                chunk_name, input_size, result_size = self.tar_one_file(
-                    callback_queue=chunk_callback_queue,
-                    chunk_path=data_file_format(chunk_id),
-                    temp_dir=temp_base_dir,
-                    files_to_backup=one_chunk_files,
-                )
-                chunk_files.append(
-                    {
-                        "chunk_filename": chunk_name,
-                        "input_size": input_size,
-                        "result_size": result_size,
-                        "files": [chunk[0] for chunk in one_chunk_files]
-                    }
-                )
-                chunks_on_disk += 1
-                i += 1
-                self.log.info("Queued backup chunk %r for transfer, chunks_on_disk: %r, current: %r, total_chunks: %r",
-                              chunk_name, chunks_on_disk, i, len(chunks))
-            elif self.wait_for_chunk_transfer_to_complete(len(chunks), upload_results, chunk_callback_queue, start_time):
-                chunks_on_disk -= 1
+                if self.chunks_on_disk < max_chunks_on_disk:
+                    chunk_id = i + 1
+                    task = tpe.submit(
+                        self.handle_single_chunk,
+                        chunk_callback_queue=chunk_callback_queue,
+                        chunk_path=data_file_format(chunk_id),
+                        chunks=chunks,
+                        index=i,
+                        temp_dir=temp_base_dir,
+                    )
+                    pending_compress_and_encrypt_tasks.append(task)
+                    self.chunks_on_disk += 1
+                    i += 1
+                else:
+                    if self.wait_for_chunk_transfer_to_complete(
+                            len(chunks), upload_results, chunk_callback_queue, start_time
+                    ):
+                        self.chunks_on_disk -= 1
+            for task in pending_compress_and_encrypt_tasks:
+                chunk_files.append(task.result())
 
         while len(upload_results) < len(chunk_files):
             self.wait_for_chunk_transfer_to_complete(len(chunks), upload_results, chunk_callback_queue, start_time)
