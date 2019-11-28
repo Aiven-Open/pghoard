@@ -624,6 +624,12 @@ In how large backup chunks to take a ``local-tar`` basebackup. Disk
 space needed for a successful backup is this variable multiplied by
 ``basebackup_chunks_in_progress``.
 
+``basebackup_compression_threads`` (default ``0``)
+
+Number of threads to use within compression library during basebackup. Only
+applicable when using compression library that supports internal multithreading,
+namely zstd at the moment. Default value 0 means not to use multithreading.
+
 ``basebackup_count`` (default ``2``)
 
 How many basebackups should be kept around for restoration purposes.  The
@@ -683,6 +689,13 @@ tablespaces.
 
 Note that the ``local-tar`` backup mode can not be used on replica servers
 prior to PostgreSQL 9.6 unless the pgespresso extension is installed.
+
+``basebackup_threads`` (default ``1``)
+
+How many threads to use for tar, compress and encrypt tasks. Only applies for
+``local-tar`` basebackup mode. Only values 1 and 2 are likely to be sensible for
+this, with higher thread count speed improvement is negligible and CPU time is
+lost switching between threads.
 
 ``encryption_key_id`` (no default)
 
