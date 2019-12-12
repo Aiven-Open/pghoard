@@ -149,7 +149,7 @@ class GoogleTransfer(BaseTransfer):
                 elif isinstance(ex, HttpError):
                     # https://cloud.google.com/storage/docs/json_api/v1/status-codes
                     # https://cloud.google.com/storage/docs/exponential-backoff
-                    if ex.resp["status"] not in ("429", "500", "502", "503"):  # pylint: disable=no-member
+                    if ex.resp["status"] not in ("429", "500", "502", "503", "504"):  # pylint: disable=no-member
                         raise
                     retry_wait = min(10.0, max(1.0, retry_wait * 2) + random.random())
                 # httplib2 commonly fails with Bad File Descriptor and Connection Reset
