@@ -874,12 +874,10 @@ http://www.apache.org/licenses/LICENSE-2.0.txt
 Credits
 =======
 
-PGHoard was created by Hannu Valtonen <hannu.valtonen@ohmu.fi> for
-`Aiven Cloud Database`_ and is now maintained by `Ohmu Ltd`_ hackers and
-Aiven developers <pghoard@ohmu.fi>.
+PGHoard was created by Hannu Valtonen <hannu.valtonen@aiven.io> for
+`Aiven`_ and is now maintained by Aiven developers <opensource@aiven.io>.
 
-.. _`Ohmu Ltd`: https://ohmu.fi/
-.. _`Aiven Cloud Database`: https://aiven.io/
+.. _`Aiven`: https://aiven.io/
 
 Recent contributors are listed on the GitHub project page,
 https://github.com/aiven/pghoard/graphs/contributors
@@ -891,10 +889,10 @@ Contact
 Bug reports and patches are very welcome, please post them as GitHub issues
 and pull requests at https://github.com/aiven/pghoard .  Any possible
 vulnerabilities or other serious issues should be reported directly to the
-maintainers <opensource@ohmu.fi>.
+maintainers <opensource@aiven.io>.
 
 
 Copyright
 =========
 
-Copyright (C) 2015 Ohmu Ltd
+Copyright (C) 2015 Aiven Ltd
