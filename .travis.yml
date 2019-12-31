@@ -3,13 +3,8 @@ language: python
 python:
   - "3.5"
   - "3.6"
-
-# TODO: remove these overrides once default dist supports python 3.7
-matrix:
-  include:
-    - python: 3.7
-      dist: xenial
-      sudo: true
+  - "3.7"
+  - "3.8"
 
 install:
   - "pip install -r requirements.txt"
