@@ -416,7 +416,7 @@ class MediaStreamUpload(MediaUpload):
         return True
 
     def getbytes(self, begin, end):
-        length = end
+        length = end - begin
         if begin < (self._position or 0):
             msg = "Requested position {} for {!r} preceeds already fulfilled position {}".format(
                 begin, self._name, self._position
@@ -430,8 +430,8 @@ class MediaStreamUpload(MediaUpload):
 
         if self._position is None or begin == self._position + len(self._data):
             self._data = self._read_bytes(length)
-        elif begin != self._position:
-            retain_chunk = self._data[begin - self._position]
+        elif begin != self._position or length > len(self._data):
+            retain_chunk = self._data[begin - self._position:]
             self._data = self._read_bytes(length - len(retain_chunk), initial_data=retain_chunk)
 
         self._position = begin

@@ -2,8 +2,10 @@ astroid
 botocore
 cryptography
 flake8
+google-api-python-client
 httplib2 
 mock
+oauth2client
 psycopg2
 pylint>=2.4.3
 pytest

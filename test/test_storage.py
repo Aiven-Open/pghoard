@@ -7,6 +7,7 @@ See LICENSE for details
 from io import BytesIO
 from pghoard.common import get_object_storage_config
 from pghoard.rohmu import compat, errors, get_transfer
+from pghoard.rohmu.object_storage.google import MediaStreamUpload
 import datetime
 import hashlib
 import os
@@ -484,3 +485,13 @@ class RandomDataSource:
         data = self.data[self.bytes_returned:bytes_to_return + self.bytes_returned]
         self.bytes_returned += bytes_to_return
         return data
+
+
+def test_media_stream_upload_read():
+    bio = BytesIO(b"abcdefg")
+    msu = MediaStreamUpload(bio, chunk_size=1024, mime_type="application/octet-stream", name="foo")
+    assert msu.getbytes(0, 4) == b"abcd"
+    assert msu.getbytes(2, 6) == b"cdef"
+    assert msu.getbytes(2, 7) == b"cdefg"
+    with pytest.raises(IndexError):
+        msu.getbytes(0, 7)
