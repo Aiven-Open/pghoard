@@ -491,7 +491,7 @@ def test_media_stream_upload_read():
     bio = BytesIO(b"abcdefg")
     msu = MediaStreamUpload(bio, chunk_size=1024, mime_type="application/octet-stream", name="foo")
     assert msu.getbytes(0, 4) == b"abcd"
-    assert msu.getbytes(2, 6) == b"cdef"
-    assert msu.getbytes(2, 7) == b"cdefg"
+    assert msu.getbytes(2, 4) == b"cdef"
+    assert msu.getbytes(2, 5) == b"cdefg"
     with pytest.raises(IndexError):
         msu.getbytes(0, 7)

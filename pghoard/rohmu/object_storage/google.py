@@ -415,8 +415,8 @@ class MediaStreamUpload(MediaUpload):
     def resumable(self):
         return True
 
-    def getbytes(self, begin, end):
-        length = end - begin
+    # second parameter is length but baseclass incorrectly names it end
+    def getbytes(self, begin, length):  # pylint: disable=arguments-differ
         if begin < (self._position or 0):
             msg = "Requested position {} for {!r} preceeds already fulfilled position {}".format(
                 begin, self._name, self._position
