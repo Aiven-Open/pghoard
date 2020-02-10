@@ -139,7 +139,7 @@ class GoogleTransfer(BaseTransfer):
         while True:
             try:
                 return action()
-            except (IncompleteRead, HttpError, ssl.SSLEOFError, socket.timeout, OSError) as ex:
+            except (IncompleteRead, HttpError, ssl.SSLEOFError, socket.timeout, OSError, socket.gaierror) as ex:
                 # Note that socket.timeout and ssl.SSLEOFError inherit from OSError
                 # and the order of handling the errors here needs to be correct
                 if not retries:
@@ -154,6 +154,9 @@ class GoogleTransfer(BaseTransfer):
                     retry_wait = min(10.0, max(1.0, retry_wait * 2) + random.random())
                 # httplib2 commonly fails with Bad File Descriptor and Connection Reset
                 elif isinstance(ex, OSError) and ex.errno not in [errno.EBADF, errno.ECONNRESET]:
+                    raise
+                # getaddrinfo sometimes fails with "Name or service not known"
+                elif isinstance(ex, socket.gaierror) and ex.errno != socket.EAI_NONAME:
                     raise
 
                 self.log.warning("%s failed: %s (%s), retrying in %.2fs",
