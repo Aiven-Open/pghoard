@@ -153,7 +153,7 @@ class GoogleTransfer(BaseTransfer):
                         raise
                     retry_wait = min(10.0, max(1.0, retry_wait * 2) + random.random())
                 # httplib2 commonly fails with Bad File Descriptor and Connection Reset
-                elif isinstance(ex, OSError) and ex.errno not in [errno.EBADF, errno.ECONNRESET]:
+                elif isinstance(ex, OSError) and ex.errno not in [errno.EAGAIN, errno.EBADF, errno.ECONNRESET]:
                     raise
                 # getaddrinfo sometimes fails with "Name or service not known"
                 elif isinstance(ex, socket.gaierror) and ex.errno != socket.EAI_NONAME:
