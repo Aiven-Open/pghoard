@@ -101,16 +101,18 @@ class GoogleTransfer(BaseTransfer):
 
     def _init_google_client(self):
         start_time = time.monotonic()
+        delay = 2
         while True:
             try:
                 # sometimes fails: httplib2.ServerNotFoundError: Unable to find the server at www.googleapis.com
                 return build("storage", "v1", credentials=self.google_creds)
             except (httplib2.ServerNotFoundError, socket.timeout):
-                if time.monotonic() - start_time > 40.0:
+                if time.monotonic() - start_time > 600:
                     raise
 
             # retry on DNS issues
-            time.sleep(1.0)
+            time.sleep(delay)
+            delay = delay * 2
 
     @contextmanager
     def _object_client(self, *, not_found=None):
@@ -134,8 +136,8 @@ class GoogleTransfer(BaseTransfer):
             raise
 
     def _retry_on_reset(self, request, action):
-        retries = 5
-        retry_wait = 0.2
+        retries = 60
+        retry_wait = 2
         while True:
             try:
                 return action()
