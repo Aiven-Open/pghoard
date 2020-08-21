@@ -6,10 +6,12 @@ See LICENSE for details
 """
 import time
 
-import azure.common
-# pylint: disable=import-error, no-name-in-module
-from azure.storage.blob import BlockBlobService, ContentSettings
-from azure.storage.blob.models import BlobPrefix
+import azure.common  # pylint: disable=import-error, no-name-in-module
+from azure.storage.blob import (  # pylint: disable=import-error, no-name-in-module
+    BlockBlobService, ContentSettings
+)
+from azure.storage.blob.models import \
+    BlobPrefix  # pylint: disable=import-error, no-name-in-module
 
 from ..errors import (FileNotFoundFromStorageError, InvalidConfigurationError, StorageError)
 from .base import (KEY_TYPE_OBJECT, KEY_TYPE_PREFIX, BaseTransfer, IterKeyItem, get_total_memory)
