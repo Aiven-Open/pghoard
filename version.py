@@ -9,6 +9,7 @@ See LICENSE for details
 import imp
 import os
 import subprocess
+from typing import Optional
 
 
 def save_version(new_ver, old_ver, version_file):
@@ -17,22 +18,22 @@ def save_version(new_ver, old_ver, version_file):
     version_file = os.path.join(os.path.dirname(__file__), version_file)
     if not old_ver or new_ver != old_ver:
         with open(version_file, "w") as fp:
-            fp.write("__version__ = '{}'\n".format(new_ver))
+            fp.write('__version__ = "{}"\n'.format(new_ver))
     return True
 
 
 def get_project_version(version_file):
     version_file = os.path.join(os.path.dirname(os.path.realpath(__file__)), version_file)
+    file_ver: Optional[str] = None
     try:
         module = imp.load_source("verfile", version_file)
-        file_ver = module.__version__
+        file_ver = getattr(module, "__version__", None)
     except IOError:
-        file_ver = None
+        pass
 
     os.chdir(os.path.dirname(__file__) or ".")
     try:
-        git_out = subprocess.check_output(["git", "describe", "--always"],
-                                          stderr=getattr(subprocess, "DEVNULL", None))
+        git_out = subprocess.check_output(["git", "describe", "--always"], stderr=getattr(subprocess, "DEVNULL", None))
     except (OSError, subprocess.CalledProcessError):
         pass
     else:
@@ -54,6 +55,7 @@ def get_project_version(version_file):
         raise Exception("version not available from git or from file {!r}".format(version_file))
 
     return file_ver
+
 
 if __name__ == "__main__":
     import sys

@@ -1,3 +1,10 @@
+[MASTER]
+load-plugins=pylint_quotes
+
+string-quote=double-avoid-escape
+triple-quote=double
+docstring-quote=double
+
 [MESSAGES CONTROL]
 disable=
     bad-option-value,
@@ -31,3 +38,6 @@ max-line-length=125
 [REPORTS]
 output-format=text
 reports=no
+
+[TYPECHECK]
+ignored-classes=responses

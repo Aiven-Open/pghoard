@@ -1,0 +1,11 @@
+[flake8]
+format = abspath
+max-line-length = 125
+ignore =
+  E123,  # Closing brackets indent
+  E126,  # Hanging indents
+  E129,  # Visual indent
+  E501,  # Max line length
+  E722,  # bare-except
+  W503,  # Breaks & binary operators
+  W504,  # line break after binary operator (conflicts with our yapf style)

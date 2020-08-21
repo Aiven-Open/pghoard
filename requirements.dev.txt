@@ -1,0 +1,16 @@
+# Use pip for build requirements to harmonize between OS versions
+mypy
+pylint>=2.4.3
+pylint-quotes
+pytest
+pytest-mock
+pytest-timeout
+pytest-xdist
+yapf==0.27.0
+flake8
+flake8-formatter-abspath
+isort==4.3.21
+coverage
+coveralls
+responses
+unify

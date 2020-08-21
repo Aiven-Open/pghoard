@@ -5,9 +5,37 @@ generated = pghoard/version.py
 all: $(generated)
 
 PYTHON ?= python3
-PYTHON_SOURCE_DIRS = pghoard/ test/
+PYTHON_SOURCE_DIRS = pghoard/ test/ systest/
 PYTEST_ARG ?= -v
 
+.PHONY: unittest
+unittest: version
+	$(PYTHON) -m pytest -vv test/
+
+.PHONY: systest
+systest: version
+	$(PYTHON) -m pytest -vv systest/
+
+.PHONY: lint
+lint: version
+	$(PYTHON) -m flake8 $(PYTHON_SOURCE_DIRS)
+	$(PYTHON) -m pylint --rcfile .pylintrc $(PYTHON_SOURCE_DIRS)
+
+.PHONY: typecheck
+typecheck: version
+	$(PYTHON) -m mypy $(PYTHON_SOURCE_DIRS)
+
+.PHONY: fmt
+fmt: version
+	unify --quote '"' --recursive --in-place $(PYTHON_SOURCE_DIRS)
+	isort --recursive $(PYTHON_SOURCE_DIRS)
+	yapf --parallel --recursive --in-place $(PYTHON_SOURCE_DIRS)
+
+.PHONY: coverage
+coverage: version
+	$(PYTHON) -m pytest $(PYTEST_ARG) --cov-report term-missing --cov journalpump test/
+
+.PHONY: clean
 clean:
 	$(RM) -r *.egg-info/ build/ dist/ rpm/
 	$(RM) ../pghoard_* test-*.xml $(generated)
@@ -15,11 +43,16 @@ clean:
 pghoard/version.py: version.py
 	$(PYTHON) $^ $@
 
+.PHONY: version
+version: pghoard/version.py
+
+.PHONY: deb
 deb: $(generated)
 	cp debian/changelog.in debian/changelog
 	dch -v $(long_ver) --distribution unstable "Automatically built .deb"
 	dpkg-buildpackage -A -uc -us
 
+.PHONY: rpm
 rpm: $(generated)
 	git archive --output=pghoard-rpm-src.tar --prefix=pghoard/ HEAD
 	# add generated files to the tar, they're not in git repository
@@ -31,6 +64,7 @@ rpm: $(generated)
 		--define 'minor_version $(subst -,.,$(subst $(short_ver)-,,$(long_ver)))'
 	$(RM) pghoard-rpm-src.tar
 
+.PHONY: build-dep-fed
 build-dep-fed:
 	sudo dnf -y install --best --allowerasing \
 		golang \
@@ -40,20 +74,3 @@ build-dep-fed:
 		python3-pytest-cov python3-requests python3-snappy \
 		python3-azure-storage \
 		rpm-build
-
-test: flake8 pylint unittest
-
-unittest: $(generated)
-	$(PYTHON) -m pytest $(PYTEST_ARG) test/
-
-coverage: $(generated)
-	$(PYTHON) -m coverage run --source pghoard -m pytest $(PYTEST_ARG) test/
-	$(PYTHON) -m coverage report --show-missing
-
-pylint: $(generated)
-	$(PYTHON) -m pylint.lint --rcfile .pylintrc $(PYTHON_SOURCE_DIRS)
-
-flake8: $(generated)
-	$(PYTHON) -m flake8 --exclude=__init__.py --ignore=E722 --max-line-len=125 $(PYTHON_SOURCE_DIRS)
-
-.PHONY: rpm
