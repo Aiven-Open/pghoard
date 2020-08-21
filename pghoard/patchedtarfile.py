@@ -3,10 +3,11 @@
 # Code copied from https://github.com/python/cpython master on 2016-06-13
 # This code is under the Python license.
 
-from pghoard.rohmu import IO_BLOCK_SIZE as BUFSIZE
 import shutil
 import sys
 import tarfile
+
+from pghoard.rohmu import IO_BLOCK_SIZE as BUFSIZE
 
 
 def copyfileobj(src, dst, length=None, exception=OSError):

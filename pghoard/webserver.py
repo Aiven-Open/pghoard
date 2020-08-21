@@ -5,22 +5,23 @@ Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
 
-from collections import deque
-from concurrent.futures import ThreadPoolExecutor
-from contextlib import contextmanager
-from http.server import HTTPServer, BaseHTTPRequestHandler
-from pghoard import wal
-from pghoard.common import json_encode, get_pg_wal_directory
-from pghoard.rohmu.compat import suppress
-from pghoard.rohmu.errors import Error, FileNotFoundFromStorageError
-from pghoard.version import __version__
-from queue import Empty, Queue
-from socketserver import ThreadingMixIn
-from threading import RLock, Thread
 import logging
 import os
 import tempfile
 import time
+from collections import deque
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from queue import Empty, Queue
+from socketserver import ThreadingMixIn
+from threading import RLock, Thread
+
+from pghoard import wal
+from pghoard.common import get_pg_wal_directory, json_encode
+from pghoard.rohmu.compat import suppress
+from pghoard.rohmu.errors import Error, FileNotFoundFromStorageError
+from pghoard.version import __version__
 
 
 class PoolMixIn(ThreadingMixIn):
@@ -182,8 +183,9 @@ class RequestHandler(BaseHTTPRequestHandler):
 
         if obtype in ("archive", "timeline", "xlog"):
             if len(path) != 3:
-                raise HttpResponse("Invalid {!r} request, only single file retrieval is supported for now"
-                                   .format(obtype), status=400)
+                raise HttpResponse(
+                    "Invalid {!r} request, only single file retrieval is supported for now".format(obtype), status=400
+                )
             # allow postgresql's archive_command and restore_command to just feed in files without providing
             # their types which isn't possible without a wrapper to add it.
             if obtype == "archive":
@@ -233,11 +235,12 @@ class RequestHandler(BaseHTTPRequestHandler):
         try:
             try:
                 response = callback_queue.get(timeout=30.0)
-                self.server.log.debug("Handled a %s request for: %r, took: %.3fs",
-                                      method, site, time.time() - start_time)
+                self.server.log.debug("Handled a %s request for: %r, took: %.3fs", method, site, time.time() - start_time)
             except Empty:
-                self.server.log.exception("Timeout on a %s request for: %r, took: %.3fs",
-                                          method, site, time.time() - start_time)
+                self.server.log.exception(
+                    "Timeout on a %s request for: %r, took: %.3fs", method, site,
+                    time.time() - start_time
+                )
                 raise HttpResponse("TIMEOUT", status=500)
 
             if not response["success"]:
@@ -247,8 +250,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         except HttpResponse as ex:
             if ex.status == 500 and retries:
                 self.server.log.warning("Transfer operation failed, retrying (%r retries left)", retries)
-                return self._transfer_agent_op(site, filename, filetype, method,
-                                               retries=retries - 1)
+                return self._transfer_agent_op(site, filename, filetype, method, retries=retries - 1)
             raise
 
         return response
@@ -312,16 +314,17 @@ class RequestHandler(BaseHTTPRequestHandler):
             fd, tmp_target_path = tempfile.mkstemp(prefix="{}/{}.".format(xlog_dir, obname), suffix=".pghoard.tmp")
             os.close(fd)
         except OSError as ex:
-            self.server.log.error("Unable to create temporary file to fetch %r: %s: %s",
-                                  obname, ex.__class__.__name__, ex)
+            self.server.log.error("Unable to create temporary file to fetch %r: %s: %s", obname, ex.__class__.__name__, ex)
             if suppress_error:
                 return
             else:
-                raise HttpResponse("Unable to create temporary file for {0!r}: {1.__class__.__name__}: {1}"
-                                   .format(key, ex), status=400)
+                raise HttpResponse(
+                    "Unable to create temporary file for {0!r}: {1.__class__.__name__}: {1}".format(key, ex), status=400
+                )
 
-        self.server.log.debug("Fetching site: %r, filename: %r, filetype: %r, tmp_target_path: %r",
-                              site, obname, filetype, tmp_target_path)
+        self.server.log.debug(
+            "Fetching site: %r, filename: %r, filetype: %r, tmp_target_path: %r", site, obname, filetype, tmp_target_path
+        )
         target_path = os.path.join(xlog_dir, "{}.pghoard.prefetch".format(obname))
         self.server.pending_download_ops[key] = dict(
             started_at=time.monotonic(),
@@ -366,8 +369,10 @@ class RequestHandler(BaseHTTPRequestHandler):
                             # don't try prefetching this file again
                             self.server.prefetch_404.append(key)
                         else:
-                            self.server.log.warning("Fetching %r failed (%s), took: %.3fs",
-                                                    key, ex.__class__.__name__, time.monotonic() - op["started_at"])
+                            self.server.log.warning(
+                                "Fetching %r failed (%s), took: %.3fs", key, ex.__class__.__name__,
+                                time.monotonic() - op["started_at"]
+                            )
             except Empty:
                 return
 
@@ -386,7 +391,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         if site is None and "prometheus" in self.server.metrics.clients:
             metrics = self.server.metrics.clients["prometheus"].get_metrics()
             if len(metrics) > 0:
-                data = '\n'.join(metrics) + '\n'
+                data = "\n".join(metrics) + "\n"
             raise HttpResponse(data, status=200)
         else:
             raise HttpResponse(status=501)  # Not Implemented
@@ -432,8 +437,9 @@ class RequestHandler(BaseHTTPRequestHandler):
         xlog_path = os.path.join(xlog_dir, filename)
         exists_on_disk = os.path.exists(xlog_path)
         if exists_on_disk and filename not in self.server.served_from_disk:
-            self.server.log.info("Requested %r, found it in pg_xlog directory as: %r, returning directly",
-                                 filename, xlog_path)
+            self.server.log.info(
+                "Requested %r, found it in pg_xlog directory as: %r, returning directly", filename, xlog_path
+            )
             ex = self._try_save_and_verify_restored_file(filetype, filename, xlog_path, target_path, unlink=False)
             if ex:
                 self.server.log.warning("Found file: %r but it was invalid: %s", xlog_path, ex)
@@ -501,8 +507,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         site_config = self.server.config["backup_sites"][site]
         xlog_dir = get_pg_wal_directory(site_config)
         xlog_path = os.path.join(xlog_dir, filename)
-        self.server.log.debug("Got request to archive: %r %r %r, %r", site, filetype,
-                              filename, xlog_path)
+        self.server.log.debug("Got request to archive: %r %r %r, %r", site, filetype, filename, xlog_path)
         if not os.path.exists(xlog_path):
             self.server.log.debug("xlog_path: %r did not exist, cannot archive, returning 404", xlog_path)
             raise HttpResponse("N/A", status=404)
@@ -526,11 +531,15 @@ class RequestHandler(BaseHTTPRequestHandler):
         self.server.compression_queue.put(compression_event)
         try:
             response = callback_queue.get(timeout=30)
-            self.server.log.debug("Handled an archival request for: %r %r, took: %.3fs",
-                                  site, xlog_path, time.time() - start_time)
+            self.server.log.debug(
+                "Handled an archival request for: %r %r, took: %.3fs", site, xlog_path,
+                time.time() - start_time
+            )
         except Empty:
-            self.server.log.exception("Problem in getting a response in time, returning 404, took: %.2fs",
-                                      time.time() - start_time)
+            self.server.log.exception(
+                "Problem in getting a response in time, returning 404, took: %.2fs",
+                time.time() - start_time
+            )
             raise HttpResponse("TIMEOUT", status=500)
 
         if not response["success"]:

@@ -4,14 +4,16 @@ rohmu - openstack swift object store interface
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
-from .base import BaseTransfer, KEY_TYPE_PREFIX, KEY_TYPE_OBJECT, IterKeyItem
-from ..compat import suppress
-from ..dates import parse_timestamp
-from ..errors import FileNotFoundFromStorageError
-from swiftclient import client, exceptions  # pylint: disable=import-error
 import logging
 import os
 import time
+
+from swiftclient import client, exceptions  # pylint: disable=import-error
+
+from ..compat import suppress
+from ..dates import parse_timestamp
+from ..errors import FileNotFoundFromStorageError
+from .base import KEY_TYPE_OBJECT, KEY_TYPE_PREFIX, BaseTransfer, IterKeyItem
 
 CHUNK_SIZE = 1024 * 1024 * 5  # 5 Mi
 SEGMENT_SIZE = 1024 * 1024 * 1024 * 3  # 3 Gi
@@ -39,56 +41,67 @@ logging.getLogger("swiftclient").setLevel(logging.WARNING)
 
 
 class SwiftTransfer(BaseTransfer):
-    def __init__(self, *, user, key, container_name, auth_url,
-                 auth_version="2.0", tenant_name=None, prefix=None,
-                 segment_size=SEGMENT_SIZE, region_name=None,
-                 user_id=None, user_domain_id=None, user_domain_name=None,
-                 tenant_id=None, project_id=None, project_name=None,
-                 project_domain_id=None, project_domain_name=None,
-                 service_type=None, endpoint_type=None):
+    def __init__(
+        self,
+        *,
+        user,
+        key,
+        container_name,
+        auth_url,
+        auth_version="2.0",
+        tenant_name=None,
+        prefix=None,
+        segment_size=SEGMENT_SIZE,
+        region_name=None,
+        user_id=None,
+        user_domain_id=None,
+        user_domain_name=None,
+        tenant_id=None,
+        project_id=None,
+        project_name=None,
+        project_domain_id=None,
+        project_domain_name=None,
+        service_type=None,
+        endpoint_type=None
+    ):
         prefix = prefix.lstrip("/") if prefix else ""
         super().__init__(prefix=prefix)
         self.container_name = container_name
 
         if auth_version == "3.0":
-            os_options = {'region_name': region_name,
-                          'user_id': user_id,
-                          'user_domain_id': user_domain_id,
-                          'user_domain_name': user_domain_name,
-                          'tenant_id': tenant_id,
-                          'project_id': project_id,
-                          'project_name': project_name,
-                          'project_domain_id': project_domain_id,
-                          'project_domain_name': project_domain_name,
-                          'service_type': service_type,
-                          'endpoint_type': endpoint_type}
+            os_options = {
+                "region_name": region_name,
+                "user_id": user_id,
+                "user_domain_id": user_domain_id,
+                "user_domain_name": user_domain_name,
+                "tenant_id": tenant_id,
+                "project_id": project_id,
+                "project_name": project_name,
+                "project_domain_id": project_domain_id,
+                "project_domain_name": project_domain_name,
+                "service_type": service_type,
+                "endpoint_type": endpoint_type
+            }
         else:
             if region_name is not None:
-                os_options = {'region_name': region_name}
+                os_options = {"region_name": region_name}
             else:
                 os_options = None
 
-        self.conn = client.Connection(user=user, key=key, authurl=auth_url,
-                                      tenant_name=tenant_name, auth_version=auth_version,
-                                      os_options=os_options)
+        self.conn = client.Connection(
+            user=user, key=key, authurl=auth_url, tenant_name=tenant_name, auth_version=auth_version, os_options=os_options
+        )
         self.container = self.get_or_create_container(self.container_name)
         self.segment_size = segment_size
         self.log.debug("SwiftTransfer initialized")
 
     @staticmethod
     def _headers_to_metadata(headers):
-        return {
-            name[len("x-object-meta-"):]: value
-            for name, value in headers.items()
-            if name.startswith("x-object-meta-")
-        }
+        return {name[len("x-object-meta-"):]: value for name, value in headers.items() if name.startswith("x-object-meta-")}
 
     @staticmethod
     def _metadata_to_headers(metadata):
-        return {
-            "x-object-meta-{}".format(name): str(value)
-            for name, value in metadata.items()
-        }
+        return {"x-object-meta-{}".format(name): str(value) for name, value in metadata.items()}
 
     def get_metadata_for_key(self, key):
         key = self.format_key_for_backend(key)
@@ -193,7 +206,7 @@ class SwiftTransfer(BaseTransfer):
                 raise FileNotFoundFromStorageError(key)
             raise
 
-        content_len = int(headers.get('content-length') or 0)
+        content_len = int(headers.get("content-length") or 0)
         current_pos = 0
         for chunk in data_gen:
             fileobj_to_store_to.write(chunk)
@@ -231,8 +244,9 @@ class SwiftTransfer(BaseTransfer):
 
         key = self.format_key_for_backend(key)
         metadata_to_send = self._metadata_to_headers(self.sanitize_metadata(metadata))
-        self.conn.put_object(self.container_name, key, contents=bytes(memstring),
-                             content_type=mimetype, headers=metadata_to_send)
+        self.conn.put_object(
+            self.container_name, key, contents=bytes(memstring), content_type=mimetype, headers=metadata_to_send
+        )
 
     def store_file_from_disk(self, key, filepath, metadata=None, multipart=None, cache_control=None, mimetype=None):
         if cache_control is not None:
@@ -251,9 +265,7 @@ class SwiftTransfer(BaseTransfer):
         with open(filepath, "rb") as fp:
             if obsz <= self.segment_size:
                 self.log.debug("Uploading %r to %r (%r bytes)", filepath, key, obsz)
-                self.conn.put_object(self.container_name, key,
-                                     contents=fp, content_length=obsz,
-                                     headers=headers)
+                self.conn.put_object(self.container_name, key, contents=fp, content_length=obsz, headers=headers)
                 return
 
             # Segmented transfer
@@ -267,11 +279,11 @@ class SwiftTransfer(BaseTransfer):
                 this_segment_size = min(self.segment_size, remaining)
                 remaining -= this_segment_size
                 segment_no += 1
-                self.log.debug("Uploading segment %r of %r to %r (%r bytes)",
-                               segment_no, filepath, key, this_segment_size)
+                self.log.debug("Uploading segment %r of %r to %r (%r bytes)", segment_no, filepath, key, this_segment_size)
                 segment_key = segment_key_format(segment_no)
-                self.conn.put_object(self.container_name, segment_key,
-                                     contents=fp, content_length=this_segment_size, content_type=mimetype)
+                self.conn.put_object(
+                    self.container_name, segment_key, contents=fp, content_length=this_segment_size, content_type=mimetype
+                )
             self.log.info("Uploaded %r segments of %r to %r", segment_no, key, segment_path)
             headers["x-object-manifest"] = "{}/{}".format(self.container_name, segment_path.lstrip("/"))
             self.conn.put_object(self.container_name, key, contents="", headers=headers, content_length=0)
@@ -279,6 +291,5 @@ class SwiftTransfer(BaseTransfer):
     def get_or_create_container(self, container_name):
         start_time = time.monotonic()
         self.conn.put_container(container_name, headers={})
-        self.log.debug("Created container: %r successfully, took: %.3fs",
-                       container_name, time.monotonic() - start_time)
+        self.log.debug("Created container: %r successfully, took: %.3fs", container_name, time.monotonic() - start_time)
         return container_name

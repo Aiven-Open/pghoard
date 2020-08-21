@@ -4,14 +4,17 @@ pghoard
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
-# pylint: disable=attribute-defined-outside-init
-from .base import PGHoardTestCase
-from pghoard.rohmu.inotify import InotifyWatcher
-from queue import Queue
-from unittest import SkipTest
 import os
 import platform
+from queue import Queue
+from unittest import SkipTest
+
 import pytest
+
+from pghoard.rohmu.inotify import InotifyWatcher
+
+# pylint: disable=attribute-defined-outside-init
+from .base import PGHoardTestCase
 
 
 class TestInotify(PGHoardTestCase):

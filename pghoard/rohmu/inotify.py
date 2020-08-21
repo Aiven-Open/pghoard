@@ -4,14 +4,15 @@ rohmu - inotify wrapper
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
-from .compat import suppress
-from ctypes import c_int, c_uint32, c_char_p
-from threading import Thread
 import ctypes
 import logging
 import os
 import select
 import struct
+from ctypes import c_char_p, c_int, c_uint32
+from threading import Thread
+
+from .compat import suppress
 
 
 class InotifyEvent(ctypes.Structure):
@@ -124,8 +125,7 @@ class InotifyWatcher(Thread):
             # the monitored directory was deleted
             self.log_event("IN_DELETE_SELF", full_path)
             directory = self.watch_to_path.pop(wd, "")
-            self.log.debug("Directory: %r that we were watching has been deleted, removing watch",
-                           directory)
+            self.log.debug("Directory: %r that we were watching has been deleted, removing watch", directory)
             self.libc.inotify_rm_watch(self.fd, wd)
         elif mask & event_types["IN_MOVED_FROM"] > 0:
             self.log_event("IN_MOVED_FROM", full_path)

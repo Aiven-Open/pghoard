@@ -5,9 +5,10 @@ Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
 
+import io
+
 from . import IO_BLOCK_SIZE
 from .filewrap import FileWrap
-import io
 
 try:
     import snappy

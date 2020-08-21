@@ -30,7 +30,8 @@ disable=
     too-many-statements,
     ungrouped-imports,
     wrong-import-order,
-    wrong-import-position
+    wrong-import-position,
+    bad-continuation,
 
 [FORMAT]
 max-line-length=125

@@ -6,23 +6,17 @@ Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
 
-try:
-    from urllib.parse import urlparse, parse_qs  # pylint: disable=no-name-in-module, import-error
-except ImportError:
-    from urlparse import urlparse, parse_qs  # pylint: disable=no-name-in-module, import-error
+from urllib.parse import parse_qs, urlparse
 
 
 def create_connection_string(connection_info):
-    return " ".join("{}='{}'".format(k, str(v).replace("'", "\\'"))
-                    for k, v in sorted(connection_info.items()))
+    return " ".join("{}='{}'".format(k, str(v).replace("'", "\\'")) for k, v in sorted(connection_info.items()))
 
 
 def mask_connection_info(info):
     masked_info = get_connection_info(info)
     password = masked_info.pop("password", None)
-    return "{0}; {1} password".format(
-        create_connection_string(masked_info),
-        "no" if password is None else "hidden")
+    return "{0}; {1} password".format(create_connection_string(masked_info), "no" if password is None else "hidden")
 
 
 def get_connection_info_from_config_line(line):

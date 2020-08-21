@@ -7,6 +7,7 @@
 try:
     from contextlib import suppress  # pylint: disable=import-error, no-name-in-module, unused-import
 except ImportError:
+
     class suppress:
         """Context manager to suppress specified exceptions
 
@@ -47,6 +48,7 @@ import sys
 if sys.version_info >= (3, 4, 1):
     makedirs = os.makedirs
 else:
+
     def makedirs(path, mode=0o777, exist_ok=False):
         if not exist_ok:
             return os.makedirs(path, mode)

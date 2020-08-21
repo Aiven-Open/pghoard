@@ -31,7 +31,7 @@ class PrometheusClient:
     def get_metrics(self):
         data = []
         for metric, value in self.metrics.items():
-            line = '{} {} {}'.format(metric, value.get("value"), value.get("ts"))
+            line = "{} {} {}".format(metric, value.get("value"), value.get("ts"))
             data.append(line)
         return data
 
@@ -42,7 +42,7 @@ class PrometheusClient:
         tags = {**self._tags, **tags}
         tag_list = []
         for k in sorted(tags.keys()):
-            tag_list.append("{}=\"{}\"".format(k, tags[k]))
+            tag_list.append('{}="{}"'.format(k, tags[k]))
         encoded_tags = "{{{}}}".format(",".join(tag_list))
         formatted_metric = "{}{}".format(metric, encoded_tags)
         self.metrics[formatted_metric] = {"value": value, "ts": ts}

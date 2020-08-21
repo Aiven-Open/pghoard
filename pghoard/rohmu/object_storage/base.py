@@ -4,12 +4,11 @@ rohmu - object_storage.base
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
+import logging
+import platform
 from collections import namedtuple
 
 from ..errors import StorageError
-import logging
-import platform
-
 
 KEY_TYPE_OBJECT = "object"
 KEY_TYPE_PREFIX = "prefix"
@@ -111,8 +110,7 @@ class BaseTransfer:
 
     def sanitize_metadata(self, metadata, replace_hyphen_with="-"):
         """Convert non-string metadata values to strings and drop null values"""
-        return {str(k).replace("-", replace_hyphen_with): str(v)
-                for k, v in (metadata or {}).items() if v is not None}
+        return {str(k).replace("-", replace_hyphen_with): str(v) for k, v in (metadata or {}).items() if v is not None}
 
     def store_file_from_memory(self, key, memstring, metadata=None, cache_control=None, mimetype=None):
         raise NotImplementedError

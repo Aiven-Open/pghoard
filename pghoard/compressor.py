@@ -4,17 +4,18 @@ pghoard - compressor threads
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
-from io import BytesIO
-from pghoard import config, wal
-from pghoard.common import write_json_file
-from pghoard.rohmu import rohmufile, errors
-from queue import Empty
-from tempfile import NamedTemporaryFile
-from threading import Thread
 import hashlib
 import logging
 import os
 import socket
+from io import BytesIO
+from queue import Empty
+from tempfile import NamedTemporaryFile
+from threading import Thread
+
+from pghoard import config, wal
+from pghoard.common import write_json_file
+from pghoard.rohmu import errors, rohmufile
 
 
 class CompressorThread(Thread):
@@ -80,8 +81,7 @@ class CompressorThread(Thread):
                     log_event = dict(event, blob="<{} bytes>".format(len(event["blob"])))
                 else:
                     log_event = event
-                self.log.exception("Problem handling: %r: %s: %s",
-                                   log_event, ex.__class__.__name__, ex)
+                self.log.exception("Problem handling: %r: %s: %s", log_event, ex.__class__.__name__, ex)
                 self.metrics.unexpected_exception(ex, where="compressor_run")
                 if "callback_queue" in event and event["callback_queue"]:
                     event["callback_queue"].put({"success": False, "exception": ex, "opaque": event.get("opaque")})
@@ -131,8 +131,11 @@ class CompressorThread(Thread):
             compressed_filepath = None
         else:
             compressed_filepath = self.get_compressed_file_path(site, filetype, event["full_path"])
-            output_obj = NamedTemporaryFile(dir=os.path.dirname(compressed_filepath),
-                                            prefix=os.path.basename(compressed_filepath), suffix=".tmp-compress")
+            output_obj = NamedTemporaryFile(
+                dir=os.path.dirname(compressed_filepath),
+                prefix=os.path.basename(compressed_filepath),
+                suffix=".tmp-compress"
+            )
 
         input_obj = event.get("input_data")
         if not input_obj:
@@ -186,12 +189,14 @@ class CompressorThread(Thread):
         if original_file_size:
             size_ratio = compressed_file_size / original_file_size
             self.metrics.gauge(
-                "pghoard.compressed_size_ratio", size_ratio,
+                "pghoard.compressed_size_ratio",
+                size_ratio,
                 tags={
                     "algorithm": self.config["compression"]["algorithm"],
                     "site": site,
                     "type": filetype,
-                })
+                }
+            )
         transfer_object = {
             "callback_queue": event.get("callback_queue"),
             "file_size": compressed_file_size,
@@ -213,7 +218,19 @@ class CompressorThread(Thread):
     def set_state_defaults_for_site(self, site):
         if site not in self.state:
             self.state[site] = {
-                "basebackup": {"original_data": 0, "compressed_data": 0, "count": 0},
-                "xlog": {"original_data": 0, "compressed_data": 0, "count": 0},
-                "timeline": {"original_data": 0, "compressed_data": 0, "count": 0},
+                "basebackup": {
+                    "original_data": 0,
+                    "compressed_data": 0,
+                    "count": 0
+                },
+                "xlog": {
+                    "original_data": 0,
+                    "compressed_data": 0,
+                    "count": 0
+                },
+                "timeline": {
+                    "original_data": 0,
+                    "compressed_data": 0,
+                    "count": 0
+                },
             }

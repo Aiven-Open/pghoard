@@ -5,9 +5,10 @@ Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
 
+import io
+
 from . import IO_BLOCK_SIZE
 from .filewrap import FileWrap
-import io
 
 try:
     import zstandard as zstd
@@ -16,7 +17,6 @@ except ImportError:
 
 
 class _ZstdFileWriter(FileWrap):
-
     def __init__(self, next_fp, level, threads=0):
         self._zstd = zstd.ZstdCompressor(level=level, threads=threads).compressobj()
         super().__init__(next_fp)
@@ -42,7 +42,6 @@ class _ZstdFileWriter(FileWrap):
 
 
 class _ZtsdFileReader(FileWrap):
-
     def __init__(self, next_fp):
         self._zstd = zstd.ZstdDecompressor().decompressobj()
         super().__init__(next_fp)

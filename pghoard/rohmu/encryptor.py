@@ -5,21 +5,22 @@ Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
 
-from . import IO_BLOCK_SIZE
-from .filewrap import FileWrap, Sink, Stream
-from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives.asymmetric import padding
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-from cryptography.hazmat.primitives.hashes import SHA1, SHA256
-from cryptography.hazmat.primitives.hmac import HMAC
-from cryptography.hazmat.primitives import serialization
-import cryptography
-import cryptography.hazmat.backends.openssl.backend
 import io
 import logging
 import os
 import struct
 
+import cryptography
+import cryptography.hazmat.backends.openssl.backend
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import padding
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives.hashes import SHA1, SHA256
+from cryptography.hazmat.primitives.hmac import HMAC
+
+from . import IO_BLOCK_SIZE
+from .filewrap import FileWrap, Sink, Stream
 
 if cryptography.__version__ < "1.6":
     # workaround for deadlock https://github.com/pyca/cryptography/issues/2911
@@ -49,9 +50,7 @@ class Encryptor:
             auth_key = os.urandom(32)
             self.cipher = Cipher(algorithms.AES(key), modes.CTR(nonce), backend=default_backend()).encryptor()
             self.authenticator = HMAC(auth_key, SHA256(), backend=default_backend())
-            pad = padding.OAEP(mgf=padding.MGF1(algorithm=SHA1()),
-                               algorithm=SHA1(),
-                               label=None)
+            pad = padding.OAEP(mgf=padding.MGF1(algorithm=SHA1()), algorithm=SHA1(), label=None)
             cipherkey = self.rsa_public_key.encrypt(key + nonce + auth_key, pad)
             ret = FILEMAGIC + struct.pack(">H", len(cipherkey)) + cipherkey
         cur = self.cipher.update(data)
@@ -128,9 +127,8 @@ class Decryptor:
         if not isinstance(rsa_private_key_pem, bytes):
             rsa_private_key_pem = rsa_private_key_pem.encode("ascii")
         self.rsa_private_key = serialization.load_pem_private_key(
-            data=rsa_private_key_pem,
-            password=None,
-            backend=default_backend())
+            data=rsa_private_key_pem, password=None, backend=default_backend()
+        )
         self.cipher = None
         self.authenticator = None
         self._cipher_key_len = None
@@ -154,9 +152,7 @@ class Decryptor:
                 raise EncryptorError("Invalid magic bytes")
             self._cipher_key_len = struct.unpack(">H", data[6:8])[0]
         else:
-            pad = padding.OAEP(mgf=padding.MGF1(algorithm=SHA1()),
-                               algorithm=SHA1(),
-                               label=None)
+            pad = padding.OAEP(mgf=padding.MGF1(algorithm=SHA1()), algorithm=SHA1(), label=None)
             try:
                 plainkey = self.rsa_private_key.decrypt(data, pad)
             except AssertionError:
@@ -245,8 +241,7 @@ class DecryptorFile(FileWrap):
             return
         seek_to = self.offset
         if self._decrypt_offset > self.offset:
-            self.log.warning("Negative seek from %d to %d, must re-initialize decryptor",
-                             self._decrypt_offset, self.offset)
+            self.log.warning("Negative seek from %d to %d, must re-initialize decryptor", self._decrypt_offset, self.offset)
             self._reset()
             self._initialize_decryptor()
         discard_bytes = seek_to - self._decrypt_offset

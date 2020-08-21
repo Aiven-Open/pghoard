@@ -4,8 +4,7 @@ rohmu
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
-from . errors import InvalidConfigurationError
-
+from .errors import InvalidConfigurationError
 
 IO_BLOCK_SIZE = 2 ** 20  # 1 MiB
 

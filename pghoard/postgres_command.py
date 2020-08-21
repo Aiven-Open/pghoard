@@ -5,14 +5,14 @@ Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
 
-from . import version
-from http.client import HTTPConnection, BadStatusLine, IncompleteRead
 import argparse
 import os
 import socket
 import sys
 import time
+from http.client import BadStatusLine, HTTPConnection, IncompleteRead
 
+from . import version
 
 PGHOARD_HOST = "127.0.0.1"
 PGHOARD_PORT = 16000
@@ -101,21 +101,13 @@ def restore_command(site, xlog, output, host=PGHOARD_HOST, port=PGHOARD_PORT, re
 
 def main(args=None):
     parser = argparse.ArgumentParser()
-    parser.add_argument("--version", action="version", help="show program version",
-                        version=version.__version__)
-    parser.add_argument("--host", type=str, default=PGHOARD_HOST,
-                        help="pghoard service host")
-    parser.add_argument("--port", type=int, default=PGHOARD_PORT,
-                        help="pghoard service port")
-    parser.add_argument("--site", type=str, required=True,
-                        help="pghoard backup site")
-    parser.add_argument("--xlog", type=str, required=True,
-                        help="xlog file name")
-    parser.add_argument("--output", type=str,
-                        help="output file")
-    parser.add_argument("--mode", type=str, required=True,
-                        choices=["archive", "restore"],
-                        help="operation mode")
+    parser.add_argument("--version", action="version", help="show program version", version=version.__version__)
+    parser.add_argument("--host", type=str, default=PGHOARD_HOST, help="pghoard service host")
+    parser.add_argument("--port", type=int, default=PGHOARD_PORT, help="pghoard service port")
+    parser.add_argument("--site", type=str, required=True, help="pghoard backup site")
+    parser.add_argument("--xlog", type=str, required=True, help="xlog file name")
+    parser.add_argument("--output", type=str, help="output file")
+    parser.add_argument("--mode", type=str, required=True, choices=["archive", "restore"], help="operation mode")
 
     # Note that we try to catch as many exception as possible and to exit with return code 255 unless we get a
     # custom exception stating otherwise.  This is to avoid signalling "end of recovery" to PostgreSQL.

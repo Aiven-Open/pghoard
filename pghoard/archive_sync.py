@@ -4,15 +4,18 @@ pghoard: sync local WAL files to remote archive
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
-from . import config, logutil, version, wal
-from .rohmu.errors import InvalidConfigurationError
-from pghoard.common import get_pg_wal_directory
 import argparse
 import hashlib
 import logging
 import os
-import requests
 import sys
+
+import requests
+
+from pghoard.common import get_pg_wal_directory
+
+from . import config, logutil, version, wal
+from .rohmu.errors import InvalidConfigurationError
 
 
 class SyncError(Exception):
@@ -91,7 +94,7 @@ class ArchiveSync:
                 # We want all timeline files
                 archive_type = "TIMELINE"
             elif not wal.WAL_RE.match(wal_file):
-                pass   # not a WAL or timeline file
+                pass  # not a WAL or timeline file
             elif wal_file == current_wal_file:
                 self.log.info("Skipping currently open WAL file %r", wal_file)
             elif wal_file > current_wal_file:
@@ -148,8 +151,7 @@ class ArchiveSync:
             resp = requests.put("{base}/archive/{file}".format(base=self.base_url, file=wal_file))
             archive_type = "TIMELINE" if ".history" in wal_file else "WAL"
             if resp.status_code != 201:
-                self.log.error("%s file %r archival failed with status code %r",
-                               archive_type, wal_file, resp.status_code)
+                self.log.error("%s file %r archival failed with status code %r", archive_type, wal_file, resp.status_code)
             else:
                 self.log.info("%s file %r archived", archive_type, wal_file)
 
@@ -160,8 +162,7 @@ class ArchiveSync:
             raise SyncError("Could not figure out current WAL segment")
         if not first_required_wal_file:
             raise SyncError("No basebackups found")
-        self.log.info("Verifying archive integrity from %r to %r",
-                      current_wal_file, first_required_wal_file)
+        self.log.info("Verifying archive integrity from %r to %r", current_wal_file, first_required_wal_file)
 
         current_tli, current_log, current_seg = wal.name_to_tli_log_seg(current_wal_file)
         target_tli, target_log, target_seg = wal.name_to_tli_log_seg(first_required_wal_file)
@@ -188,7 +189,8 @@ class ArchiveSync:
 
             if not valid_timeline:
                 msg = "{} file {} missing, integrity check from {} to {} failed".format(
-                    archive_type, wal_file, current_wal_file, first_required_wal_file)
+                    archive_type, wal_file, current_wal_file, first_required_wal_file
+                )
                 if not new_backup_on_failure:
                     raise SyncError(msg)
                 self.log.error("Requesting new basebackup: %s", msg)
@@ -224,8 +226,7 @@ class ArchiveSync:
     def run(self, args=None):
         parser = argparse.ArgumentParser()
         parser.add_argument("-D", "--debug", help="Enable debug logging", action="store_true")
-        parser.add_argument("--version", action='version', help="show program version",
-                            version=version.__version__)
+        parser.add_argument("--version", action="version", help="show program version", version=version.__version__)
         parser.add_argument("--site", help="pghoard site", required=False)
         parser.add_argument("--config", help="pghoard config file", default=os.environ.get("PGHOARD_CONFIG"))
         # Only check hashes of files up to some threshold (unless negative value is explicitly given to indicate no
@@ -235,8 +236,12 @@ class ArchiveSync:
         hash_check_help = "Maximum number of files for which to validate hash in addition to basic existence check"
         parser.add_argument("--max-hash-checks", help=hash_check_help, default=100)
         parser.add_argument("--no-verify", help="do not verify archive integrity", action="store_false")
-        parser.add_argument("--create-new-backup-on-failure", help="request a new basebackup if verification fails",
-                            action="store_true", default=False)
+        parser.add_argument(
+            "--create-new-backup-on-failure",
+            help="request a new basebackup if verification fails",
+            action="store_true",
+            default=False
+        )
         args = parser.parse_args(args)
 
         if not args.config:

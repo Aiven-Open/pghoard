@@ -4,25 +4,6 @@ pghoard - main pghoard daemon
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
-from contextlib import closing
-from pghoard import config, logutil, metrics, version, wal
-from pghoard.basebackup import PGBaseBackup
-from pghoard.common import (
-    create_alert_file,
-    extract_pghoard_bb_v2_metadata,
-    get_object_storage_config,
-    replication_connection_string_and_slot_using_pgpass,
-    write_json_file,
-)
-from pghoard.compressor import CompressorThread
-from pghoard.rohmu.inotify import InotifyWatcher
-from pghoard.transfer import TransferAgent
-from pghoard.receivexlog import PGReceiveXLog
-from pghoard.rohmu import dates, get_transfer, rohmufile
-from pghoard.rohmu.compat import suppress
-from pghoard.rohmu.errors import FileNotFoundFromStorageError, InvalidConfigurationError
-from pghoard.webserver import WebServer
-from queue import Empty, Queue
 import argparse
 import datetime
 import io
@@ -30,7 +11,6 @@ import json
 import logging
 import multiprocessing
 import os
-import psycopg2
 import random
 import shutil
 import signal
@@ -38,6 +18,25 @@ import socket
 import subprocess
 import sys
 import time
+from contextlib import closing
+from queue import Empty, Queue
+
+import psycopg2
+
+from pghoard import config, logutil, metrics, version, wal
+from pghoard.basebackup import PGBaseBackup
+from pghoard.common import (
+    create_alert_file, extract_pghoard_bb_v2_metadata, get_object_storage_config,
+    replication_connection_string_and_slot_using_pgpass, write_json_file
+)
+from pghoard.compressor import CompressorThread
+from pghoard.receivexlog import PGReceiveXLog
+from pghoard.rohmu import dates, get_transfer, rohmufile
+from pghoard.rohmu.compat import suppress
+from pghoard.rohmu.errors import (FileNotFoundFromStorageError, InvalidConfigurationError)
+from pghoard.rohmu.inotify import InotifyWatcher
+from pghoard.transfer import TransferAgent
+from pghoard.webserver import WebServer
 
 # Imported this way because WALReceiver requires an unreleased version of psycopg2
 try:
@@ -93,18 +92,16 @@ class PGHoard:
 
         self.inotify = InotifyWatcher(self.compression_queue)
         self.webserver = WebServer(
-            self.config,
-            self.requested_basebackup_sites,
-            self.compression_queue,
-            self.transfer_queue,
-            self.metrics)
+            self.config, self.requested_basebackup_sites, self.compression_queue, self.transfer_queue, self.metrics
+        )
 
         for _ in range(self.config["compression"]["thread_count"]):
             compressor = CompressorThread(
                 config_dict=self.config,
                 compression_queue=self.compression_queue,
                 transfer_queue=self.transfer_queue,
-                metrics=self.metrics)
+                metrics=self.metrics
+            )
             self.compressors.append(compressor)
 
         for _ in range(self.config["transfer"]["thread_count"]):
@@ -114,7 +111,8 @@ class PGHoard:
                 mp_manager=self.mp_manager,
                 transfer_queue=self.transfer_queue,
                 metrics=self.metrics,
-                shared_state_dict=self.transfer_agent_state)
+                shared_state_dict=self.transfer_agent_state
+            )
             self.transfer_agents.append(ta)
 
         logutil.notify_systemd("READY=1")
@@ -130,8 +128,10 @@ class PGHoard:
             return False
         pg_version_client = self.config["backup_sites"][site][command + "_version"]
         if pg_version_server // 100 != pg_version_client // 100:
-            self.log.error("Server version: %r does not match %s version: %r",
-                           pg_version_server, self.config[command + "_path"], pg_version_client)
+            self.log.error(
+                "Server version: %r does not match %s version: %r", pg_version_server, self.config[command + "_path"],
+                pg_version_client
+            )
             create_alert_file(self.config, "version_mismatch_error")
             return False
         return True
@@ -171,8 +171,7 @@ class PGHoard:
                 # version upgrades you want to restart pghoard.
                 self.config["backup_sites"][site]["pg_version"] = pg_version
         except psycopg2.OperationalError as ex:
-            self.log.warning("%s (%s) connecting to DB at: %r",
-                             ex.__class__.__name__, ex, connection_string)
+            self.log.warning("%s (%s) connecting to DB at: %r", ex.__class__.__name__, ex, connection_string)
             if "password authentication" in str(ex) or "authentication failed" in str(ex):
                 create_alert_file(self.config, "authentication_error")
             else:
@@ -195,7 +194,8 @@ class PGHoard:
             wal_location=wal_directory,
             site=site,
             slot=slot,
-            pg_version_server=pg_version_server)
+            pg_version_server=pg_version_server
+        )
         thread.start()
         self.receivexlogs[site] = thread
 
@@ -214,7 +214,8 @@ class PGHoard:
             pg_version_server=pg_version_server,
             site=site,
             last_flushed_lsn=last_flushed_lsn,
-            metrics=self.metrics)
+            metrics=self.metrics
+        )
         thread.start()
         self.walreceivers[site] = thread
 
@@ -238,8 +239,7 @@ class PGHoard:
         return xlog_path, basebackup_path
 
     def delete_remote_wal_before(self, wal_segment, site, pg_version):
-        self.log.info("Starting WAL deletion from: %r before: %r, pg_version: %r",
-                      site, wal_segment, pg_version)
+        self.log.info("Starting WAL deletion from: %r before: %r, pg_version: %r", site, wal_segment, pg_version)
         storage = self.site_transfers.get(site)
         valid_timeline = True
         tli, log, seg = wal.name_to_tli_log_seg(wal_segment)
@@ -249,8 +249,9 @@ class PGHoard:
                 if seg == 0 and log == 0:
                     break
                 seg, log = wal.get_previous_wal_on_same_timeline(seg, log, pg_version)
-            wal_path = os.path.join(self.config["backup_sites"][site]["prefix"], "xlog",
-                                    wal.name_for_tli_log_seg(tli, log, seg))
+            wal_path = os.path.join(
+                self.config["backup_sites"][site]["prefix"], "xlog", wal.name_for_tli_log_seg(tli, log, seg)
+            )
             self.log.debug("Deleting wal_file: %r", wal_path)
             try:
                 storage.delete_key(wal_path)
@@ -265,8 +266,10 @@ class PGHoard:
                 # as "invalid" until we're able to delete at least one segment on it.
                 valid_timeline = False
                 tli -= 1
-                self.log.info("Could not delete wal_file: %r, trying the same segment on a previous "
-                              "timeline (%s)", wal_path, wal.name_for_tli_log_seg(tli, log, seg))
+                self.log.info(
+                    "Could not delete wal_file: %r, trying the same segment on a previous "
+                    "timeline (%s)", wal_path, wal.name_for_tli_log_seg(tli, log, seg)
+                )
             except Exception as ex:  # FIXME: don't catch all exceptions; pylint: disable=broad-except
                 self.log.exception("Problem deleting: %r", wal_path)
                 self.metrics.unexpected_exception(ex, where="delete_remote_wal_before")
@@ -279,18 +282,23 @@ class PGHoard:
 
         if metadata.get("format") == "pghoard-bb-v2":
             bmeta_compressed = storage.get_contents_to_string(main_backup_key)[0]
-            with rohmufile.file_reader(fileobj=io.BytesIO(bmeta_compressed), metadata=metadata,
-                                       key_lookup=config.key_lookup_for_site(self.config, site)) as input_obj:
+            with rohmufile.file_reader(
+                fileobj=io.BytesIO(bmeta_compressed),
+                metadata=metadata,
+                key_lookup=config.key_lookup_for_site(self.config, site)
+            ) as input_obj:
                 bmeta = extract_pghoard_bb_v2_metadata(input_obj)
                 self.log.debug("PGHoard chunk metadata: %r", bmeta)
                 for chunk in bmeta["chunks"]:
-                    basebackup_data_files.append(os.path.join(
-                        self.config["backup_sites"][site]["prefix"],
-                        "basebackup_chunk",
-                        chunk["chunk_filename"],
-                    ))
+                    basebackup_data_files.append(
+                        os.path.join(
+                            self.config["backup_sites"][site]["prefix"],
+                            "basebackup_chunk",
+                            chunk["chunk_filename"],
+                        )
+                    )
 
-        self.log.debug("Deleting basebackup datafiles: %r", ', '.join(basebackup_data_files))
+        self.log.debug("Deleting basebackup datafiles: %r", ", ".join(basebackup_data_files))
         for obj_key in basebackup_data_files:
             try:
                 storage.delete_key(obj_key)
@@ -299,8 +307,10 @@ class PGHoard:
             except Exception as ex:  # FIXME: don't catch all exceptions; pylint: disable=broad-except
                 self.log.exception("Problem deleting: %r", obj_key)
                 self.metrics.unexpected_exception(ex, where="delete_remote_basebackup")
-        self.log.info("Deleted basebackup datafiles: %r, took: %.2fs",
-                      ', '.join(basebackup_data_files), time.monotonic() - start_time)
+        self.log.info(
+            "Deleted basebackup datafiles: %r, took: %.2fs", ", ".join(basebackup_data_files),
+            time.monotonic() - start_time
+        )
 
     def get_remote_basebackups_info(self, site):
         storage = self.site_transfers.get(site)
@@ -344,8 +354,10 @@ class PGHoard:
 
         basebackups_to_delete = []
         while len(basebackups) > allowed_basebackup_count:
-            self.log.warning("Too many basebackups: %d > %d, %r, starting to get rid of %r",
-                             len(basebackups), allowed_basebackup_count, basebackups, basebackups[0]["name"])
+            self.log.warning(
+                "Too many basebackups: %d > %d, %r, starting to get rid of %r", len(basebackups), allowed_basebackup_count,
+                basebackups, basebackups[0]["name"]
+            )
             basebackups_to_delete.append(basebackups.pop(0))
 
         backup_interval = datetime.timedelta(hours=site_config["basebackup_interval_hours"])
@@ -362,8 +374,10 @@ class PGHoard:
                 # so that we can react immediately when age is too old
                 backup_age_days = backup_age.total_seconds() / 60.0 / 60.0 / 24.0
                 if backup_age_days > max_age_days:
-                    self.log.warning("Basebackup %r too old: %.3f > %.3f, %r, starting to get rid of it",
-                                     basebackups[0]["name"], backup_age_days, max_age_days, basebackups)
+                    self.log.warning(
+                        "Basebackup %r too old: %.3f > %.3f, %r, starting to get rid of it", basebackups[0]["name"],
+                        backup_age_days, max_age_days, basebackups
+                    )
                     basebackups_to_delete.append(basebackups.pop(0))
                 else:
                     break
@@ -527,7 +541,8 @@ class PGHoard:
                 self.start_walreceiver(
                     site=site,
                     chosen_backup_node=chosen_backup_node,
-                    last_flushed_lsn=walreceiver_state.get("last_flushed_lsn"))
+                    last_flushed_lsn=walreceiver_state.get("last_flushed_lsn")
+                )
 
         last_check_time = self.time_of_last_backup_check.get(site)
         if not last_check_time or (time.monotonic() - self.time_of_last_backup_check[site]) > 300:
@@ -600,8 +615,9 @@ class PGHoard:
             time_of_last_backup = basebackups[-1]["metadata"]["start-time"]
             delta_since_last_backup = now - time_of_last_backup
             if delta_since_last_backup >= datetime.timedelta(hours=site_config["basebackup_interval_hours"]):
-                self.log.info("Creating a new basebackup for %r by schedule (%s from previous)",
-                              site, delta_since_last_backup)
+                self.log.info(
+                    "Creating a new basebackup for %r by schedule (%s from previous)", site, delta_since_last_backup
+                )
                 backup_reason = "scheduled"
 
         if not backup_reason:
@@ -639,16 +655,25 @@ class PGHoard:
         start_time = time.time()
         state_file_path = self.config["json_state_file_path"]
         self.state["walreceivers"] = {
-            key: {"latest_activity": value.latest_activity, "running": value.running,
-                  "last_flushed_lsn": value.last_flushed_lsn}
+            key: {
+                "latest_activity": value.latest_activity,
+                "running": value.running,
+                "last_flushed_lsn": value.last_flushed_lsn
+            }
             for key, value in self.walreceivers.items()
         }
         self.state["pg_receivexlogs"] = {
-            key: {"latest_activity": value.latest_activity, "running": value.running}
+            key: {
+                "latest_activity": value.latest_activity,
+                "running": value.running
+            }
             for key, value in self.receivexlogs.items()
         }
         self.state["pg_basebackups"] = {
-            key: {"latest_activity": value.latest_activity, "running": value.running}
+            key: {
+                "latest_activity": value.latest_activity,
+                "running": value.running
+            }
             for key, value in self.basebackups.items()
         }
         self.state["compressors"] = [compressor.state for compressor in self.compressors]
@@ -696,7 +721,8 @@ class PGHoard:
         self.metrics = metrics.Metrics(
             statsd=self.config.get("statsd", None),
             pushgateway=self.config.get("pushgateway", None),
-            prometheus=self.config.get("prometheus", None))
+            prometheus=self.config.get("prometheus", None)
+        )
 
         for thread in self._get_all_threads():
             thread.config = new_config
@@ -736,16 +762,12 @@ def main(args=None):
     if args is None:
         args = sys.argv[1:]
 
-    parser = argparse.ArgumentParser(
-        prog="pghoard",
-        description="postgresql automatic backup daemon")
+    parser = argparse.ArgumentParser(prog="pghoard", description="postgresql automatic backup daemon")
     parser.add_argument("-D", "--debug", help="Enable debug logging", action="store_true")
-    parser.add_argument("--version", action="version", help="show program version",
-                        version=version.__version__)
+    parser.add_argument("--version", action="version", help="show program version", version=version.__version__)
     parser.add_argument("-s", "--short-log", help="use non-verbose logging format", action="store_true")
     parser.add_argument("--config", help="configuration file path", default=os.environ.get("PGHOARD_CONFIG"))
-    parser.add_argument("config_file", help="configuration file path (for backward compatibility)",
-                        nargs="?")
+    parser.add_argument("config_file", help="configuration file path (for backward compatibility)", nargs="?")
     arg = parser.parse_args(args)
 
     config_path = arg.config or arg.config_file
