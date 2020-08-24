@@ -12,11 +12,11 @@ from contextlib import suppress
 from io import BytesIO
 from queue import Empty, Queue
 from threading import Thread
+from typing import Dict, Optional  # pylint: disable=unused-import
 
 import psycopg2
 from psycopg2.extras import (  # pylint: disable=no-name-in-module
-    REPLICATION_PHYSICAL, PhysicalReplicationConnection
-)
+    REPLICATION_PHYSICAL, PhysicalReplicationConnection, ReplicationCursor)
 
 from pghoard.wal import (WAL_SEG_SIZE, convert_integer_to_lsn, get_lsn_from_start_of_wal_file, name_for_tli_log_seg)
 
@@ -45,8 +45,8 @@ class WALReceiver(Thread):
         self.completed_wal_segments = set()
         self.dsn = connection_string
         self.site = site
-        self.conn = None
-        self.c = None
+        self.conn: Optional[PhysicalReplicationConnection] = None
+        self.c: Optional[ReplicationCursor] = None
         self.buffer = BytesIO()
         self.latest_wal = None
         self.latest_wal_start = None
@@ -64,6 +64,7 @@ class WALReceiver(Thread):
         self.c = self.conn.cursor()
 
     def create_replication_slot(self):
+        assert self.c is not None
         try:
             self.c.create_replication_slot(self.replication_slot, slot_type=REPLICATION_PHYSICAL)
         except psycopg2.ProgrammingError as ex:
@@ -75,6 +76,7 @@ class WALReceiver(Thread):
         """Copy all timeline history files found on the server without
            checking if we have them or not. The history files are very small
            so reuploading them should not matter."""
+        assert self.c is not None
         while max_timeline > 1:
             self.c.execute("TIMELINE_HISTORY {}".format(max_timeline))
             timeline_history = self.c.fetchone()
@@ -100,6 +102,7 @@ class WALReceiver(Thread):
         # not available on the replication protocol side and would have to be queried
         # through a regular PG connection. Currently we workaround this by reading
         # it back from pghoard's state file.
+        assert self.c is not None
         self.c.execute("IDENTIFY_SYSTEM")
         identify_system = self.c.fetchone()
         self.log.debug("System identified itself as: %r", identify_system)
@@ -132,7 +135,7 @@ class WALReceiver(Thread):
         # Pad with 0s up to WAL_SEG_SIZE
         wal_data.write(padding * b"\0")
         wal_data.seek(0)
-        callback_queue = Queue()
+        callback_queue: "Queue[Dict[str, bool]]" = Queue()
         self.callbacks[self.latest_wal_start] = callback_queue
 
         compression_event = {
@@ -155,6 +158,7 @@ class WALReceiver(Thread):
 
     def run(self):
         self._init_cursor()
+        assert self.c is not None
         if self.replication_slot:
             self.create_replication_slot()
         timeline = self.start_replication()
