@@ -7,13 +7,13 @@ See LICENSE for details
 import logging
 import os
 import time
+from contextlib import suppress
 from queue import Empty
 from threading import Lock, Thread
 
 from pghoard.common import create_alert_file, get_object_storage_config
 from pghoard.fetcher import FileFetchManager
 from pghoard.rohmu import get_transfer
-from pghoard.rohmu.compat import suppress
 from pghoard.rohmu.errors import (FileNotFoundFromStorageError, LocalFileIsRemoteFileError)
 
 _STATS_LOCK = Lock()

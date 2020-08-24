@@ -14,6 +14,7 @@ import stat
 import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import suppress
 from queue import Empty, Queue
 from tempfile import NamedTemporaryFile
 from threading import Thread
@@ -21,7 +22,6 @@ from threading import Thread
 import psycopg2
 
 from pghoard.rohmu import dates, errors, rohmufile
-from pghoard.rohmu.compat import suppress
 
 # pylint: disable=superfluous-parens
 from . import common, version, wal

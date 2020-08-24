@@ -8,6 +8,7 @@ import datetime
 import logging
 import os
 import select
+from contextlib import suppress
 from io import BytesIO
 from queue import Empty, Queue
 from threading import Thread
@@ -17,7 +18,6 @@ from psycopg2.extras import (  # pylint: disable=no-name-in-module
     REPLICATION_PHYSICAL, PhysicalReplicationConnection
 )
 
-from pghoard.common import suppress
 from pghoard.wal import (WAL_SEG_SIZE, convert_integer_to_lsn, get_lsn_from_start_of_wal_file, name_for_tli_log_seg)
 
 KEEPALIVE_INTERVAL = 10.0

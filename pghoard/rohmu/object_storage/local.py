@@ -10,9 +10,9 @@ import json
 import os
 import shutil
 import tempfile
+from contextlib import suppress
 from io import BytesIO
 
-from ..compat import makedirs, suppress
 from ..errors import FileNotFoundFromStorageError, LocalFileIsRemoteFileError
 from .base import KEY_TYPE_OBJECT, KEY_TYPE_PREFIX, BaseTransfer, IterKeyItem
 
@@ -179,7 +179,7 @@ class LocalTransfer(BaseTransfer):
 
     def store_file_from_memory(self, key, memstring, metadata=None, cache_control=None, mimetype=None):
         target_path = self.format_key_for_backend(key.strip("/"))
-        makedirs(os.path.dirname(target_path), exist_ok=True)
+        os.makedirs(os.path.dirname(target_path), exist_ok=True)
         with open(target_path, "wb") as fp:
             fp.write(memstring)
         self._save_metadata(target_path, metadata)
@@ -192,7 +192,7 @@ class LocalTransfer(BaseTransfer):
             if dst_stat.st_dev == src_stat.st_dev and dst_stat.st_ino == src_stat.st_ino:
                 self._save_metadata(target_path, metadata)
                 raise LocalFileIsRemoteFileError(target_path)
-        makedirs(os.path.dirname(target_path), exist_ok=True)
+        os.makedirs(os.path.dirname(target_path), exist_ok=True)
         shutil.copyfile(filepath, target_path)
         self._save_metadata(target_path, metadata)
 
@@ -207,7 +207,7 @@ class LocalTransfer(BaseTransfer):
         upload_progress_fn=None
     ):  # pylint: disable=unused-argument
         target_path = self.format_key_for_backend(key.strip("/"))
-        makedirs(os.path.dirname(target_path), exist_ok=True)
+        os.makedirs(os.path.dirname(target_path), exist_ok=True)
         bytes_written = 0
         with open(target_path, "wb") as output_fp:
             while True:

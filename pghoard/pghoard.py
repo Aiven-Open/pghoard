@@ -18,7 +18,7 @@ import socket
 import subprocess
 import sys
 import time
-from contextlib import closing
+from contextlib import closing, suppress
 from queue import Empty, Queue
 
 import psycopg2
@@ -32,7 +32,6 @@ from pghoard.common import (
 from pghoard.compressor import CompressorThread
 from pghoard.receivexlog import PGReceiveXLog
 from pghoard.rohmu import dates, get_transfer, rohmufile
-from pghoard.rohmu.compat import suppress
 from pghoard.rohmu.errors import (FileNotFoundFromStorageError, InvalidConfigurationError)
 from pghoard.rohmu.inotify import InotifyWatcher
 from pghoard.transfer import TransferAgent
