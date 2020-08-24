@@ -98,13 +98,12 @@ def set_and_check_config_defaults(config, *, check_commands=True, check_pgdata=T
 
         # NOTE: pg_data_directory doesn't have a default value
         data_dir = site_config.get("pg_data_directory")
-        if not data_dir and check_pgdata:
-            raise InvalidConfigurationError("Site {!r}: pg_data_directory must be set".format(site_name))
-
-        if check_pgdata:
-            version_file = os.path.join(data_dir, "PG_VERSION") if data_dir else None
+        if data_dir and check_pgdata:
+            version_file = os.path.join(data_dir, "PG_VERSION")
             with open(version_file, "r") as fp:
                 site_config["pg_data_directory_version"] = fp.read().strip()
+        elif check_pgdata:
+            raise InvalidConfigurationError("Site {!r}: pg_data_directory must be set".format(site_name))
 
         obj_store = site_config["object_storage"] or {}
         if not obj_store:
