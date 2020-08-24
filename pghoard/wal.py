@@ -8,6 +8,7 @@ import re
 import struct
 import subprocess
 from collections import namedtuple
+from typing import Dict, Tuple, cast
 
 from .common import replication_connection_string_and_slot_using_pgpass
 
@@ -108,7 +109,7 @@ def get_current_wal_from_identify_system(conn_str):
     # replication protocol so we'll just have to execute psql to figure
     # out the current WAL position.
     out = subprocess.check_output(["psql", "--no-psqlrc", "-Aqxc", "IDENTIFY_SYSTEM", conn_str])
-    sysinfo = dict(line.split("|", 1) for line in out.decode("ascii").splitlines())
+    sysinfo: Dict[str, str] = dict(cast(Tuple[str, str], line.split("|", 1)) for line in out.decode("ascii").splitlines())
     # construct the currently open WAL file name using sysinfo, we need
     # everything older than that
     return construct_wal_name(sysinfo)
