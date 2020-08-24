@@ -12,12 +12,14 @@ import select
 import socket
 import stat
 import subprocess
+import tarfile
 import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import suppress
 from queue import Empty, Queue
 from tempfile import NamedTemporaryFile
 from threading import Thread
+from typing import Dict, Optional  # pylint: disable=unused-import
 
 import psycopg2
 
@@ -29,7 +31,6 @@ from .common import (
     connection_string_using_pgpass, replication_connection_string_and_slot_using_pgpass, set_stream_nonblocking,
     set_subprocess_stdout_and_stderr_nonblocking, terminate_subprocess
 )
-from .patchedtarfile import tarfile
 
 BASEBACKUP_NAME = "pghoard_base_backup"
 EMPTY_DIRS = [
@@ -64,7 +65,7 @@ class PGBaseBackup(Thread):
         compression_queue,
         metrics,
         transfer_queue=None,
-        callback_queue=None,
+        callback_queue: Optional["Queue[Dict[str, bool]]"] = None,
         pg_version_server=None,
         metadata=None
     ):
@@ -74,7 +75,7 @@ class PGBaseBackup(Thread):
         self.site = site
         self.connection_info = connection_info
         self.basebackup_path = basebackup_path
-        self.callback_queue = callback_queue
+        self.callback_queue: Optional["Queue[Dict[str, bool]]"] = callback_queue
         self.chunks_on_disk = 0
         self.compression_queue = compression_queue
         self.metadata = metadata or {}
