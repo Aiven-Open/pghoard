@@ -9,6 +9,7 @@ import fcntl
 import json
 import logging
 import os
+import pathlib
 import platform
 import re
 import tarfile
@@ -38,7 +39,8 @@ def create_pgpass_file(connection_string_or_info):
         dbname=info.get("dbname", "*")
     )
     pwline = "{linekey}{password}".format(linekey=linekey, password=info.pop("password"))
-    pgpass_path = os.path.join(os.environ.get("HOME"), ".pgpass")
+
+    pgpass_path = os.path.join(pathlib.Path.home(), ".pgpass")
     if os.path.exists(pgpass_path):
         with open(pgpass_path, "r") as fp:
             pgpass_lines = fp.read().splitlines()
@@ -217,7 +219,12 @@ def extract_pghoard_bb_v2_metadata(fileobj):
     with tarfile.open(fileobj=fileobj, mode="r|", bufsize=IO_BLOCK_SIZE) as tar:
         for tarinfo in tar:
             if tarinfo.name == ".pghoard_tar_metadata.json":
-                tar_meta_bytes = tar.extractfile(tarinfo).read()
+                f = tar.extractfile(tarinfo)
+                if f is None:
+                    # Happens if a chrdev/blkdev etc. gets into the archive somehow.
+                    # We want to ignore this since we want best-effort recovery of data.
+                    continue
+                tar_meta_bytes = f.read()
                 return json.loads(tar_meta_bytes.decode("utf-8"))
 
     raise Exception(".pghoard_tar_metadata.json not found")
