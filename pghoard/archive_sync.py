@@ -9,6 +9,7 @@ import hashlib
 import logging
 import os
 import sys
+from typing import Optional
 
 import requests
 
@@ -44,6 +45,7 @@ class ArchiveSync:
 
     def get_current_wal_file(self):
         # identify the (must be) local database
+        assert self.backup_site is not None
         return wal.get_current_wal_file(self.backup_site["nodes"][0])
 
     def get_first_required_wal_segment(self):
@@ -109,8 +111,8 @@ class ArchiveSync:
             if archive_type:
                 resp = requests.head("{base}/archive/{file}".format(base=self.base_url, file=wal_file))
                 if resp.status_code == 200:
-                    remote_hash = resp.headers.get("metadata-hash")
-                    hash_algorithm = resp.headers.get("metadata-hash-algorithm")
+                    remote_hash: Optional[str] = resp.headers.get("metadata-hash")
+                    hash_algorithm: Optional[str] = resp.headers.get("metadata-hash-algorithm")
                     check_hash = bool(
                         archive_type == "WAL" and (hash_checks_done < max_hash_checks or max_hash_checks < 0) and remote_hash
                     )
@@ -127,6 +129,7 @@ class ArchiveSync:
                             need_archival.append(wal_file)
                             continue
                     if check_hash:
+                        assert remote_hash is not None
                         hash_checks_done += 1
                         our_hash = self.calculate_hash(os.path.join(wal_dir, wal_file), hash_algorithm)
                         if not our_hash:
