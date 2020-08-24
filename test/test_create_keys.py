@@ -33,10 +33,36 @@ def test_write_keys_in_old_config(tmpdir):
     assert "default" in config["backup_sites"]
     assert "encryption_keys" not in config["backup_sites"]["default"]
     private, public = create_keys.create_keys(bits=1024)
+
+    create_keys.save_keys(config_file, "default", "testkey", private, public)
+
+
+def test_write_keys_in_old_config_with_duplicate(tmpdir):
+    config_template = os.path.join(os.path.dirname(__file__), "..", "pghoard.json")
+    config_file = tmpdir.join("pghoard.json").strpath
+    shutil.copyfile(config_template, config_file)
+    with open(config_file, "r") as fp:
+        config = json.load(fp)
+    assert "default" in config["backup_sites"]
+    assert "encryption_keys" not in config["backup_sites"]["default"]
+    private, public = create_keys.create_keys(bits=1024)
+
     create_keys.save_keys(config_file, "default", "testkey", private, public)
     with pytest.raises(create_keys.CommandError) as excinfo:
         create_keys.save_keys(config_file, "default", "testkey", private, public)
     assert "already defined" in str(excinfo.value)
+
+
+def test_write_keys_in_old_config_with_invalid_site(tmpdir):
+    config_template = os.path.join(os.path.dirname(__file__), "..", "pghoard.json")
+    config_file = tmpdir.join("pghoard.json").strpath
+    shutil.copyfile(config_template, config_file)
+    with open(config_file, "r") as fp:
+        config = json.load(fp)
+    assert "default" in config["backup_sites"]
+    assert "encryption_keys" not in config["backup_sites"]["default"]
+    private, public = create_keys.create_keys(bits=1024)
+
     with pytest.raises(InvalidConfigurationError) as excinfo:
         create_keys.save_keys(config_file, "nosite", "testkey", private, public)
     assert "not defined" in str(excinfo.value)
