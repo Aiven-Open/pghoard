@@ -84,7 +84,7 @@ class EncryptorFile(FileWrap):
     def __init__(self, next_fp, rsa_public_key_pem):
         super().__init__(next_fp)
         self.key = rsa_public_key_pem
-        self.encryptor = Encryptor(self.key)
+        self.encryptor: Optional[Encryptor] = Encryptor(self.key)
         self.offset = 0
         self.state = "OPEN"
 
@@ -95,7 +95,7 @@ class EncryptorFile(FileWrap):
     def close(self):
         if self.state == "CLOSED":
             return
-        final = self.encryptor.finalize()
+        final = self.encryptor.finalize()  # type: ignore
         self.encryptor = None
         self.next_fp.write(final)
         super().close()
@@ -110,7 +110,7 @@ class EncryptorFile(FileWrap):
         self._check_not_closed()
         if not data:
             return 0
-        enc_data = self.encryptor.update(data)
+        enc_data = self.encryptor.update(data)  # type: ignore
         self.next_fp.write(enc_data)
         self.offset += len(data)
         return len(data)
@@ -195,15 +195,15 @@ class DecryptorFile(FileWrap):
         super().__init__(next_fp)
         self._key = rsa_private_key_pem
         self.log = logging.getLogger(self.__class__.__name__)
-        self._decryptor = None
+        self._decryptor: Optional[Decryptor] = None
         self._crypted_size = None
         self._boundary_block = None
-        self._plaintext_size = None
+        self._plaintext_size: Optional[int] = None
         # Our actual plain-text read offset. seek may change self.offset to something
         # else temporarily but we keep _decrypt_offset intact until we actually do a
         # read in case the caller just called seek in order to then immediately seek back
-        self._decrypt_offset = None
-        self.offset = None
+        self._decrypt_offset: int = 0
+        self.offset: int = 0
         self._reset()
 
     def _reset(self):
@@ -224,6 +224,7 @@ class DecryptorFile(FileWrap):
         return file_end_offset
 
     def _initialize_decryptor(self):
+        assert self._decryptor is not None
         if self._plaintext_size is not None:
             return
         while True:
@@ -267,6 +268,7 @@ class DecryptorFile(FileWrap):
             full_data.extend(data)
 
     def _read_block(self, size):
+        assert self._decryptor is not None
         if self._crypted_size == 0:
             return b""
 
@@ -291,7 +293,7 @@ class DecryptorFile(FileWrap):
         # Only serve multiples of AES_BLOCK_SIZE whenever possible to keep things simpler
         read_size = size
         if self.offset + max(AES_BLOCK_SIZE, size) >= self._plaintext_size:
-            read_size = self._plaintext_size - self.offset
+            read_size = self._plaintext_size - self.offset  # type: ignore
         elif size > AES_BLOCK_SIZE and size % AES_BLOCK_SIZE != 0 and self.offset + size < self._plaintext_size:
             read_size = size - size % AES_BLOCK_SIZE
         elif size < AES_BLOCK_SIZE:
@@ -335,6 +337,7 @@ class DecryptorFile(FileWrap):
     def seek(self, offset, whence=0):
         self._check_not_closed()
         self._initialize_decryptor()
+        assert self._plaintext_size is not None
         if whence == os.SEEK_SET:
             if offset != self.offset:
                 if offset > self._plaintext_size:
@@ -371,7 +374,7 @@ class DecryptSink(Sink):
         self.decryptor = Decryptor(encryption_key_data)
         self.file_size = file_size
         self.footer = b""
-        self.header = b""
+        self.header: Optional[bytes] = b""
 
     def _extract_encryption_footer_bytes(self, data):
         expected_data_bytes = self.data_size - self.data_bytes_received
