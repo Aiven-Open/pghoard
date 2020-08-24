@@ -8,7 +8,7 @@ import io
 import logging
 import os
 import struct
-from typing import NamedTuple, Optional
+from typing import NamedTuple, Optional, cast
 
 import cryptography
 import cryptography.hazmat.backends.openssl.backend
@@ -137,11 +137,10 @@ class Decryptor:
         self.rsa_private_key = serialization.load_pem_private_key(
             data=rsa_private_key_pem, password=None, backend=default_backend()
         )
-        self.cipher = None
-        self.authenticator = None
-        self._cipher_key_len = None
-        self._header_size = None
-        self._footer_size = 32
+        self.cipher_auth: Optional[CipherAuth] = None
+        self._cipher_key_len: Optional[int] = None
+        self._header_size: Optional[int] = None
+        self._footer_size: int = 32
 
     def expected_header_bytes(self):
         if self._header_size is not None:
@@ -158,7 +157,7 @@ class Decryptor:
         if self._cipher_key_len is None:
             if data[0:6] != FILEMAGIC:
                 raise EncryptorError("Invalid magic bytes")
-            self._cipher_key_len = struct.unpack(">H", data[6:8])[0]
+            self._cipher_key_len = cast(int, struct.unpack(">H", data[6:8])[0])
         else:
             pad = padding.OAEP(mgf=padding.MGF1(algorithm=SHA1()), algorithm=SHA1(), label=None)
             try:
@@ -172,21 +171,22 @@ class Decryptor:
             auth_key = plainkey[32:64]
             self._header_size = 8 + len(data)
 
-            self.cipher = Cipher(algorithms.AES(key), modes.CTR(nonce), backend=default_backend()).decryptor()
-            self.authenticator = HMAC(auth_key, SHA256(), backend=default_backend())
+            cipher = Cipher(algorithms.AES(key), modes.CTR(nonce), backend=default_backend()).decryptor()
+            authenticator = HMAC(auth_key, SHA256(), backend=default_backend())
+
+            self.cipher_auth = CipherAuth(cipher=cipher, authenticator=authenticator)
 
     def process_data(self, data):
         if not data:
             return b""
-        self.authenticator.update(data)
-        return self.cipher.update(data)
+        self.cipher_auth.authenticator.update(data)  # type: ignore
+        return self.cipher_auth.cipher.update(data)  # type: ignore
 
     def finalize(self, footer):
-        if footer != self.authenticator.finalize():
-            raise EncryptorError("Integrity check failed")
-        result = self.cipher.finalize()
-        self.cipher = None
-        self.authenticator = None
+        if footer != self.cipher_auth.authenticator.finalize():  # type: ignore
+            raise EncryptorError("Integrity check failed")  # type: ignore
+        result = self.cipher_auth.cipher.finalize()  # type: ignore
+        self.cipher_auth = None
         return result
 
 
