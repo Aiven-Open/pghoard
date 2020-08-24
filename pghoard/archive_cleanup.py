@@ -30,6 +30,8 @@ class ArchiveCleanup:
         self.storage = get_transfer(storage_config)
 
     def archive_cleanup(self, dry_run):
+        assert self.backup_site is not None
+        assert self.storage is not None
         basebackup_path = os.path.join(self.backup_site["prefix"], "basebackup")
         xlog_path = os.path.join(self.backup_site["prefix"], "xlog")
         basebackups = self.storage.list_path(basebackup_path)
