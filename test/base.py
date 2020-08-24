@@ -45,7 +45,7 @@ nkMAHqg9PS372Cs=
 class PGHoardTestCase:
     @classmethod
     def setup_class(cls):
-        cls.log = logging.getLogger(cls.__name__)
+        cls.log = logging.getLogger(cls.__name__)  # type: ignore
 
     def config_template(self, override=None):
         # NOTE: we set pg_receivexlog_path and pg_basebackup_path per site and globally mostly to verify that
@@ -81,17 +81,18 @@ class PGHoardTestCase:
             "pg_basebackup_path": os.path.join(bindir, "pg_basebackup"),
         }
         if LooseVersion(ver) >= "10":
-            config["backup_sites"][self.test_site]["pg_receivexlog_path"] = os.path.join(bindir, "pg_receivewal")
+            receive_xlog_path = os.path.join(bindir, "pg_receivewal")
+            config["backup_sites"][self.test_site]["pg_receivexlog_path"] = receive_xlog_path  # type: ignore
         if override:
             all_site_overrides = override.pop("backup_sites", None)
             for site_name, site_override in (all_site_overrides or {}).items():
                 if site_name in config["backup_sites"]:
-                    config["backup_sites"][site_name].update(site_override)
+                    config["backup_sites"][site_name].update(site_override)  # type: ignore
                 else:
-                    config["backup_sites"][site_name] = site_override
+                    config["backup_sites"][site_name] = site_override  # type: ignore
             config.update(override)
 
-        os.makedirs(config["alert_file_dir"], exist_ok=True)
+        os.makedirs(config["alert_file_dir"], exist_ok=True)  # type: ignore
         return set_and_check_config_defaults(config)
 
     def setup_method(self, method):
