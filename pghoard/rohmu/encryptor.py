@@ -4,25 +4,25 @@ rohmu - content encryption
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
-
 import io
 import logging
 import os
 import struct
+from typing import NamedTuple, Optional
 
 import cryptography
 import cryptography.hazmat.backends.openssl.backend
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import padding
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives.ciphers import (Cipher, CipherContext, algorithms, modes)
 from cryptography.hazmat.primitives.hashes import SHA1, SHA256
 from cryptography.hazmat.primitives.hmac import HMAC
 
 from . import IO_BLOCK_SIZE
 from .filewrap import FileWrap, Sink, Stream
 
-if cryptography.__version__ < "1.6":
+if cryptography.__version__ < "1.6":  # type: ignore
     # workaround for deadlock https://github.com/pyca/cryptography/issues/2911
     cryptography.hazmat.backends.openssl.backend.activate_builtin_random()
 
@@ -34,41 +34,49 @@ class EncryptorError(Exception):
     """ EncryptorError """
 
 
+class CipherAuth(NamedTuple):
+    cipher: CipherContext
+    authenticator: HMAC
+
+
 class Encryptor:
     def __init__(self, rsa_public_key_pem):
         if not isinstance(rsa_public_key_pem, bytes):
             rsa_public_key_pem = rsa_public_key_pem.encode("ascii")
         self.rsa_public_key = serialization.load_pem_public_key(rsa_public_key_pem, backend=default_backend())
-        self.cipher = None
-        self.authenticator = None
+
+        # This tuple enforces that cipher and authenticator must be used together as a matched
+        # pair. We don't do unauthenticated cipertext here.
+        self.cipher_auth: Optional[CipherAuth] = None
 
     def update(self, data):
         ret = b""
-        if self.cipher is None:
+        if self.cipher_auth is None:
             key = os.urandom(16)
             nonce = os.urandom(16)
             auth_key = os.urandom(32)
-            self.cipher = Cipher(algorithms.AES(key), modes.CTR(nonce), backend=default_backend()).encryptor()
-            self.authenticator = HMAC(auth_key, SHA256(), backend=default_backend())
             pad = padding.OAEP(mgf=padding.MGF1(algorithm=SHA1()), algorithm=SHA1(), label=None)
             cipherkey = self.rsa_public_key.encrypt(key + nonce + auth_key, pad)
             ret = FILEMAGIC + struct.pack(">H", len(cipherkey)) + cipherkey
-        cur = self.cipher.update(data)
-        self.authenticator.update(cur)
+
+            cipher = Cipher(algorithms.AES(key), modes.CTR(nonce), backend=default_backend()).encryptor()
+            authenticator = HMAC(auth_key, SHA256(), backend=default_backend())
+            self.cipher_auth = CipherAuth(cipher=cipher, authenticator=authenticator)
+        cur = self.cipher_auth.cipher.update(data)
+        self.cipher_auth.authenticator.update(cur)
         if ret:
             return ret + cur
         else:
             return cur
 
     def finalize(self):
-        if self.cipher is None:
+        if self.cipher_auth is None:
             return b""  # empty plaintext input yields empty encrypted output
 
-        ret = self.cipher.finalize()
-        self.authenticator.update(ret)
-        ret += self.authenticator.finalize()
-        self.cipher = None
-        self.authenticator = None
+        ret = self.cipher_auth.cipher.finalize()
+        self.cipher_auth.authenticator.update(ret)
+        ret += self.cipher_auth.authenticator.finalize()
+        self.cipher_auth = None
         return ret
 
 
