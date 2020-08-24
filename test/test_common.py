@@ -7,6 +7,7 @@ See LICENSE for details
 import datetime
 import json
 import os
+from typing import cast
 
 import pytest
 
@@ -84,7 +85,7 @@ class TestCommon(PGHoardTestCase):
         write_json_file(output_file, ob)
         with open(output_file, "r") as fp:
             ob2 = json.load(fp)
-        ob_ = dict(ob, t=ob["t"].isoformat() + "Z")
+        ob_ = dict(ob, t=cast(datetime.datetime, ob["t"]).isoformat() + "Z")
         assert ob2 == ob_
 
         write_json_file(output_file, ob, compact=True)
