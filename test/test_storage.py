@@ -9,23 +9,24 @@ import hashlib
 import os
 import uuid
 from io import BytesIO
+from typing import Any, Dict
 
 import pytest
 
 from pghoard.common import get_object_storage_config
-from pghoard.rohmu import compat, errors, get_transfer
+from pghoard.rohmu import errors, get_transfer
 from pghoard.rohmu.object_storage.base import KEY_TYPE_OBJECT
 from pghoard.rohmu.object_storage.google import MediaStreamUpload
 
 try:
-    from . import test_storage_configs  # pylint: disable=no-name-in-module, import-error
+    from . import test_storage_configs  # type: ignore # pylint: disable=no-name-in-module, import-error
 except ImportError:
     test_storage_configs = object()
 
 
 def _test_storage(st, driver, tmpdir, storage_config):
     scratch = tmpdir.join("scratch")
-    compat.makedirs(str(scratch), exist_ok=True)
+    os.makedirs(str(scratch), exist_ok=True)
 
     # File not found cases
     with pytest.raises(errors.FileNotFoundFromStorageError):
@@ -337,6 +338,7 @@ def _test_storage(st, driver, tmpdir, storage_config):
 
 # sftp test support is available in vagrant, so can test just like for local if running in vagrant
 def _test_storage_init(storage_type, with_prefix, tmpdir, config_overrides=None):
+    storage_config: Dict[str, Any]
     if storage_type == "local":
         storage_config = {"directory": str(tmpdir.join("rohmu"))}
     elif storage_type == "sftp" and os.path.isfile("/home/vagrant/pghoard-test-sftp-user"):
@@ -462,11 +464,12 @@ def test_storage_sftp_with_prefix_private_key(tmpdir):
 
 
 def test_storage_config(tmpdir):
-    config = {
+    config: Dict[str, Any] = {
         "backup_location": None,
     }
     assert get_object_storage_config(config, "default") is None
-    site_config = config.setdefault("backup_sites", {}).setdefault("default", {})
+    backup_sites: Dict[str, Any] = config.setdefault("backup_sites", {})
+    site_config = backup_sites.setdefault("default", {})
     assert get_object_storage_config(config, "default") is None
 
     config["backup_location"] = tmpdir.strpath
