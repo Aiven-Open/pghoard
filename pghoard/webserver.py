@@ -10,12 +10,13 @@ import os
 import tempfile
 import time
 from collections import deque
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Executor, ThreadPoolExecutor
 from contextlib import contextmanager, suppress
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from queue import Empty, Queue
 from socketserver import ThreadingMixIn
 from threading import RLock, Thread
+from typing import Any, Dict, Mapping, Tuple
 
 from pghoard import wal
 from pghoard.common import get_pg_wal_directory, json_encode
@@ -25,6 +26,7 @@ from pghoard.version import __version__
 
 class PoolMixIn(ThreadingMixIn):
     def process_request(self, request, client_address):
+        self.pool: Executor
         self.pool.submit(self.process_request_thread, request, client_address)
 
 
@@ -32,6 +34,32 @@ class OwnHTTPServer(PoolMixIn, HTTPServer):
     """httpserver with 10 thread pool"""
     pool = ThreadPoolExecutor(max_workers=10)
     requested_basebackup_sites = None
+
+    def __init__(
+        self, server_address: Tuple[str, int], *, config: Mapping[str, Any], log: logging.Logger, requested_basebackup_sites,
+        compression_queue, transfer_queue, lock, pending_download_ops, download_results, metrics
+    ):
+        super(HTTPServer).__init__(server_address=server_address, RequestHandlerClass=RequestHandler)
+
+        self.config = config
+        self.log = log
+        self.requested_basebackup_sites = requested_basebackup_sites
+        self.compression_queue = compression_queue
+        self.transfer_queue = transfer_queue
+        self.lock = lock
+        self.pending_download_ops = pending_download_ops
+        self.download_results = download_results
+        self.metrics = metrics
+
+        self.most_recently_served_files = {}
+        # Bounded list of files returned from local disk. Sometimes the file on disk is in some way "bad"
+        # and PostgreSQL doesn't accept it and keeps on requesting it again. If the file was recently served
+        # from disk serve it from file storage instead because the file there could be different.
+        self.served_from_disk = deque(maxlen=10)
+        # Bounded negative cache for failed prefetch operations - we don't want to try prefetching files that
+        # aren't there.  This isn't used for explicit download requests as it's possible that a file appears
+        # later on in the object store.
+        self.prefetch_404 = deque(maxlen=32)
 
 
 class HttpResponse(Exception):
@@ -60,32 +88,25 @@ class WebServer(Thread):
         self.server = None
         self.lock = RLock()
         self.pending_download_ops = {}
-        self.download_results = Queue()
+        self.download_results: Queue[Dict[str, bool]] = Queue()
         self._running = False
         self.log.debug("WebServer initialized with address: %r port: %r", self.address, self.port)
 
     def run(self):
         # We bind the port only when we start running
         self._running = True
-        self.server = OwnHTTPServer((self.address, self.port), RequestHandler)
-        self.server.config = self.config  # pylint: disable=attribute-defined-outside-init
-        self.server.log = self.log  # pylint: disable=attribute-defined-outside-init
-        self.server.requested_basebackup_sites = self.requested_basebackup_sites
-        self.server.compression_queue = self.compression_queue  # pylint: disable=attribute-defined-outside-init
-        self.server.transfer_queue = self.transfer_queue  # pylint: disable=attribute-defined-outside-init
-        self.server.lock = self.lock  # pylint: disable=attribute-defined-outside-init
-        self.server.pending_download_ops = self.pending_download_ops  # pylint: disable=attribute-defined-outside-init
-        self.server.download_results = self.download_results  # pylint: disable=attribute-defined-outside-init
-        self.server.most_recently_served_files = {}  # pylint: disable=attribute-defined-outside-init
-        # Bounded list of files returned from local disk. Sometimes the file on disk is in some way "bad"
-        # and PostgreSQL doesn't accept it and keeps on requesting it again. If the file was recently served
-        # from disk serve it from file storage instead because the file there could be different.
-        self.server.served_from_disk = deque(maxlen=10)  # pylint: disable=attribute-defined-outside-init
-        # Bounded negative cache for failed prefetch operations - we don't want to try prefetching files that
-        # aren't there.  This isn't used for explicit download requests as it's possible that a file appears
-        # later on in the object store.
-        self.server.prefetch_404 = deque(maxlen=32)  # pylint: disable=attribute-defined-outside-init
-        self.server.metrics = self.metrics  # pylint: disable=attribute-defined-outside-init
+        self.server = OwnHTTPServer(
+            (self.address, self.port),
+            config=self.config,
+            log=self.log,
+            requested_basebackup_sites=self.requested_basebackup_sites,
+            compression_queue=self.compression_queue,
+            transfer_queue=self.transfer_queue,
+            lock=self.lock,
+            pending_download_ops=self.pending_download_ops,
+            download_results=self.download_results,
+            metrics=self.metrics,
+        )
         self.server.serve_forever()
 
     def close(self):
