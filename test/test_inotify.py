@@ -7,6 +7,7 @@ See LICENSE for details
 import os
 import platform
 from queue import Queue
+from typing import Any, Dict  # pylint: disable=unused-import
 from unittest import SkipTest
 
 import pytest
@@ -20,11 +21,11 @@ from .base import PGHoardTestCase
 class TestInotify(PGHoardTestCase):
     def setup_method(self, method):
         if platform.system() == "Darwin":
-            raise SkipTest()
+            raise SkipTest("cannot run inotify test on Darwin platform")
 
         super().setup_method(method)
 
-        self.queue = Queue()
+        self.queue: "Queue[Dict[str,Any]]" = Queue()
         self.foo_path = os.path.join(self.temp_dir, "foo")
         with open(self.foo_path, "w") as out:
             out.write("foo")
