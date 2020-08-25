@@ -11,6 +11,7 @@ import os
 import random
 import socket
 from queue import Queue
+from typing import Any, List, Optional  # pylint: disable=unused-import
 
 import pytest
 
@@ -43,7 +44,7 @@ class WALTester:
 
 
 class CompressionCase(PGHoardTestCase):
-    algorithm = None
+    algorithm: Optional[str] = None
 
     def compress(self, data):
         raise NotImplementedError
@@ -79,8 +80,8 @@ class CompressionCase(PGHoardTestCase):
                 "algorithm": self.algorithm,
             },
         })
-        self.compression_queue = Queue()
-        self.transfer_queue = Queue()
+        self.compression_queue: "Queue[Any]" = Queue()
+        self.transfer_queue: "Queue[Any]" = Queue()
         self.incoming_path = os.path.join(
             self.config["backup_location"],
             self.config["backup_sites"][self.test_site]["prefix"],
@@ -162,9 +163,9 @@ class CompressionCase(PGHoardTestCase):
     def test_compress_to_file_history(self):
         file_path = os.path.join(self.incoming_path, "0000000F.history")
         contents = "\n".join("# FOOBAR {}".format(n) for n in range(10)) + "\n"
-        contents = contents.encode("ascii")
+        content_bytes = contents.encode("ascii")
         with open(file_path, "wb") as out:
-            out.write(contents)
+            out.write(content_bytes)
             file_size = out.tell()
 
         self._test_compress_to_file("timeline", file_size, file_path, file_path + ".partial")
@@ -261,7 +262,7 @@ class CompressionCase(PGHoardTestCase):
 
     def test_archive_command_compression(self):
         zero = WALTester(self.incoming_path, "00000001000000000000000D", "zero")
-        callback_queue = Queue()
+        callback_queue: "Queue[Any]" = Queue()
         event = {
             "callback_queue": callback_queue,
             "compress_to_memory": True,
@@ -295,7 +296,7 @@ class CompressionCase(PGHoardTestCase):
 
     def test_decompression_event(self):
         ifile = WALTester(self.incoming_path, "00000001000000000000000A", "random")
-        callback_queue = Queue()
+        callback_queue: "Queue[Any]" = Queue()
         local_filepath = os.path.join(self.temp_dir, "00000001000000000000000A")
         self.compression_queue.put({
             "blob": self.compress(ifile.contents),
@@ -331,7 +332,7 @@ class CompressionCase(PGHoardTestCase):
                 rsa_public_key=CONSTANT_TEST_RSA_PUBLIC_KEY,
                 log_func=self.log.info,
             )
-        callback_queue = Queue()
+        callback_queue: "Queue[Any]" = Queue()
         local_filepath = os.path.join(self.temp_dir, "00000001000000000000000E")
         self.compression_queue.put({
             "blob": output_obj.getvalue(),
@@ -388,7 +389,7 @@ class CompressionCase(PGHoardTestCase):
             dec_fp.flush()
 
             # TODO: snappy returns random amounts of output per read call
-            chunks = []
+            chunks: List[bytes] = []
             while chunks == [] or chunks[-1] != b"":
                 chunks.append(dec_fp.read())
             result = b"".join(chunks)
@@ -454,13 +455,13 @@ class TestSnappyCompression(CompressionCase):
         # generate two chunks with their own framing
         compressed = comp.compress(b"hello, ") + comp.compress(b"world")
         file_path = tmpdir.join("foo").strpath
-        with open(file_path, "wb") as fp:
-            fp.write(compressed)
+        with open(file_path, "wb") as wfp:
+            wfp.write(compressed)
 
         out = []
-        with SnappyFile(open(file_path, "rb"), "rb") as fp:
+        with SnappyFile(open(file_path, "rb"), "rb") as rfp:
             while True:
-                chunk = fp.read()
+                chunk = rfp.read()
                 if not chunk:
                     break
                 out.append(chunk)
