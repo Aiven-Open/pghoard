@@ -61,8 +61,8 @@ def test_check_wal_archive_integrity(requests_put_mock, requests_head_mock, tmpd
     requests_head_mock.side_effect = requests_head_call_return
 
     # Check integrity within same timeline
-    arsy.get_current_wal_file = Mock(return_value="00000005000000000000008F")
-    arsy.get_first_required_wal_segment = Mock(return_value=("00000005000000000000008C", 90300))
+    arsy.get_current_wal_file = Mock(return_value="00000005000000000000008F")  # type: ignore
+    arsy.get_first_required_wal_segment = Mock(return_value=("00000005000000000000008C", 90300))  # type: ignore
     assert arsy.check_wal_archive_integrity(new_backup_on_failure=False) == 0
     assert requests_head_mock.call_count == 3
     assert requests_put_mock.call_count == 0
@@ -70,15 +70,15 @@ def test_check_wal_archive_integrity(requests_put_mock, requests_head_mock, tmpd
     # Check integrity when timeline has changed
     requests_head_mock.call_count = 0
     requests_put_mock.call_count = 0
-    arsy.get_current_wal_file = Mock(return_value="000000090000000000000008")
-    arsy.get_first_required_wal_segment = Mock(return_value=("000000080000000000000005", 90300))
+    arsy.get_current_wal_file = Mock(return_value="000000090000000000000008")  # type: ignore
+    arsy.get_first_required_wal_segment = Mock(return_value=("000000080000000000000005", 90300))  # type: ignore
     assert arsy.check_wal_archive_integrity(new_backup_on_failure=False) == 0
     assert requests_head_mock.call_count == 4
 
     requests_head_mock.call_count = 0
     requests_put_mock.call_count = 0
-    arsy.get_current_wal_file = Mock(return_value="000000030000000000000008")
-    arsy.get_first_required_wal_segment = Mock(return_value=("000000030000000000000005", 90300))
+    arsy.get_current_wal_file = Mock(return_value="000000030000000000000008")  # type: ignore
+    arsy.get_first_required_wal_segment = Mock(return_value=("000000030000000000000005", 90300))  # type: ignore
     with pytest.raises(SyncError):
         arsy.check_wal_archive_integrity(new_backup_on_failure=False)
     assert requests_put_mock.call_count == 0
@@ -87,22 +87,22 @@ def test_check_wal_archive_integrity(requests_put_mock, requests_head_mock, tmpd
 
     requests_head_mock.call_count = 0
     requests_put_mock.call_count = 0
-    arsy.get_current_wal_file = Mock(return_value="000000070000000000000002")
-    arsy.get_first_required_wal_segment = Mock(return_value=("000000060000000000000001", 90300))
+    arsy.get_current_wal_file = Mock(return_value="000000070000000000000002")  # type: ignore
+    arsy.get_first_required_wal_segment = Mock(return_value=("000000060000000000000001", 90300))  # type: ignore
     assert arsy.check_wal_archive_integrity(new_backup_on_failure=False) == 0
     assert requests_put_mock.call_count == 0
 
     requests_head_mock.call_count = 0
     requests_put_mock.call_count = 0
-    arsy.get_current_wal_file = Mock(return_value="000000020000000B00000000")
-    arsy.get_first_required_wal_segment = Mock(return_value=("000000020000000A000000FD", 90200))
+    arsy.get_current_wal_file = Mock(return_value="000000020000000B00000000")  # type: ignore
+    arsy.get_first_required_wal_segment = Mock(return_value=("000000020000000A000000FD", 90200))  # type: ignore
     assert arsy.check_wal_archive_integrity(new_backup_on_failure=False) == 0
     assert requests_put_mock.call_count == 0
 
     requests_head_mock.call_count = 0
     requests_put_mock.call_count = 0
-    arsy.get_current_wal_file = Mock(return_value="000000020000000B00000000")
-    arsy.get_first_required_wal_segment = Mock(return_value=("000000020000000A000000FD", 90300))
+    arsy.get_current_wal_file = Mock(return_value="000000020000000B00000000")  # type: ignore
+    arsy.get_first_required_wal_segment = Mock(return_value=("000000020000000A000000FD", 90300))  # type: ignore
     assert arsy.check_wal_archive_integrity(new_backup_on_failure=True) == 0
     assert requests_put_mock.call_count == 1
 
@@ -159,8 +159,8 @@ def test_check_and_upload_missing_local_files(requests_put_mock, requests_head_m
     arsy.set_config(config_file, site="foo")
     requests_put_mock.side_effect = requests_put
     requests_head_mock.side_effect = requests_head
-    arsy.get_current_wal_file = Mock(return_value="00000000000000000000001A")
-    arsy.get_first_required_wal_segment = Mock(return_value=("000000000000000000000001", 90300))
+    arsy.get_current_wal_file = Mock(return_value="00000000000000000000001A")  # type: ignore
+    arsy.get_first_required_wal_segment = Mock(return_value=("000000000000000000000001", 90300))  # type: ignore
 
     arsy.check_and_upload_missing_local_files(15)
 
