@@ -9,6 +9,7 @@ import json
 import os
 import random
 import tarfile
+from typing import IO, cast
 
 import pytest
 
@@ -165,11 +166,12 @@ def test_decryptorfile_for_tarfile(tmpdir):
         enc_tar.seek(0)
 
         dfile = DecryptorFile(enc_tar, CONSTANT_TEST_RSA_PRIVATE_KEY)
-        with tarfile.open(fileobj=dfile, mode="r") as tar:
+        with tarfile.open(fileobj=cast(IO[bytes], dfile), mode="r") as tar:
             info = tar.getmember("archived_content")
             assert info.isfile() is True
             assert info.size == len(testdata)
             content_file = tar.extractfile("archived_content")
+            assert content_file is not None
             content = content_file.read()  # pylint: disable=no-member
             content_file.close()  # pylint: disable=no-member
             assert testdata == content
@@ -231,18 +233,19 @@ def test_encryptorfile_for_tarfile(tmpdir):
     enc_tar_name = tmpdir.join("enc.tar.data").strpath
     with open(enc_tar_name, "w+b") as plain_fp:
         enc_fp = EncryptorFile(plain_fp, CONSTANT_TEST_RSA_PUBLIC_KEY)
-        with tarfile.open(name="foo", fileobj=enc_fp, mode="w") as tar:
+        with tarfile.open(name="foo", fileobj=cast(IO[bytes], enc_fp), mode="w") as tar:
             tar.add(data_tmp_name, arcname="archived_content")
         enc_fp.close()
 
         plain_fp.seek(0)
 
         dfile = DecryptorFile(plain_fp, CONSTANT_TEST_RSA_PRIVATE_KEY)
-        with tarfile.open(fileobj=dfile, mode="r") as tar:
+        with tarfile.open(fileobj=cast(IO[bytes], dfile), mode="r") as tar:
             info = tar.getmember("archived_content")
             assert info.isfile() is True
             assert info.size == len(testdata)
             content_file = tar.extractfile("archived_content")
+            assert content_file is not None
             content = content_file.read()  # pylint: disable=no-member
             content_file.close()  # pylint: disable=no-member
             assert testdata == content
