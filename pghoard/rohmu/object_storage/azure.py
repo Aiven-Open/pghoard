@@ -5,6 +5,7 @@ Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
 import time
+from typing import Any, Dict, Optional
 
 import azure.common  # pylint: disable=import-error, no-name-in-module
 from azure.storage.blob import (  # pylint: disable=import-error, no-name-in-module
@@ -117,11 +118,11 @@ class AzureTransfer(BaseTransfer):
             if isinstance(item, BlobPrefix):
                 yield IterKeyItem(type=KEY_TYPE_PREFIX, value=self.format_key_from_backend(item.name).rstrip("/"))
             else:
+                metadata: Optional[Dict[str, Any]] = None
                 if with_metadata:
                     # Azure Storage cannot handle '-' so we turn them into underscores and back again
                     metadata = {k.replace("_", "-"): v for k, v in item.metadata.items()}
-                else:
-                    metadata = None
+
                 yield IterKeyItem(
                     type=KEY_TYPE_OBJECT,
                     value={
