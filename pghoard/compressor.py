@@ -12,6 +12,7 @@ from io import BytesIO
 from queue import Empty
 from tempfile import NamedTemporaryFile
 from threading import Thread
+from typing import IO, cast
 
 from pghoard import config, wal
 from pghoard.common import write_json_file
@@ -126,6 +127,7 @@ class CompressorThread(Thread):
             rsa_public_key = self.config["backup_sites"][site]["encryption_keys"][encryption_key_id]["public"]
 
         compressed_blob = None
+        output_obj: IO[bytes]
         if event.get("compress_to_memory"):
             output_obj = BytesIO()
             compressed_filepath = None
@@ -160,7 +162,7 @@ class CompressorThread(Thread):
             if compressed_filepath:
                 os.link(output_obj.name, compressed_filepath)
             else:
-                compressed_blob = output_obj.getvalue()
+                compressed_blob = cast(BytesIO, output_obj).getvalue()
 
         if event.get("delete_file_after_compression", True):
             os.unlink(event["full_path"])
