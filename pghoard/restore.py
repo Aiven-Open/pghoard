@@ -266,8 +266,8 @@ class Restore:
         else:
             try:
                 tablespace_mapping = dict(v.split("=", 1) for v in arg.tablespace_dir)
-            except ValueError:
-                raise RestoreError("Invalid tablespace mapping {!r}".format(arg.tablespace_dir))
+            except ValueError as ex:
+                raise RestoreError("Invalid tablespace mapping {!r}".format(arg.tablespace_dir)) from ex
 
         self.config = config.read_json_config_file(arg.config, check_commands=False, check_pgdata=False)
         site = config.get_site_from_config(self.config, arg.site)
@@ -296,7 +296,7 @@ class Restore:
         except Exception as ex:
             if self.log_tracebacks:
                 self.log.exception("Unexpected _get_basebackup failure")
-            raise RestoreError("{}: {}".format(ex.__class__.__name__, ex))
+            raise RestoreError("{}: {}".format(ex.__class__.__name__, ex)) from ex
 
     def _find_basebackup_for_name(self, name):
         assert self.storage is not None
@@ -368,7 +368,7 @@ class Restore:
             try:
                 recovery_target_time = dates.parse_timestamp(recovery_target_time)
             except (TypeError, ValueError) as ex:
-                raise RestoreError("recovery_target_time {!r}: {}".format(recovery_target_time, ex))
+                raise RestoreError("recovery_target_time {!r}: {}".format(recovery_target_time, ex)) from ex
             basebackup = self._find_nearest_basebackup(recovery_target_time)
         elif basebackup == "latest":
             basebackup = self._find_nearest_basebackup()
@@ -473,8 +473,10 @@ class Restore:
         for diruse, dirname in dirs_to_recheck:
             try:
                 tempfile.TemporaryFile(dir=dirname).close()
-            except PermissionError:
-                raise RestoreError("{} target directory {!r} is empty, but not writable, aborting.".format(diruse, dirname))
+            except PermissionError as ex:
+                raise RestoreError(
+                    "{} target directory {!r} is empty, but not writable, aborting.".format(diruse, dirname)
+                ) from ex
 
         for dirname in dirs_to_wipe:
             shutil.rmtree(dirname)
