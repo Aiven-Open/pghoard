@@ -129,7 +129,7 @@ class GoogleTransfer(BaseTransfer):
             yield self.gs_object_client
         except HttpError as ex:
             if ex.resp["status"] == "404" and not_found is not None:
-                raise FileNotFoundFromStorageError(not_found)
+                raise FileNotFoundFromStorageError(not_found) from ex
             if ex.resp["status"] >= "500" and ex.resp["status"] <= "599":
                 self.log.error("Received server error %r, resetting Google API client", ex.resp["status"])
                 self.gs = None
@@ -397,7 +397,7 @@ class GoogleTransfer(BaseTransfer):
             if ex.resp["status"] == "404":
                 pass  # we need to create it
             elif ex.resp["status"] == "403":
-                raise InvalidConfigurationError("Bucket {0!r} exists but isn't accessible".format(bucket_name))
+                raise InvalidConfigurationError("Bucket {0!r} exists but isn't accessible".format(bucket_name)) from ex
             else:
                 raise
         else:
@@ -412,9 +412,9 @@ class GoogleTransfer(BaseTransfer):
             if error["message"].startswith("You already own this bucket"):
                 self.log.debug("Bucket: %r already exists, took: %.3fs", bucket_name, time.time() - start_time)
             elif error["message"] == "Invalid argument.":
-                raise InvalidConfigurationError("Invalid project id {0!r}".format(self.project_id))
+                raise InvalidConfigurationError("Invalid project id {0!r}".format(self.project_id)) from ex
             elif error["message"].startswith("Invalid bucket name"):
-                raise InvalidConfigurationError("Invalid bucket name {0!r}".format(bucket_name))
+                raise InvalidConfigurationError("Invalid bucket name {0!r}".format(bucket_name)) from ex
             else:
                 raise
 
