@@ -46,14 +46,14 @@ class TestPGHoard(PGHoardTestCase):
         )
 
         self.real_check_pg_server_version = self.pghoard.check_pg_server_version
-        self.pghoard.check_pg_server_version = Mock(return_value=90404)
+        self.pghoard.check_pg_server_version = Mock(return_value=90404)  # type: ignore
         self.real_check_pg_versions_ok = self.pghoard.check_pg_versions_ok
-        self.pghoard.check_pg_versions_ok = Mock(return_value=True)
+        self.pghoard.check_pg_versions_ok = Mock(return_value=True)  # type: ignore
 
     def teardown_method(self, method):
         self.pghoard.quit()
-        self.pghoard.check_pg_server_version = self.real_check_pg_server_version
-        self.pghoard.check_pg_versions_ok = self.real_check_pg_versions_ok
+        self.pghoard.check_pg_server_version = self.real_check_pg_server_version  # type: ignore
+        self.pghoard.check_pg_versions_ok = self.real_check_pg_versions_ok  # type: ignore
         super().teardown_method(method)
 
     @patch("subprocess.check_output")
@@ -76,10 +76,10 @@ dbname|"""
         # Handle case where metadata file does not exist
         assert self.pghoard.get_remote_basebackups_info(self.test_site) == []
         metadata_file_path = bb_path + ".metadata"
-        with open(bb_path, "wb") as fp:
-            fp.write(b"something")
-        with open(metadata_file_path, "w") as fp:
-            json.dump({"start-time": "2015-07-03 12:00:00+00:00"}, fp)
+        with open(bb_path, "wb") as bbfp:
+            bbfp.write(b"something")
+        with open(metadata_file_path, "w") as fp1:
+            json.dump({"start-time": "2015-07-03 12:00:00+00:00"}, fp1)
         available_backup = self.pghoard.get_remote_basebackups_info(self.test_site)[0]
         assert available_backup["name"] == "2015-07-03_0"
         start_time = datetime.datetime(2015, 7, 3, 12, tzinfo=datetime.timezone.utc)
@@ -90,20 +90,20 @@ dbname|"""
 
         bb_path = os.path.join(basebackup_storage_path, "2015-07-02_9")
         metadata_file_path = bb_path + ".metadata"
-        with open(bb_path, "wb") as fp:
-            fp.write(b"something")
-        with open(metadata_file_path, "w") as fp:
-            json.dump({"start-time": "2015-07-02 12:00:00+00:00"}, fp)
+        with open(bb_path, "wb") as fp2:
+            fp2.write(b"something")
+        with open(metadata_file_path, "w") as fp3:
+            json.dump({"start-time": "2015-07-02 12:00:00+00:00"}, fp3)
         basebackups = self.pghoard.get_remote_basebackups_info(self.test_site)
         assert basebackups[0]["name"] == "2015-07-02_9"
         assert basebackups[1]["name"] == "2015-07-03_0"
 
         bb_path = os.path.join(basebackup_storage_path, "2015-07-02_10")
         metadata_file_path = bb_path + ".metadata"
-        with open(bb_path, "wb") as fp:
-            fp.write(b"something")
-        with open(metadata_file_path, "w") as fp:
-            json.dump({"start-time": "2015-07-02 22:00:00+00"}, fp)
+        with open(bb_path, "wb") as fp4:
+            fp4.write(b"something")
+        with open(metadata_file_path, "w") as fp5:
+            json.dump({"start-time": "2015-07-02 22:00:00+00"}, fp5)
         basebackups = self.pghoard.get_remote_basebackups_info(self.test_site)
         assert basebackups[0]["name"] == "2015-07-02_9"
         assert basebackups[1]["name"] == "2015-07-02_10"
@@ -256,18 +256,18 @@ dbname|"""
             for bb, wals in what.items():
                 if bb:
                     bb_path = os.path.join(basebackup_storage_path, bb)
-                    date_parts = [int(part) for part in bb.replace("_", "-").split("-")]
-                    start_time = datetime.datetime(*date_parts, tzinfo=datetime.timezone.utc)
-                    with open(bb_path, "wb") as fp:
-                        fp.write(b"something")
-                    with open(bb_path + ".metadata", "w") as fp:
+                    year, month, day, hour = (int(part) for part in bb.replace("_", "-").split("-"))
+                    start_time = datetime.datetime(year=year, month=month, day=day, hour=hour, tzinfo=datetime.timezone.utc)
+                    with open(bb_path, "wb") as fp1:
+                        fp1.write(b"something")
+                    with open(bb_path + ".metadata", "w") as fp2:
                         json.dump({
                             "start-wal-segment": wals[0],
                             "start-time": start_time.isoformat(),
-                        }, fp)
+                        }, fp2)
                 for wal in wals:
-                    with open(os.path.join(wal_storage_path, wal), "wb") as fp:
-                        fp.write(b"something")
+                    with open(os.path.join(wal_storage_path, wal), "wb") as fp3:
+                        fp3.write(b"something")
 
         backups_and_wals = {
             "2015-08-25_0": [
