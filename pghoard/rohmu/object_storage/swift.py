@@ -8,6 +8,7 @@ import logging
 import os
 import time
 from contextlib import suppress
+from typing import Dict, Optional
 
 from swiftclient import client, exceptions  # pylint: disable=import-error
 
@@ -68,6 +69,7 @@ class SwiftTransfer(BaseTransfer):
         super().__init__(prefix=prefix)
         self.container_name = container_name
 
+        os_options: Optional[Dict[str, str]] = None
         if auth_version == "3.0":
             os_options = {
                 "region_name": region_name,
@@ -85,8 +87,6 @@ class SwiftTransfer(BaseTransfer):
         else:
             if region_name is not None:
                 os_options = {"region_name": region_name}
-            else:
-                os_options = None
 
         self.conn = client.Connection(
             user=user, key=key, authurl=auth_url, tenant_name=tenant_name, auth_version=auth_version, os_options=os_options
