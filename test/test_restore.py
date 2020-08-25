@@ -14,6 +14,7 @@ import shutil
 import time
 import unittest
 from tempfile import mkdtemp
+from typing import Any, Callable, Iterable, Optional
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
@@ -36,7 +37,8 @@ class TestRecoveryConf(PGHoardTestCase):
         write_json_file(config_file, {"backup_sites": {"test": {"pg_data_directory": pg_data_directory}}})
 
         r = Restore()
-        r._get_object_storage = Mock()  # pylint: disable=protected-access
+        # pylint: disable=protected-access
+        r._get_object_storage = Mock()  # type: ignore
         with pytest.raises(RestoreError) as excinfo:
             r.run(
                 args=[
@@ -179,7 +181,12 @@ class TestBasebackupFetcher(unittest.TestCase):
         manager, pool, manager_enter = MagicMock(), MagicMock(), MagicMock()
         fetcher.manager_class = lambda: manager
 
-        def pool_creator(processes=None):
+        def pool_creator(  # pylint: disable=unused-argument
+            processes: Optional[int] = None,
+            initializer: Optional[Callable[..., Any]] = None,
+            initargs: Iterable[Any] = (),
+            **kwargs: Any
+        ) -> multiprocessing.pool.Pool:
             assert processes == 3
             return pool
 
