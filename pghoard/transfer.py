@@ -17,7 +17,7 @@ from pghoard.rohmu import get_transfer
 from pghoard.rohmu.errors import (FileNotFoundFromStorageError, LocalFileIsRemoteFileError)
 
 _STATS_LOCK = Lock()
-_last_stats_transmit_time = 0
+_last_stats_transmit_time: float = 0.0
 
 
 class TransferAgent(Thread):
