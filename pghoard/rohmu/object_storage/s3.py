@@ -7,6 +7,7 @@ See LICENSE for details
 import math
 import os
 import time
+from typing import Any, Dict, Optional, Union
 
 import botocore.client
 import botocore.exceptions
@@ -151,10 +152,10 @@ class S3Transfer(BaseTransfer):
             response = self.s3_client.list_objects_v2(**args)
 
             for item in response.get("Contents", []):
+                metadata: Optional[Dict[str, Any]] = None
                 if with_metadata:
                     metadata = {k.lower(): v for k, v in self._metadata_for_key(item["Key"]).items()}
-                else:
-                    metadata = None
+
                 name = self.format_key_from_backend(item["Key"])
                 yield IterKeyItem(
                     type=KEY_TYPE_OBJECT,
@@ -269,7 +270,7 @@ class S3Transfer(BaseTransfer):
         start_of_multipart_upload = time.monotonic()
         bytes_sent = 0
 
-        chunks = "Unknown"
+        chunks: Union[str, int] = "Unknown"
         if size is not None:
             chunks = math.ceil(size / self.multipart_chunk_size)
         self.log.debug("Starting to upload multipart file: %r, size: %s, chunks: %s", key, size, chunks)
