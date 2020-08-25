@@ -135,7 +135,7 @@ def verify_wal(*, wal_name, fileobj=None, filepath=None):
         hdr = read_header(header_bytes)
     except (KeyError, OSError, ValueError) as ex:
         fmt = "WAL file {name!r} verification failed: {ex.__class__.__name__}: {ex}"
-        raise ValueError(fmt.format(name=source_name, ex=ex))
+        raise ValueError(fmt.format(name=source_name, ex=ex)) from ex
 
     expected_lsn = lsn_from_name(wal_name)
     if hdr.lsn != expected_lsn:
