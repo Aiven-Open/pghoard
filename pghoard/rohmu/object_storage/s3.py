@@ -102,7 +102,7 @@ class S3Transfer(BaseTransfer):
         except botocore.exceptions.ClientError as ex:
             status_code = ex.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
             if status_code == 404:
-                raise FileNotFoundFromStorageError(source_key)
+                raise FileNotFoundFromStorageError(source_key) from ex
             else:
                 raise StorageError("Copying {!r} to {!r} failed: {!r}".format(source_key, destination_key, ex)) from ex
 
@@ -116,7 +116,7 @@ class S3Transfer(BaseTransfer):
         except botocore.exceptions.ClientError as ex:
             status_code = ex.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
             if status_code == 404:
-                raise FileNotFoundFromStorageError(key)
+                raise FileNotFoundFromStorageError(key) from ex
             else:
                 raise StorageError("Metadata lookup failed for {}".format(key)) from ex
 
@@ -189,7 +189,7 @@ class S3Transfer(BaseTransfer):
         except botocore.exceptions.ClientError as ex:
             status_code = ex.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
             if status_code == 404:
-                raise FileNotFoundFromStorageError(key)
+                raise FileNotFoundFromStorageError(key) from ex
             else:
                 raise StorageError("Fetching the remote object {} failed".format(key)) from ex
         return response["Body"], response["ContentLength"], response["Metadata"]
@@ -231,7 +231,7 @@ class S3Transfer(BaseTransfer):
             return int(response["ContentLength"])
         except botocore.exceptions.ClientError as ex:
             if ex.response.get("ResponseMetadata", {}).get("HTTPStatusCode") == 404:
-                raise FileNotFoundFromStorageError(key)
+                raise FileNotFoundFromStorageError(key) from ex
             else:
                 raise StorageError("File size lookup failed for {}".format(key)) from ex
 
@@ -385,7 +385,9 @@ class S3Transfer(BaseTransfer):
         except botocore.exceptions.ClientError as ex:
             status_code = ex.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
             if status_code == 301:
-                raise InvalidConfigurationError("Wrong region for bucket {}, check configuration".format(self.bucket_name))
+                raise InvalidConfigurationError(
+                    "Wrong region for bucket {}, check configuration".format(self.bucket_name)
+                ) from ex
             elif status_code == 403:
                 self.log.warning("Access denied on bucket check, assuming write permissions")
             elif status_code == 404:
