@@ -19,7 +19,8 @@ from contextlib import suppress
 from queue import Empty, Queue
 from tempfile import NamedTemporaryFile
 from threading import Thread
-from typing import Dict, Optional  # pylint: disable=unused-import
+# pylint: disable=unused-import
+from typing import Any, Dict, List, Optional
 
 import psycopg2
 
@@ -82,7 +83,7 @@ class PGBaseBackup(Thread):
         self.metrics = metrics
         self.transfer_queue = transfer_queue
         self.running = True
-        self.pid = None
+        self.pid: Optional[int] = None
         self.pg_version_server = pg_version_server
         self.latest_activity = datetime.datetime.utcnow()
 
@@ -307,7 +308,9 @@ class PGBaseBackup(Thread):
 
     def parse_backup_label_in_tar(self, basebackup_path):
         with tarfile.TarFile(name=basebackup_path, mode="r") as tar:
-            content = tar.extractfile("backup_label").read()  # pylint: disable=no-member
+            extracted = tar.extractfile("backup_label")
+            assert extracted is not None
+            content = extracted.read()
         return self.parse_backup_label(content)
 
     def run_basic_basebackup(self):
@@ -351,21 +354,21 @@ class PGBaseBackup(Thread):
         blob = io.BytesIO(common.json_encode(metadata, binary=True))
         ti = tarfile.TarInfo(name=".pghoard_tar_metadata.json")
         ti.size = len(blob.getbuffer())
-        ti.mtime = mtime
+        ti.mtime = int(mtime)
         yield ti, blob, False
 
         # Backup the latest version of pg_control
         blob = io.BytesIO(pg_control)
         ti = tarfile.TarInfo(name=os.path.join("pgdata", "global", "pg_control"))
         ti.size = len(blob.getbuffer())
-        ti.mtime = mtime
+        ti.mtime = int(mtime)
         yield ti, blob, False
 
         # Add the given backup_label to the tar after calling pg_stop_backup()
         blob = io.BytesIO(backup_label)
         ti = tarfile.TarInfo(name=os.path.join("pgdata", "backup_label"))
         ti.size = len(blob.getbuffer())
-        ti.mtime = mtime
+        ti.mtime = int(mtime)
         yield ti, blob, False
 
         # Create directory entries for empty directories
@@ -373,7 +376,7 @@ class PGBaseBackup(Thread):
             ti = tarfile.TarInfo(name=os.path.join("pgdata", dirname))
             ti.type = tarfile.DIRTYPE
             ti.mode = 0o700
-            ti.mtime = mtime
+            ti.mtime = int(mtime)
             yield ti, None, False
 
     def write_files_to_tar(self, *, files, tar):
@@ -535,7 +538,7 @@ class PGBaseBackup(Thread):
         chunk_name = "/".join(chunk_path.split("/")[-2:])
         return chunk_name, input_size, result_size
 
-    def wait_for_chunk_transfer_to_complete(self, chunk_count, upload_results, chunk_callback_queue, start_time):
+    def wait_for_chunk_transfer_to_complete(self, chunk_count: int, upload_results, chunk_callback_queue, start_time):
         try:
             upload_results.append(chunk_callback_queue.get(timeout=3.0))
             self.log.info("Completed a chunk transfer successfully: %r", upload_results[-1])
@@ -569,8 +572,8 @@ class PGBaseBackup(Thread):
     def create_and_upload_chunks(self, chunks, data_file_format, temp_base_dir):
         start_time = time.monotonic()
         chunk_files = []
-        upload_results = []
-        chunk_callback_queue = Queue()
+        upload_results: List[Any] = []
+        chunk_callback_queue: "Queue[Any]" = Queue()
         self.chunks_on_disk = 0
         i = 0
 
@@ -578,7 +581,7 @@ class PGBaseBackup(Thread):
         max_chunks_on_disk = site_config["basebackup_chunks_in_progress"]
         threads = site_config["basebackup_threads"]
         with ThreadPoolExecutor(max_workers=threads) as tpe:
-            pending_compress_and_encrypt_tasks = []
+            pending_compress_and_encrypt_tasks: List[Any] = []
             while i < len(chunks):
                 if len(pending_compress_and_encrypt_tasks) >= threads:
                     # Always expect tasks to complete in order. This can slow down the progress a bit in case
@@ -627,6 +630,7 @@ class PGBaseBackup(Thread):
 
         self.log.debug("Connecting to database to start backup process")
         connection_string = connection_string_using_pgpass(self.connection_info)
+        backup_label: Optional[str]
         with psycopg2.connect(connection_string) as db_conn:
             cursor = db_conn.cursor()
 
@@ -696,8 +700,8 @@ class PGBaseBackup(Thread):
                 chunk_files = self.create_and_upload_chunks(chunks, data_file_format, temp_base_dir)
 
                 # Everything is now tarred up, grab the latest pg_control and stop the backup process
-                with open(os.path.join(pgdata, "global", "pg_control"), "rb") as fp:
-                    pg_control = fp.read()
+                with open(os.path.join(pgdata, "global", "pg_control"), "rb") as pg_control_fp:
+                    pg_control = pg_control_fp.read()
 
                 # Call the stop backup functions now to get backup label for 9.6+ non-exclusive backups
                 if backup_mode == "non-exclusive":
@@ -731,6 +735,7 @@ class PGBaseBackup(Thread):
                         cursor.execute("SELECT pg_stop_backup()")
                 db_conn.commit()
 
+            assert backup_label is not None
             backup_label_data = backup_label.encode("utf-8")
             backup_start_wal_segment, backup_start_time = self.parse_backup_label(backup_label_data)
             backup_end_wal_segment, backup_end_time = self.get_backup_end_segment_and_time(db_conn, backup_mode)
@@ -776,9 +781,9 @@ class PGBaseBackup(Thread):
     def find_and_split_files_to_backup(self, *, pgdata, tablespaces, target_chunk_size):
         total_file_count = 0
         one_chunk_size = 0
-        one_chunk_files = []
+        one_chunk_files: List[Any] = []
         chunks = []
-        entered_folders = []
+        entered_folders: List[Any] = []
 
         # Generate a list of chunks
         for archive_path, local_path, missing_ok, operation in \
