@@ -12,6 +12,7 @@ import struct
 from contextlib import suppress
 from ctypes import c_char_p, c_int, c_uint32
 from threading import Thread
+from typing import Optional
 
 
 class InotifyEvent(ctypes.Structure):
@@ -95,10 +96,11 @@ class InotifyWatcher(Thread):
         if self.log.getEffectiveLevel() > logging.DEBUG:
             return
 
+        st: Optional[os.stat_result] = None
         try:
             st = os.stat(full_path)
         except:  # pylint: disable=bare-except
-            st = None
+            pass
 
         self.log.debug("event: %s %s, %r", full_path, ev_type, st)
 
