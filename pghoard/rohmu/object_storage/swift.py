@@ -112,7 +112,7 @@ class SwiftTransfer(BaseTransfer):
             headers = self.conn.head_object(self.container_name, key)
         except exceptions.ClientException as ex:
             if ex.http_status == 404:
-                raise FileNotFoundFromStorageError(key)
+                raise FileNotFoundFromStorageError(key) from ex
             raise
 
         metadata = self._headers_to_metadata(headers)
@@ -160,7 +160,7 @@ class SwiftTransfer(BaseTransfer):
             return self.conn.delete_object(self.container_name, key)
         except exceptions.ClientException as ex:
             if ex.http_status == 404:
-                raise FileNotFoundFromStorageError(key)
+                raise FileNotFoundFromStorageError(key) from ex
             raise
 
     def _delete_object_segments(self, key, manifest):
@@ -179,7 +179,7 @@ class SwiftTransfer(BaseTransfer):
             headers = self.conn.head_object(self.container_name, key)
         except exceptions.ClientException as ex:
             if ex.http_status == 404:
-                raise FileNotFoundFromStorageError(key)
+                raise FileNotFoundFromStorageError(key) from ex
             raise
         if "x-object-manifest" in headers:
             self._delete_object_segments(key, headers["x-object-manifest"])
@@ -203,7 +203,7 @@ class SwiftTransfer(BaseTransfer):
             headers, data_gen = self.conn.get_object(self.container_name, key, resp_chunk_size=CHUNK_SIZE)
         except exceptions.ClientException as ex:
             if ex.http_status == 404:
-                raise FileNotFoundFromStorageError(key)
+                raise FileNotFoundFromStorageError(key) from ex
             raise
 
         content_len = int(headers.get("content-length") or 0)
@@ -227,7 +227,7 @@ class SwiftTransfer(BaseTransfer):
             headers, data = self.conn.get_object(self.container_name, key)
         except exceptions.ClientException as ex:
             if ex.http_status == 404:
-                raise FileNotFoundFromStorageError(key)
+                raise FileNotFoundFromStorageError(key) from ex
             raise
 
         metadata = self._headers_to_metadata(headers)
