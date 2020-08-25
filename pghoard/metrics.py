@@ -2,6 +2,8 @@
 Interface for monitoring clients
 
 """
+from typing import Any, Dict
+
 import pghoard
 
 
@@ -10,7 +12,7 @@ class Metrics:
         self.clients = self._init_clients(configs)
 
     def _init_clients(self, configs):
-        clients = {}
+        clients: Dict[str, Any] = {}
 
         if not isinstance(configs, dict):
             return clients
