@@ -125,6 +125,7 @@ def verify_wal(*, wal_name, fileobj=None, filepath=None):
     try:
         if fileobj:
             pos = fileobj.tell()
+            fileobj.seek(0)
             header_bytes = fileobj.read(WAL_HEADER_LEN)
             fileobj.seek(pos)
             source_name = getattr(fileobj, "name", "<UNKNOWN>")
