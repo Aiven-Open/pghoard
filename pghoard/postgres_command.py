@@ -39,7 +39,7 @@ EXIT_ABORT = 255
 
 class PGCError(Exception):
     def __init__(self, message, exit_code=EXIT_FAIL):
-        super(PGCError, self).__init__(message)
+        super().__init__(message)
         self.exit_code = exit_code
 
 
@@ -83,7 +83,7 @@ def restore_command(site, xlog, output, host=PGHOARD_HOST, port=PGHOARD_PORT, re
         except (socket.error, BadStatusLine, IncompleteRead) as ex:
             err = "HTTP connection to {0}:{1} failed: {2.__class__.__name__}: {2}".format(host, port, ex)
             if not retries:
-                raise PGCError(err, exit_code=EXIT_ABORT)
+                raise PGCError(err, exit_code=EXIT_ABORT) from ex
             print("{}; {} retries left, sleeping {} seconds and retrying".format(err, retries, retry_interval))
             time.sleep(retry_interval)
 
