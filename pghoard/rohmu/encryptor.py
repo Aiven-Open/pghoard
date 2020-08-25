@@ -163,7 +163,7 @@ class Decryptor:
             try:
                 plainkey = self.rsa_private_key.decrypt(data, pad)
             except AssertionError:
-                raise EncryptorError("Decrypting key data failed")
+                raise EncryptorError("Decrypting key data failed")  # pylint: disable=raise-missing-from
             if len(plainkey) != 64:
                 raise EncryptorError("Integrity check failed")
             key = plainkey[0:16]
