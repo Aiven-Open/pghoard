@@ -51,7 +51,7 @@ coverage: $(generated)
 	$(PYTHON) -m coverage report --show-missing
 
 pylint: $(generated)
-	$(PYTHON) -m pylint.lint --rcfile .pylintrc $(PYTHON_SOURCE_DIRS)
+	$(PYTHON) -m pylint --rcfile .pylintrc $(PYTHON_SOURCE_DIRS)
 
 flake8: $(generated)
 	$(PYTHON) -m flake8 --exclude=__init__.py --ignore=E722 --max-line-len=125 $(PYTHON_SOURCE_DIRS)

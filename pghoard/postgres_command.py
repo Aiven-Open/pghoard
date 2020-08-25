@@ -39,7 +39,7 @@ EXIT_ABORT = 255
 
 class PGCError(Exception):
     def __init__(self, message, exit_code=EXIT_FAIL):
-        super(PGCError, self).__init__(message)
+        super().__init__(message)
         self.exit_code = exit_code
 
 
