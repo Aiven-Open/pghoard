@@ -15,6 +15,7 @@ import subprocess
 import tempfile
 import time
 from distutils.version import LooseVersion
+from typing import Any, Dict, Optional
 from unittest import SkipTest
 
 import psycopg2
@@ -24,7 +25,6 @@ from py import path as py_path  # pylint: disable=no-name-in-module
 from pghoard import config as pghconfig
 from pghoard import logutil, pgutil
 from pghoard.pghoard import PGHoard
-from pghoard.rohmu.compat import suppress
 from pghoard.rohmu.snappyfile import snappy
 
 logutil.configure_logging()
@@ -38,7 +38,7 @@ class PGTester:
         self.ver = ver
         self.pgdata = pgdata
         self.pg = None
-        self.user = None
+        self.user: Optional[Dict[str, Any]] = None
 
     @property
     def pgver(self):
@@ -51,6 +51,7 @@ class PGTester:
         subprocess.check_call(argv)
 
     def run_pg(self):
+        assert self.user is not None
         cmd = [
             os.path.join(self.pgbin, "postgres"),
             "-D",
@@ -111,7 +112,7 @@ def setup_pg():
         lines = fp.read().splitlines()
         fp.seek(0)
         fp.truncate()
-        config = {}
+        config: Dict[str, Any] = {}
         for line in lines:
             line = line.strip()
             if not line or line.startswith("#"):
@@ -141,7 +142,7 @@ def setup_pg():
         yield db
     finally:
         db.kill()
-        with suppress(Exception):
+        with contextlib.suppress(Exception):
             tmpdir_obj.remove(rec=1)
 
 
@@ -171,9 +172,7 @@ def recovery_db():
             "restore_command = 'false'",
         ]
         if LooseVersion(pg.ver) >= "12":
-            with open(os.path.join(pg.pgdata, "standby.signal"), "w") as fp:
-                pass
-
+            open(os.path.join(pg.pgdata, "standby.signal"), "w").close()
             recovery_conf_path = "postgresql.auto.conf"
             open_mode = "a"  # As it might exist already in some cases
         else:
@@ -301,12 +300,12 @@ def pghoard_base(
     os.makedirs(backup_timeline_path)
 
     pgh = PGHoard(confpath)
-    pgh.test_site = test_site
+    pgh.test_site = test_site  # type: ignore
     pgh.start_threads_on_startup()
     if compression == "snappy":
-        pgh.Compressor = snappy.StreamCompressor
+        pgh.Compressor = snappy.StreamCompressor  # type: ignore
     else:
-        pgh.Compressor = lambda: lzma.LZMACompressor(preset=0)  # pylint: disable=redefined-variable-type
+        pgh.Compressor = lambda: lzma.LZMACompressor(preset=0)  # type: ignore
 
     time.sleep(0.05)  # Hack to give the server time to start up
     yield pgh
