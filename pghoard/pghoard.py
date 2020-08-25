@@ -17,9 +17,11 @@ import signal
 import socket
 import subprocess
 import sys
+import threading
 import time
 from contextlib import closing, suppress
 from queue import Empty, Queue
+from typing import Any, Dict, List, Set
 
 import psycopg2
 
@@ -38,6 +40,7 @@ from pghoard.transfer import TransferAgent
 from pghoard.webserver import WebServer
 
 # Imported this way because WALReceiver requires an unreleased version of psycopg2
+WALReceiver: Any
 try:
     from pghoard.walreceiver import WALReceiver
 except ImportError:
@@ -51,8 +54,8 @@ class PGHoard:
         self.log_level = None
         self.running = True
         self.config_path = config_path
-        self.compression_queue = Queue()
-        self.transfer_queue = Queue()
+        self.compression_queue: "Queue[Any]" = Queue()
+        self.transfer_queue: "Queue[Any]" = Queue()
         self.syslog_handler = None
         self.basebackups = {}
         self.basebackups_callbacks = {}
@@ -60,14 +63,14 @@ class PGHoard:
         self.compressors = []
         self.walreceivers = {}
         self.transfer_agents = []
-        self.config = {}
+        self.config: Dict[str, Any] = {}
         self.mp_manager = None
         self.site_transfers = {}
         self.state = {
             "backup_sites": {},
             "startup_time": datetime.datetime.utcnow().isoformat(),
         }
-        self.transfer_agent_state = {}  # shared among transfer agents
+        self.transfer_agent_state: Dict[str, Any] = {}  # shared among transfer agents
         self.load_config()
         if self.config["transfer"]["thread_count"] > 1:
             self.mp_manager = multiprocessing.Manager()
@@ -87,7 +90,7 @@ class PGHoard:
         signal.signal(signal.SIGINT, self.quit)
         signal.signal(signal.SIGTERM, self.quit)
         self.time_of_last_backup_check = {}
-        self.requested_basebackup_sites = set()
+        self.requested_basebackup_sites: Set[str] = set()
 
         self.inotify = InotifyWatcher(self.compression_queue)
         self.webserver = WebServer(
@@ -159,6 +162,9 @@ class PGHoard:
         self.basebackups[site] = thread
 
     def check_pg_server_version(self, connection_string, site):
+        assert self.metrics is not None
+        assert self.config is not None
+
         if "pg_version" in self.config["backup_sites"][site]:
             return self.config["backup_sites"][site]["pg_version"]
 
@@ -238,8 +244,10 @@ class PGHoard:
         return xlog_path, basebackup_path
 
     def delete_remote_wal_before(self, wal_segment, site, pg_version):
+        assert self.metrics is not None
         self.log.info("Starting WAL deletion from: %r before: %r, pg_version: %r", site, wal_segment, pg_version)
         storage = self.site_transfers.get(site)
+        assert storage is not None
         valid_timeline = True
         tli, log, seg = wal.name_to_tli_log_seg(wal_segment)
         while True:
@@ -274,8 +282,10 @@ class PGHoard:
                 self.metrics.unexpected_exception(ex, where="delete_remote_wal_before")
 
     def delete_remote_basebackup(self, site, basebackup, metadata):
+        assert self.metrics is not None
         start_time = time.monotonic()
         storage = self.site_transfers.get(site)
+        assert storage is not None
         main_backup_key = os.path.join(self.config["backup_sites"][site]["prefix"], "basebackup", basebackup)
         basebackup_data_files = [main_backup_key]
 
@@ -404,7 +414,7 @@ class PGHoard:
                 if last_wal_segment_still_needed:
                     self.delete_remote_wal_before(last_wal_segment_still_needed, site, pg_version)
                 self.delete_remote_basebackup(site, basebackup_to_be_deleted["name"], basebackup_to_be_deleted["metadata"])
-        self.state["backup_sites"][site]["basebackups"] = basebackups
+        self.state["backup_sites"][site]["basebackups"] = basebackups  # type: ignore
 
     def get_normalized_backup_time(self, site_config, *, now=None):
         """Returns the closest historical backup time that current time matches to (or current time if it matches).
@@ -429,11 +439,13 @@ class PGHoard:
 
     def set_state_defaults(self, site):
         if site not in self.state["backup_sites"]:
-            self.state["backup_sites"][site] = {"basebackups": []}
+            self.state["backup_sites"][site] = {"basebackups": []}  # type: ignore
 
     def startup_walk_for_missed_files(self):
         """Check xlog and xlog_incoming directories for files that receivexlog has received but not yet
         compressed as well as the files we have compressed but not yet uploaded and process them."""
+        assert self.metrics is not None
+
         for site in self.config["backup_sites"]:
             compressed_xlog_path, _ = self.create_backup_site_paths(site)
             uncompressed_xlog_path = compressed_xlog_path + "_incoming"
@@ -573,7 +585,7 @@ class PGHoard:
         be created at this time"""
         if not now:
             now = datetime.datetime.now(datetime.timezone.utc)
-        basebackups = self.state["backup_sites"][site]["basebackups"]
+        basebackups = self.state["backup_sites"][site]["basebackups"]  # type: ignore
         backup_hour = site_config.get("basebackup_hour")
         backup_minute = site_config.get("basebackup_minute")
         backup_reason = None
@@ -635,6 +647,7 @@ class PGHoard:
         }
 
     def run(self):
+        assert self.metrics is not None
         self.start_threads_on_startup()
         self.startup_walk_for_missed_files()
         while self.running:
@@ -675,7 +688,7 @@ class PGHoard:
             }
             for key, value in self.basebackups.items()
         }
-        self.state["compressors"] = [compressor.state for compressor in self.compressors]
+        self.state["compressors"] = [compressor.state for compressor in self.compressors]  # type: ignore
         # All transfer agents share the same state, no point in writing it multiple times
         self.state["transfer_agent_state"] = self.transfer_agent_state
         self.state["queues"] = {
@@ -730,7 +743,7 @@ class PGHoard:
         self.log.debug("Loaded config: %r from: %r", self.config, self.config_path)
 
     def _get_all_threads(self):
-        all_threads = []
+        all_threads: List[threading.Thread] = []
         if hasattr(self, "webserver"):  # on first config load webserver isn't initialized yet
             all_threads.append(self.webserver)
         all_threads.extend(self.basebackups.values())
