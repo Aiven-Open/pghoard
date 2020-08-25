@@ -5,6 +5,7 @@ Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
 import argparse
+import contextlib
 import datetime
 import errno
 import io
@@ -23,7 +24,9 @@ from contextlib import suppress
 from distutils.version import \
     LooseVersion  # pylint: disable=no-name-in-module,import-error
 from threading import RLock
+from typing import (Any, Callable, ContextManager, Dict, Iterable, Optional, cast)
 
+from mypy_extensions import DefaultArg, KwArg
 from psycopg2.extensions import adapt
 from requests import Session
 
@@ -246,6 +249,7 @@ class Restore:
     def _get_object_storage(self, site, pgdata):
         storage_config = common.get_object_storage_config(self.config, site)
         storage = get_transfer(storage_config)
+        assert self.config is not None
         return ObjectStore(storage, self.config["backup_sites"][site]["prefix"], site, pgdata)
 
     def list_basebackups(self, arg):
@@ -295,6 +299,7 @@ class Restore:
             raise RestoreError("{}: {}".format(ex.__class__.__name__, ex))
 
     def _find_basebackup_for_name(self, name):
+        assert self.storage is not None
         basebackups = self.storage.list_basebackups()
         for basebackup in basebackups:
             if basebackup["name"] == name:
@@ -304,6 +309,7 @@ class Restore:
         raise RestoreError("No applicable basebackup found, exiting")
 
     def _find_nearest_basebackup(self, recovery_target_time=None):
+        assert self.storage is not None
         applicable_basebackups = []
 
         basebackups = self.storage.list_basebackups()
@@ -351,6 +357,8 @@ class Restore:
         tablespace_mapping=None,
         tablespace_base_dir=None
     ):
+        assert self.storage is not None
+        assert self.config is not None
         targets = [recovery_target_name, recovery_target_time, recovery_target_xid]
         if sum(0 if flag is None else 1 for flag in targets) > 1:
             raise RestoreError("Specify at most one of recovery_target_name, " "recovery_target_time or recovery_target_xid")
@@ -518,6 +526,14 @@ class Restore:
             return 1
 
 
+_PoolSigType = Callable[[
+    DefaultArg(type=Optional[int], name="processes"),  # noqa: F821
+    DefaultArg(type=Optional[Callable[..., Any]], name="initializer"),  # noqa: F821
+    DefaultArg(type=Iterable[Any], name="initargs"),  # noqa: F821
+    KwArg(type=Any),
+], multiprocessing.pool.Pool]
+
+
 class BasebackupFetcher():
     def __init__(self, *, app_config, debug, site, pgdata, tablespaces, data_files, status_output_file=None):
         self.log = logging.getLogger(self.__class__.__name__)
@@ -525,17 +541,20 @@ class BasebackupFetcher():
         self.config = app_config
         self.data_files = [{"fn_or_data": item[0], "id": str(uuid.uuid4()), "size": item[1]} for item in data_files]
         self.debug = debug
-        self.download_progress_per_file = {}
+        self.download_progress_per_file: Dict[str, float] = {}
         self.errors = 0
         self.last_progress_ts = time.monotonic()
-        self.last_total_downloaded = 0
+        self.last_total_downloaded: float = 0.0
         self.lock = RLock()
-        self.manager_class = multiprocessing.Manager if self._process_count() > 1 else ThreadingManager
+        self.manager_class: Callable[[], ContextManager[Any]] = multiprocessing.Manager if self._process_count(
+        ) > 1 else ThreadingManager
         self.max_stale_seconds = 120
         self.pending_jobs = set()
         self.pgdata = pgdata
         # There's no point in spawning child processes if process count is 1
-        self.pool_class = multiprocessing.Pool if self._process_count() > 1 else multiprocessing.pool.ThreadPool
+        self.pool_class: _PoolSigType = multiprocessing.Pool if self._process_count() > 1 else cast(
+            _PoolSigType, multiprocessing.pool.ThreadPool
+        )
         self.site = site
         self.status_output_file = status_output_file
         self.sleep_fn = time.sleep
@@ -600,8 +619,9 @@ class BasebackupFetcher():
 
     def current_progress(self):
         total_downloaded = sum(self.download_progress_per_file.values())
-        if self.total_download_size <= 0:
-            progress = 0
+        progress: float
+        if self.total_download_size <= 0.0:
+            progress = 0.0
         else:
             progress = total_downloaded / self.total_download_size
         if total_downloaded != self.last_total_downloaded:
@@ -692,7 +712,7 @@ class BasebackupFetcher():
 
 
 # Provides sufficient interface compatibility with multiprocessing.Manager for threaded use
-class ThreadingManager:
+class ThreadingManager(contextlib.AbstractContextManager):
     def __enter__(self):
         return self
 
@@ -772,6 +792,8 @@ class ChunkFetcher:
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE
         ) as tar:
+            assert tar.stdin is not None
+            assert tar.stderr is not None
             common.increase_pipe_capacity(tar.stdin, tar.stderr)
             sink = rohmufile.create_sink_pipeline(
                 file_size=file_size,
