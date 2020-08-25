@@ -46,8 +46,8 @@ class AzureTransfer(BaseTransfer):
         self.container_name = bucket_name
         try:
             endpoint_suffix = ENDPOINT_SUFFIXES[azure_cloud]
-        except KeyError:
-            raise InvalidConfigurationError("Unknown azure cloud {!r}".format(azure_cloud))
+        except KeyError as ex:
+            raise InvalidConfigurationError("Unknown azure cloud {!r}".format(azure_cloud)) from ex
 
         self.conn = BlockBlobService(
             account_name=self.account_name, account_key=self.account_key, endpoint_suffix=endpoint_suffix
