@@ -11,6 +11,8 @@ import time
 from copy import deepcopy
 from queue import Queue
 from subprocess import check_call
+# pylint: disable=unused-import
+from typing import Any
 
 import dateutil.parser
 import psycopg2
@@ -20,7 +22,6 @@ from pghoard import common, metrics, pgutil
 from pghoard.basebackup import PGBaseBackup
 from pghoard.restore import Restore, RestoreError
 from pghoard.rohmu import get_transfer
-from pghoard.rohmu.compat import makedirs
 
 from .conftest import PGTester
 
@@ -211,7 +212,7 @@ LABEL: pg_basebackup base backup
     def _test_create_basebackup(self, capsys, db, pghoard, mode, replica=False, active_backup_mode="archive_command"):
         pghoard.create_backup_site_paths(pghoard.test_site)
         basebackup_path = os.path.join(pghoard.config["backup_location"], pghoard.test_site, "basebackup")
-        q = Queue()
+        q: "Queue[Any]" = Queue()
 
         pghoard.config["backup_sites"][pghoard.test_site]["basebackup_mode"] = mode
         pghoard.config["backup_sites"][pghoard.test_site]["active_backup_mode"] = active_backup_mode
@@ -438,7 +439,7 @@ LABEL: pg_basebackup base backup
 
             # Start receivexlog since we want the WALs to be able to restore later on
             wal_directory = os.path.join(pghoard.config["backup_location"], pghoard.test_site, "xlog_incoming")
-            makedirs(wal_directory, exist_ok=True)
+            os.makedirs(wal_directory, exist_ok=True)
             pghoard.receivexlog_listener(pghoard.test_site, db.user, wal_directory)
             if conn.server_version >= 100000:
                 cursor.execute("SELECT txid_current(), pg_switch_wal()")
@@ -781,11 +782,11 @@ LABEL: pg_basebackup base backup
             }
         }
         pghoard.patch_basebackup_info(entry=entry, site_config=site_config)
-        assert entry["name"] == "bar"
-        assert entry["metadata"]["start-time"] == now
-        assert entry["metadata"]["backup-reason"] == "scheduled"
-        assert entry["metadata"]["backup-decision-time"] == now
-        assert isinstance(entry["metadata"]["normalized-backup-time"], str)
+        assert entry["name"] == "bar"  # type: ignore
+        assert entry["metadata"]["start-time"] == now  # type: ignore
+        assert entry["metadata"]["backup-reason"] == "scheduled"  # type: ignore
+        assert entry["metadata"]["backup-decision-time"] == now  # type: ignore
+        assert isinstance(entry["metadata"]["normalized-backup-time"], str)  # type: ignore
 
         entry = {
             "name": "foo/bar",
@@ -797,8 +798,8 @@ LABEL: pg_basebackup base backup
             }
         }
         pghoard.patch_basebackup_info(entry=entry, site_config=site_config)
-        assert entry["name"] == "bar"
-        assert entry["metadata"]["start-time"] == now
-        assert entry["metadata"]["backup-reason"] == "requested"
-        assert entry["metadata"]["backup-decision-time"] == now - datetime.timedelta(seconds=30)
-        assert entry["metadata"]["normalized-backup-time"] is None
+        assert entry["name"] == "bar"  # type: ignore
+        assert entry["metadata"]["start-time"] == now  # type: ignore
+        assert entry["metadata"]["backup-reason"] == "requested"  # type: ignore
+        assert entry["metadata"]["backup-decision-time"] == now - datetime.timedelta(seconds=30)  # type: ignore
+        assert entry["metadata"]["normalized-backup-time"] is None  # type: ignore
