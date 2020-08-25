@@ -45,8 +45,8 @@ class LocalTransfer(BaseTransfer):
         try:
             with open(metadata_path, "r") as fp:
                 return json.load(fp)
-        except FileNotFoundError:
-            raise FileNotFoundFromStorageError(key)
+        except FileNotFoundError as ex:
+            raise FileNotFoundFromStorageError(key) from ex
 
     def delete_key(self, key):
         self.log.debug("Deleting key: %r", key)
@@ -133,8 +133,8 @@ class LocalTransfer(BaseTransfer):
         source_path = self.format_key_for_backend(key.strip("/"))
         try:
             src_stat = os.stat(source_path)
-        except FileNotFoundError:
-            raise FileNotFoundFromStorageError(key)
+        except FileNotFoundError as ex:
+            raise FileNotFoundFromStorageError(key) from ex
         with suppress(FileNotFoundError):
             dst_stat = os.stat(filepath_to_store_to)
             if dst_stat.st_dev == src_stat.st_dev and dst_stat.st_ino == src_stat.st_ino:
