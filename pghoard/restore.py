@@ -20,7 +20,6 @@ import tempfile
 import time
 import uuid
 from contextlib import suppress
-# ignore pylint/distutils issue, https://github.com/PyCQA/pylint/issues/73
 from distutils.version import \
     LooseVersion  # pylint: disable=no-name-in-module,import-error
 from threading import RLock
@@ -33,6 +32,8 @@ from pghoard.rohmu.errors import Error, InvalidConfigurationError
 
 from . import common, config, logutil, version
 from .postgres_command import PGHOARD_HOST, PGHOARD_PORT
+
+# ignore pylint/distutils issue, https://github.com/PyCQA/pylint/issues/73
 
 
 class RestoreError(Error):
@@ -71,7 +72,7 @@ def create_recovery_conf(
         "--xlog",
         "%f",
     ]
-    with open(os.path.join(dirpath, "PG_VERSION"), "r") as fp:
+    with open(os.path.join(dirpath, "PG_VERSION"), "rt") as fp:
         pg_version = LooseVersion(fp.read().strip())
 
     if pg_version >= "12":
@@ -82,8 +83,8 @@ def create_recovery_conf(
     lines = [
         "# pghoard created recovery.conf",
         "recovery_target_timeline = 'latest'",
-        "{} = {}".format(trigger_file_setting, adapt(os.path.join(dirpath, "trigger_file"))),
-        "restore_command = '{}'".format(" ".join(restore_command)),
+        f"{trigger_file_setting} = {adapt(os.path.join(dirpath, 'trigger_file'))}",
+        f"restore_command = '{restore_command}'",
     ]
 
     use_recovery_conf = (pg_version < "12")  # no more recovery.conf in PG >= 12
@@ -95,12 +96,12 @@ def create_recovery_conf(
             create_signal_file(os.path.join(dirpath, "standby.signal"))
 
     if primary_conninfo:
-        lines.append("primary_conninfo = {}".format(adapt(primary_conninfo)))
+        lines.append(f"primary_conninfo = {adapt(primary_conninfo)}")
     if recovery_end_command:
-        lines.append("recovery_end_command = {}".format(adapt(recovery_end_command)))
+        lines.append(f"recovery_end_command = {recovery_end_command}")
     if recovery_target_action:
         if pg_version >= "9.5":
-            lines.append("recovery_target_action = '{}'".format(recovery_target_action))
+            lines.append(f"recovery_target_action = '{recovery_target_action}'")
         elif recovery_target_action == "promote":
             pass  # default action
         elif recovery_target_action == "pause":
@@ -112,26 +113,26 @@ def create_recovery_conf(
                 )
             )
     if recovery_target_name:
-        lines.append("recovery_target_name = '{}'".format(recovery_target_name))
+        lines.append(f"recovery_target_name = '{recovery_target_name}'")
     if recovery_target_time:
-        lines.append("recovery_target_time = '{}'".format(recovery_target_time))
+        lines.append(f"recovery_target_time = '{recovery_target_time}'")
     if recovery_target_xid:
-        lines.append("recovery_target_xid = '{}'".format(recovery_target_xid))
+        lines.append(f"recovery_target_xid = '{recovery_target_xid}'")
     content = "\n".join(lines) + "\n"
 
     if use_recovery_conf:
         # Overwrite the recovery.conf
-        open_mode = "w"
         filepath = os.path.join(dirpath, "recovery.conf")
+        filepath_tmp = filepath + ".tmp"
+        with open(filepath_tmp, "wt") as f:
+            f.write(content)
     else:
         # Append to an existing postgresql.auto.conf (PG >= 12)
-        open_mode = "a"
         lines.insert(0, "\n")  # in case postgresql.conf does not end with a newline
         filepath = os.path.join(dirpath, "postgresql.auto.conf")
-
-    filepath_tmp = filepath + ".tmp"
-    with open(filepath_tmp, open_mode) as fp:
-        fp.write(content)
+        filepath_tmp = filepath + ".tmp"
+        with open(filepath_tmp, "at") as f:
+            f.write(content)
 
     os.rename(filepath_tmp, filepath)
     return content
@@ -150,7 +151,8 @@ def print_basebackup_list(basebackups, *, caption="Available basebackups", verbo
         if lm.tzinfo:
             lm = lm.astimezone(datetime.timezone.utc).replace(tzinfo=None)
         lm_str = lm.isoformat()[:19] + "Z"  # # pylint: disable=no-member
-        size_str = "{} MB".format(int(meta.get("total-size-enc", b["size"])) // (1024 ** 2))
+        size_mb = int(meta.get("total-size-enc", b["size"])) // (1024 ** 2)
+        size_str = f"{size_mb} MB"
         orig_size = int(meta.get("total-size-plain", meta.get("original-file-size")) or 0)
         if orig_size:
             orig_size_str = "{} MB".format(orig_size // (1024 ** 2))
