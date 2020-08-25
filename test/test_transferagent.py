@@ -7,6 +7,8 @@ See LICENSE for details
 import os
 import time
 from queue import Empty, Queue
+# pylint: disable=unused-import
+from typing import Any
 from unittest.mock import Mock
 
 import pytest
@@ -59,8 +61,8 @@ class TestTransferAgent(PGHoardTestCase):
         with open(self.foo_basebackup_path, "w") as out:
             out.write("foo")
 
-        self.compression_queue = Queue()
-        self.transfer_queue = Queue()
+        self.compression_queue: "Queue[Any]" = Queue()
+        self.transfer_queue: "Queue[Any]" = Queue()
         self.transfer_agent = TransferAgent(
             config=self.config,
             compression_queue=self.compression_queue,
@@ -78,8 +80,8 @@ class TestTransferAgent(PGHoardTestCase):
         super().teardown_method(method)
 
     def test_handle_download(self):
-        callback_queue = Queue()
-        self.transfer_agent.get_object_storage = MockStorage()
+        callback_queue: "Queue[Any]" = Queue()
+        self.transfer_agent.get_object_storage = MockStorage()  # type: ignore
         self.transfer_queue.put({
             "callback_queue": callback_queue,
             "filetype": "xlog",
@@ -95,9 +97,9 @@ class TestTransferAgent(PGHoardTestCase):
         assert isinstance(event["exception"], FileNotFoundFromStorageError)
 
     def test_handle_upload_xlog(self):
-        callback_queue = Queue()
+        callback_queue: "Queue[Any]" = Queue()
         storage = MockStorage()
-        self.transfer_agent.get_object_storage = storage
+        self.transfer_agent.get_object_storage = storage  # type: ignore
         assert os.path.exists(self.foo_path) is True
         self.transfer_queue.put({
             "callback_queue": callback_queue,
@@ -114,9 +116,9 @@ class TestTransferAgent(PGHoardTestCase):
         assert os.path.exists(self.foo_path) is False
 
     def test_handle_upload_basebackup(self):
-        callback_queue = Queue()
+        callback_queue: "Queue[Any]" = Queue()
         storage = MockStorage()
-        self.transfer_agent.get_object_storage = storage
+        self.transfer_agent.get_object_storage = storage  # type: ignore
         assert os.path.exists(self.foo_path) is True
         self.transfer_queue.put({
             "callback_queue": callback_queue,
@@ -140,10 +142,10 @@ class TestTransferAgent(PGHoardTestCase):
             sleeps.append(sleep_amount)
             time.sleep(0.001)
 
-        callback_queue = Queue()
+        callback_queue: "Queue[Any]" = Queue()
         storage = MockStorageRaising()
         self.transfer_agent.sleep = sleep
-        self.transfer_agent.get_object_storage = storage
+        self.transfer_agent.get_object_storage = storage  # type: ignore
         assert os.path.exists(self.foo_path) is True
         self.transfer_queue.put({
             "callback_queue": callback_queue,
