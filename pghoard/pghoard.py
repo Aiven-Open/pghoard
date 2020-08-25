@@ -713,7 +713,7 @@ class PGHoard:
                 return
             if isinstance(ex, InvalidConfigurationError):
                 raise
-            raise InvalidConfigurationError(self.config_path)
+            raise InvalidConfigurationError(self.config_path) from ex
 
         self.config = new_config
         if self.config.get("syslog") and not self.syslog_handler:
