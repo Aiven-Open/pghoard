@@ -203,7 +203,7 @@ def pghoard_separate_volume(db, tmpdir, request):
             stdin=subprocess.DEVNULL,
         )
     except subprocess.CalledProcessError as ex:
-        raise SkipTest("Failed to create tmpfs: {!r}".format(ex))
+        raise SkipTest("Failed to create tmpfs: {!r}".format(ex)) from ex
 
     backup_location = os.path.join(tmpfs_volume, "backupspool")
     try:
