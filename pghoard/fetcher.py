@@ -4,6 +4,9 @@ import queue
 import signal
 import threading
 import time
+from queue import Queue  # pylint: disable=unused-import
+# pylint: disable=unused-import
+from typing import Any, Dict, Optional, Tuple, Union
 
 from pghoard.common import get_object_storage_config
 from pghoard.config import key_lookup_for_site
@@ -36,6 +39,8 @@ class FileFetchManager:
         self.last_activity = time.monotonic()
         self._start_process()
         if self.mp_manager:
+            assert self.task_queue is not None
+            assert self.result_queue is not None
             self.task_queue.put((site, key, target_path))
             result = self.result_queue.get()
             if result is None:
@@ -53,6 +58,9 @@ class FileFetchManager:
         with self.lock:
             if not self.process:
                 return
+            assert self.task_queue is not None
+            assert self.result_queue is not None
+            assert self.process is not None
             self.task_queue.put(None)
             self.result_queue.put(None)
             process = self.process
@@ -102,8 +110,16 @@ class FileFetcher:
             raise
 
 
-def _remote_file_fetch_loop(app_config, task_queue, result_queue):
-    transfers = {}
+_TaskType = Tuple[str, str, str]
+_ResultSuccessType = Tuple[_TaskType, int, Dict[str, Any]]
+_ResultExceptionType = Tuple[_TaskType, Exception]
+
+
+def _remote_file_fetch_loop(
+    app_config, task_queue: "Queue[Optional[_TaskType]]",
+    result_queue: "Queue[Union[_ResultSuccessType, _ResultExceptionType]]"
+):
+    transfers: Dict[str, Any] = {}
     while True:
         task = task_queue.get()
         if not task:
