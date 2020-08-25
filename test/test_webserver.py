@@ -12,6 +12,8 @@ import time
 from distutils.version import LooseVersion
 from http.client import HTTPConnection
 from queue import Queue
+# pylint: disable=unused-import
+from typing import Any, List
 
 import psycopg2
 import pytest
@@ -119,7 +121,7 @@ class TestWebServer:
         else:
             backups_before = set(f for f in os.listdir(backup_dir) if not f.endswith(".metadata"))
         basebackup_path = os.path.join(pghoard.config["backup_location"], pghoard.test_site, "basebackup")
-        q = Queue()
+        q: "Queue[Any]" = Queue()
         pghoard.config["backup_sites"][pghoard.test_site]["basebackup_mode"] = mode
         pghoard.create_basebackup(pghoard.test_site, db.user, basebackup_path, q)
         result = q.get(timeout=60)
@@ -310,8 +312,7 @@ class TestWebServer:
             "restore_command = 'false'",
         ]
         if LooseVersion(db.ver) >= "12":
-            with open(os.path.join(db.pgdata, "standby.signal"), "w") as fp:
-                pass
+            open(os.path.join(db.pgdata, "standby.signal"), "w").close()
 
             recovery_conf_path = "postgresql.auto.conf"
             open_mode = "a"
@@ -320,8 +321,8 @@ class TestWebServer:
             recovery_conf_path = "recovery.conf"
             open_mode = "w"
 
-        with open(os.path.join(db.pgdata, recovery_conf_path), open_mode) as fp:
-            fp.write("\n".join(recovery_conf) + "\n")
+        with open(os.path.join(db.pgdata, recovery_conf_path), open_mode) as recovery_fp:
+            recovery_fp.write("\n".join(recovery_conf) + "\n")
 
         # start PG and promote it
         db.run_pg()
@@ -436,7 +437,7 @@ class TestWebServer:
 
     def test_get_invalid_retry(self, pghoard_no_mp, tmpdir):
         # inject a failure by making a static function fail
-        failures = [0, ""]
+        failures: List[Any] = [0, ""]
         pghoard = pghoard_no_mp
         valid_wal_seg = "0000DDDD0000000D000000FC"
         valid_wal = "/{}/xlog/{}".format(pghoard.test_site, valid_wal_seg)
@@ -557,7 +558,7 @@ class TestWebServer:
             assert f.read() == storage_data
 
     def test_restore_command_retry(self, pghoard):
-        failures = [0, ""]
+        failures: List[Any] = [0, ""]
         orig_http_request = postgres_command.http_request
 
         def fail_http_request(*args):
