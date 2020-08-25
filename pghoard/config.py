@@ -122,7 +122,7 @@ def set_and_check_config_defaults(config, *, check_commands=True, check_pgdata=T
             except ImportError as ex:
                 raise InvalidConfigurationError(
                     "Site {0!r} object_storage: {1.__class__.__name__!s}: {1!s}".format(site_name, ex)
-                )
+                ) from ex
 
         # Set command paths and check their versions per site.  We use a configured value if one was provided
         # (either at top level or per site), if it wasn't provided but we have a valid pg_data_directory with
@@ -162,14 +162,16 @@ def read_json_config_file(filename, *, check_commands=True, add_defaults=True, c
     try:
         with open(filename, "r") as fp:
             config = json.load(fp)
-    except FileNotFoundError:
-        raise InvalidConfigurationError("Configuration file {!r} does not exist".format(filename))
+    except FileNotFoundError as ex:
+        raise InvalidConfigurationError("Configuration file {!r} does not exist".format(filename)) from ex
     except ValueError as ex:
-        raise InvalidConfigurationError("Configuration file {!r} does not contain valid JSON: {}".format(filename, str(ex)))
+        raise InvalidConfigurationError(
+            "Configuration file {!r} does not contain valid JSON: {}".format(filename, str(ex))
+        ) from ex
     except OSError as ex:
         raise InvalidConfigurationError(
             "Configuration file {!r} can't be opened: {}".format(filename, ex.__class__.__name__)
-        )
+        ) from ex
 
     if not add_defaults:
         return config
