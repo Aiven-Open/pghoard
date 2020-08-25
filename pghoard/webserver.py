@@ -230,7 +230,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         try:
             wal.verify_wal(wal_name=filename, filepath=path)
         except ValueError as ex:
-            raise HttpResponse(str(ex), status=412)
+            raise HttpResponse(str(ex), status=412) from ex
 
     def _save_and_verify_restored_file(self, filetype, filename, tmp_target_path, target_path):
         self._verify_wal(filetype, filename, tmp_target_path)
@@ -239,7 +239,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                 os.rename(tmp_target_path, target_path)
         except OSError as ex:
             fmt = "Unable to write final file to requested location {path!r}: {ex.__class__.__name__}: {ex}"
-            raise HttpResponse(fmt.format(path=target_path, ex=ex), status=409)
+            raise HttpResponse(fmt.format(path=target_path, ex=ex), status=409) from ex
 
     def _transfer_agent_op(self, site, filename, filetype, method, *, retries=2):
         start_time = time.time()
@@ -264,7 +264,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                     "Timeout on a %s request for: %r, took: %.3fs", method, site,
                     time.time() - start_time
                 )
-                raise HttpResponse("TIMEOUT", status=500)
+                raise HttpResponse("TIMEOUT", status=500)  # pylint: disable=raise-missing-from
 
             if not response["success"]:
                 if isinstance(response.get("exception"), FileNotFoundFromStorageError):
@@ -341,7 +341,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             if suppress_error:
                 return
             else:
-                raise HttpResponse(
+                raise HttpResponse(  # pylint: disable=raise-missing-from
                     "Unable to create temporary file for {0!r}: {1.__class__.__name__}: {1}".format(key, ex), status=400
                 )
 
@@ -563,7 +563,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                 "Problem in getting a response in time, returning 404, took: %.2fs",
                 time.time() - start_time
             )
-            raise HttpResponse("TIMEOUT", status=500)
+            raise HttpResponse("TIMEOUT", status=500)  # pylint: disable=raise-missing-from
 
         if not response["success"]:
             raise HttpResponse(status=500)
