@@ -138,7 +138,7 @@ class GoogleTransfer(BaseTransfer):
 
     def _retry_on_reset(self, request, action):
         retries = 60
-        retry_wait = 2
+        retry_wait: float = 2.0
         while True:
             try:
                 return action()
