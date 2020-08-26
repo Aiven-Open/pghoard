@@ -11,6 +11,7 @@ disable=
     no-else-raise,
     no-else-return,
     no-self-use,
+    raise-missing-from,
     too-few-public-methods,
     too-many-ancestors,
     too-many-arguments,

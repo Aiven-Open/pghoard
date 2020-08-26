@@ -6,6 +6,7 @@ See LICENSE for details
 """
 from io import BytesIO
 from pghoard import wal
+from tempfile import TemporaryFile
 import codecs
 import pytest
 import struct
@@ -75,3 +76,18 @@ def test_verify_wal(tmpdir):
     with pytest.raises(ValueError) as excinfo:
         wal.verify_wal(wal_name="0000002F000000110000009C", filepath=tmp_file + "x")
     assert "FileNotFoundError" in str(excinfo.value)
+
+
+def test_verify_wal_starts_at_bof():
+    with TemporaryFile("w+b") as tmp_file:
+        tmp_file.write(WAL_HEADER_95 + b"XXX" * 100)
+        tmp_file.seek(10)
+        wal.verify_wal(wal_name="0000002F000000110000009C", fileobj=tmp_file)
+
+
+def test_verify_wal_starts_moves_fp_back():
+    with TemporaryFile("w+b") as tmp_file:
+        tmp_file.write(WAL_HEADER_95 + b"XXX" * 100)
+        tmp_file.seek(10)
+        wal.verify_wal(wal_name="0000002F000000110000009C", fileobj=tmp_file)
+        assert tmp_file.tell() == 10
