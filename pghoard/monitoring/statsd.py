@@ -31,7 +31,7 @@ class StatsClient:
             "where": where,
         }
         all_tags.update(tags or {})
-        self.increase("exception", tags=all_tags)
+        self.increase("pghoard.exception", tags=all_tags)
 
     def _send(self, metric, metric_type, value, tags):
         if None in self._dest_addr:

@@ -30,12 +30,23 @@ WAL_MAGIC_BY_VERSION = {value: key for key, value in WAL_MAGIC.items()}
 # looks like everyone uses the default (16MB) and it's all we support for now.
 WAL_SEG_SIZE = 16 * 1024 * 1024
 
+
+class LsnMismatchError(ValueError):
+    """WAL header LSN does not match file name"""
+
+
+class WalBlobLengthError(ValueError):
+    """WAL blob is shorter than the WAL header"""
+
+
 WalHeader = namedtuple("WalHeader", ("version", "timeline", "lsn", "filename"))
 
 
 def read_header(blob):
     if len(blob) < WAL_HEADER_LEN:
-        raise ValueError("Need at least {} bytes of input to read WAL header, got {}".format(WAL_HEADER_LEN, len(blob)))
+        raise WalBlobLengthError(
+            "Need at least {} bytes of input to read WAL header, got {}".format(WAL_HEADER_LEN, len(blob))
+        )
     magic, info, tli, pageaddr, rem_len = struct.unpack("=HHIQI", blob[:WAL_HEADER_LEN])  # pylint: disable=unused-variable
     version = WAL_MAGIC[magic]
     log = pageaddr >> 32
@@ -142,4 +153,4 @@ def verify_wal(*, wal_name, fileobj=None, filepath=None):
     expected_lsn = lsn_from_name(wal_name)
     if hdr.lsn != expected_lsn:
         fmt = "Expected LSN {lsn!r} in WAL file {name!r}; found {found!r}"
-        raise ValueError(fmt.format(lsn=expected_lsn, name=source_name, found=hdr.lsn))
+        raise LsnMismatchError(fmt.format(lsn=expected_lsn, name=source_name, found=hdr.lsn))
