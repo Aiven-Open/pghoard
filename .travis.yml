@@ -1,21 +1,121 @@
 language: python
+dist: focal
 
-python:
-  - "3.5"
-  - "3.6"
-  - "3.7"
-  - "3.8"
+stages:
+  - lint
+  - unittest
 
-install:
-  - "pip install -r requirements.txt"
+inc_before_install: &inc_before_install
+  # Setup the Postgres repositories
+  - sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+  - wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+  - sudo apt update
 
-script:
-  - "make pylint"
-  - "make flake8"
-  - "make unittest"
+inc_install: &inc_install
+  # Setup build deps
+  - sudo apt install -y libsnappy-dev
+  - sudo apt install -y postgresql-${PG_VERSION}
+  # Setup common python dependencies
+  - pip install -r requirements.txt
+  - pip install -r requirements.dev.txt
+  - pip install -e .
 
-addons:
-  apt:
-    packages:
-      - libsnappy-dev
-      - postgresql-9.4
+inc_unittest: &inc_unittest
+  - make unittest
+
+jobs:
+  include:
+    # Run linters with our "primary" Python version.
+    - stage: lint
+      python: 3.6
+      env: [PG_VERSION=9.6]
+      name: lint
+      before_install: *inc_before_install
+      install: *inc_install
+      script:
+        - make lint
+
+    # Matrix build unittests
+    - env: [PG_VERSION=10]
+      python: '3.6'
+      stage: unittest
+      before_install: *inc_before_install
+      install: *inc_install
+      script: *inc_unittest
+
+    - env: [PG_VERSION=11]
+      python: '3.6'
+      stage: unittest
+      before_install: *inc_before_install
+      install: *inc_install
+      script: *inc_unittest
+
+    - env: [PG_VERSION=12]
+      python: '3.6'
+      stage: unittest
+      before_install: *inc_before_install
+      install: *inc_install
+      script: *inc_unittest
+
+    - env: [PG_VERSION=9.6]
+      python: '3.6'
+      stage: unittest
+      before_install: *inc_before_install
+      install: *inc_install
+      script: *inc_unittest
+
+    - env: [PG_VERSION=10]
+      python: '3.7'
+      stage: unittest
+      before_install: *inc_before_install
+      install: *inc_install
+      script: *inc_unittest
+
+    - env: [PG_VERSION=11]
+      python: '3.7'
+      stage: unittest
+      before_install: *inc_before_install
+      install: *inc_install
+      script: *inc_unittest
+
+    - env: [PG_VERSION=12]
+      python: '3.7'
+      stage: unittest
+      before_install: *inc_before_install
+      install: *inc_install
+      script: *inc_unittest
+
+    - env: [PG_VERSION=9.6]
+      python: '3.7'
+      stage: unittest
+      before_install: *inc_before_install
+      install: *inc_install
+      script: *inc_unittest
+
+    - env: [PG_VERSION=10]
+      python: '3.8'
+      stage: unittest
+      before_install: *inc_before_install
+      install: *inc_install
+      script: *inc_unittest
+
+    - env: [PG_VERSION=11]
+      python: '3.8'
+      stage: unittest
+      before_install: *inc_before_install
+      install: *inc_install
+      script: *inc_unittest
+
+    - env: [PG_VERSION=12]
+      python: '3.8'
+      stage: unittest
+      before_install: *inc_before_install
+      install: *inc_install
+      script: *inc_unittest
+
+    - env: [PG_VERSION=9.6]
+      python: '3.8'
+      stage: unittest
+      before_install: *inc_before_install
+      install: *inc_install
+      script: *inc_unittest

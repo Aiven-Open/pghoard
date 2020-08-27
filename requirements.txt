@@ -1,14 +1,10 @@
 astroid
 botocore
 cryptography
-flake8
 google-api-python-client
-httplib2 
-mock
+httplib2
 oauth2client
 psycopg2
-pylint>=2.4.3
-pytest
 python-dateutil 
 python-snappy
 python-systemd 
