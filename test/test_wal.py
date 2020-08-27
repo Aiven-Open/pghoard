@@ -37,7 +37,7 @@ def test_wal_header():
     assert wal.read_header(blob95) == hdr95
     # only first 20 bytes are used
     assert wal.read_header(blob95 + b"XXX") == hdr95
-    with pytest.raises(ValueError):
+    with pytest.raises(wal.WalBlobLengthError):
         wal.read_header(blob95[:18])
     blob94 = b"\x7e\xd0" + blob95[2:]
     hdr94 = hdr95._replace(version=90400)
@@ -65,7 +65,7 @@ def test_construct_wal_name():
 
 def test_verify_wal(tmpdir):
     b = BytesIO(WAL_HEADER_95 + b"XXX" * 100)
-    with pytest.raises(ValueError) as excinfo:
+    with pytest.raises(wal.LsnMismatchError) as excinfo:
         wal.verify_wal(wal_name="0" * 24, fileobj=b)
     assert "found '11/9C000000'" in str(excinfo.value)
     wal.verify_wal(wal_name="0000002F000000110000009C", fileobj=b)
