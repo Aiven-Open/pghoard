@@ -539,12 +539,9 @@ LABEL: pg_basebackup base backup
             ])
 
             # Adjust the generated recovery.conf to point pghoard_postgres_command to our instance
-            new_py_restore_cmd = "PYTHONPATH={} python3 -m pghoard.postgres_command --mode restore".format(
-                os.path.dirname(os.path.dirname(__file__))
-            )
-            new_go_restore_cmd = "{}/pghoard_postgres_command_go --mode restore".format(
-                os.path.dirname(os.path.dirname(__file__))
-            )
+            test_file_dir = {os.path.dirname(os.path.dirname(__file__))}
+            new_py_restore_cmd = f"PYTHONPATH={test_file_dir} python3 -m pghoard.postgres_command --mode restore"
+            new_go_restore_cmd = f"{test_file_dir}/pghoard_postgres_command_go --mode restore"
 
             if conn.server_version >= 120000:
                 target_recovery_conf = "postgresql.auto.conf"
