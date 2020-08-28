@@ -1,4 +1,5 @@
 Name:           pghoard
+Epoch:          1000
 Version:        %{major_version}
 Release:        %{minor_version}%{?dist}
 Url:            http://github.com/aiven/pghoard
