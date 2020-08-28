@@ -24,8 +24,27 @@ inc_unittest: &inc_unittest
   - make unittest
 
 jobs:
+  allow_failures:
+    # Don't require fmt to succeed until we have applied it
+    - stage: lint
+      name: fmt
+
   include:
     # Run linters with our "primary" Python version.
+    - stage: lint
+      python: 3.6
+      env: [PG_VERSION=9.6]
+      name: fmt
+      before_install: *inc_before_install
+      install: *inc_install
+      script:
+        - make fmt
+        - if [ $(git diff --name-only --diff-filter=ACMR | wc -l ) != 0 ]; then
+          echo "Reformatting failed! Please run make fmt on your commits and resubmit!" 1>&2 ;
+          git diff ;
+          exit 1 ;
+          fi
+
     - stage: lint
       python: 3.6
       env: [PG_VERSION=9.6]

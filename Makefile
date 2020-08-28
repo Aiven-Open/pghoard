@@ -16,6 +16,12 @@ unittest: version
 lint: version
 	$(PYTHON) -m pylint --rcfile .pylintrc $(PYTHON_SOURCE_DIRS)
 
+.PHONY: fmt
+fmt: version
+	unify --quote '"' --recursive --in-place $(PYTHON_SOURCE_DIRS)
+	isort --recursive $(PYTHON_SOURCE_DIRS)
+	yapf --parallel --recursive --in-place $(PYTHON_SOURCE_DIRS)
+
 .PHONY: coverage
 coverage: version
 	$(PYTHON) -m pytest $(PYTEST_ARG) --cov-report term-missing --cov pghoard test/
