@@ -24,11 +24,6 @@ inc_unittest: &inc_unittest
   - make unittest
 
 jobs:
-  allow_failures:
-    # Don't require fmt to succeed until we have applied it
-    - stage: lint
-      name: fmt
-
   include:
     # Run linters with our "primary" Python version.
     - stage: lint
