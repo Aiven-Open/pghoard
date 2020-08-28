@@ -2,8 +2,9 @@
 Prometheus Pushgateway client
 
 """
-import requests
 import socket
+
+import requests
 
 
 class PushgatewayClient:
@@ -41,7 +42,7 @@ class PushgatewayClient:
         for k, v in tags.items():
             tag_list.append("{}=\"{}\"".format(k, v))
 
-        encoded_tags = "{{{}}}".format(', '.join(tag_list))
+        encoded_tags = "{{{}}}".format(", ".join(tag_list))
         return """
         # TYPE {0} {1}
         {0}{2} {3}

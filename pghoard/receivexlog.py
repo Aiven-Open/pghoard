@@ -12,9 +12,9 @@ import select
 import signal
 import subprocess
 import time
-
-from .common import set_subprocess_stdout_and_stderr_nonblocking, terminate_subprocess
 from threading import Thread
+
+from .common import (set_subprocess_stdout_and_stderr_nonblocking, terminate_subprocess)
 
 
 class PGReceiveXLog(Thread):
@@ -43,9 +43,11 @@ class PGReceiveXLog(Thread):
 
         command = [
             self.config["backup_sites"][self.site]["pg_receivexlog_path"],
-            "--status-interval", "1",
+            "--status-interval",
+            "1",
             "--verbose",
-            "--directory", self.wal_location,
+            "--directory",
+            self.wal_location,
         ]
         command.extend(["--dbname", self.connection_string])
 
@@ -70,8 +72,7 @@ class PGReceiveXLog(Thread):
             self.stop_or_continue_based_on_free_disk()
         self.continue_pg_receivewal()
         rc = terminate_subprocess(proc, log=self.log)
-        self.log.debug("Ran: %r, took: %.3fs to run, returncode: %r",
-                       command, time.time() - start_time, rc)
+        self.log.debug("Ran: %r, took: %.3fs to run, returncode: %r", command, time.time() - start_time, rc)
         self.running = False
 
     def stop_or_continue_based_on_free_disk(self):

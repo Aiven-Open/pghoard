@@ -4,12 +4,14 @@ pghoard - test wal utility functions
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
-from io import BytesIO
-from pghoard import wal
-from tempfile import TemporaryFile
 import codecs
-import pytest
 import struct
+from io import BytesIO
+from tempfile import TemporaryFile
+
+import pytest
+
+from pghoard import wal
 
 # PG 9.5; LSN 11/9C000000; TLI 47 (0x2f)
 WAL_HEADER_95 = codecs.decode(b"87d006002f0000000000009c1100000000000000", "hex_codec")
@@ -25,7 +27,7 @@ def wal_header_for_file(name, version=90500):
 
 
 def test_wal_header_pg95():
-    header = b'\x87\xd0\x02\x00\x01\x00\x00\x00\x00\x00\x00\x0b\x00\x00\x00\x00\x00\x00\x00\x00'
+    header = b"\x87\xd0\x02\x00\x01\x00\x00\x00\x00\x00\x00\x0b\x00\x00\x00\x00\x00\x00\x00\x00"
     walheader = wal.read_header(header)
     assert walheader.lsn == "0/B000000"
     assert walheader.filename == "00000001000000000000000B"
@@ -33,7 +35,7 @@ def test_wal_header_pg95():
 
 def test_wal_header():
     blob95 = WAL_HEADER_95
-    hdr95 = wal.WalHeader(version=90500, timeline=47, lsn='11/9C000000', filename='0000002F000000110000009C')
+    hdr95 = wal.WalHeader(version=90500, timeline=47, lsn="11/9C000000", filename="0000002F000000110000009C")
     assert wal.read_header(blob95) == hdr95
     # only first 20 bytes are used
     assert wal.read_header(blob95 + b"XXX") == hdr95

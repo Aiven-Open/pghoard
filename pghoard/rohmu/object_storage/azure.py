@@ -4,14 +4,15 @@ rohmu - azure object store interface
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
-# pylint: disable=import-error, no-name-in-module
-from azure.storage.blob import BlockBlobService, ContentSettings
-from azure.storage.blob.models import BlobPrefix
-from .base import BaseTransfer, get_total_memory, KEY_TYPE_PREFIX, KEY_TYPE_OBJECT, IterKeyItem
-from ..errors import FileNotFoundFromStorageError, InvalidConfigurationError, StorageError
-import azure.common
 import time
 
+# pylint: disable=import-error, no-name-in-module
+import azure.common
+from azure.storage.blob import BlockBlobService, ContentSettings
+from azure.storage.blob.models import BlobPrefix
+
+from ..errors import (FileNotFoundFromStorageError, InvalidConfigurationError, StorageError)
+from .base import (KEY_TYPE_OBJECT, KEY_TYPE_PREFIX, BaseTransfer, IterKeyItem, get_total_memory)
 
 ENDPOINT_SUFFIXES = {
     None: None,  # use default
@@ -34,8 +35,7 @@ BlockBlobService.MAX_BLOCK_SIZE = calculate_max_block_size()
 
 
 class AzureTransfer(BaseTransfer):
-    def __init__(self, account_name, account_key, bucket_name, prefix=None,
-                 azure_cloud=None):
+    def __init__(self, account_name, account_key, bucket_name, prefix=None, azure_cloud=None):
         prefix = "{}".format(prefix.lstrip("/") if prefix else "")
         super().__init__(prefix=prefix)
         self.account_name = account_name
@@ -46,8 +46,9 @@ class AzureTransfer(BaseTransfer):
         except KeyError:
             raise InvalidConfigurationError("Unknown azure cloud {!r}".format(azure_cloud))
 
-        self.conn = BlockBlobService(account_name=self.account_name, account_key=self.account_key,
-                                     endpoint_suffix=endpoint_suffix)
+        self.conn = BlockBlobService(
+            account_name=self.account_name, account_key=self.account_key, endpoint_suffix=endpoint_suffix
+        )
         self.conn.socket_timeout = 120  # Default Azure socket timeout 20s is a bit short
         self.container = self.get_or_create_container(self.container_name)
         self.log.debug("AzureTransfer initialized, %r", self.container_name)
@@ -177,9 +178,7 @@ class AzureTransfer(BaseTransfer):
                 if start_range == file_size:
                     break
                 if blob.properties.content_length == 0:
-                    raise StorageError(
-                        "Empty response received for {}, range {}-{}".format(key, start_range, end_range)
-                    )
+                    raise StorageError("Empty response received for {}, range {}-{}".format(key, start_range, end_range))
                 end_range += blob.properties.content_length
                 if end_range >= file_size:
                     end_range = file_size - 1
@@ -228,10 +227,13 @@ class AzureTransfer(BaseTransfer):
         content_settings = None
         if mimetype:
             content_settings = ContentSettings(content_type=mimetype)
-        self.conn.create_blob_from_bytes(self.container_name, key,
-                                         bytes(memstring),  # azure would work with memoryview, but validates it's bytes
-                                         content_settings=content_settings,
-                                         metadata=self.sanitize_metadata(metadata, replace_hyphen_with="_"))
+        self.conn.create_blob_from_bytes(
+            self.container_name,
+            key,
+            bytes(memstring),  # azure would work with memoryview, but validates it's bytes
+            content_settings=content_settings,
+            metadata=self.sanitize_metadata(metadata, replace_hyphen_with="_")
+        )
 
     def store_file_from_disk(self, key, filepath, metadata=None, multipart=None, cache_control=None, mimetype=None):
         if cache_control is not None:
@@ -240,8 +242,13 @@ class AzureTransfer(BaseTransfer):
         content_settings = None
         if mimetype:
             content_settings = ContentSettings(content_type=mimetype)
-        self.conn.create_blob_from_path(self.container_name, key, filepath, content_settings=content_settings,
-                                        metadata=self.sanitize_metadata(metadata, replace_hyphen_with="_"))
+        self.conn.create_blob_from_path(
+            self.container_name,
+            key,
+            filepath,
+            content_settings=content_settings,
+            metadata=self.sanitize_metadata(metadata, replace_hyphen_with="_")
+        )
 
     def store_file_object(self, key, fd, *, cache_control=None, metadata=None, mimetype=None, upload_progress_fn=None):
         if cache_control is not None:
@@ -260,9 +267,14 @@ class AzureTransfer(BaseTransfer):
         original_tell = getattr(fd, "tell", None)
         fd.tell = lambda: None
         try:
-            self.conn.create_blob_from_stream(self.container_name, key, fd, content_settings=content_settings,
-                                              metadata=self.sanitize_metadata(metadata, replace_hyphen_with="_"),
-                                              progress_callback=progress_callback)
+            self.conn.create_blob_from_stream(
+                self.container_name,
+                key,
+                fd,
+                content_settings=content_settings,
+                metadata=self.sanitize_metadata(metadata, replace_hyphen_with="_"),
+                progress_callback=progress_callback
+            )
         finally:
             if original_tell:
                 fd.tell = original_tell
@@ -272,6 +284,5 @@ class AzureTransfer(BaseTransfer):
     def get_or_create_container(self, container_name):
         start_time = time.monotonic()
         self.conn.create_container(container_name)
-        self.log.debug("Got/Created container: %r successfully, took: %.3fs",
-                       container_name, time.monotonic() - start_time)
+        self.log.debug("Got/Created container: %r successfully, took: %.3fs", container_name, time.monotonic() - start_time)
         return container_name

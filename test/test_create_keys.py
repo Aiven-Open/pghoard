@@ -4,12 +4,14 @@ pghoard - test key generation tools
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
-from pghoard import create_keys
-from pghoard.rohmu.errors import InvalidConfigurationError
 import json
 import os
-import pytest
 import shutil
+
+import pytest
+
+from pghoard import create_keys
+from pghoard.rohmu.errors import InvalidConfigurationError
 
 
 def test_create_config_with_keys():

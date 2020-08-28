@@ -4,17 +4,20 @@ pghoard
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
-# pylint: disable=attribute-defined-outside-init
-from .base import PGHoardTestCase
-from pghoard.common import create_alert_file, delete_alert_file, write_json_file
-from pghoard.pghoard import PGHoard
-from pghoard.pgutil import create_connection_string
-from unittest.mock import Mock, patch
 import datetime
 import json
 import os
-import psycopg2
 import time
+from unittest.mock import Mock, patch
+
+import psycopg2
+
+from pghoard.common import (create_alert_file, delete_alert_file, write_json_file)
+from pghoard.pghoard import PGHoard
+from pghoard.pgutil import create_connection_string
+
+# pylint: disable=attribute-defined-outside-init
+from .base import PGHoardTestCase
 
 
 class TestPGHoard(PGHoardTestCase):
@@ -38,8 +41,9 @@ class TestPGHoard(PGHoardTestCase):
 
         self.pghoard = PGHoard(config_path)
         # This is the "final storage location" when using "local" storage type
-        self.local_storage_dir = os.path.join(self.config["backup_sites"][self.test_site]["object_storage"]["directory"],
-                                              self.test_site)
+        self.local_storage_dir = os.path.join(
+            self.config["backup_sites"][self.test_site]["object_storage"]["directory"], self.test_site
+        )
 
         self.real_check_pg_server_version = self.pghoard.check_pg_server_version
         self.pghoard.check_pg_server_version = Mock(return_value=90404)
@@ -108,19 +112,84 @@ dbname|"""
     def test_determine_backups_to_delete(self):
         now = datetime.datetime.now(datetime.timezone.utc)
         bbs = [
-            {"name": "bb1", "metadata": {"start-time": now - datetime.timedelta(days=10, hours=4)}},
-            {"name": "bb1", "metadata": {"start-time": now - datetime.timedelta(days=9, hours=4)}},
-            {"name": "bb1", "metadata": {"start-time": now - datetime.timedelta(days=9, hours=1)}},
-            {"name": "bb1", "metadata": {"start-time": now - datetime.timedelta(days=8, hours=4)}},
-            {"name": "bb1", "metadata": {"start-time": now - datetime.timedelta(days=7, hours=4)}},
-            {"name": "bb1", "metadata": {"start-time": now - datetime.timedelta(days=6, hours=4)}},
-            {"name": "bb1", "metadata": {"start-time": now - datetime.timedelta(days=6, hours=20)}},
-            {"name": "bb1", "metadata": {"start-time": now - datetime.timedelta(days=5, hours=4)}},
-            {"name": "bb1", "metadata": {"start-time": now - datetime.timedelta(days=4, hours=4)}},
-            {"name": "bb1", "metadata": {"start-time": now - datetime.timedelta(days=3, hours=4)}},
-            {"name": "bb1", "metadata": {"start-time": now - datetime.timedelta(days=2, hours=4)}},
-            {"name": "bb1", "metadata": {"start-time": now - datetime.timedelta(days=1, hours=4)}},
-            {"name": "bb1", "metadata": {"start-time": now - datetime.timedelta(hours=4)}},
+            {
+                "name": "bb1",
+                "metadata": {
+                    "start-time": now - datetime.timedelta(days=10, hours=4)
+                }
+            },
+            {
+                "name": "bb1",
+                "metadata": {
+                    "start-time": now - datetime.timedelta(days=9, hours=4)
+                }
+            },
+            {
+                "name": "bb1",
+                "metadata": {
+                    "start-time": now - datetime.timedelta(days=9, hours=1)
+                }
+            },
+            {
+                "name": "bb1",
+                "metadata": {
+                    "start-time": now - datetime.timedelta(days=8, hours=4)
+                }
+            },
+            {
+                "name": "bb1",
+                "metadata": {
+                    "start-time": now - datetime.timedelta(days=7, hours=4)
+                }
+            },
+            {
+                "name": "bb1",
+                "metadata": {
+                    "start-time": now - datetime.timedelta(days=6, hours=4)
+                }
+            },
+            {
+                "name": "bb1",
+                "metadata": {
+                    "start-time": now - datetime.timedelta(days=6, hours=20)
+                }
+            },
+            {
+                "name": "bb1",
+                "metadata": {
+                    "start-time": now - datetime.timedelta(days=5, hours=4)
+                }
+            },
+            {
+                "name": "bb1",
+                "metadata": {
+                    "start-time": now - datetime.timedelta(days=4, hours=4)
+                }
+            },
+            {
+                "name": "bb1",
+                "metadata": {
+                    "start-time": now - datetime.timedelta(days=3, hours=4)
+                }
+            },
+            {
+                "name": "bb1",
+                "metadata": {
+                    "start-time": now - datetime.timedelta(days=2, hours=4)
+                }
+            },
+            {
+                "name": "bb1",
+                "metadata": {
+                    "start-time": now - datetime.timedelta(days=1, hours=4)
+                }
+            },
+            {
+                "name": "bb1",
+                "metadata": {
+                    "start-time": now - datetime.timedelta(hours=4)
+                }
+            },
         ]
 
         site_config = {

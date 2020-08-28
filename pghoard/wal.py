@@ -4,11 +4,12 @@ pghoard: inspect WAL files
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
-from .common import replication_connection_string_and_slot_using_pgpass
-from collections import namedtuple
 import re
 import struct
 import subprocess
+from collections import namedtuple
+
+from .common import replication_connection_string_and_slot_using_pgpass
 
 PARTIAL_WAL_RE = re.compile(r"^[A-F0-9]{24}\.partial$")
 TIMELINE_RE = re.compile(r"^[A-F0-9]{8}\.history$")
@@ -110,10 +111,7 @@ def construct_wal_name(sysinfo):
     log_hex, seg_hex = sysinfo["xlogpos"].split("/", 1)
     # seg_hex's topmost 8 bits are filename, low 24 bits are position in
     # file which we are not interested in
-    return name_for_tli_log_seg(
-        tli=int(sysinfo["timeline"]),
-        log=int(log_hex, 16),
-        seg=int(seg_hex, 16) >> 24)
+    return name_for_tli_log_seg(tli=int(sysinfo["timeline"]), log=int(log_hex, 16), seg=int(seg_hex, 16) >> 24)
 
 
 def get_current_wal_from_identify_system(conn_str):

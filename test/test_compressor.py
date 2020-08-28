@@ -4,22 +4,25 @@ pghoard - compressor tests
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
-# pylint: disable=attribute-defined-outside-init
-from .base import PGHoardTestCase, CONSTANT_TEST_RSA_PUBLIC_KEY, CONSTANT_TEST_RSA_PRIVATE_KEY
-from .test_wal import wal_header_for_file
-from pghoard import metrics
-from pghoard.compressor import CompressorThread
-from pghoard.rohmu import compressor, IO_BLOCK_SIZE, rohmufile
-from pghoard.rohmu.snappyfile import snappy, SnappyFile
-from pghoard.rohmu.compressor import zstd
-from queue import Queue
 import io
-import lzma
 import logging
+import lzma
 import os
 import random
 import socket
+from queue import Queue
+
 import pytest
+
+from pghoard import metrics
+from pghoard.compressor import CompressorThread
+from pghoard.rohmu import IO_BLOCK_SIZE, compressor, rohmufile
+from pghoard.rohmu.compressor import zstd
+from pghoard.rohmu.snappyfile import SnappyFile, snappy
+
+# pylint: disable=attribute-defined-outside-init
+from .base import (CONSTANT_TEST_RSA_PRIVATE_KEY, CONSTANT_TEST_RSA_PUBLIC_KEY, PGHoardTestCase)
+from .test_wal import wal_header_for_file
 
 
 class WALTester:

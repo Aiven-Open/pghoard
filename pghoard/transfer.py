@@ -4,27 +4,24 @@ pghoard
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
-from pghoard.common import create_alert_file, get_object_storage_config
-from pghoard.fetcher import FileFetchManager
-from pghoard.rohmu.compat import suppress
-from pghoard.rohmu.errors import (
-    FileNotFoundFromStorageError,
-    LocalFileIsRemoteFileError,
-)
-from pghoard.rohmu import get_transfer
-from queue import Empty
-from threading import Thread, Lock
 import logging
 import os
 import time
+from queue import Empty
+from threading import Lock, Thread
+
+from pghoard.common import create_alert_file, get_object_storage_config
+from pghoard.fetcher import FileFetchManager
+from pghoard.rohmu import get_transfer
+from pghoard.rohmu.compat import suppress
+from pghoard.rohmu.errors import (FileNotFoundFromStorageError, LocalFileIsRemoteFileError)
 
 _STATS_LOCK = Lock()
 _last_stats_transmit_time = 0
 
 
 class TransferAgent(Thread):
-    def __init__(self, config, compression_queue, mp_manager, transfer_queue, metrics,
-                 shared_state_dict):
+    def __init__(self, config, compression_queue, mp_manager, transfer_queue, metrics, shared_state_dict):
         super().__init__()
         self.log = logging.getLogger("TransferAgent")
         self.config = config
@@ -41,8 +38,14 @@ class TransferAgent(Thread):
 
     def set_state_defaults_for_site(self, site):
         if site not in self.state:
-            EMPTY = {"data": 0, "count": 0, "time_taken": 0.0, "failures": 0,
-                     "xlogs_since_basebackup": 0, "last_success": None}
+            EMPTY = {
+                "data": 0,
+                "count": 0,
+                "time_taken": 0.0,
+                "failures": 0,
+                "xlogs_since_basebackup": 0,
+                "last_success": None
+            }
 
             def defaults():
                 return {
@@ -113,9 +116,10 @@ class TransferAgent(Thread):
 
             site = file_to_transfer["site"]
             filetype = file_to_transfer["filetype"]
-            self.log.debug("Starting to %r %r, size: %r",
-                           file_to_transfer["type"], file_to_transfer["local_path"],
-                           file_to_transfer.get("file_size", "unknown"))
+            self.log.debug(
+                "Starting to %r %r, size: %r", file_to_transfer["type"], file_to_transfer["local_path"],
+                file_to_transfer.get("file_size", "unknown")
+            )
             file_to_transfer.setdefault("prefix", self.config["backup_sites"][site]["prefix"])
             start_time = time.monotonic()
             key = self.form_key_path(file_to_transfer)
@@ -142,7 +146,8 @@ class TransferAgent(Thread):
                     self.metrics.gauge(
                         "pghoard.xlogs_since_basebackup",
                         self.state[site][oper]["xlog"]["xlogs_since_basebackup"],
-                        tags={"site": site})
+                        tags={"site": site}
+                    )
 
                 self.state[site][oper][filetype]["last_success"] = time.monotonic()
                 self.state[site][oper][filetype]["count"] += 1
@@ -153,7 +158,8 @@ class TransferAgent(Thread):
                     tags={
                         "type": filetype,
                         "site": site,
-                    })
+                    }
+                )
                 self.state[site][oper][filetype]["time_taken"] += time.monotonic() - start_time
                 self.state[site][oper][filetype]["latest_filename"] = filename
             else:
@@ -167,17 +173,19 @@ class TransferAgent(Thread):
                         "result": "ok" if result["success"] else "failed",
                         "type": filetype,
                         "site": site,
-                    })
+                    }
+                )
 
             # push result to callback_queue if provided
             if result.get("call_callback", True) and file_to_transfer.get("callback_queue"):
                 file_to_transfer["callback_queue"].put(result)
 
-            self.log.info("%r %stransfer of key: %r, size: %r, origin: %r took %.3fs",
-                          file_to_transfer["type"],
-                          "FAILED " if not result["success"] else "",
-                          key, oper_size, file_to_transfer.get("metadata", {}).get("host"),
-                          time.monotonic() - start_time)
+            self.log.info(
+                "%r %stransfer of key: %r, size: %r, origin: %r took %.3fs", file_to_transfer["type"],
+                "FAILED " if not result["success"] else "", key, oper_size,
+                file_to_transfer.get("metadata", {}).get("host"),
+                time.monotonic() - start_time
+            )
 
         self.fetch_manager.stop()
         self.log.debug("Quitting TransferAgent")
@@ -229,16 +237,15 @@ class TransferAgent(Thread):
             storage = self.get_object_storage(site)
             unlink_local = False
             if "blob" in file_to_transfer:
-                storage.store_file_from_memory(key, file_to_transfer["blob"],
-                                               metadata=file_to_transfer["metadata"])
+                storage.store_file_from_memory(key, file_to_transfer["blob"], metadata=file_to_transfer["metadata"])
             else:
                 # Basebackups may be multipart uploads, depending on the driver.
                 # Swift needs to know about this so it can do possible cleanups.
                 multipart = file_to_transfer["filetype"] in {"basebackup", "basebackup_chunk"}
                 try:
-                    storage.store_file_from_disk(key, file_to_transfer["local_path"],
-                                                 metadata=file_to_transfer["metadata"],
-                                                 multipart=multipart)
+                    storage.store_file_from_disk(
+                        key, file_to_transfer["local_path"], metadata=file_to_transfer["metadata"], multipart=multipart
+                    )
                     unlink_local = True
                 except LocalFileIsRemoteFileError:
                     pass
@@ -260,8 +267,10 @@ class TransferAgent(Thread):
                 # and the upload usually goes through without any issues the second time round
                 self.metrics.unexpected_exception(ex, where="handle_upload")
             else:
-                self.log.warning("Problem in moving file: %r, need to retry (%s: %s)",
-                                 file_to_transfer["local_path"], ex.__class__.__name__, ex)
+                self.log.warning(
+                    "Problem in moving file: %r, need to retry (%s: %s)", file_to_transfer["local_path"],
+                    ex.__class__.__name__, ex
+                )
 
             file_to_transfer["retry_number"] = file_to_transfer.get("retry_number", 0) + 1
             if file_to_transfer["retry_number"] > self.config["upload_retries_warning_limit"]:

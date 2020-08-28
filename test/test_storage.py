@@ -4,17 +4,18 @@ pghoard - rohmu object storage interface tests
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
-from io import BytesIO
-from pghoard.common import get_object_storage_config
-from pghoard.rohmu import compat, errors, get_transfer
-from pghoard.rohmu.object_storage.google import MediaStreamUpload
 import datetime
 import hashlib
 import os
-import pytest
 import uuid
+from io import BytesIO
 
+import pytest
+
+from pghoard.common import get_object_storage_config
+from pghoard.rohmu import compat, errors, get_transfer
 from pghoard.rohmu.object_storage.base import KEY_TYPE_OBJECT
+from pghoard.rohmu.object_storage.google import MediaStreamUpload
 
 try:
     from . import test_storage_configs  # pylint: disable=no-name-in-module, import-error
@@ -78,7 +79,7 @@ def _test_storage(st, driver, tmpdir, storage_config):
             Bucket=st.bucket_name,
             Key=st.format_key_for_backend("test1/x1"),
         )
-        assert bool(response.get("ServerSideEncryption")) == bool(storage_config.get('encrypted'))
+        assert bool(response.get("ServerSideEncryption")) == bool(storage_config.get("encrypted"))
 
     st.store_file_from_memory("test1/x1", b"dummy", {"k": "v"})
     out = BytesIO()
@@ -198,9 +199,9 @@ def _test_storage(st, driver, tmpdir, storage_config):
 
     if driver == "google":
         # test extra props for cacheControl in google
-        st.store_file_from_memory("test1/x1", b"no cache test",
-                                  metadata={"test": "value"},
-                                  extra_props={"cacheControl": "no-cache"})
+        st.store_file_from_memory(
+            "test1/x1", b"no cache test", metadata={"test": "value"}, extra_props={"cacheControl": "no-cache"}
+        )
 
     if driver == "local":
         # test LocalFileIsRemoteFileError for local storage
@@ -240,8 +241,16 @@ def _test_storage(st, driver, tmpdir, storage_config):
             test_size_send += len(chunk)
     test_hash_send = test_hash.hexdigest()
 
-    st.store_file_from_disk("test1/30m", test_file, multipart=True,
-                            metadata={"thirtymeg": "data", "size": test_size_send, "key": "value-with-a-hyphen"})
+    st.store_file_from_disk(
+        "test1/30m",
+        test_file,
+        multipart=True,
+        metadata={
+            "thirtymeg": "data",
+            "size": test_size_send,
+            "key": "value-with-a-hyphen"
+        }
+    )
 
     os.unlink(test_file)
 
@@ -287,8 +296,12 @@ def _test_storage(st, driver, tmpdir, storage_config):
             # reupload a file with the same name but with less chunks
             os.truncate(test_file, st.segment_size + 1)
             test_size_send = os.path.getsize(test_file)
-            st.store_file_from_disk("test1/30m", test_file, multipart=True,
-                                    metadata={"30m": "less data", "size": test_size_send})
+            st.store_file_from_disk(
+                "test1/30m", test_file, multipart=True, metadata={
+                    "30m": "less data",
+                    "size": test_size_send
+                }
+            )
 
             segment_list = st.list_path("test1_segments/30m")
             assert len(segment_list) == 2
@@ -371,8 +384,7 @@ def test_storage_aws_s3_with_prefix(tmpdir):
 
 
 def test_storage_aws_s3_no_prefix_with_encryption(tmpdir):
-    _test_storage_init("aws_s3", False, tmpdir,
-                       config_overrides={"encrypted": True})
+    _test_storage_init("aws_s3", False, tmpdir, config_overrides={"encrypted": True})
 
 
 def test_storage_azure_no_prefix(tmpdir):
@@ -432,15 +444,21 @@ def test_storage_sftp_with_prefix(tmpdir):
 
 
 def test_storage_sftp_no_prefix_private_key(tmpdir):
-    _test_storage_init("sftp", False, tmpdir,
-                       config_overrides={"private_key": "/home/vagrant/.ssh/id_rsa",
-                                         "password": "wrongpassword"})
+    _test_storage_init(
+        "sftp", False, tmpdir, config_overrides={
+            "private_key": "/home/vagrant/.ssh/id_rsa",
+            "password": "wrongpassword"
+        }
+    )
 
 
 def test_storage_sftp_with_prefix_private_key(tmpdir):
-    _test_storage_init("sftp", True, tmpdir,
-                       config_overrides={"private_key": "/home/vagrant/.ssh/id_rsa",
-                                         "password": "wrongpassword"})
+    _test_storage_init(
+        "sftp", True, tmpdir, config_overrides={
+            "private_key": "/home/vagrant/.ssh/id_rsa",
+            "password": "wrongpassword"
+        }
+    )
 
 
 def test_storage_config(tmpdir):

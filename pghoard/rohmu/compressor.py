@@ -5,11 +5,12 @@ Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
 
+import lzma
+
 from .errors import InvalidConfigurationError
 from .filewrap import Sink, Stream
 from .snappyfile import SnappyFile
 from .zstdfile import open as zstd_open
-import lzma
 
 try:
     import snappy

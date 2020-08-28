@@ -4,13 +4,14 @@ pghoard: clean up unused WAL from archive
 Copyright (c) 2017 Ohmu Ltd
 See LICENSE for details
 """
-from pghoard import common, config, logutil, version
-from pghoard.rohmu import get_transfer
-from pghoard.rohmu.errors import InvalidConfigurationError, FileNotFoundFromStorageError
 import argparse
 import logging
 import os
 import sys
+
+from pghoard import common, config, logutil, version
+from pghoard.rohmu import get_transfer
+from pghoard.rohmu.errors import (FileNotFoundFromStorageError, InvalidConfigurationError)
 
 
 class ArchiveCleanup:
@@ -46,13 +47,12 @@ class ArchiveCleanup:
                     try:
                         self.storage.delete_key(object_name)
                     except FileNotFoundFromStorageError:
-                        self.log.error('Storage report segment %r is not available', segment)
+                        self.log.error("Storage report segment %r is not available", segment)
         self.log.info("Total orphan WAL segments size is %s bytes", total_bytes)
 
     def run(self, args=None):
         parser = argparse.ArgumentParser()
-        parser.add_argument("--version", action='version', help="show program version",
-                            version=version.__version__)
+        parser.add_argument("--version", action="version", help="show program version", version=version.__version__)
         parser.add_argument("--site", help="pghoard site", required=False)
         parser.add_argument("--config", help="pghoard config file", default=os.environ.get("PGHOARD_CONFIG"))
         parser.add_argument(

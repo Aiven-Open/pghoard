@@ -5,26 +5,22 @@ Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
 
-from .base import BaseTransfer, IterKeyItem, KEY_TYPE_PREFIX, KEY_TYPE_OBJECT
-from ..errors import FileNotFoundFromStorageError, InvalidConfigurationError, StorageError
-from io import BytesIO, StringIO
-from stat import S_ISDIR
 import datetime
 import json
 import logging
 import os
-import paramiko
 import warnings
+from io import BytesIO, StringIO
+from stat import S_ISDIR
+
+import paramiko
+
+from ..errors import (FileNotFoundFromStorageError, InvalidConfigurationError, StorageError)
+from .base import KEY_TYPE_OBJECT, KEY_TYPE_PREFIX, BaseTransfer, IterKeyItem
 
 
 class SFTPTransfer(BaseTransfer):
-    def __init__(self,
-                 server,
-                 port,
-                 username,
-                 password=None,
-                 private_key=None,
-                 prefix=None):
+    def __init__(self, server, port, username, password=None, private_key=None, prefix=None):
         super().__init__(prefix=prefix)
         self.server = server
         self.port = port
@@ -38,7 +34,7 @@ class SFTPTransfer(BaseTransfer):
         logging.getLogger("paramiko").setLevel(logging.WARNING)
 
         # https://github.com/paramiko/paramiko/issues/1386#issuecomment-470847772
-        warnings.filterwarnings(action='ignore', module='.*paramiko.*')
+        warnings.filterwarnings(action="ignore", module=".*paramiko.*")
 
         transport = paramiko.Transport((self.server, self.port))
 
