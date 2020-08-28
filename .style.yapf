@@ -1,0 +1,55 @@
+[style]
+# For docs, see https://github.com/google/yapf/blob/master/README.rst
+
+based_on_style = pep8
+# Disallow splitting between dict key and dict value in multiline {"key": "value"} lines
+ALLOW_SPLIT_BEFORE_DICT_VALUE = false
+
+# Avoid adding unnecessary blank lines when nesting
+BLANK_LINE_BEFORE_NESTED_CLASS_OR_DEF = false
+
+# Always add two blank lines for top-level classes and methods
+BLANK_LINES_AROUND_TOP_LEVEL_DEFINITION = 2
+
+# These two combine consecutive ({ and }) to same line to reduce clutter
+COALESCE_BRACKETS = true
+DEDENT_CLOSING_BRACKETS = true
+
+# Line length
+COLUMN_LIMIT = 125
+
+# Try to avoid having overly long lines by having excessively large penalty for that.
+SPLIT_PENALTY_EXCESS_CHARACTER = 1000000000
+
+# Always split dict entries to one entry per line
+# EACH_DICT_ENTRY_ON_SEPARATE_LINE = true
+
+# Never split this comment to a separate line. Workaround for certain flake8 & email template lines
+I18N_COMMENT = # noqa
+
+# Allow automatically joining lines, for example, multiline if that would fit to a single line
+JOIN_MULTIPLE_LINES = true
+
+# "3 * 5", instead of "3*5"
+SPACES_AROUND_POWER_OPERATOR = true
+
+# Follow normal comment style by adding two spaces between code and comment
+SPACES_BEFORE_COMMENT = 2
+
+# If list of items is comma terminated, always split to one per line.
+SPLIT_ARGUMENTS_WHEN_COMMA_TERMINATED = true
+
+# Related to previous one, if list of items (args or dict/list/...) needs to be split, split to one per line.
+# SPLIT_ALL_COMMA_SEPARATED_VALUES = true
+
+# Split dict generators for clarity (add line breaks between { and key: val etc.
+SPLIT_BEFORE_DICT_SET_GENERATOR = true
+
+# Split method(k1=v1, k2=v2...) to separate lines
+SPLIT_BEFORE_NAMED_ASSIGNS = true
+
+# For complex (for some definition of complex) comprehensions, put output, for and if to separate lines
+SPLIT_COMPLEX_COMPREHENSION = true
+
+# When splitting something to multiple lines ('method(\n val...'), intend by 4
+CONTINUATION_INDENT_WIDTH = 4
