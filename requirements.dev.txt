@@ -1,0 +1,11 @@
+# Use pip for build requirements to harmonize between OS versions
+mock
+pylint>=2.4.3
+pylint-quotes
+pytest
+pytest-mock
+pytest-timeout
+pytest-xdist
+coverage
+coveralls
+responses
