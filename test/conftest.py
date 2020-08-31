@@ -4,26 +4,28 @@ pghoard: fixtures for tests
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
-from distutils.version import LooseVersion
-from pghoard import config as pghconfig, logutil, pgutil
-from pghoard.pghoard import PGHoard
-from pghoard.rohmu.compat import suppress
-from pghoard.rohmu.snappyfile import snappy
-from py import path as py_path  # pylint: disable=no-name-in-module
-from unittest import SkipTest
 import contextlib
 import json
 import lzma
 import os
-import psycopg2
-import pytest
 import random
 import re
 import signal
 import subprocess
 import tempfile
 import time
+from distutils.version import LooseVersion
+from unittest import SkipTest
 
+import psycopg2
+import pytest
+from py import path as py_path  # pylint: disable=no-name-in-module
+
+from pghoard import config as pghconfig
+from pghoard import logutil, pgutil
+from pghoard.pghoard import PGHoard
+from pghoard.rohmu.compat import suppress
+from pghoard.rohmu.snappyfile import snappy
 
 logutil.configure_logging()
 
@@ -51,10 +53,14 @@ class PGTester:
     def run_pg(self):
         cmd = [
             os.path.join(self.pgbin, "postgres"),
-            "-D", self.pgdata,
-            "-k", self.pgdata,
-            "-p", self.user["port"],
-            "-c", "listen_addresses=",
+            "-D",
+            self.pgdata,
+            "-k",
+            self.pgdata,
+            "-p",
+            self.user["port"],
+            "-c",
+            "listen_addresses=",
         ]
         self.pg = subprocess.Popen(cmd)
         time.sleep(1.0)  # let pg start
@@ -194,7 +200,8 @@ def pghoard_separate_volume(db, tmpdir, request):
     # environments where sudo can be executed without password prompts.
     try:
         subprocess.check_call(
-            ["sudo", "-S", "mount", "-t", "tmpfs", "-o", "size=100m", "tmpfs", tmpfs_volume], stdin=subprocess.DEVNULL,
+            ["sudo", "-S", "mount", "-t", "tmpfs", "-o", "size=100m", "tmpfs", tmpfs_volume],
+            stdin=subprocess.DEVNULL,
         )
     except subprocess.CalledProcessError as ex:
         raise SkipTest("Failed to create tmpfs: {!r}".format(ex))
@@ -216,9 +223,17 @@ def pghoard_separate_volume(db, tmpdir, request):
         subprocess.check_call(["sudo", "umount", tmpfs_volume])
 
 
-def pghoard_base(db, tmpdir, request, compression="snappy",   # pylint: disable=redefined-outer-name
-                 transfer_count=None, metrics_cfg=None, *,
-                 backup_location=None, pg_receivexlog_config=None):
+def pghoard_base(
+    db,
+    tmpdir,
+    request,
+    compression="snappy",  # pylint: disable=redefined-outer-name
+    transfer_count=None,
+    metrics_cfg=None,
+    *,
+    backup_location=None,
+    pg_receivexlog_config=None
+):
     test_site = request.function.__name__
 
     if pg_receivexlog_config:

@@ -4,11 +4,6 @@ pghoard - common utility functions
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
-from distutils.version import LooseVersion
-from pghoard import pgutil
-from pghoard.rohmu import IO_BLOCK_SIZE
-from pghoard.rohmu.compat import suppress
-from pghoard.rohmu.errors import Error, InvalidConfigurationError
 import datetime
 import fcntl
 import json
@@ -19,7 +14,12 @@ import re
 import tarfile
 import tempfile
 import time
+from distutils.version import LooseVersion
 
+from pghoard import pgutil
+from pghoard.rohmu import IO_BLOCK_SIZE
+from pghoard.rohmu.compat import suppress
+from pghoard.rohmu.errors import Error, InvalidConfigurationError
 
 LOG = logging.getLogger("pghoard.common")
 
@@ -35,7 +35,8 @@ def create_pgpass_file(connection_string_or_info):
         host=info.get("host", "localhost"),
         port=info.get("port", 5432),
         user=info.get("user", ""),
-        dbname=info.get("dbname", "*"))
+        dbname=info.get("dbname", "*")
+    )
     pwline = "{linekey}{password}".format(linekey=linekey, password=info.pop("password"))
     pgpass_path = os.path.join(os.environ.get("HOME"), ".pgpass")
     if os.path.exists(pgpass_path):
@@ -160,11 +161,13 @@ def default_json_serialization(obj):
 
 
 def json_encode(obj, compact=True, binary=False):
-    res = json.dumps(obj,
-                     sort_keys=not compact,
-                     indent=None if compact else 4,
-                     separators=(",", ":") if compact else None,
-                     default=default_json_serialization)
+    res = json.dumps(
+        obj,
+        sort_keys=not compact,
+        indent=None if compact else 4,
+        separators=(",", ":") if compact else None,
+        default=default_json_serialization
+    )
     return res.encode("utf-8") if binary else res
 
 
@@ -230,7 +233,7 @@ def increase_pipe_capacity(*pipes):
     if platform.system() != "Linux":
         return
     try:
-        with open('/proc/sys/fs/pipe-max-size', 'r') as f:
+        with open("/proc/sys/fs/pipe-max-size", "r") as f:
             pipe_max_size = int(f.read())
     except FileNotFoundError:
         return

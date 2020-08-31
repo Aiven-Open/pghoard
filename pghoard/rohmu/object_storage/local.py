@@ -4,16 +4,17 @@ rohmu - local filesystem interface
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
-from io import BytesIO
-from ..compat import makedirs, suppress
-from ..errors import FileNotFoundFromStorageError, LocalFileIsRemoteFileError
-from .base import BaseTransfer, IterKeyItem, KEY_TYPE_PREFIX, KEY_TYPE_OBJECT
 import contextlib
 import datetime
 import json
 import os
 import shutil
 import tempfile
+from io import BytesIO
+
+from ..compat import makedirs, suppress
+from ..errors import FileNotFoundFromStorageError, LocalFileIsRemoteFileError
+from .base import KEY_TYPE_OBJECT, KEY_TYPE_PREFIX, BaseTransfer, IterKeyItem
 
 CHUNK_SIZE = 1024 * 1024
 
@@ -195,8 +196,16 @@ class LocalTransfer(BaseTransfer):
         shutil.copyfile(filepath, target_path)
         self._save_metadata(target_path, metadata)
 
-    def store_file_object(self, key, fd, *, cache_control=None,  # pylint: disable=unused-argument
-                          metadata=None, mimetype=None, upload_progress_fn=None):  # pylint: disable=unused-argument
+    def store_file_object(
+        self,
+        key,
+        fd,
+        *,
+        cache_control=None,  # pylint: disable=unused-argument
+        metadata=None,
+        mimetype=None,
+        upload_progress_fn=None
+    ):  # pylint: disable=unused-argument
         target_path = self.format_key_for_backend(key.strip("/"))
         makedirs(os.path.dirname(target_path), exist_ok=True)
         bytes_written = 0

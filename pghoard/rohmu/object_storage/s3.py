@@ -4,14 +4,16 @@ rohmu
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
-from ..errors import FileNotFoundFromStorageError, InvalidConfigurationError, StorageError
-from .base import BaseTransfer, get_total_memory, KEY_TYPE_PREFIX, KEY_TYPE_OBJECT, IterKeyItem
-import botocore.client
-import botocore.exceptions
-import botocore.session
 import math
 import os
 import time
+
+import botocore.client
+import botocore.exceptions
+import botocore.session
+
+from ..errors import (FileNotFoundFromStorageError, InvalidConfigurationError, StorageError)
+from .base import (KEY_TYPE_OBJECT, KEY_TYPE_PREFIX, BaseTransfer, IterKeyItem, get_total_memory)
 
 
 def calculate_chunk_size():
@@ -29,18 +31,20 @@ READ_BLOCK_SIZE = 1024 * 1024 * 1
 
 
 class S3Transfer(BaseTransfer):
-    def __init__(self,
-                 region,
-                 bucket_name,
-                 aws_access_key_id=None,
-                 aws_secret_access_key=None,
-                 prefix=None,
-                 host=None,
-                 port=None,
-                 is_secure=False,
-                 is_verify_tls=False,
-                 segment_size=MULTIPART_CHUNK_SIZE,
-                 encrypted=False):
+    def __init__(
+        self,
+        region,
+        bucket_name,
+        aws_access_key_id=None,
+        aws_secret_access_key=None,
+        prefix=None,
+        host=None,
+        port=None,
+        is_secure=False,
+        is_verify_tls=False,
+        segment_size=MULTIPART_CHUNK_SIZE,
+        encrypted=False
+    ):
         super().__init__(prefix=prefix)
         botocore_session = botocore.session.get_session()
         self.bucket_name = bucket_name
@@ -64,7 +68,7 @@ class S3Transfer(BaseTransfer):
             else:
                 signature_version = "s3"
             custom_config = botocore.client.Config(
-                s3={'addressing_style': 'path'},
+                s3={"addressing_style": "path"},
                 signature_version=signature_version,
             )
             self.s3_client = botocore_session.create_client(
@@ -256,8 +260,9 @@ class S3Transfer(BaseTransfer):
             return
 
         with open(filepath, "rb") as fp:
-            self.multipart_upload_file_object(cache_control=cache_control, fp=fp, key=key, metadata=metadata,
-                                              mimetype=mimetype, size=size)
+            self.multipart_upload_file_object(
+                cache_control=cache_control, fp=fp, key=key, metadata=metadata, mimetype=mimetype, size=size
+            )
 
     def multipart_upload_file_object(self, *, cache_control, fp, key, metadata, mimetype, progress_fn=None, size=None):
         key = self.format_key_for_backend(key, remove_slash_prefix=True)
@@ -358,13 +363,19 @@ class S3Transfer(BaseTransfer):
                 raise StorageError("Failed to complete multipart upload for {}".format(key)) from ex
 
         self.log.info(
-            "Multipart upload of %r complete, size: %r, took: %.2fs",
-            key, size, time.monotonic() - start_of_multipart_upload
+            "Multipart upload of %r complete, size: %r, took: %.2fs", key, size,
+            time.monotonic() - start_of_multipart_upload
         )
 
     def store_file_object(self, key, fd, *, cache_control=None, metadata=None, mimetype=None, upload_progress_fn=None):
-        self.multipart_upload_file_object(cache_control=cache_control, fp=fd, key=key, metadata=metadata,
-                                          mimetype=mimetype, progress_fn=upload_progress_fn)
+        self.multipart_upload_file_object(
+            cache_control=cache_control,
+            fp=fd,
+            key=key,
+            metadata=metadata,
+            mimetype=mimetype,
+            progress_fn=upload_progress_fn
+        )
 
     def check_or_create_bucket(self):
         create_bucket = False

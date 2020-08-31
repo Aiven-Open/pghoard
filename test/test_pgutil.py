@@ -6,10 +6,9 @@ Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
 
-from pghoard.pgutil import (
-    create_connection_string, get_connection_info, mask_connection_info,
-)
 from pytest import raises
+
+from pghoard.pgutil import (create_connection_string, get_connection_info, mask_connection_info)
 
 
 def test_connection_info():

@@ -4,17 +4,17 @@ pghoard - configuration validation
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
+import json
+import multiprocessing
+import os
+import subprocess
 from distutils.version import LooseVersion
+
 from pghoard.common import convert_pg_command_version_to_number
 from pghoard.postgres_command import PGHOARD_HOST, PGHOARD_PORT
 from pghoard.rohmu import get_class_for_transfer
 from pghoard.rohmu.errors import InvalidConfigurationError
 from pghoard.rohmu.snappyfile import snappy
-import json
-import multiprocessing
-import os
-import subprocess
-
 
 SUPPORTED_VERSIONS = ["12", "11", "10", "9.6", "9.5", "9.4", "9.3"]
 
@@ -87,8 +87,7 @@ def set_and_check_config_defaults(config, *, check_commands=True, check_pgdata=T
         site_config.setdefault("basebackup_count_min", 2)
         site_config.setdefault("basebackup_interval_hours", 24)
         # NOTE: stream_compression removed from documentation after 1.6.0 release
-        site_config.setdefault("basebackup_mode",
-                               "pipe" if site_config.get("stream_compression") else "basic")
+        site_config.setdefault("basebackup_mode", "pipe" if site_config.get("stream_compression") else "basic")
         site_config.setdefault("basebackup_threads", 1)
         site_config.setdefault("encryption_key_id", None)
         site_config.setdefault("object_storage", None)
@@ -100,8 +99,7 @@ def set_and_check_config_defaults(config, *, check_commands=True, check_pgdata=T
         # NOTE: pg_data_directory doesn't have a default value
         data_dir = site_config.get("pg_data_directory")
         if not data_dir and check_pgdata:
-            raise InvalidConfigurationError(
-                "Site {!r}: pg_data_directory must be set".format(site_name))
+            raise InvalidConfigurationError("Site {!r}: pg_data_directory must be set".format(site_name))
 
         if check_pgdata:
             version_file = os.path.join(data_dir, "PG_VERSION") if data_dir else None
@@ -116,13 +114,16 @@ def set_and_check_config_defaults(config, *, check_commands=True, check_pgdata=T
         elif obj_store["storage_type"] == "local" and obj_store.get("directory") == config.get("backup_location"):
             raise InvalidConfigurationError(
                 "Site {!r}: invalid 'local' target directory {!r}, must be different from 'backup_location'".format(
-                    site_name, config.get("backup_location")))
+                    site_name, config.get("backup_location")
+                )
+            )
         else:
             try:
                 get_class_for_transfer(obj_store)
             except ImportError as ex:
                 raise InvalidConfigurationError(
-                    "Site {0!r} object_storage: {1.__class__.__name__!s}: {1!s}".format(site_name, ex))
+                    "Site {0!r} object_storage: {1.__class__.__name__!s}: {1!s}".format(site_name, ex)
+                )
 
         # Set command paths and check their versions per site.  We use a configured value if one was provided
         # (either at top level or per site), if it wasn't provided but we have a valid pg_data_directory with
@@ -146,8 +147,9 @@ def set_and_check_config_defaults(config, *, check_commands=True, check_pgdata=T
 
             if check_commands and site_config["active"]:
                 if not command_path or not os.path.exists(command_path):
-                    raise InvalidConfigurationError("Site {!r} command {!r} not found from path {}".format(
-                        site_name, command, command_path))
+                    raise InvalidConfigurationError(
+                        "Site {!r} command {!r} not found from path {}".format(site_name, command, command_path)
+                    )
                 version_output = subprocess.check_output([command_path, "--version"])
                 version_string = version_output.decode("ascii").strip()
                 site_config[command + "_version"] = convert_pg_command_version_to_number(version_string)
@@ -164,11 +166,11 @@ def read_json_config_file(filename, *, check_commands=True, add_defaults=True, c
     except FileNotFoundError:
         raise InvalidConfigurationError("Configuration file {!r} does not exist".format(filename))
     except ValueError as ex:
-        raise InvalidConfigurationError("Configuration file {!r} does not contain valid JSON: {}"
-                                        .format(filename, str(ex)))
+        raise InvalidConfigurationError("Configuration file {!r} does not contain valid JSON: {}".format(filename, str(ex)))
     except OSError as ex:
-        raise InvalidConfigurationError("Configuration file {!r} can't be opened: {}"
-                                        .format(filename, ex.__class__.__name__))
+        raise InvalidConfigurationError(
+            "Configuration file {!r} can't be opened: {}".format(filename, ex.__class__.__name__)
+        )
 
     if not add_defaults:
         return config
@@ -182,13 +184,19 @@ def get_site_from_config(config, site):
     site_count = len(config["backup_sites"])
     if site is None:
         if site_count > 1:
-            raise InvalidConfigurationError("Backup site not set and configuration file defines {} sites: {}"
-                                            .format(site_count, sorted(config["backup_sites"])))
+            raise InvalidConfigurationError(
+                "Backup site not set and configuration file defines {} sites: {}".format(
+                    site_count, sorted(config["backup_sites"])
+                )
+            )
         site = list(config["backup_sites"])[0]
     elif site not in config["backup_sites"]:
         n_sites = "{} other site{}".format(site_count, "s" if site_count > 1 else "")
-        raise InvalidConfigurationError("Site {!r} not defined in configuration file.  {} are defined: {}"
-                                        .format(site, n_sites, sorted(config["backup_sites"])))
+        raise InvalidConfigurationError(
+            "Site {!r} not defined in configuration file.  {} are defined: {}".format(
+                site, n_sites, sorted(config["backup_sites"])
+            )
+        )
 
     return site
 
