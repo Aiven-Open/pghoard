@@ -221,6 +221,7 @@ class TransferAgent(Thread):
     def handle_download(self, site, key, file_to_transfer):
         try:
             path = file_to_transfer["target_path"]
+            self.log.info("Requesting download of object key: src=%r dst=%r", key, path)
             file_size, metadata = self.fetch_manager.fetch_file(site, key, path)
             file_to_transfer["file_size"] = file_size
             return {"success": True, "opaque": file_to_transfer.get("opaque"), "target_path": path, "metadata": metadata}
@@ -237,12 +238,14 @@ class TransferAgent(Thread):
             storage = self.get_object_storage(site)
             unlink_local = False
             if "blob" in file_to_transfer:
+                self.log.info("Uploading memory-blob to object store: dst=%r", key)
                 storage.store_file_from_memory(key, file_to_transfer["blob"], metadata=file_to_transfer["metadata"])
             else:
                 # Basebackups may be multipart uploads, depending on the driver.
                 # Swift needs to know about this so it can do possible cleanups.
                 multipart = file_to_transfer["filetype"] in {"basebackup", "basebackup_chunk"}
                 try:
+                    self.log.info("Uploading file to object store: src=%r dst=%r", file_to_transfer["local_path"], key)
                     storage.store_file_from_disk(
                         key, file_to_transfer["local_path"], metadata=file_to_transfer["metadata"], multipart=multipart
                     )
@@ -251,7 +254,7 @@ class TransferAgent(Thread):
                     pass
             if unlink_local:
                 try:
-                    self.log.debug("Deleting file: %r since it has been uploaded", file_to_transfer["local_path"])
+                    self.log.info("Deleting file: %r since it has been uploaded", file_to_transfer["local_path"])
                     os.unlink(file_to_transfer["local_path"])
                     metadata_path = file_to_transfer["local_path"] + ".metadata"
                     with suppress(FileNotFoundError):
