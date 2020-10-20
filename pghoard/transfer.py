@@ -142,6 +142,14 @@ class TransferAgent(Thread):
                     elif filetype == "basebackup":
                         # reset corresponding xlog stats at basebackup
                         self.state[site][oper]["xlog"]["xlogs_since_basebackup"] = 0
+                        chunk_index = file_to_transfer.get("chunk_index", 0)
+                        chunk_total = file_to_transfer.get("chunk_total", 0)
+                        if chunk_total > 0:
+                            self.metrics.gauge(
+                                "pghoard.basebackup_estimated_progress",
+                                int((chunk_index / chunk_total) * 100),
+                                tags={"site": site}
+                            )
 
                     self.metrics.gauge(
                         "pghoard.xlogs_since_basebackup",
