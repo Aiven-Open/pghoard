@@ -103,6 +103,9 @@ class TransferAgent(Thread):
                         )
             _last_stats_transmit_time = time.monotonic()
 
+    def _reset_backup_progress(self, *, site):
+        self.state[site]["backbackup"]["chunks_transfered"] = 0
+
     def run(self):
         while self.running:
             self.transmit_metrics()
@@ -111,10 +114,16 @@ class TransferAgent(Thread):
                 file_to_transfer = self.transfer_queue.get(timeout=1.0)
             except Empty:
                 continue
+
             if file_to_transfer["type"] == "QUIT":
                 break
 
             site = file_to_transfer["site"]
+
+            if file_to_transfer["type"] == "RESET_BACKUP_PROGRESS":
+                self._reset_backup_progress(site=site)
+                break
+
             filetype = file_to_transfer["filetype"]
             self.log.debug(
                 "Starting to %r %r, size: %r", file_to_transfer["type"], file_to_transfer["local_path"],
@@ -140,8 +149,20 @@ class TransferAgent(Thread):
                     if filetype == "xlog":
                         self.state[site][oper]["xlog"]["xlogs_since_basebackup"] += 1
                     elif filetype == "basebackup":
+                        current_operation = self.state[site][oper]
                         # reset corresponding xlog stats at basebackup
-                        self.state[site][oper]["xlog"]["xlogs_since_basebackup"] = 0
+                        current_operation["xlog"]["xlogs_since_basebackup"] = 0
+                        chunk_total = file_to_transfer.get("chunk_total", 0)
+                        # if we know how many chunks we are transferring use it for progress
+                        if chunk_total > 0:
+                            chunk_count = current_operation.get("chunks_transfered", 0) + 1
+                            current_operation["chunks_transfered"] = chunk_count
+
+                            self.metrics.gauge(
+                                "pghoard.basebackup_estimated_progress",
+                                int((chunk_count / chunk_total) * 100),
+                                tags={"site": site}
+                            )
 
                     self.metrics.gauge(
                         "pghoard.xlogs_since_basebackup",

@@ -462,7 +462,15 @@ class PGBaseBackup(Thread):
             yield archive_path, local_path, False, "leave"
 
     def tar_one_file(
-        self, *, temp_dir, chunk_path, files_to_backup, callback_queue, filetype="basebackup_chunk", extra_metadata=None
+        self,
+        *,
+        temp_dir,
+        chunk_path,
+        files_to_backup,
+        callback_queue,
+        filetype="basebackup_chunk",
+        extra_metadata=None,
+        chunk_total=0
     ):
         start_time = time.monotonic()
 
@@ -528,6 +536,7 @@ class PGBaseBackup(Thread):
             "metadata": metadata,
             "site": self.site,
             "type": "UPLOAD",
+            "chunk_total": chunk_total
         })
 
         # Get the name of the chunk and the name of the parent directory (ie backup "name")
@@ -553,17 +562,22 @@ class PGBaseBackup(Thread):
             chunk_path=chunk_path,
             temp_dir=temp_dir,
             files_to_backup=one_chunk_files,
+            chunk_total=len(chunks)
         )
         self.log.info(
             "Queued backup chunk %r for transfer, chunks on disk (including partial): %r, current: %r, total chunks: %r",
             chunk_name, self.chunks_on_disk + 1, index, len(chunks)
         )
+
         return {
             "chunk_filename": chunk_name,
             "input_size": input_size,
             "result_size": result_size,
             "files": [chunk[0] for chunk in one_chunk_files]
         }
+
+    def _reset_backup_progress(self):
+        self.transfer_queue.put({"site": self.site, "type": "RESET_BACKUP_PROGRESS"})
 
     def create_and_upload_chunks(self, chunks, data_file_format, temp_base_dir):
         start_time = time.monotonic()
@@ -572,6 +586,8 @@ class PGBaseBackup(Thread):
         chunk_callback_queue = Queue()
         self.chunks_on_disk = 0
         i = 0
+
+        self._reset_backup_progress()
 
         site_config = self.config["backup_sites"][self.site]
         max_chunks_on_disk = site_config["basebackup_chunks_in_progress"]
