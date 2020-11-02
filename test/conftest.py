@@ -130,6 +130,10 @@ def setup_pg():
             # don't need to wait for autovacuum workers when shutting down
             "autovacuum": "off",
         })
+        # Setting name has changed in PG 13, set comparison needed because 9.6 is somehow larger than 13 for the comparison
+        if db.pgver >= "13" and db.pgver not in {"9.5", "9.6"}:
+            del config["wal_keep_segments"]
+            config["wal_keep_size"] = 16 * 100
         lines = ["{} = {}\n".format(key, val) for key, val in sorted(config.items())]  # noqa
         fp.write("".join(lines))
     # now start pg and create test users

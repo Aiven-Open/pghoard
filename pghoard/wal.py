@@ -15,6 +15,7 @@ PARTIAL_WAL_RE = re.compile(r"^[A-F0-9]{24}\.partial$")
 TIMELINE_RE = re.compile(r"^[A-F0-9]{8}\.history$")
 WAL_RE = re.compile("^[A-F0-9]{24}$")
 WAL_HEADER_LEN = 20
+# Look at the file src/include/access/xlog_internal.h and grep for XLOG_PAGE_MAGIC
 WAL_MAGIC = {
     0xD071: 90200,  # Though PGHoard no longer supports version 9.2, magic number is left for WAL identification purposes
     0xD075: 90300,
@@ -24,6 +25,7 @@ WAL_MAGIC = {
     0xD097: 100000,
     0xD098: 110000,
     0xD101: 120000,
+    0xD106: 130000,
 }
 WAL_MAGIC_BY_VERSION = {value: key for key, value in WAL_MAGIC.items()}
 
