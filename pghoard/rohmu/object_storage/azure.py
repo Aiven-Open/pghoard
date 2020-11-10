@@ -264,8 +264,10 @@ class AzureTransfer(BaseTransfer):
 
         # Azure _BlobChunkUploader calls `tell()` on the stream even though it doesn't use the result.
         # We expect the input stream not to support `tell()` so use dummy implementation for it
-        original_tell = getattr(fd, "tell", None)
-        fd.tell = lambda: None
+        seekable = hasattr(fd, "seekable") and fd.seekable()
+        if not seekable:
+            original_tell = getattr(fd, "tell", None)
+            fd.tell = lambda: None
         try:
             self.conn.create_blob_from_stream(
                 self.container_name,
@@ -276,10 +278,11 @@ class AzureTransfer(BaseTransfer):
                 progress_callback=progress_callback
             )
         finally:
-            if original_tell:
-                fd.tell = original_tell
-            else:
-                delattr(fd, "tell")
+            if not seekable:
+                if original_tell is not None:
+                    fd.tell = original_tell
+                else:
+                    delattr(fd, "tell")
 
     def get_or_create_container(self, container_name):
         start_time = time.monotonic()

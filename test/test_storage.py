@@ -318,21 +318,26 @@ def _test_storage(st, driver, tmpdir, storage_config):
     def upload_progress(progress):
         progress_reports.append(progress)
 
-    for size in (300, 3 * 1024 * 1024, 11 * 1024 * 1024):
-        progress_reports = []
-        rds = RandomDataSource(size)
-        key = "test1/{}b".format(size)
-        st.store_file_object(key, rds, upload_progress_fn=upload_progress)
-        # Progress may be reported after each chunk and chunk size depends on available memory
-        # on current machine so there's no straightforward way of checking reasonable progress
-        # updates were made. Just ensure they're ordered correctly if something was provided
-        assert sorted(progress_reports) == progress_reports
-        bio = BytesIO()
-        st.get_contents_to_fileobj(key, bio)
-        buffer = bio.getbuffer()
-        assert len(buffer) == size
-        assert buffer == rds.data
-        st.delete_key(key)
+    for seekable in (False, True):
+        for size in (300, 3 * 1024 * 1024, 11 * 1024 * 1024):
+            progress_reports = []
+            rds = RandomDataSource(size)
+            if seekable:
+                fd = BytesIO(rds.data)
+            else:
+                fd = rds
+            key = "test1/{}b".format(size)
+            st.store_file_object(key, fd, upload_progress_fn=upload_progress)
+            # Progress may be reported after each chunk and chunk size depends on available memory
+            # on current machine so there's no straightforward way of checking reasonable progress
+            # updates were made. Just ensure they're ordered correctly if something was provided
+            assert sorted(progress_reports) == progress_reports
+            bio = BytesIO()
+            st.get_contents_to_fileobj(key, bio)
+            buffer = bio.getbuffer()
+            assert len(buffer) == size
+            assert buffer == rds.data
+            st.delete_key(key)
 
 
 # sftp test support is available in vagrant, so can test just like for local if running in vagrant
