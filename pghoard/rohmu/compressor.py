@@ -32,7 +32,7 @@ def CompressionFile(dst_fp, algorithm, level=0, threads=0):
         return SnappyFile(dst_fp, "wb")
 
     if algorithm == "zstd":
-        return zstd_open(dst_fp, "wb", threads=threads)
+        return zstd_open(dst_fp, "wb", level=level, threads=threads)
 
     if algorithm:
         raise InvalidConfigurationError("invalid compression algorithm: {!r}".format(algorithm))
