@@ -610,6 +610,8 @@ class PGHoard:
                     last_normalized_backup_time
                 )
                 backup_reason = "scheduled"
+        elif backup_hour is not None and backup_minute is None:
+            self.log.warning("Ignoring basebackup_hour as basebackup_minute is not defined")
         else:
             # No backup schedule defined, create new backup if backup interval hours has passed since last backup
             time_of_last_backup = basebackups[-1]["metadata"]["start-time"]
