@@ -52,7 +52,7 @@ class CompressionStream(Stream):
         elif algorithm == "zstd":
             self._compressor = zstd.ZstdCompressor(level=level).compressobj()
         else:
-            InvalidConfigurationError("invalid compression algorithm: {!r}".format(algorithm))
+            raise InvalidConfigurationError("invalid compression algorithm: {!r}".format(algorithm))
 
     def _process_chunk(self, data):
         return self._compressor.compress(data)
