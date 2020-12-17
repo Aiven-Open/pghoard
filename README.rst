@@ -90,7 +90,7 @@ The following Python modules are required:
 
 Optional requirements include:
 
-* azure_ for Microsoft Azure object storage
+* azure_ for Microsoft Azure object storage (patched version required, see link)
 * botocore_ for AWS S3 (or Ceph-S3) object storage
 * google-api-client_ for Google Cloud object storage
 * cryptography_ for backup encryption and decryption (version 0.8 or newer required)
@@ -100,7 +100,7 @@ Optional requirements include:
 * swiftclient_ for OpenStack Swift object storage
 * paramiko_  for sftp object storage
 
-.. _`azure`: https://github.com/Azure/azure-sdk-for-python
+.. _`azure`: https://github.com/aiven/azure-sdk-for-python/tree/aiven/rpm_fixes
 .. _`botocore`: https://github.com/boto/botocore
 .. _`google-api-client`: https://github.com/google/google-api-python-client
 .. _`cryptography`: https://cryptography.io/
