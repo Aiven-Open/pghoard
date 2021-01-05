@@ -101,9 +101,20 @@ class AzureTransfer(BaseTransfer):
         items = list(self._iter_key(path=path, with_metadata=True, deep=False))
         if not items:
             raise FileNotFoundFromStorageError(key)
-        item, = items
-        if item.type != KEY_TYPE_OBJECT:
-            raise FileNotFoundFromStorageError(key)  # it's a prefix
+        expected_name = path.rsplit("/", 1)[-1]
+        for item in items:
+            # We expect single result but Azure listing is prefix match so we need to explicitly
+            # look up the matching result
+            if item.type == KEY_TYPE_OBJECT:
+                item_name = item.value["name"]
+            else:
+                item_name = item.value
+            if item_name.rstrip("/").rsplit("/", 1)[-1] == expected_name:
+                break
+        else:
+            item = None
+        if not item or item.type != KEY_TYPE_OBJECT:
+            raise FileNotFoundFromStorageError(key)  # not found or prefix
         return item.value["metadata"]
 
     def _metadata_for_key(self, path):
