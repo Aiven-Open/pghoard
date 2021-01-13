@@ -279,6 +279,18 @@ class PGBaseBackup(Thread):
             "original-file-size": original_input_size,
             "pg-version": self.pg_version_server,
         })
+
+        # support xlog switching if at least postgresql 9.6
+        if self.pg_version_server >= 90600:
+            connection_string = connection_string_using_pgpass(self.connection_info)
+            with psycopg2.connect(connection_string) as db_conn:
+                backup_end_wal_segment, backup_end_time = self.get_backup_end_segment_and_time(db_conn, "non-exclusive")
+
+                metadata.update({
+                    "end-time": backup_end_time,
+                    "end-wal-segment": backup_end_wal_segment,
+                })
+
         metadata.update(self.metadata)
 
         self.transfer_queue.put({
