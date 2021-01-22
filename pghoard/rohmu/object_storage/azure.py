@@ -4,6 +4,7 @@ rohmu - azure object store interface
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
+import logging
 import time
 from io import BytesIO
 
@@ -34,6 +35,10 @@ def calculate_max_block_size():
 # to that 5 TiB increase the block size based on host memory; we don't want to use the max 100 for all
 # hosts because the uploader will allocate (with default settings) 3 x block size of memory.
 MAX_BLOCK_SIZE = calculate_max_block_size()
+
+
+# Reduce Azure logging verbocity of http requests and responses
+logging.getLogger("azure.core.pipeline.policies.http_logging_policy").setLevel(logging.WARNING)
 
 
 class AzureTransfer(BaseTransfer):
