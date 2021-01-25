@@ -3,7 +3,7 @@ Maintainer: Hannu Valtonen <hannu.valtonen@ohmu.fi>
 Section: python
 Priority: optional
 Build-Depends: debhelper (>= 8), dh-python,
- postgresql-9.3 | postgresql-9.4 | postgresql-9.5 | postgresql-9.6 | postgresql-10 | postgresql-11,
+ postgresql-9.3 | postgresql-9.4 | postgresql-9.5 | postgresql-9.6 | postgresql-10 | postgresql-11 | postgresql-12 | postgresql-13,
  python3-all (>= 3.3), python3-cryptography (>= 0.8), python3-dateutil,
  python3-flake8, python3-psycopg2, python3-pytest, python3-requests,
  python3-paramiko, python3-setuptools, python3-snappy
