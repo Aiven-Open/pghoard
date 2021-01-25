@@ -13,4 +13,4 @@ override_dh_install:
 	chown -R postgres:postgres debian/pghoard/var/lib/pghoard
 
 override_dh_auto_test:
-	$(MAKE) flake8 unittest
+	$(MAKE) lint unittest
