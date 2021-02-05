@@ -110,7 +110,6 @@ class EncryptorFile(FileWrap):
 
 class EncryptorStream(Stream):
     """Non-seekable stream of data that adds encryption on top of given source stream"""
-
     def __init__(self, src_fp, rsa_public_key_pem):
         super().__init__(src_fp)
         self._encryptor = Encryptor(rsa_public_key_pem)

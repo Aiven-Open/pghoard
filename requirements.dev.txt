@@ -6,8 +6,8 @@ pytest
 pytest-mock
 pytest-timeout
 pytest-xdist
-yapf==0.27.0
-isort==4.3.21
+yapf==0.30.0
+isort==5.7.0
 coverage
 coveralls
 responses

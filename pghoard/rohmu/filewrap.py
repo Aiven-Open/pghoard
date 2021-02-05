@@ -94,7 +94,6 @@ class Sink:
     data is being pulled from a source, the Sink interface can be used when data is
     pushed through a pipeline of transformations. This provides better performance as
     any temporary files or buffers can be omitted."""
-
     def __init__(self, next_sink):
         self.next_sink = next_sink
 
@@ -121,7 +120,6 @@ class ThrottleSink(Sink):
     non-blocking device that can return short if all data cannot be immediately
     written. In such cases writing again immediately after a small write would
     result in unnecessary busy-looping."""
-
     def __init__(self, next_sink, wait_time, sleep_fn=time.sleep):
         super().__init__(next_sink)
         self.sleep_fn = sleep_fn
@@ -134,7 +132,6 @@ class ThrottleSink(Sink):
 
 class Stream:
     """Non-seekable stream of data that performs some kind of processing for given source stream"""
-
     def __init__(self, src_fp, *, minimum_read_size=8 * 1024):
         self._eof = False
         self._remainder = b""

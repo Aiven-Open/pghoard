@@ -5,7 +5,8 @@
 # suppress: call or simulate Pyhon 3.4 contextlib.suppress
 
 try:
-    from contextlib import suppress  # pylint: disable=import-error, no-name-in-module, unused-import
+    from contextlib import \
+        suppress  # pylint: disable=import-error, no-name-in-module, unused-import
 except ImportError:
 
     class suppress:
@@ -18,7 +19,6 @@ except ImportError:
                  os.remove(somefile)
              # Execution still resumes here if the file was already removed
         """
-
         def __init__(self, *exceptions):
             self._exceptions = exceptions
 

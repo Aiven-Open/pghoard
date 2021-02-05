@@ -28,7 +28,6 @@ class ArchiveSync:
     This can be used after a failover has happened to make sure the archive
     has no gaps in case the previous master failed before archiving its
     final segment."""
-
     def __init__(self):
         self.log = logging.getLogger(self.__class__.__name__)
         self.config = None
