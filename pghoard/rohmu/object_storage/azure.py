@@ -36,7 +36,6 @@ def calculate_max_block_size():
 # hosts because the uploader will allocate (with default settings) 3 x block size of memory.
 MAX_BLOCK_SIZE = calculate_max_block_size()
 
-
 # Reduce Azure logging verbocity of http requests and responses
 logging.getLogger("azure.core.pipeline.policies.http_logging_policy").setLevel(logging.WARNING)
 

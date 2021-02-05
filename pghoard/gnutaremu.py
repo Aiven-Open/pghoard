@@ -11,7 +11,6 @@ class GnuTarEmulator:
     """Provides minimal set of tar processing functionality with interface
     identical to that of GNU tar. Only parameters that are required by PGHoard
     are supported."""
-
     def __init__(self):
         parser = argparse.ArgumentParser()
         parser.add_argument("-x", "--extract", help="Extract a file", action="store_true", required=True)

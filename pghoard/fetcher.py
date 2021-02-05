@@ -16,7 +16,6 @@ class FileFetchManager:
     object storage. If a multiprocess.Manager instance is provided, the fetch is performed
     in a subprocess to avoid GIL related performance constraints, otherwise file is fetched
     in current process."""
-
     def __init__(self, app_config, mp_manager, transfer_provider):
         self.config = app_config
         self.last_activity = time.monotonic()
@@ -78,7 +77,6 @@ class FileFetchManager:
 
 class FileFetcher:
     """Fetches a file from object storage and strips possible encryption and/or compression away."""
-
     def __init__(self, app_config, transfer):
         self.config = app_config
         self.transfer = transfer

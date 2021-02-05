@@ -18,7 +18,8 @@ from pghoard.rohmu.object_storage.base import KEY_TYPE_OBJECT
 from pghoard.rohmu.object_storage.google import MediaStreamUpload
 
 try:
-    from . import test_storage_configs  # pylint: disable=no-name-in-module, import-error
+    from . import \
+        test_storage_configs  # pylint: disable=no-name-in-module, import-error
 except ImportError:
     test_storage_configs = object()
 

@@ -17,7 +17,7 @@ inc_install: &inc_install
   - sudo apt install -y postgresql-${PG_VERSION}
   # Setup common python dependencies
   - pip install -r requirements.txt
-  - pip install -r requirements.dev.txt
+  - pip install --upgrade -r requirements.dev.txt
   - pip install -e .
 
 inc_unittest: &inc_unittest

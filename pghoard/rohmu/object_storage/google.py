@@ -417,7 +417,6 @@ class GoogleTransfer(BaseTransfer):
 
 class MediaStreamUpload(MediaUpload):
     """Support streaming arbitrary amount of data from non-seekable object supporting read method."""
-
     def __init__(self, fd, *, chunk_size, mime_type, name):
         self._data = b""
         self._chunk_size = chunk_size

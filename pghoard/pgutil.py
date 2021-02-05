@@ -7,9 +7,13 @@ See LICENSE for details
 """
 
 try:
-    from urllib.parse import urlparse, parse_qs  # pylint: disable=no-name-in-module, import-error
+    from urllib.parse import (  # pylint: disable=no-name-in-module, import-error
+        parse_qs, urlparse
+    )
 except ImportError:
-    from urlparse import urlparse, parse_qs  # pylint: disable=no-name-in-module, import-error
+    from urlparse import (  # pylint: disable=no-name-in-module, import-error
+        parse_qs, urlparse
+    )
 
 
 def create_connection_string(connection_info):
