@@ -52,6 +52,9 @@ make test
 
 
 %changelog
+* Wed Feb 11 2020 Tapio Oikarinen <tapio@aiven.io> - 2.1.1
+- Security fix for gnutaremu
+
 * Tue Sep 5 2017 Oskari Saarenmaa <os@aiven.io> - 1.4.0
 - Add pghoard_postgres_command_go
 
