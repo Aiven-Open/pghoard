@@ -17,6 +17,10 @@ class GnuTarEmulator:
         parser.add_argument("-f", "--file", help="Specify the file to extract, - for stdin", type=str, required=True)
         parser.add_argument("-C", "--directory", help="Target directory for extraction", type=str)
         parser.add_argument("-P", "--absolute-names", help="Don't strip leading / from file names", action="store_true")
+        parser.add_argument(
+            "--keep-directory-symlink",
+            help="Follow symlinks to directories when extracting from the archive",
+            action="store_true")
         parser.add_argument("--exclude", help="Exclude file matching given patter", type=str, action="append")
         parser.add_argument("--transform", help="Transform file name", type=str, action="append")
         self.args = parser.parse_args()
@@ -39,6 +43,25 @@ class GnuTarEmulator:
                 target_name = self._build_target_name(tarinfo.name)
                 if not target_name:
                     continue
+
+                if not self.args.keep_directory_symlink:
+                    # _build_target_name prefixed path with directory name but if absolute
+                    # paths are allowed the path might be outside of target directory
+                    if self.args.directory and target_name.startswith(self.args.directory):
+                        path = self.args.directory
+                        relative_path = target_name[len(self.args.directory):].lstrip(os.sep)
+                    elif target_name.startswith(os.sep):
+                        path = os.sep
+                        relative_path = target_name.lstrip(os.sep)
+                    else:
+                        path = "."
+                        relative_path = target_name
+                    parts = relative_path.split(os.sep)
+                    for part in parts:
+                        path = os.path.join(path, part)
+                        if os.path.islink(path):
+                            os.unlink(path)
+                            break  # only remove first symlink
 
                 if tarinfo.isdir():
                     paths.append([target_name, tarinfo])
@@ -71,7 +94,7 @@ class GnuTarEmulator:
             name = name.lstrip(os.sep)
             if f"..{os.sep}" in name or name.endswith(".."):
                 return None
-        if not name.startswith("/") and self.args.directory:
+        if not name.startswith(os.sep) and self.args.directory:
             name = os.path.join(self.args.directory, name)
         return name
 
