@@ -67,8 +67,8 @@ class GnuTarEmulator:
         name = self._transform_name(name)
         if not name:
             return None
-        if not self.args.absolute_names and name.startswith("/"):
-            name = name[1:]
+        if not self.args.absolute_names:
+            name = name.lstrip(os.sep)
             if f"..{os.sep}" in name or name.endswith(".."):
                 return None
         if not name.startswith("/") and self.args.directory:
