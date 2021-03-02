@@ -20,7 +20,8 @@ class GnuTarEmulator:
         parser.add_argument(
             "--keep-directory-symlink",
             help="Follow symlinks to directories when extracting from the archive",
-            action="store_true")
+            action="store_true"
+        )
         parser.add_argument("--exclude", help="Exclude file matching given patter", type=str, action="append")
         parser.add_argument("--transform", help="Transform file name", type=str, action="append")
         self.args = parser.parse_args()
