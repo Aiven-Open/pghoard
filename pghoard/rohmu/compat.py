@@ -56,3 +56,4 @@ else:
             return os.makedirs(path, mode)
         except FileExistsError:
             pass
+        return None
