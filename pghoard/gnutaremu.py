@@ -33,6 +33,7 @@ class GnuTarEmulator:
             return os.makedirs(path, 0o777)
         except FileExistsError:
             pass
+        return None
 
     def run(self):
         return self._extract(self._open_input_file())
