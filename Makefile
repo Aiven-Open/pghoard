@@ -1,4 +1,4 @@
-short_ver = 2.1.0
+short_ver = 2.1.1
 long_ver = $(shell git describe --long 2>/dev/null || echo $(short_ver)-0-unknown-g`git describe --always`)
 generated = pghoard/version.py
 
