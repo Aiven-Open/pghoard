@@ -39,13 +39,15 @@ try:
 except ImportError:
     from oauth2client.service_account import _ServiceAccountCredentials
 
-    def ServiceAccountCredentials_from_dict(credentials):
+    def ServiceAccountCredentials_from_dict(credentials, scopes=None):
+        if scopes is None:
+            scopes = []
         return _ServiceAccountCredentials(
             service_account_id=credentials["client_id"],
             service_account_email=credentials["client_email"],
             private_key_id=credentials["private_key_id"],
             private_key_pkcs8_text=credentials["private_key"],
-            scopes=[]
+            scopes=scopes
         )
 
 
@@ -66,7 +68,10 @@ def get_credentials(credential_file=None, credentials=None):
         return GoogleCredentials.from_stream(credential_file)
 
     if credentials and credentials["type"] == "service_account":
-        return ServiceAccountCredentials_from_dict(credentials)
+        return ServiceAccountCredentials_from_dict(
+            credentials,
+            scopes=["https://www.googleapis.com/auth/cloud-platform"],
+        )
 
     if credentials and credentials["type"] == "authorized_user":
         return GoogleCredentials(
