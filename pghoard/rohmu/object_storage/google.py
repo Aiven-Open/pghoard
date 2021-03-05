@@ -25,7 +25,7 @@ import googleapiclient  # noqa pylint: disable=unused-import
 import httplib2
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-from googleapiclient.http import (MediaFileUpload, MediaIoBaseDownload, MediaIoBaseUpload, MediaUpload)
+from googleapiclient.http import (MediaFileUpload, MediaIoBaseDownload, MediaIoBaseUpload, MediaUpload, build_http)
 from oauth2client import GOOGLE_TOKEN_URI
 from oauth2client.client import GoogleCredentials
 
@@ -39,13 +39,15 @@ try:
 except ImportError:
     from oauth2client.service_account import _ServiceAccountCredentials
 
-    def ServiceAccountCredentials_from_dict(credentials):
+    def ServiceAccountCredentials_from_dict(credentials, scopes=None):
+        if scopes is None:
+            scopes = []
         return _ServiceAccountCredentials(
             service_account_id=credentials["client_id"],
             service_account_email=credentials["client_email"],
             private_key_id=credentials["private_key_id"],
             private_key_pkcs8_text=credentials["private_key"],
-            scopes=[]
+            scopes=scopes
         )
 
 
@@ -66,7 +68,10 @@ def get_credentials(credential_file=None, credentials=None):
         return GoogleCredentials.from_stream(credential_file)
 
     if credentials and credentials["type"] == "service_account":
-        return ServiceAccountCredentials_from_dict(credentials)
+        return ServiceAccountCredentials_from_dict(
+            credentials,
+            scopes=["https://www.googleapis.com/auth/cloud-platform"],
+        )
 
     if credentials and credentials["type"] == "authorized_user":
         return GoogleCredentials(
@@ -91,9 +96,10 @@ def base64_to_hex(b64val):
 
 
 class GoogleTransfer(BaseTransfer):
-    def __init__(self, project_id, bucket_name, credential_file=None, credentials=None, prefix=None):
+    def __init__(self, project_id, bucket_name, credential_file=None, credentials=None, prefix=None, proxy_info=None):
         super().__init__(prefix=prefix)
         self.project_id = project_id
+        self.proxy_info = proxy_info
         self.google_creds = get_credentials(credential_file=credential_file, credentials=credentials)
         self.gs = self._init_google_client()
         self.gs_object_client = None
@@ -104,9 +110,26 @@ class GoogleTransfer(BaseTransfer):
         start_time = time.monotonic()
         delay = 2
         while True:
+            http = build_http()
+            if self.proxy_info:
+                if self.proxy_info.get("type") == "socks5":
+                    proxy_type = httplib2.socks.PROXY_TYPE_SOCKS5
+                else:
+                    proxy_type = httplib2.socks.PROXY_TYPE_HTTP
+
+                http.proxy_info = httplib2.ProxyInfo(
+                    proxy_type,
+                    self.proxy_info["host"],
+                    self.proxy_info["port"],
+                    proxy_user=self.proxy_info.get("user"),
+                    proxy_pass=self.proxy_info.get("pass"),
+                )
+
+            http = self.google_creds.authorize(http)
+
             try:
                 # sometimes fails: httplib2.ServerNotFoundError: Unable to find the server at www.googleapis.com
-                return build("storage", "v1", credentials=self.google_creds)
+                return build("storage", "v1", http=http)
             except (httplib2.ServerNotFoundError, socket.timeout):
                 if time.monotonic() - start_time > 600:
                     raise

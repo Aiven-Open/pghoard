@@ -721,6 +721,13 @@ object describing a remote object storage.  The object must contain a key
 ``storage_type`` describing the type of the store, other keys and values are
 specific to the storage type.
 
+``proxy_info`` (no default)
+
+Dictionary specifying proxy information. The dictionary must contain keys ``type``,
+``host`` and ``port``. Type can be either ``socks5`` or ``http``.  Optionally,
+``user`` and ``pass`` can be specified for proxy authentication.  Only Google
+Cloud Storage driver support proxies at the moment.
+
 The following object storage types are supported:
 
 * ``local`` makes backups to a local directory, see ``pghoard-local-minimal.json``
