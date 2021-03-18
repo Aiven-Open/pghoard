@@ -547,6 +547,10 @@ class BasebackupFetcher():
                     with self.pool_class(processes=self._process_count()) as pool:
                         self._queue_jobs(pool)
                         self._wait_for_jobs_to_complete()
+                        # Context manager does not seem to properly wait for the subprocesses to exit, let's join
+                        # the pool manually (close need to be called before joining)
+                        pool.close()
+                        pool.join()
                         break
             except TimeoutError:
                 self.pending_jobs.clear()
