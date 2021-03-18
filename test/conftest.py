@@ -15,6 +15,7 @@ import subprocess
 import tempfile
 import time
 from distutils.version import LooseVersion
+from pathlib import Path
 from unittest import SkipTest
 
 import psycopg2
@@ -25,6 +26,8 @@ from pghoard import config as pghconfig
 from pghoard import logutil, pgutil
 from pghoard.pghoard import PGHoard
 from pghoard.rohmu.compat import suppress
+from pghoard.rohmu.delta.common import EMBEDDED_FILE_SIZE, Progress
+from pghoard.rohmu.delta.snapshot import Snapshotter
 from pghoard.rohmu.snappyfile import snappy
 
 logutil.configure_logging()
@@ -337,3 +340,28 @@ def pghoard_metrics(db, tmpdir, request):  # pylint: disable=redefined-outer-nam
         },
     }
     yield from pghoard_base(db, tmpdir, request, metrics_cfg=metrics_cfg)
+
+
+class SnapshotterWithDefaults(Snapshotter):
+    def create_4foobar(self):
+        (self.src / "foo").write_text("foobar")
+        (self.src / "foo2").write_text("foobar")
+        (self.src / "foobig").write_text("foobar" * EMBEDDED_FILE_SIZE)
+        (self.src / "foobig2").write_text("foobar" * EMBEDDED_FILE_SIZE)
+        progress = Progress()
+        assert self.snapshot(progress=progress) > 0
+        ss1 = self.get_snapshot_state()
+        assert self.snapshot(progress=Progress()) == 0
+        ss2 = self.get_snapshot_state()
+        print("ss1", ss1)
+        print("ss2", ss2)
+        assert ss1 == ss2
+
+
+@pytest.fixture(name="snapshotter")
+def fixture_snapshotter(tmpdir):
+    src = Path(tmpdir) / "src"
+    src.mkdir()
+    dst = Path(tmpdir) / "dst"
+    dst.mkdir()
+    yield SnapshotterWithDefaults(src=src, dst=dst, globs=["*"], parallel=1)

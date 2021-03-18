@@ -19,20 +19,23 @@ import subprocess
 import sys
 import time
 from contextlib import closing
+from dataclasses import dataclass
 from queue import Empty, Queue
+from typing import Dict
 
 import psycopg2
 
 from pghoard import config, logutil, metrics, version, wal
 from pghoard.basebackup import PGBaseBackup
 from pghoard.common import (
-    create_alert_file, extract_pghoard_bb_v2_metadata, get_object_storage_config,
-    replication_connection_string_and_slot_using_pgpass, write_json_file
+    BaseBackupFormat, BaseBackupMode, create_alert_file, extract_pghoard_bb_v2_metadata, extract_pghoard_delta_v1_metadata,
+    get_object_storage_config, replication_connection_string_and_slot_using_pgpass, write_json_file
 )
 from pghoard.compressor import CompressorThread
 from pghoard.receivexlog import PGReceiveXLog
 from pghoard.rohmu import dates, get_transfer, rohmufile
 from pghoard.rohmu.compat import suppress
+from pghoard.rohmu.dates import now as utc_now
 from pghoard.rohmu.errors import (FileNotFoundFromStorageError, InvalidConfigurationError)
 from pghoard.rohmu.inotify import InotifyWatcher
 from pghoard.transfer import TransferAgent
@@ -43,6 +46,12 @@ try:
     from pghoard.walreceiver import WALReceiver
 except ImportError:
     WALReceiver = None
+
+
+@dataclass
+class DeltaBaseBackupFailureInfo:
+    last_failed_time: datetime
+    retries: int = 0
 
 
 class PGHoard:
@@ -117,6 +126,7 @@ class PGHoard:
 
         logutil.notify_systemd("READY=1")
         self.log.info("pghoard initialized, own_hostname: %r, cwd: %r", socket.gethostname(), os.getcwd())
+        self.delta_backup_failures: Dict[str, DeltaBaseBackupFailureInfo] = {}
 
     def check_pg_versions_ok(self, site, pg_version_server, command):
         if pg_version_server is None:
@@ -154,7 +164,9 @@ class PGHoard:
             callback_queue=callback_queue,
             pg_version_server=pg_version_server,
             metrics=self.metrics,
+            storage=self.get_or_create_site_storage(site=site),
             metadata=metadata,
+            get_remote_basebackups_info=self.get_remote_basebackups_info
         )
         thread.start()
         self.basebackups[site] = thread
@@ -219,8 +231,11 @@ class PGHoard:
         thread.start()
         self.walreceivers[site] = thread
 
+    def _get_site_prefix(self, site):
+        return self.config["backup_sites"][site]["prefix"]
+
     def create_backup_site_paths(self, site):
-        site_path = os.path.join(self.config["backup_location"], self.config["backup_sites"][site]["prefix"])
+        site_path = os.path.join(self.config["backup_location"], self._get_site_prefix(site))
         xlog_path = os.path.join(site_path, "xlog")
         basebackup_path = os.path.join(site_path, "basebackup")
 
@@ -249,9 +264,7 @@ class PGHoard:
                 if seg == 0 and log == 0:
                     break
                 seg, log = wal.get_previous_wal_on_same_timeline(seg, log, pg_version)
-            wal_path = os.path.join(
-                self.config["backup_sites"][site]["prefix"], "xlog", wal.name_for_tli_log_seg(tli, log, seg)
-            )
+            wal_path = os.path.join(self._get_site_prefix(site), "xlog", wal.name_for_tli_log_seg(tli, log, seg))
             self.log.debug("Deleting wal_file: %r", wal_path)
             try:
                 storage.delete_key(wal_path)
@@ -274,13 +287,47 @@ class PGHoard:
                 self.log.exception("Problem deleting: %r", wal_path)
                 self.metrics.unexpected_exception(ex, where="delete_remote_wal_before")
 
-    def delete_remote_basebackup(self, site, basebackup, metadata):
+    def _get_delta_basebackup_files(self, site, storage, metadata, basebackup_name_to_delete, backups_to_keep):
+        all_hexdigests = set()
+        keep_hexdigests = set()
+
+        basebackup_data_files = list()
+        for backup_name in [basebackup_name_to_delete] + [back["name"] for back in backups_to_keep]:
+            delta_backup_key = os.path.join(self._get_site_prefix(site), "basebackup", backup_name)
+            bmeta_compressed = storage.get_contents_to_string(delta_backup_key)[0]
+            with rohmufile.file_reader(
+                fileobj=io.BytesIO(bmeta_compressed),
+                metadata=metadata,
+                key_lookup=config.key_lookup_for_site(self.config, site)
+            ) as input_obj:
+                meta = extract_pghoard_delta_v1_metadata(input_obj)
+
+            manifest = meta["manifest"]
+            snapshot_result = manifest["snapshot_result"]
+            backup_state = snapshot_result["state"]
+            files = backup_state["files"]
+
+            backup_hexdigests = set(delta_file["hexdigest"] for delta_file in files if delta_file["hexdigest"])
+            all_hexdigests |= backup_hexdigests
+
+            if backup_name != basebackup_name_to_delete:
+                # Keep data file in case if there is still a reference from other backups
+                keep_hexdigests |= backup_hexdigests
+
+        # Remove unreferenced files
+        extra_hexdigests = set(all_hexdigests).difference(keep_hexdigests)
+        for hexdigest in extra_hexdigests:
+            basebackup_data_files.append(os.path.join(self._get_site_prefix(site), "basebackup_delta", hexdigest))
+
+        return basebackup_data_files
+
+    def delete_remote_basebackup(self, site, basebackup, metadata, basebackups):
         start_time = time.monotonic()
         storage = self.site_transfers.get(site)
-        main_backup_key = os.path.join(self.config["backup_sites"][site]["prefix"], "basebackup", basebackup)
+        main_backup_key = os.path.join(self._get_site_prefix(site), "basebackup", basebackup)
         basebackup_data_files = [main_backup_key]
 
-        if metadata.get("format") == "pghoard-bb-v2":
+        if metadata.get("format") == BaseBackupFormat.v2:
             bmeta_compressed = storage.get_contents_to_string(main_backup_key)[0]
             with rohmufile.file_reader(
                 fileobj=io.BytesIO(bmeta_compressed),
@@ -292,11 +339,13 @@ class PGHoard:
                 for chunk in bmeta["chunks"]:
                     basebackup_data_files.append(
                         os.path.join(
-                            self.config["backup_sites"][site]["prefix"],
+                            self._get_site_prefix(site),
                             "basebackup_chunk",
                             chunk["chunk_filename"],
                         )
                     )
+        elif metadata.get("format") == BaseBackupFormat.delta_v1:
+            basebackup_data_files.extend(self._get_delta_basebackup_files(site, storage, metadata, basebackup, basebackups))
 
         self.log.debug("Deleting basebackup datafiles: %r", ", ".join(basebackup_data_files))
         for obj_key in basebackup_data_files:
@@ -312,13 +361,16 @@ class PGHoard:
             time.monotonic() - start_time
         )
 
-    def get_remote_basebackups_info(self, site):
+    def get_or_create_site_storage(self, site):
         storage = self.site_transfers.get(site)
         if not storage:
             storage_config = get_object_storage_config(self.config, site)
             storage = get_transfer(storage_config)
             self.site_transfers[site] = storage
+        return storage
 
+    def get_remote_basebackups_info(self, site):
+        storage = self.get_or_create_site_storage(site=site)
         site_config = self.config["backup_sites"][site]
         results = storage.list_path(os.path.join(site_config["prefix"], "basebackup"))
         for entry in results:
@@ -404,7 +456,9 @@ class PGHoard:
 
                 if last_wal_segment_still_needed:
                     self.delete_remote_wal_before(last_wal_segment_still_needed, site, pg_version)
-                self.delete_remote_basebackup(site, basebackup_to_be_deleted["name"], basebackup_to_be_deleted["metadata"])
+                self.delete_remote_basebackup(
+                    site, basebackup_to_be_deleted["name"], basebackup_to_be_deleted["metadata"], basebackups=basebackups
+                )
         self.state["backup_sites"][site]["basebackups"] = basebackups
 
     def get_normalized_backup_time(self, site_config, *, now=None):
@@ -553,6 +607,18 @@ class PGHoard:
         if site in self.basebackups:
             try:
                 result = self.basebackups_callbacks[site].get(block=False)
+                if result["success"]:
+                    # No matter which mode, if succeeded reset the counter
+                    self.delta_backup_failures.pop(site, None)
+                elif site_config["basebackup_mode"] == BaseBackupMode.delta:
+                    last_failed_time = utc_now()
+                    if site not in self.delta_backup_failures:
+                        self.delta_backup_failures[site] = DeltaBaseBackupFailureInfo(
+                            retries=0, last_failed_time=last_failed_time
+                        )
+                    else:
+                        self.delta_backup_failures[site].retries += 1
+                        self.delta_backup_failures[site].last_failed_time = last_failed_time
             except Empty:
                 # previous basebackup (or its compression and upload) still in progress
                 return
@@ -566,6 +632,21 @@ class PGHoard:
 
         metadata = self.get_new_backup_details(site=site, site_config=site_config)
         if metadata and not os.path.exists(self.config["maintenance_mode_file"]):
+            if site in self.delta_backup_failures:
+                retries = self.delta_backup_failures[site].retries
+                if retries > site_config["basebackup_delta_mode_max_retries"]:
+                    self.log.info("Giving up backup after exceeding max retries: %r", retries)
+                    return
+                else:
+                    # Start from ~2 min with cap of one hour
+                    retry_interval = min(2 ** (retries + 7), 60 * 60)
+                    if utc_now(
+                    ) >= self.delta_backup_failures[site].last_failed_time + datetime.timedelta(seconds=retry_interval):
+                        self.log.info("Re-trying delta basebackup")
+                    else:
+                        self.log.info("Waiting for backoff time before re-trying new delta backup due to previous failures")
+                        return
+
             self.basebackups_callbacks[site] = Queue()
             self.create_basebackup(site, chosen_backup_node, basebackup_path, self.basebackups_callbacks[site], metadata)
 

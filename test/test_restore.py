@@ -19,7 +19,9 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 
 from pghoard.common import write_json_file
-from pghoard.restore import (BasebackupFetcher, ChunkFetcher, Restore, RestoreError, create_recovery_conf)
+from pghoard.restore import (
+    BasebackupFetcher, ChunkFetcher, FileDataInfo, FileInfoType, FilePathInfo, Restore, RestoreError, create_recovery_conf
+)
 
 from .base import PGHoardTestCase
 
@@ -166,7 +168,11 @@ class TestBasebackupFetcher(unittest.TestCase):
         status_output_file = os.path.join(test_output_file_tmp, "pghoard-restore-status.json")
         pgdata = "/tmp/test_restore"
         tablespaces = {"foo": {"oid": 1234, "path": "/tmp/test_restore2"}}
-        data_files = [("bar1", 1000), ("bar2", 2000), ((b"baz", {}), 0)]
+        data_files = [
+            FilePathInfo(name="bar1", size=1000),
+            FilePathInfo(name="bar2", size=2000),
+            FileDataInfo(data=b"baz", metadata={}, size=0)
+        ]
         fetcher = BasebackupFetcher(
             app_config=config,
             data_files=data_files,
@@ -201,17 +207,17 @@ class TestBasebackupFetcher(unittest.TestCase):
                 assert fetcher.current_progress() == (0, 0)
                 assert fetcher.jobs_in_progress() is True
                 progress_dict["bar1"] = 1000
-                fetcher.job_completed(fetcher.data_files[0]["id"])
+                fetcher.job_completed(fetcher.data_files[0].id)
             elif call[0] == 1:
                 assert fetcher.current_progress() == (1000, 1000 / 3000)
                 assert fetcher.jobs_in_progress() is True
                 progress_dict["bar2"] = 1000
-                fetcher.job_failed(fetcher.data_files[1]["id"], Exception("test exception"))
+                fetcher.job_failed(fetcher.data_files[1].id, Exception("test exception"))
                 check_status_output_file(expected_progress=1000 / 3000)
             elif call[0] == 2:
                 assert fetcher.current_progress() == (2000, 2000 / 3000)
                 assert fetcher.jobs_in_progress() is True
-                fetcher.job_completed(fetcher.data_files[2]["id"])
+                fetcher.job_completed(fetcher.data_files[2].id)
                 check_status_output_file(expected_progress=2000 / 3000)
             elif call[0] == 3:
                 assert False
@@ -314,6 +320,36 @@ class TestBasebackupFetcher(unittest.TestCase):
                 with pytest.raises(RestoreError):
                     fetcher.fetch_all()
 
+    def test_restore_from_delta_files(self):
+        for tar in ["tar", "pghoard/gnutaremu.py"]:
+            self.run_restore_test(
+                "basebackup_delta",
+                tar,
+                self.delta,
+                files=[
+                    "0af668268d0fe14c6e269760b08d80a634c421b8381df25f31fbed5e8a8c8d8b",
+                    "4b65df4d0857bbbcb22aa086e02bd8414a9f3a484869f2b96ed7c62f3c4eb088",
+                    "fc61c91430dcb345001306ad513f103380c16896093a17868fc909aeda393559",
+                ],
+                file_type=FileInfoType.delta,
+            )
+
+    def delta(self, fetcher, restore_dir):
+        fetcher.fetch_all()
+
+        self.check_sha256(
+            os.path.join(restore_dir, "0af668268d0fe14c6e269760b08d80a634c421b8381df25f31fbed5e8a8c8d8b"),
+            "24f3f08b786494bdd8d1393fdf47eafe3aa4b3f51720e23b62dae812e54f6cc7"
+        )
+        self.check_sha256(
+            os.path.join(restore_dir, "4b65df4d0857bbbcb22aa086e02bd8414a9f3a484869f2b96ed7c62f3c4eb088"),
+            "960f11a4bb45060ac3c69551e4e99d9d713e98e2968f450b8abac37dcfed86e7"
+        )
+        self.check_sha256(
+            os.path.join(restore_dir, "fc61c91430dcb345001306ad513f103380c16896093a17868fc909aeda393559"),
+            "8acdc937fca22a496215056ed3960bff6d3319b9c45f3050e8edfc09d7085c27"
+        )
+
     def test_tablespaces(self):
         def rm_tablespace_paths():
             shutil.rmtree("/tmp/nsd5b2b8e4978847ef9b3056b7e01c51a8", ignore_errors=True)
@@ -375,10 +411,20 @@ class TestBasebackupFetcher(unittest.TestCase):
             "84e3bda6f1abdd0fb0aff4bc6587ea07b9d8b61c1a0d6bdc4d16d339a761717f"
         )
 
-    def run_restore_test(self, path, tar_executable, logic, tablespaces=None, files=None):
+    def run_restore_test(self, path, tar_executable, logic, tablespaces=None, files=None, file_type=FileInfoType.regular):
         chunk_dir = os.path.join("test", path, "chunks")
-        files = [fn for fn in os.listdir(chunk_dir) if ".metadata" not in fn and (not files or fn in files)]
-        files = [(fn, os.stat(os.path.join(chunk_dir, fn)).st_size) for fn in files]
+        files_names = [fn for fn in os.listdir(chunk_dir) if ".metadata" not in fn and (not files or fn in files)]
+        if file_type == FileInfoType.delta:
+            files = [
+                FilePathInfo(name=fn, size=os.stat(os.path.join(chunk_dir, fn)).st_size, file_type=file_type, new_name=fn)
+                for fn in files_names
+            ]
+        else:
+            files = [
+                FilePathInfo(name=fn, size=os.stat(os.path.join(chunk_dir, fn)).st_size, file_type=file_type)
+                for fn in files_names
+            ]
+
         with open(os.path.join("test", path, "config.json"), "r") as f:
             config = json.loads(f.read())
         restore_dir = mkdtemp(prefix=self.__class__.__name__)
