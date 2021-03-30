@@ -705,7 +705,10 @@ class PGHoard:
                 raise
             raise InvalidConfigurationError(self.config_path)
 
+        # clear this objects site transfer storage config
+        self.site_transfers = {}
         self.config = new_config
+
         if self.config.get("syslog") and not self.syslog_handler:
             self.syslog_handler = logutil.set_syslog_handler(
                 address=self.config.get("syslog_address", "/dev/log"),
@@ -725,6 +728,10 @@ class PGHoard:
             pushgateway=self.config.get("pushgateway", None),
             prometheus=self.config.get("prometheus", None)
         )
+
+        # need to refresh the web server config too
+        if hasattr(self, "webserver") and hasattr(self.webserver, "server"):
+            self.webserver.server.config = new_config
 
         for thread in self._get_all_threads():
             thread.config = new_config
