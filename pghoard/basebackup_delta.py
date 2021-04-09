@@ -188,7 +188,7 @@ class DeltaBaseBackup:
         todo_hexdigests = set(hash.hexdigest for hash in todo)
 
         # Keep track on the new hashes submitted with the current upload, so we can clean them up in case of error
-        new_submitted_hashes = set()
+        new_submitted_hashes = dict()
 
         def _submit_files_in_thread(hexdigest):
             files = snapshotter.hexdigest_to_snapshotfiles.get(hexdigest, [])
@@ -203,7 +203,7 @@ class DeltaBaseBackup:
                             file_obj=f, relative_path=snapshotfile.relative_path, callback_queue=callback_queue
                         )
                         if new_hash not in self.tracked_snapshot_files:
-                            new_submitted_hashes.add(new_hash)
+                            new_submitted_hashes[new_hash] = stored_size
                         snapshotter.update_snapshot_file_data(
                             relative_path=snapshotfile.relative_path,
                             hexdigest=new_hash,
@@ -252,7 +252,17 @@ class DeltaBaseBackup:
 
                     raise BackupFailure("Error while uploading backup files")
 
+        uploaded_size = sum(new_submitted_hashes.values())
+        uploaded_count = len(new_submitted_hashes)
+
+        self.metrics.increase("pghoard.delta_backup_total_size", inc_value=uploaded_size)
+        self.metrics.gauge("pghoard.delta_backup_upload_size", uploaded_size)
+        self.metrics.increase("pghoard.delta_backup_total_files", inc_value=uploaded_count)
+        self.metrics.gauge("pghoard.delta_backup_upload_files", uploaded_count)
+
         self.log.info("All basebackup files were uploaded successfully")
+
+        return uploaded_count, uploaded_size
 
     def _delta_upload(self, snapshot_result: SnapshotResult, snapshotter: Snapshotter, start_time_utc):
         callback_queue = Queue()
@@ -260,37 +270,56 @@ class DeltaBaseBackup:
         # Determine which digests already exist and which need to be uploaded, also restore the backup size of re-used
         # files from manifests
         snapshot_hashes = set(snapshot_result.hashes)
-        uploaded_hashes = set()
+        already_uploaded_hashes = set()
         for snapshot_file in snapshot_result.state.files:
             if snapshot_file.hexdigest in self.tracked_snapshot_files:
                 snapshot_file_from_manifest = self.tracked_snapshot_files[snapshot_file.hexdigest]
-                uploaded_hashes.add(
+                already_uploaded_hashes.add(
                     SnapshotHash(
                         hexdigest=snapshot_file_from_manifest.hexdigest, size=snapshot_file_from_manifest.file_size
                     )
                 )
 
-        todo = snapshot_hashes.difference(uploaded_hashes)
+        todo = snapshot_hashes.difference(already_uploaded_hashes)
         todo_count = len(todo)
 
         self.log.info("Submitting hashes for upload: %r, total hashes in the snapshot: %r", todo_count, len(snapshot_hashes))
 
-        self._upload_files(callback_queue=callback_queue, todo=todo, snapshotter=snapshotter)
+        uploaded_count, uploaded_size = self._upload_files(callback_queue=callback_queue, todo=todo, snapshotter=snapshotter)
 
         total_stored_size = 0
         total_size = 0
+        total_digests_count = 0
+        total_digests_stored_size = 0
 
         snapshot_result.state = snapshotter.get_snapshot_state()
         for snapshot_file in snapshot_result.state.files:
             total_size += snapshot_file.file_size
             if snapshot_file.hexdigest:
+                total_digests_count += 1
                 if not snapshot_file.stored_file_size:
                     # Patch existing files with stored_file_size from existing manifest files (we can not have it otherwise)
                     snapshot_file.stored_file_size = self.tracked_snapshot_files[snapshot_file.hexdigest].stored_file_size
                 total_stored_size += snapshot_file.stored_file_size
+                total_digests_stored_size += snapshot_file.stored_file_size
             elif snapshot_file.content_b64:
                 # Include embed files size into the total size as well
                 total_stored_size += snapshot_file.file_size
+
+        if already_uploaded_hashes:
+            # Collect these metrics for all delta backups, except the first one
+            # The lower the number of those metrics, the more efficient delta backups are
+            if total_digests_count:
+                self.metrics.gauge("pghoard.delta_backup_changed_data_files_ratio", uploaded_count / total_digests_count)
+            if total_digests_stored_size:
+                self.metrics.gauge(
+                    "pghoard.delta_backup_changed_data_size_ratio",
+                    uploaded_size / total_digests_stored_size,
+                )
+            self.metrics.gauge(
+                "pghoard.delta_backup_remained_data_size",
+                total_digests_stored_size - uploaded_size,
+            )
 
         manifest = BackupManifest(
             start=start_time_utc,

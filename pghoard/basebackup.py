@@ -780,11 +780,16 @@ class PGBaseBackup(Thread):
                 db_conn.commit()
                 backup_stopped = True
 
+                backup_time = time.monotonic() - start_time
+                self.metrics.gauge(
+                    "pghoard.backup_time_{}".format(self.site_config["basebackup_mode"]),
+                    backup_time,
+                )
+
                 self.log.info(
                     "Basebackup generation finished, %r files, %r chunks, "
                     "%r byte input, %r byte output, took %r seconds, waiting to upload", total_file_count, chunks_count,
-                    total_size_plain, total_size_enc,
-                    time.monotonic() - start_time
+                    total_size_plain, total_size_enc, backup_time
                 )
 
             finally:
