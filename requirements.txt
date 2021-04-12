@@ -5,6 +5,7 @@ google-api-python-client
 httplib2
 oauth2client
 psycopg2
+pydantic
 python-dateutil 
 python-snappy
 python-systemd 

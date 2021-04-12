@@ -5,6 +5,7 @@ Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
 import datetime
+import enum
 import fcntl
 import json
 import logging
@@ -22,6 +23,26 @@ from pghoard.rohmu.compat import suppress
 from pghoard.rohmu.errors import Error, InvalidConfigurationError
 
 LOG = logging.getLogger("pghoard.common")
+
+
+class StrEnum(str, enum.Enum):
+    def __str__(self):
+        return str(self.value)
+
+
+@enum.unique
+class BaseBackupFormat(StrEnum):
+    v1 = "pghoard-bb-v1"
+    v2 = "pghoard-bb-v2"
+    delta_v1 = "pghoard-delta-v1"
+
+
+@enum.unique
+class BaseBackupMode(StrEnum):
+    basic = "basic"
+    delta = "delta"
+    local_tar = "local-tar"
+    pipe = "pipe"
 
 
 def create_pgpass_file(connection_string_or_info):
@@ -211,7 +232,7 @@ def delete_alert_file(config, filename):
         os.unlink(filepath)
 
 
-def extract_pghoard_bb_v2_metadata(fileobj):
+def _extract_metadata(fileobj):
     # | in mode to use tarfile's internal stream buffer manager, currently required because our SnappyFile
     # interface doesn't do proper buffering for reads
     with tarfile.open(fileobj=fileobj, mode="r|", bufsize=IO_BLOCK_SIZE) as tar:
@@ -221,6 +242,14 @@ def extract_pghoard_bb_v2_metadata(fileobj):
                 return json.loads(tar_meta_bytes.decode("utf-8"))
 
     raise Exception(".pghoard_tar_metadata.json not found")
+
+
+def extract_pghoard_bb_v2_metadata(fileobj):
+    return _extract_metadata(fileobj)
+
+
+def extract_pghoard_delta_v1_metadata(fileobj):
+    return _extract_metadata(fileobj)
 
 
 def get_pg_wal_directory(config):
@@ -256,3 +285,7 @@ def increase_pipe_capacity(*pipes):
                 break
             except PermissionError:
                 pass
+
+
+class BackupFailure(Exception):
+    """Backup failed - post a failure to callback_queue and allow the thread to terminate"""

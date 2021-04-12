@@ -28,7 +28,11 @@ disable=
 
 [FORMAT]
 max-line-length=125
+max-module-lines=1000
 
 [REPORTS]
 output-format=text
 reports=no
+
+[TYPECHECK]
+extension-pkg-whitelist=pydantic

@@ -85,6 +85,7 @@ def set_and_check_config_defaults(config, *, check_commands=True, check_pgdata=T
         site_config.setdefault("basebackup_compression_threads", 0)
         site_config.setdefault("basebackup_count", 2)
         site_config.setdefault("basebackup_count_min", 2)
+        site_config.setdefault("basebackup_delta_mode_max_retries", 10)
         site_config.setdefault("basebackup_interval_hours", 24)
         # NOTE: stream_compression removed from documentation after 1.6.0 release
         site_config.setdefault("basebackup_mode", "pipe" if site_config.get("stream_compression") else "basic")

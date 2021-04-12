@@ -18,6 +18,7 @@ import pytest
 
 from pghoard import common, metrics, pgutil
 from pghoard.basebackup import PGBaseBackup
+from pghoard.common import BaseBackupMode
 from pghoard.restore import Restore, RestoreError
 from pghoard.rohmu import get_transfer
 from pghoard.rohmu.compat import makedirs
@@ -50,6 +51,7 @@ LABEL: pg_basebackup base backup
             connection_info=None,
             basebackup_path=None,
             compression_queue=None,
+            storage=None,
             transfer_queue=None,
             metrics=metrics.Metrics(statsd={})
         )
@@ -80,6 +82,7 @@ LABEL: pg_basebackup base backup
             connection_info=None,
             basebackup_path=None,
             compression_queue=None,
+            storage=None,
             transfer_queue=None,
             metrics=metrics.Metrics(statsd={})
         )
@@ -174,6 +177,7 @@ LABEL: pg_basebackup base backup
             connection_info=None,
             basebackup_path=None,
             compression_queue=None,
+            storage=None,
             transfer_queue=None,
             metrics=metrics.Metrics(statsd={})
         )
@@ -240,7 +244,7 @@ LABEL: pg_basebackup base backup
         assert "pg-version" in out
 
         assert "start-wal-segment" in out
-        if mode == "local-tar":
+        if mode in {BaseBackupMode.local_tar, BaseBackupMode.delta}:
             assert "end-time" in out
             if replica is False:
                 assert "end-wal-segment" in out
@@ -255,7 +259,7 @@ LABEL: pg_basebackup base backup
             assert backup["metadata"]["backup-reason"] == "scheduled"
             assert backup["metadata"]["backup-decision-time"] == now.isoformat()
             assert backup["metadata"]["normalized-backup-time"] == now.isoformat()
-            if mode == "local-tar":
+            if mode in {BaseBackupMode.local_tar, BaseBackupMode.delta}:
                 if replica is False:
                     assert "end-wal-segment" in backup["metadata"]
                 assert "end-time" in backup["metadata"]
@@ -313,6 +317,7 @@ LABEL: pg_basebackup base backup
             connection_info=None,
             basebackup_path=None,
             compression_queue=None,
+            storage=storage,
             transfer_queue=None,
             metrics=metrics.Metrics(statsd={})
         )
@@ -341,28 +346,31 @@ LABEL: pg_basebackup base backup
         self._test_restore_basebackup(db, pghoard, tmpdir)
 
     def test_basic_standalone_hot_backups(self, capsys, db, pghoard, tmpdir):
-        self._test_create_basebackup(capsys, db, pghoard, "basic", False, "standalone_hot_backup")
+        self._test_create_basebackup(capsys, db, pghoard, BaseBackupMode.basic, False, "standalone_hot_backup")
         self._test_restore_basebackup(db, pghoard, tmpdir, "standalone_hot_backup")
 
     def test_pipe_standalone_hot_backups(self, capsys, db, pghoard, tmpdir):
-        self._test_create_basebackup(capsys, db, pghoard, "pipe", False, "standalone_hot_backup")
+        self._test_create_basebackup(capsys, db, pghoard, BaseBackupMode.pipe, False, "standalone_hot_backup")
         self._test_restore_basebackup(db, pghoard, tmpdir, "standalone_hot_backup")
 
     def test_basebackups_basic(self, capsys, db, pghoard, tmpdir):
-        self._test_basebackups(capsys, db, pghoard, tmpdir, "basic")
+        self._test_basebackups(capsys, db, pghoard, tmpdir, BaseBackupMode.basic)
 
     def test_basebackups_basic_lzma(self, capsys, db, pghoard_lzma, tmpdir):
-        self._test_basebackups(capsys, db, pghoard_lzma, tmpdir, "basic")
+        self._test_basebackups(capsys, db, pghoard_lzma, tmpdir, BaseBackupMode.basic)
+
+    def test_basebackups_delta(self, capsys, db, pghoard, tmpdir):
+        self._test_basebackups(capsys, db, pghoard, tmpdir, BaseBackupMode.delta)
 
     def test_basebackups_local_tar_nonexclusive(self, capsys, db, pghoard, tmpdir):
         if db.pgver < "9.6":
             pytest.skip("PostgreSQL 9.6+ required for non-exclusive backups")
-        self._test_basebackups(capsys, db, pghoard, tmpdir, "local-tar")
+        self._test_basebackups(capsys, db, pghoard, tmpdir, BaseBackupMode.local_tar)
 
     def test_basebackups_local_tar_legacy(self, capsys, db, pghoard, tmpdir):
         if db.pgver >= "9.6":
             pytest.skip("PostgreSQL < 9.6 required for exclusive backup tests")
-        self._test_basebackups(capsys, db, pghoard, tmpdir, "local-tar")
+        self._test_basebackups(capsys, db, pghoard, tmpdir, BaseBackupMode.local_tar)
 
     def test_basebackups_local_tar_exclusive_conflict(self, capsys, db, pghoard, tmpdir):
         if db.pgver >= "9.6":
@@ -375,7 +383,7 @@ LABEL: pg_basebackup base backup
                 cursor = conn.cursor()
                 cursor.execute("SELECT pg_start_backup('conflicting')")  # pylint: disable=used-before-assignment
                 need_stop = True
-            self._test_basebackups(capsys, db, pghoard, tmpdir, "local-tar")
+            self._test_basebackups(capsys, db, pghoard, tmpdir, BaseBackupMode.local_tar)
             need_stop = False
         finally:
             if need_stop:
@@ -394,14 +402,14 @@ LABEL: pg_basebackup base backup
                 pytest.skip("pgespresso not available")
             try:
                 cursor.execute("CREATE EXTENSION pgespresso")
-                self._test_basebackups(capsys, db, pghoard, tmpdir, "local-tar")
+                self._test_basebackups(capsys, db, pghoard, tmpdir, BaseBackupMode.local_tar)
             finally:
                 cursor.execute("DROP EXTENSION pgespresso")
 
     def test_basebackups_replica_local_tar_nonexclusive(self, capsys, recovery_db, pghoard, tmpdir):
         if recovery_db.pgver < "9.6":
             pytest.skip("PostgreSQL 9.6+ required for non-exclusive backups")
-        self._test_basebackups(capsys, recovery_db, pghoard, tmpdir, "local-tar", replica=True)
+        self._test_basebackups(capsys, recovery_db, pghoard, tmpdir, BaseBackupMode.local_tar, replica=True)
 
     def test_basebackups_replica_local_tar_pgespresso(self, capsys, recovery_db, pghoard, tmpdir):
         conn_str = pgutil.create_connection_string(recovery_db.user)
@@ -411,10 +419,10 @@ LABEL: pg_basebackup base backup
             cursor.execute("SELECT 1 FROM pg_available_extensions WHERE name = 'pgespresso' AND default_version >= '1.2'")
             if not cursor.fetchone():
                 pytest.skip("pgespresso not available")
-        self._test_basebackups(capsys, recovery_db, pghoard, tmpdir, "local-tar", replica=True)
+        self._test_basebackups(capsys, recovery_db, pghoard, tmpdir, BaseBackupMode.local_tar, replica=True)
 
     def test_basebackups_pipe(self, capsys, db, pghoard, tmpdir):
-        self._test_basebackups(capsys, db, pghoard, tmpdir, "pipe")
+        self._test_basebackups(capsys, db, pghoard, tmpdir, BaseBackupMode.pipe)
 
     def test_basebackups_tablespaces(self, capsys, db, pghoard, tmpdir):
         # Create a test tablespace for this instance, but make sure we drop it at the end of the test as the

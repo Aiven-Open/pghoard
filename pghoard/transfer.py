@@ -51,6 +51,7 @@ class TransferAgent(Thread):
                 return {
                     "basebackup": EMPTY.copy(),
                     "basebackup_chunk": EMPTY.copy(),
+                    "basebackup_delta": EMPTY.copy(),
                     "timeline": EMPTY.copy(),
                     "xlog": EMPTY.copy(),
                 }
@@ -76,6 +77,8 @@ class TransferAgent(Thread):
         name_parts = file_to_transfer["local_path"].split("/")
         if file_to_transfer["filetype"] == "basebackup_chunk":
             name = os.path.join(name_parts[-2], name_parts[-1])
+        elif file_to_transfer["filetype"] == "basebackup_delta":
+            name = file_to_transfer["delta"]["hexdigest"]
         else:
             name = name_parts[-1]
         return os.path.join(file_to_transfer["prefix"], file_to_transfer["filetype"], name)
@@ -139,7 +142,7 @@ class TransferAgent(Thread):
                 if oper == "upload":
                     if filetype == "xlog":
                         self.state[site][oper]["xlog"]["xlogs_since_basebackup"] += 1
-                    elif filetype == "basebackup":
+                    elif filetype in {"basebackup", "basebackup_delta"}:
                         # reset corresponding xlog stats at basebackup
                         self.state[site][oper]["xlog"]["xlogs_since_basebackup"] = 0
 
@@ -243,7 +246,7 @@ class TransferAgent(Thread):
             else:
                 # Basebackups may be multipart uploads, depending on the driver.
                 # Swift needs to know about this so it can do possible cleanups.
-                multipart = file_to_transfer["filetype"] in {"basebackup", "basebackup_chunk"}
+                multipart = file_to_transfer["filetype"] in {"basebackup", "basebackup_chunk", "basebackup_delta"}
                 try:
                     self.log.info("Uploading file to object store: src=%r dst=%r", file_to_transfer["local_path"], key)
                     storage.store_file_from_disk(

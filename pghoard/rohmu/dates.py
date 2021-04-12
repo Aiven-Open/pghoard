@@ -39,3 +39,7 @@ def parse_timestamp(ts, *, with_tz=True, assume_local=False):
 
     tz = dateutil.tz.tzlocal() if assume_local else datetime.timezone.utc
     return dt.replace(tzinfo=tz)
+
+
+def now():
+    return datetime.datetime.now(datetime.timezone.utc)

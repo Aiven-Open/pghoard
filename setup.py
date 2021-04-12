@@ -20,6 +20,7 @@ setup(
     install_requires=[
         "cryptography",
         "psycopg2 >= 2.0.0",
+        "pydantic",
         "python-dateutil",
         "python-snappy >= 0.5",
         "requests >= 1.2.0",

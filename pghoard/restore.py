@@ -4,8 +4,11 @@ pghoard - list and restore basebackups
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
+import abc
 import argparse
+import base64
 import datetime
+import enum
 import errno
 import io
 import logging
@@ -23,10 +26,12 @@ import uuid
 from distutils.version import \
     LooseVersion  # pylint: disable=no-name-in-module,import-error
 from threading import RLock
+from typing import Dict, List, Optional
 
 from psycopg2.extensions import adapt
 from requests import Session
 
+from pghoard.common import BaseBackupFormat, StrEnum
 from pghoard.rohmu import compat, dates, get_transfer, rohmufile
 from pghoard.rohmu.errors import Error, InvalidConfigurationError
 
@@ -36,6 +41,50 @@ from .postgres_command import PGHOARD_HOST, PGHOARD_PORT
 
 class RestoreError(Error):
     """Restore error"""
+
+
+@enum.unique
+class FileInfoType(StrEnum):
+    regular = "regular"
+    delta = "delta"
+
+
+class FileInfo(abc.ABC):
+    def __init__(self, size, new_name, metadata, file_type):
+        self.size: int = size
+        self.id = str(uuid.uuid4())
+        self.new_name = new_name
+        self.metadata = metadata
+        self.file_type = file_type
+
+
+class FilePathInfo(FileInfo):
+    def __init__(
+        self,
+        name: str,
+        size: int,
+        new_name: Optional[str] = None,
+        metadata: Optional[Dict] = None,
+        file_type: Optional[FileInfoType] = FileInfoType.regular
+    ):
+        self.name: str = name
+        super().__init__(size=size, new_name=new_name, metadata=metadata, file_type=file_type)
+
+    def __repr__(self):
+        return f"{self.name} (size={self.size}, file_type={self.file_type})"
+
+
+class FileDataInfo(FileInfo):
+    def __init__(
+        self,
+        data: bytes,
+        size: int,
+        new_name: Optional[str] = None,
+        metadata: Optional[Dict] = None,
+        file_type: Optional[FileInfoType] = FileInfoType.regular
+    ):
+        self.data: bytes = data
+        super().__init__(size=size, new_name=new_name, metadata=metadata, file_type=file_type)
 
 
 def create_signal_file(file_path):
@@ -240,10 +289,13 @@ class Restore:
         self.storage = HTTPRestore(arg.host, arg.port, arg.site)
         self.storage.show_basebackup_list(verbose=arg.verbose)
 
+    def _get_site_prefix(self, site):
+        return self.config["backup_sites"][site]["prefix"]
+
     def _get_object_storage(self, site, pgdata):
         storage_config = common.get_object_storage_config(self.config, site)
         storage = get_transfer(storage_config)
-        return ObjectStore(storage, self.config["backup_sites"][site]["prefix"], site, pgdata)
+        return ObjectStore(storage, self._get_site_prefix(site), site, pgdata)
 
     def list_basebackups(self, arg):
         """List basebackups from an object store"""
@@ -330,6 +382,51 @@ class Restore:
         print("\nSelecting {!r} for restore".format(selected["name"]))
         return selected
 
+    def _get_delta_basebackup_data(self, site, metadata, basebackup_name):
+        basebackup_data_files = []
+        bmeta_compressed = self.storage.get_file_bytes(basebackup_name)
+        with rohmufile.file_reader(
+            fileobj=io.BytesIO(bmeta_compressed),
+            metadata=metadata,
+            key_lookup=config.key_lookup_for_site(self.config, site)
+        ) as input_obj:
+            bmeta = common.extract_pghoard_delta_v1_metadata(input_obj)
+        self.log.debug("Delta backup metadata: %r", bmeta)
+
+        delta_objects_path = os.path.join(self._get_site_prefix(site), "basebackup_delta")
+
+        manifest = bmeta["manifest"]
+        snapshot_result = manifest["snapshot_result"]
+        backup_state = snapshot_result["state"]
+        files = backup_state["files"]
+        empty_dirs = backup_state["empty_dirs"]
+        tablespaces = bmeta["tablespaces"]
+        for delta_file in files:
+            if delta_file["hexdigest"]:
+                basebackup_data_files.append(
+                    FilePathInfo(
+                        name=os.path.join(delta_objects_path, delta_file["hexdigest"]),
+                        size=delta_file["stored_file_size"],
+                        new_name=delta_file["relative_path"],
+                        file_type=FileInfoType.delta
+                    )
+                )
+            elif delta_file["content_b64"] is not None:
+                # Restore embed files
+                basebackup_data_files.append(
+                    FileDataInfo(
+                        data=base64.b64decode(delta_file["content_b64"]),
+                        metadata=metadata,
+                        size=delta_file["file_size"],
+                        new_name=delta_file["relative_path"],
+                        file_type=FileInfoType.delta
+                    )
+                )
+
+        basebackup_data_files.append(FileDataInfo(data=bmeta_compressed, metadata=metadata, size=0))
+
+        return tablespaces, basebackup_data_files, empty_dirs
+
     def _get_basebackup(
         self,
         pgdata,
@@ -386,7 +483,9 @@ class Restore:
                 "$PGDATA target directory {!r} exists, is not empty and --overwrite not specified, aborting.".format(pgdata)
             )
 
-        if metadata.get("format") == "pghoard-bb-v2":
+        empty_dirs = None
+        basebackup_data_files: List[FileInfo] = []
+        if metadata.get("format") == BaseBackupFormat.v2:
             # "Backup file" is a metadata object, fetch it to get more information
             bmeta_compressed = self.storage.get_file_bytes(basebackup["name"])
             with rohmufile.file_reader(
@@ -398,14 +497,16 @@ class Restore:
             self.log.debug("Backup metadata: %r", bmeta)
 
             tablespaces = bmeta["tablespaces"]
-            basebackup_data_files = [[
-                os.path.join(self.config["backup_sites"][site]["prefix"], "basebackup_chunk", chunk["chunk_filename"]),
-                chunk["result_size"],
-            ] for chunk in bmeta["chunks"]]
+            basebackup_data_files = [
+                FilePathInfo(
+                    name=os.path.join(self._get_site_prefix(site), "basebackup_chunk", chunk["chunk_filename"]),
+                    size=chunk["result_size"]
+                ) for chunk in bmeta["chunks"]
+            ]
             # We need the files from the main basebackup file too
-            basebackup_data_files.append([(bmeta_compressed, metadata), 0])
+            basebackup_data_files.append(FileDataInfo(data=bmeta_compressed, metadata=metadata, size=0))
 
-        elif metadata.get("format") == "pghoard-bb-v1":
+        elif metadata.get("format") == BaseBackupFormat.v1:
             # Tablespace information stored in object store metadata, look it up
             tsmetare = re.compile("^tablespace-name-([0-9]+)$")
             for kw, value in metadata.items():
@@ -420,11 +521,15 @@ class Restore:
                     "path": tspath,
                 }
 
-            basebackup_data_files = [[basebackup["name"], basebackup["size"]]]
+            basebackup_data_files = [FilePathInfo(name=basebackup["name"], size=basebackup["size"])]
 
+        elif metadata.get("format") == BaseBackupFormat.delta_v1:
+            tablespaces, basebackup_data_files, empty_dirs = self._get_delta_basebackup_data(
+                site, metadata, basebackup["name"]
+            )
         else:
             # Object is a raw (encrypted, compressed) basebackup
-            basebackup_data_files = [[basebackup["name"], basebackup["size"]]]
+            basebackup_data_files = [FilePathInfo(name=basebackup["name"], size=basebackup["size"])]
 
         if tablespace_base_dir and not os.path.exists(tablespace_base_dir) and not overwrite:
             # we just care that the dir exists, but we're OK if there are other objects there
@@ -470,6 +575,11 @@ class Restore:
         for dirname in dirs_to_create:
             os.makedirs(dirname)
             os.chmod(dirname, 0o700)
+        if empty_dirs:
+            for rel_path in empty_dirs:
+                dirname = os.path.join(pgdata, rel_path)
+                os.makedirs(dirname, exist_ok=True)
+                os.chmod(dirname, 0o700)
 
         fetcher = BasebackupFetcher(
             app_config=self.config,
@@ -515,12 +625,12 @@ class Restore:
             return 1
 
 
-class BasebackupFetcher():
-    def __init__(self, *, app_config, debug, site, pgdata, tablespaces, data_files, status_output_file=None):
+class BasebackupFetcher:
+    def __init__(self, *, app_config, debug, site, pgdata, tablespaces, data_files: List[FileInfo], status_output_file=None):
         self.log = logging.getLogger(self.__class__.__name__)
         self.completed_jobs = set()
         self.config = app_config
-        self.data_files = [{"fn_or_data": item[0], "id": str(uuid.uuid4()), "size": item[1]} for item in data_files]
+        self.data_files = data_files
         self.debug = debug
         self.download_progress_per_file = {}
         self.errors = 0
@@ -593,10 +703,10 @@ class BasebackupFetcher():
         return min(self.config["restore_process_count"], len(self.data_files))
 
     def _setup_progress_tracking(self, manager):
-        self.total_download_size = sum(item["size"] for item in self.data_files)
-        initial_progress = [[item["fn_or_data"], item["size"] if item["id"] in self.completed_jobs else 0]
+        self.total_download_size = sum(item.size for item in self.data_files)
+        initial_progress = [[item.name, item.size if item.id in self.completed_jobs else 0]
                             for item in self.data_files
-                            if not isinstance(item["fn_or_data"], tuple)]
+                            if isinstance(item, FilePathInfo)]
         self.download_progress_per_file = manager.dict(initial_progress)
 
     def current_progress(self):
@@ -645,20 +755,20 @@ class BasebackupFetcher():
     def _queue_jobs(self, pool):
         for item in self.data_files:
             with self.lock:
-                if item["id"] in self.completed_jobs or item["id"] in self.pending_jobs:
+                if item.id in self.completed_jobs or item.id in self.pending_jobs:
                     continue
-                self.pending_jobs.add(item["id"])
-            self._queue_job(pool, item["id"], item["fn_or_data"], item["size"])
+                self.pending_jobs.add(item.id)
+            self._queue_job(pool, item)
 
-    def _queue_job(self, pool, key, data_file, data_file_size):
+    def _queue_job(self, pool, file_info: FileInfo):
+        key = file_info.id
         pool.apply_async(
             _fetch_and_process_chunk,
             [],
             {
                 "app_config": self.config,
                 "debug": self.debug,
-                "data_file": data_file,
-                "data_file_size": data_file_size,
+                "file_info": file_info,
                 "download_progress_per_file": self.download_progress_per_file,
                 "site": self.site,
                 "pgdata": self.pgdata,
@@ -705,18 +815,17 @@ class ThreadingManager:
 
 
 def _fetch_and_process_chunk(
-    *, app_config, debug, data_file, data_file_size, download_progress_per_file, site, pgdata, tablespaces
+    *, app_config, debug, file_info: FileInfo, download_progress_per_file, site, pgdata, tablespaces
 ):
     logutil.configure_logging(level=logging.DEBUG if debug else logging.INFO)
-    fetcher = ChunkFetcher(app_config, data_file, data_file_size, download_progress_per_file, site, pgdata, tablespaces)
+    fetcher = ChunkFetcher(app_config, file_info, download_progress_per_file, site, pgdata, tablespaces)
     fetcher.process_chunk()
 
 
 class ChunkFetcher:
-    def __init__(self, app_config, data_file, data_file_size, download_progress_per_file, site, pgdata, tablespaces):
+    def __init__(self, app_config, file_info: FileInfo, download_progress_per_file, site, pgdata, tablespaces):
         self.config = app_config
-        self.data_file = data_file
-        self.data_file_size = data_file_size
+        self.file_info = file_info
         self.download_progress_per_file = download_progress_per_file
         self.log = logging.getLogger(self.__class__.__name__)
         self.pgdata = pgdata
@@ -728,30 +837,51 @@ class ChunkFetcher:
         return get_transfer(object_storage_config)
 
     def _progress_callback(self, current_pos, expected_max):
-        self.download_progress_per_file[self.data_file] = self.data_file_size * (current_pos / expected_max)
+        assert isinstance(self.file_info, FilePathInfo)
+        self.download_progress_per_file[self.file_info.name] = self.file_info.size * (current_pos / expected_max)
 
     def process_chunk(self):
-        self.log.debug("Processing one chunk: %r", self.data_file)
-        if isinstance(self.data_file, tuple):
-            data, metadata = self.data_file
-            src = io.BytesIO(data)
-            self._fetch_and_extract_one_backup(metadata, len(data), lambda sink: shutil.copyfileobj(src, sink))
-        else:
+        self.log.info("Processing one chunk: %r", self.file_info)
+
+        if self.file_info.file_type not in {FileInfoType.regular, FileInfoType.delta}:
+            raise NotImplementedError(f"Unknown FileInfoType {self.file_info.file_type}")
+
+        if isinstance(self.file_info, FileDataInfo):
+            if self.file_info.file_type == FileInfoType.regular:
+                src = io.BytesIO(self.file_info.data)
+                self._fetch_and_extract_one_backup(
+                    self.file_info.metadata, len(self.file_info.data), lambda sink: shutil.copyfileobj(src, sink)
+                )
+            elif self.file_info.file_type == FileInfoType.delta:
+                assert self.file_info.new_name
+                with open(os.path.join(self.pgdata, self.file_info.new_name), "wb") as out_f:
+                    out_f.write(self.file_info.data)
+
+        elif isinstance(self.file_info, FilePathInfo):
             transfer = self._create_transfer()
-            metadata = transfer.get_metadata_for_key(self.data_file)
+            metadata = transfer.get_metadata_for_key(self.file_info.name)
 
             def fetch_fn(sink):
-                transfer.get_contents_to_fileobj(self.data_file, sink, progress_callback=self._progress_callback)
+                transfer.get_contents_to_fileobj(self.file_info.name, sink, progress_callback=self._progress_callback)
 
-            self._fetch_and_extract_one_backup(metadata, self.data_file_size, fetch_fn)
+            if self.file_info.file_type == FileInfoType.regular:
+                self._fetch_and_extract_one_backup(metadata, self.file_info.size, fetch_fn)
+            elif self.file_info.file_type == FileInfoType.delta:
+                assert self.file_info.new_name
+                self._fetch_delta_file(metadata, fetch_fn)
+
+        else:
+            raise NotImplementedError(f"Unknown FileInfo {self.file_info.__class__.__name__}")
 
     def _build_tar_args(self, metadata):
         base_args = [self.config["tar_executable"], "-xf", "-", "-C", self.pgdata]
         file_format = metadata.get("format")
         if not file_format:
             return base_args
-        elif file_format in {"pghoard-bb-v1", "pghoard-bb-v2"}:
+        elif file_format in {BaseBackupFormat.v1, BaseBackupFormat.v2, BaseBackupFormat.delta_v1}:
             extra_args = ["--exclude", ".pghoard_tar_metadata.json", "--transform", "s,^pgdata/,,"]
+            if file_format == BaseBackupFormat.delta_v1:
+                extra_args += ["--exclude", ".manifest.json"]
             if self.tablespaces:
                 extra_args.append("--absolute-names")
             for tsname, settings in self.tablespaces.items():
@@ -764,6 +894,20 @@ class ChunkFetcher:
             return base_args + extra_args
         else:
             raise RestoreError("Unrecognized basebackup format {!r}".format(file_format))
+
+    def _fetch_delta_file(self, metadata, fetch_fn):
+        with open(os.path.join(self.pgdata, self.file_info.new_name), "wb") as target_file:
+            sink = rohmufile.create_sink_pipeline(
+                output=target_file,
+                file_size=self.file_info.size,
+                metadata=metadata,
+                key_lookup=config.key_lookup_for_site(self.config, self.site),
+            )
+            fetch_fn(sink)
+
+        self.log.info(
+            "Processing of delta file completed successfully: %r -> %r", self.file_info.name, self.file_info.new_name
+        )
 
     def _fetch_and_extract_one_backup(self, metadata, file_size, fetch_fn):
         with subprocess.Popen(
@@ -793,7 +937,7 @@ class ChunkFetcher:
             tar.stdin = None
             output = tar.stderr.read()
             exit_code = tar.wait()
-            file_name = "<mem_bytes>" if isinstance(self.data_file, tuple) else self.data_file
+            file_name = "<mem_bytes>" if isinstance(self.file_info, FileDataInfo) else self.file_info.name
             if exit_code != 0:
                 raise Exception("tar exited with code {!r} for file {!r}, output: {!r}".format(exit_code, file_name, output))
             self.log.info("Processing of %r completed successfully", file_name)
@@ -845,6 +989,8 @@ def main():
         restore = Restore()
         return restore.run()
     except (InvalidConfigurationError, RestoreError) as ex:
+        import traceback
+        traceback.print_exc()
         print("FATAL: {}: {}".format(ex.__class__.__name__, ex))
         return 1
 

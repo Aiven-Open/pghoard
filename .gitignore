@@ -18,3 +18,4 @@ __pycache__/
 /venv/
 /.venv/
 *.orig
+/pghoard-rpm-src/

@@ -5,18 +5,23 @@ Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
 import datetime
+import io
 import json
 import os
+import tarfile
 import time
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 import psycopg2
 
-from pghoard.common import (create_alert_file, delete_alert_file, write_json_file)
+from pghoard import common
+from pghoard.common import (BaseBackupFormat, create_alert_file, delete_alert_file, write_json_file)
 from pghoard.pghoard import PGHoard
 from pghoard.pgutil import create_connection_string
-
 # pylint: disable=attribute-defined-outside-init
+from pghoard.rohmu import rohmufile
+
 from .base import PGHoardTestCase
 
 
@@ -340,6 +345,118 @@ dbname|"""
         assert len(basebackups) == 1
         assert len(os.listdir(wal_storage_path)) == 1
 
+    def test_local_refresh_backup_list_and_delete_old_delta_format(self):
+        basebackup_storage_path = os.path.join(self.local_storage_dir, "basebackup")
+        basebackup_delta_path = os.path.join(self.local_storage_dir, "basebackup_delta")
+
+        os.makedirs(basebackup_storage_path)
+        os.makedirs(basebackup_delta_path)
+
+        self.pghoard.set_state_defaults(self.test_site)
+        assert self.pghoard.get_remote_basebackups_info(self.test_site) == []
+
+        def write_backup_files(what):
+            for bb, bb_data in what.items():
+                wal_start, hexdigests = bb_data
+                if bb:
+                    bb_path = os.path.join(basebackup_storage_path, bb)
+                    date_parts = [int(part) for part in bb.replace("_", "-").split("-")]
+                    start_time = datetime.datetime(*date_parts, tzinfo=datetime.timezone.utc)
+
+                    metadata = {
+                        "manifest": {
+                            "snapshot_result": {
+                                "state": {
+                                    "files": [{
+                                        "relative_path": h,
+                                        "hexdigest": h
+                                    } for h in hexdigests]
+                                }
+                            }
+                        }
+                    }
+                    mtime = time.time()
+                    blob = io.BytesIO(common.json_encode(metadata, binary=True))
+                    ti = tarfile.TarInfo(name=".pghoard_tar_metadata.json")
+                    ti.size = len(blob.getbuffer())
+                    ti.mtime = mtime
+
+                    with open(bb_path, "wb") as fp:
+                        with rohmufile.file_writer(
+                            compression_algorithm="snappy", compression_level=0, fileobj=fp
+                        ) as output_obj:
+                            with tarfile.TarFile(fileobj=output_obj, mode="w") as tar:
+                                tar.addfile(ti, blob)
+                            input_size = output_obj.tell()
+
+                    for h in hexdigests:
+                        with open(Path(basebackup_delta_path) / h, "w") as digest_file, \
+                                open((Path(basebackup_delta_path) / (h + ".metadata")), "w") as digest_meta_file:
+                            json.dump({}, digest_file)
+                            json.dump({}, digest_meta_file)
+
+                    with open(bb_path + ".metadata", "w") as fp:
+                        json.dump({
+                            "start-wal-segment": wal_start,
+                            "start-time": start_time.isoformat(),
+                            "format": BaseBackupFormat.delta_v1,
+                            "compression-algorithm": "snappy",
+                            "original-file-size": input_size
+                        }, fp)
+
+        backups_and_delta = {
+            "2015-08-25_0": (
+                "000000010000000A000000AA", [
+                    "214967296374cae6f099e19910b33a0893f0abc62f50601baa2875ab055cd27b",
+                    "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                ]
+            ),
+            "2015-08-25_1": [
+                "000000020000000A000000AB", ["214967296374cae6f099e19910b33a0893f0abc62f50601baa2875ab055cd27b"]
+            ],
+            "2015-08-25_2": [
+                "000000030000000A000000AC", ["214967296374cae6f099e19910b33a0893f0abc62f50601baa2875ab055cd27b"]
+            ],
+            "2015-08-25_3": [
+                "000000040000000B00000003",
+                [
+                    "214967296374cae6f099e19910b33a0893f0abc62f50601baa2875ab055cd27b",
+                    "4b65df4d0857bbbcb22aa086e02bd8414a9f3a484869f2b96ed7c62f3c4eb088"
+                ]
+            ],
+        }
+        write_backup_files(backups_and_delta)
+        basebackups = self.pghoard.get_remote_basebackups_info(self.test_site)
+        assert len(basebackups) == 4
+        self.pghoard.refresh_backup_list_and_delete_old(self.test_site)
+        basebackups = self.pghoard.get_remote_basebackups_info(self.test_site)
+        assert len(basebackups) == 1
+
+        left_delta_files = [p for p in os.listdir(basebackup_delta_path) if not p.endswith(".metadata")]
+        assert sorted(left_delta_files) == [
+            "214967296374cae6f099e19910b33a0893f0abc62f50601baa2875ab055cd27b",
+            "4b65df4d0857bbbcb22aa086e02bd8414a9f3a484869f2b96ed7c62f3c4eb088"
+        ]
+
+        new_delta_data = {
+            "2015-08-25_4": (
+                "000000040000000B00000004", [
+                    "fc61c91430dcb345001306ad513f103380c16896093a17868fc909aeda393559",
+                ]
+            )
+        }
+        write_backup_files(new_delta_data)
+        basebackups = self.pghoard.get_remote_basebackups_info(self.test_site)
+        assert len(basebackups) == 2
+        self.pghoard.refresh_backup_list_and_delete_old(self.test_site)
+        basebackups = self.pghoard.get_remote_basebackups_info(self.test_site)
+        assert len(basebackups) == 1
+
+        left_delta_files = [p for p in os.listdir(basebackup_delta_path) if not p.endswith(".metadata")]
+        assert sorted(left_delta_files) == [
+            "fc61c91430dcb345001306ad513f103380c16896093a17868fc909aeda393559",
+        ]
+
     def test_alert_files(self):
         alert_file_path = os.path.join(self.config["alert_file_dir"], "test_alert")
         create_alert_file(self.pghoard.config, "test_alert")
@@ -443,14 +560,17 @@ class TestPGHoardWithPG:
         os.makedirs(wal_directory, exist_ok=True)
 
         pghoard.receivexlog_listener(pghoard.test_site, db.user, wal_directory)
-        # Create 20 new WAL segments in very quick succession. Our volume for incoming WALs is only 100
+        # Create 15 new WAL segments in very quick succession. Our volume for incoming WALs is only 100
         # MiB so if logic for automatically suspending pg_receive(xlog|wal) wasn't working the volume
         # would certainly fill up and the files couldn't be processed. Now this should work fine.
         for _ in range(16):
+            # Note: do not combine two function call in one select, PG executes it differently and
+            # sometimes looks like it generates less WAL files than we wanted
+            cursor.execute("SELECT txid_current()")
             if conn.server_version >= 100000:
-                cursor.execute("SELECT txid_current(), pg_switch_wal()")
+                cursor.execute("SELECT pg_switch_wal()")
             else:
-                cursor.execute("SELECT txid_current(), pg_switch_xlog()")
+                cursor.execute("SELECT pg_switch_xlog()")
 
         start = time.monotonic()
         site = "test_pause_on_disk_full"
