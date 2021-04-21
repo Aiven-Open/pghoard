@@ -9,6 +9,7 @@ import os
 import time
 
 import botocore.client
+import botocore.config
 import botocore.exceptions
 import botocore.session
 
@@ -43,7 +44,8 @@ class S3Transfer(BaseTransfer):
         is_secure=False,
         is_verify_tls=False,
         segment_size=MULTIPART_CHUNK_SIZE,
-        encrypted=False
+        encrypted=False,
+        proxy_info=None
     ):
         super().__init__(prefix=prefix)
         botocore_session = botocore.session.get_session()
@@ -51,8 +53,25 @@ class S3Transfer(BaseTransfer):
         self.location = ""
         self.region = region
         if not host or not port:
+            custom_config = {}
+            if proxy_info:
+                username = proxy_info.get("user")
+                password = proxy_info.get("pass")
+                if username and password:
+                    auth = f"{username}:{password}@"
+                else:
+                    auth = ""
+                host = proxy_info["host"]
+                port = proxy_info["port"]
+                if proxy_info.get("type") == "socks5":
+                    schema = "socks5"
+                else:
+                    schema = "http"
+                proxy_url = f"{schema}://{auth}{host}:{port}"
+                custom_config["proxies"] = {"https": proxy_url}
             self.s3_client = botocore_session.create_client(
                 "s3",
+                config=botocore.config.Config(**custom_config),
                 aws_access_key_id=aws_access_key_id,
                 aws_secret_access_key=aws_secret_access_key,
                 region_name=region,

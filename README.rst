@@ -725,8 +725,8 @@ specific to the storage type.
 
 Dictionary specifying proxy information. The dictionary must contain keys ``type``,
 ``host`` and ``port``. Type can be either ``socks5`` or ``http``.  Optionally,
-``user`` and ``pass`` can be specified for proxy authentication.  Only Google
-Cloud Storage driver support proxies at the moment.
+``user`` and ``pass`` can be specified for proxy authentication.  Only S3 and
+Google Cloud Storage drivers support proxies at the moment.
 
 The following object storage types are supported:
 
