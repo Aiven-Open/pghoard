@@ -690,6 +690,16 @@ tablespaces.
 Note that the ``local-tar`` backup mode can not be used on replica servers
 prior to PostgreSQL 9.6 unless the pgespresso extension is installed.
 
+When using ``delta`` mode, only changed files are uploaded into the storage.
+On every backup snapshot of the data files is taken, this results in a manifest file,
+describing the hashes of all the files needed to be backed up.
+New hashes are uploaded to the storage and used together with complementary
+manifest from control file for restoration.
+In order to properly assess the efficiency of ``delta`` mode in comparison with
+``local-tar``, one can use ``local-tar-delta-stats`` mode, which behaves the same as
+``local-tar``, but also collects the metrics as if it was ``delta`` mode. It can help
+in decision making of switching to ``delta`` mode.
+
 ``basebackup_threads`` (default ``1``)
 
 How many threads to use for tar, compress and encrypt tasks. Only applies for

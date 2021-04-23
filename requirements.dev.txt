@@ -1,6 +1,6 @@
 # Use pip for build requirements to harmonize between OS versions
 mock
-pylint>=2.4.3
+pylint>=2.4.3,<=2.7.2
 pylint-quotes
 pytest
 pytest-mock
