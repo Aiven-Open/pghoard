@@ -42,6 +42,7 @@ class BaseBackupMode(StrEnum):
     basic = "basic"
     delta = "delta"
     local_tar = "local-tar"
+    local_tar_delta_stats = "local-tar-delta-stats"
     pipe = "pipe"
 
 

@@ -362,6 +362,9 @@ LABEL: pg_basebackup base backup
     def test_basebackups_delta(self, capsys, db, pghoard, tmpdir):
         self._test_basebackups(capsys, db, pghoard, tmpdir, BaseBackupMode.delta)
 
+    def test_basebackups_local_tar_with_delta_stats(self, capsys, db, pghoard, tmpdir):
+        self._test_basebackups(capsys, db, pghoard, tmpdir, BaseBackupMode.local_tar_delta_stats)
+
     def test_basebackups_local_tar_nonexclusive(self, capsys, db, pghoard, tmpdir):
         if db.pgver < "9.6":
             pytest.skip("PostgreSQL 9.6+ required for non-exclusive backups")
