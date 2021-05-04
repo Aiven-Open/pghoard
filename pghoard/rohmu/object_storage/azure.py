@@ -41,7 +41,7 @@ logging.getLogger("azure.core.pipeline.policies.http_logging_policy").setLevel(l
 
 
 class AzureTransfer(BaseTransfer):
-    def __init__(self, account_name, account_key, bucket_name, prefix=None, azure_cloud=None):
+    def __init__(self, account_name, account_key, bucket_name, prefix=None, azure_cloud=None, proxy_info=None):
         prefix = "{}".format(prefix.lstrip("/") if prefix else "")
         super().__init__(prefix=prefix)
         self.account_name = account_name
@@ -58,9 +58,25 @@ class AzureTransfer(BaseTransfer):
             f"AccountKey={self.account_key};"
             f"EndpointSuffix={endpoint_suffix}"
         )
+        config = {"max_block_size": MAX_BLOCK_SIZE}
+        if proxy_info:
+            username = proxy_info.get("user")
+            password = proxy_info.get("pass")
+            if username and password:
+                auth = f"{username}:{password}@"
+            else:
+                auth = ""
+            host = proxy_info["host"]
+            port = proxy_info["port"]
+            if proxy_info.get("type") == "socks5":
+                schema = "socks5"
+            else:
+                schema = "http"
+            config["proxies"] = {"https": f"{schema}://{auth}{host}:{port}"}
+
         self.conn = BlobServiceClient.from_connection_string(
             conn_str=conn_str,
-            max_block_size=MAX_BLOCK_SIZE,
+            **config,
         )
         self.conn.socket_timeout = 120  # Default Azure socket timeout 20s is a bit short
         self.container = self.get_or_create_container(self.container_name)
