@@ -20,6 +20,7 @@ from .base import (KEY_TYPE_OBJECT, KEY_TYPE_PREFIX, BaseTransfer, IterKeyItem, 
 ENDPOINT_SUFFIXES = {
     None: "core.windows.net",
     "germany": "core.cloudapi.de",  # Azure Germany is a completely separate cloud from the regular Azure Public cloud
+    "china": "core.chinacloudapi.cn",
     "public": "core.windows.net"
 }
 
