@@ -152,6 +152,7 @@ class SwiftTransfer(BaseTransfer):
                         "size": item["bytes"] + segments_size,
                         "last_modified": last_modified,
                         "metadata": metadata,
+                        "hash": item.get("hash"),
                     },
                 )
 
