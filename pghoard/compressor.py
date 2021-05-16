@@ -9,17 +9,29 @@ import logging
 import os
 import socket
 from io import BytesIO
-from queue import Empty
+from queue import Empty, Queue
 from tempfile import NamedTemporaryFile
-from threading import Thread
+from threading import Event, Thread
+from typing import Dict, Optional
 
 from pghoard import config, wal
 from pghoard.common import write_json_file
+from pghoard.metrics import Metrics
 from pghoard.rohmu import errors, rohmufile
 
 
 class CompressorThread(Thread):
-    def __init__(self, config_dict, compression_queue, transfer_queue, metrics):
+    MAX_FAILED_RETRY_ATTEMPTS = 3
+    RETRY_INTERVAL = 3.0
+
+    def __init__(
+        self,
+        config_dict: Dict,
+        compression_queue: Queue,
+        transfer_queue: Queue,
+        metrics: Metrics,
+        critical_failure_event: Event,
+    ):
         super().__init__()
         self.log = logging.getLogger("Compressor")
         self.config = config_dict
@@ -28,6 +40,7 @@ class CompressorThread(Thread):
         self.compression_queue = compression_queue
         self.transfer_queue = transfer_queue
         self.running = True
+        self.critical_failure_event = critical_failure_event
         self.log.debug("Compressor initialized")
 
     def get_compressed_file_path(self, site, filetype, original_path):
@@ -56,12 +69,14 @@ class CompressorThread(Thread):
         return self.config["compression"]["algorithm"]
 
     def run(self):
+        event: Optional[Dict] = None
         while self.running:
-            try:
-                event = self.compression_queue.get(timeout=1.0)
-            except Empty:
-                continue
-
+            if event is None:
+                attempt = 1
+                try:
+                    event = self.compression_queue.get(timeout=1.0)
+                except Empty:
+                    continue
             try:
                 if event["type"] == "QUIT":
                     break
@@ -69,22 +84,36 @@ class CompressorThread(Thread):
                     self.handle_decompression_event(event)
                 else:
                     filetype = self.get_event_filetype(event)
-                    if not filetype:
-                        if "callback_queue" in event and event["callback_queue"]:
-                            self.log.debug("Returning success for unrecognized and ignored event: %r", event)
-                            event["callback_queue"].put({"success": True, "opaque": event.get("opaque")})
-                        continue
-
-                    self.handle_event(event, filetype)
+                    if filetype:
+                        self.handle_event(event, filetype)
+                    elif "callback_queue" in event and event["callback_queue"]:
+                        self.log.debug("Returning success for unrecognized and ignored event: %r", event)
+                        event["callback_queue"].put({"success": True, "opaque": event.get("opaque")})
+                event = None
             except Exception as ex:  # pylint: disable=broad-except
                 if "blob" in event:
                     log_event = dict(event, blob="<{} bytes>".format(len(event["blob"])))
                 else:
                     log_event = event
-                self.log.exception("Problem handling: %r: %s: %s", log_event, ex.__class__.__name__, ex)
+                attempt_message = ""
+                if attempt < self.MAX_FAILED_RETRY_ATTEMPTS:
+                    attempt_message = f" (attempt {attempt} of {self.MAX_FAILED_RETRY_ATTEMPTS})"
+
+                self.log.exception("Problem handling%s: %r: %s: %s", attempt_message, log_event, ex.__class__.__name__, ex)
                 self.metrics.unexpected_exception(ex, where="compressor_run")
-                if "callback_queue" in event and event["callback_queue"]:
-                    event["callback_queue"].put({"success": False, "exception": ex, "opaque": event.get("opaque")})
+                if attempt >= self.MAX_FAILED_RETRY_ATTEMPTS:
+                    # When this happens, execution must be stopped in order to prevent data corruption
+                    if "callback_queue" in event and event["callback_queue"]:
+                        event["callback_queue"].put({"success": False, "exception": ex, "opaque": event.get("opaque")})
+                    self.running = False
+                    self.metrics.unexpected_exception(ex, where="compressor_run_critical")
+                    self.critical_failure_event.set()
+                    break
+
+                attempt = attempt + 1
+                if self.critical_failure_event.wait(self.RETRY_INTERVAL):
+                    self.running = False
+                    break
 
         self.log.debug("Quitting Compressor")
 
@@ -162,9 +191,6 @@ class CompressorThread(Thread):
             else:
                 compressed_blob = output_obj.getvalue()
 
-        if event.get("delete_file_after_compression", True):
-            os.unlink(event["full_path"])
-
         metadata = event.get("metadata", {})
         metadata.update({
             "pg-version": self.config["backup_sites"][site].get("pg_version"),
@@ -211,6 +237,9 @@ class CompressorThread(Thread):
         else:
             transfer_object["blob"] = compressed_blob
             transfer_object["local_path"] = event["full_path"]
+
+        if event.get("delete_file_after_compression", True):
+            os.unlink(event["full_path"])
 
         self.transfer_queue.put(transfer_object)
         return True
