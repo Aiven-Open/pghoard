@@ -21,7 +21,8 @@ import time
 from contextlib import closing
 from dataclasses import dataclass
 from queue import Empty, Queue
-from typing import Dict
+from threading import Event
+from typing import Dict, Optional
 
 import psycopg2
 
@@ -56,7 +57,7 @@ class DeltaBaseBackupFailureInfo:
 
 class PGHoard:
     def __init__(self, config_path):
-        self.metrics = None
+        self.metrics: Optional[metrics.Metrics] = None
         self.log = logging.getLogger("pghoard")
         self.log_level = None
         self.running = True
@@ -72,6 +73,7 @@ class PGHoard:
         self.transfer_agents = []
         self.config = {}
         self.mp_manager = None
+        self.thread_critical_failure_event = Event()
         self.site_transfers = {}
         self.state = {
             "backup_sites": {},
@@ -94,8 +96,8 @@ class PGHoard:
                 self.transfer_agent_state = state.get("transfer_agent_state") or {}
 
         signal.signal(signal.SIGHUP, self.load_config)
-        signal.signal(signal.SIGINT, self.quit)
-        signal.signal(signal.SIGTERM, self.quit)
+        signal.signal(signal.SIGINT, self.handle_exit_signal)
+        signal.signal(signal.SIGTERM, self.handle_exit_signal)
         self.time_of_last_backup_check = {}
         self.requested_basebackup_sites = set()
 
@@ -109,7 +111,8 @@ class PGHoard:
                 config_dict=self.config,
                 compression_queue=self.compression_queue,
                 transfer_queue=self.transfer_queue,
-                metrics=self.metrics
+                metrics=self.metrics,
+                critical_failure_event=self.thread_critical_failure_event,
             )
             self.compressors.append(compressor)
 
@@ -731,7 +734,9 @@ class PGHoard:
             except Exception as ex:  # pylint: disable=broad-except
                 self.log.exception("Unexpected exception in PGHoard main loop")
                 self.metrics.unexpected_exception(ex, where="pghoard_run")
-            time.sleep(5.0)
+            if self.thread_critical_failure_event.wait(timeout=5.0):
+                self.log.error("Unexpected critical failure in PGHoard thread. Quitting main loop.")
+                self.quit()
 
     def write_backup_state_to_json_file(self):
         """Periodically write a JSON state file to disk"""
@@ -831,8 +836,11 @@ class PGHoard:
         all_threads.extend(self.transfer_agents)
         return all_threads
 
-    def quit(self, _signal=None, _frame=None):  # pylint: disable=unused-argument
+    def handle_exit_signal(self, _signal=None, _frame=None):  # pylint: disable=unused-argument
         self.log.warning("Quitting, signal: %r", _signal)
+        self.quit()
+
+    def quit(self):
         self.running = False
         self.inotify.running = False
         all_threads = self._get_all_threads()

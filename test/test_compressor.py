@@ -11,7 +11,9 @@ import os
 import random
 import socket
 from queue import Queue
+from threading import Event
 
+import mock
 import pytest
 
 from pghoard import metrics
@@ -99,6 +101,7 @@ class CompressionCase(PGHoardTestCase):
             compression_queue=self.compression_queue,
             transfer_queue=self.transfer_queue,
             metrics=metrics.Metrics(statsd={}),
+            critical_failure_event=Event(),
         )
         self.compressor.start()
 
@@ -226,6 +229,51 @@ class CompressionCase(PGHoardTestCase):
         result = self.decompress(transfer_event["blob"])
         assert result[:100] == ifile.contents[:100]
         assert result == ifile.contents
+
+    @pytest.mark.parametrize(
+        ["side_effects", "is_failure"],
+        [
+            ([Exception, None], False),
+            ([Exception, Exception], True),
+        ],
+    )
+    def test_compress_error_retry(self, side_effects, is_failure):
+        compression_queue = Queue()
+        test_compressor = CompressorThread(
+            config_dict=self.config,
+            compression_queue=compression_queue,
+            transfer_queue=Queue(),
+            metrics=metrics.Metrics(statsd={}),
+            critical_failure_event=Event(),
+        )
+        test_compressor.MAX_FAILED_RETRY_ATTEMPTS = 2
+        test_compressor.RETRY_INTERVAL = 0
+        # Easy ways to control failures
+        test_compressor.handle_event = mock.Mock()
+        test_compressor.handle_event.side_effect = side_effects
+        test_compressor.start()
+        ifile = WALTester(self.incoming_path, "0000000100000000000000FF", "random")
+        assert not test_compressor.critical_failure_event.is_set(), "Critical failure event shouldn't be set yet"
+        compression_queue.put({
+            "compress_to_memory": True,
+            "delete_file_after_compression": False,
+            "full_path": ifile.path,
+            "src_path": ifile.path_partial,
+            "type": "MOVE",
+        })
+        test_compressor.critical_failure_event.wait(5)
+        if is_failure:
+            assert test_compressor.critical_failure_event.is_set(), "Critical failure event should be set"
+            assert not test_compressor.running, "Compressor thread should not be running any more"
+        else:
+            assert not test_compressor.critical_failure_event.is_set(), "Critical failure event should not be set"
+            assert test_compressor.running, "Compressor thread should still be running"
+        assert test_compressor.handle_event.call_count > 1, "Failed operation should have been retried at least once"
+        # cleanup
+        if test_compressor.is_alive():
+            test_compressor.running = False
+            test_compressor.join(1.0)
+        assert not test_compressor.is_alive(), "Thread should exit when running=False"
 
     def test_compress_encrypt_to_memory(self):
         ifile = WALTester(self.incoming_path, "0000000100000000000000FB", "random")
