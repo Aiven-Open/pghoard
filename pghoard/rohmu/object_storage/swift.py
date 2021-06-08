@@ -189,13 +189,16 @@ class SwiftTransfer(BaseTransfer):
 
     def get_contents_to_file(self, key, filepath_to_store_to, *, progress_callback=None):
         temp_filepath = "{}~".format(filepath_to_store_to)
+        done = False
         with open(temp_filepath, "wb") as fp:
             try:
                 metadata = self.get_contents_to_fileobj(key, fp, progress_callback=progress_callback)
                 os.rename(temp_filepath, filepath_to_store_to)
+                done = True
             finally:
                 with suppress(FileNotFoundError):
-                    os.unlink(filepath_to_store_to)
+                    if not done:
+                        os.unlink(filepath_to_store_to)
         return metadata
 
     def get_contents_to_fileobj(self, key, fileobj_to_store_to, *, progress_callback=None):
