@@ -281,7 +281,7 @@ class SwiftTransfer(BaseTransfer):
                 remaining -= this_segment_size
                 segment_no += 1
                 self.log.debug("Uploading segment %r of %r to %r (%r bytes)", segment_no, filepath, key, this_segment_size)
-                segment_key = segment_key_format(segment_no)
+                segment_key = segment_key_format(segment_no)  # pylint: disable=too-many-format-args
                 self.conn.put_object(
                     self.container_name, segment_key, contents=fp, content_length=this_segment_size, content_type=mimetype
                 )

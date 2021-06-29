@@ -940,7 +940,7 @@ class PGBaseBackup(Thread):
         )
         self.tar_one_file(
             callback_queue=self.callback_queue,
-            chunk_path=data_file_format(0),
+            chunk_path=data_file_format(0), # pylint: disable=too-many-format-args
             temp_dir=temp_base_dir,
             files_to_backup=control_files,
             filetype="basebackup",
