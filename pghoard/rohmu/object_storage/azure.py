@@ -12,7 +12,11 @@ from io import BytesIO
 import azure.common
 from azure.core.exceptions import ResourceExistsError
 from azure.storage.blob import BlobServiceClient, ContentSettings
-from azure.storage.blob._models import BlobPrefix, BlobType
+try:
+    from azure.storage.blob import BlobPrefix, BlobType
+except ImportError:
+    # old versions of the azure blob storage library do not expose the classes publicly
+    from azure.storage.blob._models import BlobPrefix, BlobType
 
 from ..errors import (FileNotFoundFromStorageError, InvalidConfigurationError, StorageError)
 from .base import (KEY_TYPE_OBJECT, KEY_TYPE_PREFIX, BaseTransfer, IterKeyItem, get_total_memory)
