@@ -278,6 +278,7 @@ class PGBaseBackup(Thread):
         metadata.update({
             "original-file-size": original_input_size,
             "pg-version": self.pg_version_server,
+            "active-backup-mode": self.config["backup_sites"][self.site]["active_backup_mode"],
         })
         metadata.update(self.metadata)
 
@@ -341,6 +342,7 @@ class PGBaseBackup(Thread):
                 **self.metadata,
                 "start-time": start_time,
                 "start-wal-segment": start_wal_segment,
+                "active-backup-mode": self.config["backup_sites"][self.site]["active_backup_mode"],
             },
             "type": "CLOSE_WRITE",
         })
