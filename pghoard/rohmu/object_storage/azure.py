@@ -12,6 +12,7 @@ from io import BytesIO
 import azure.common
 from azure.core.exceptions import ResourceExistsError
 from azure.storage.blob import BlobServiceClient, ContentSettings
+
 try:
     from azure.storage.blob import BlobPrefix, BlobType
 except ImportError:
