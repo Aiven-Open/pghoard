@@ -1,8 +1,5 @@
-PGHoard |BuildStatus|_
+PGHoard [![Build pghoard](https://github.com/aiven/pghoard/actions/workflows/build.yml/badge.svg?branch=master)](https://github.com/aiven/pghoard/actions/workflows/build.yml)
 ======================
-
-.. |BuildStatus| image:: https://travis-ci.org/aiven/pghoard.svg?branch=master
-.. _BuildStatus: https://travis-ci.org/aiven/pghoard
 
 ``pghoard`` is a PostgreSQL backup daemon and restore tooling that stores backup data in cloud object stores.
 
