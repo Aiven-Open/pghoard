@@ -442,6 +442,7 @@ class MediaStreamUpload(MediaUpload):
     """Support streaming arbitrary amount of data from non-seekable object supporting read method."""
     def __init__(self, fd, *, chunk_size, mime_type, name):
         self._data = b""
+        self._next_chunk = b""
         self._chunk_size = chunk_size
         self._fd = fd
         self._mime_type = mime_type
@@ -455,10 +456,25 @@ class MediaStreamUpload(MediaUpload):
         return self._mime_type
 
     def size(self):
+        self.peek()
+        if len(self._next_chunk) < self.peeksize:
+            # The total file size should be returned if we have hit the final chunk.
+            return (self._position or 0) + len(self._data) + len(self._next_chunk)
         return None
 
     def resumable(self):
         return True
+
+    @property
+    def peeksize(self):
+        # Using 1 extra byte to avoid perfectly aligned file
+        return self._chunk_size + 1
+
+    def peek(self):
+        """try to top up some data into _next_chunk"""
+        if len(self._next_chunk) < self.peeksize:
+            # top-up the _next_chunk
+            self._next_chunk = self._read_bytes(self.peeksize - len(self._next_chunk), initial_data=self._next_chunk)
 
     # second parameter is length but baseclass incorrectly names it end
     def getbytes(self, begin, length):  # pylint: disable=arguments-differ
@@ -474,11 +490,24 @@ class MediaStreamUpload(MediaUpload):
             raise IndexError(msg)
 
         if self._position is None or begin == self._position + len(self._data):
-            self._data = self._read_bytes(length)
+            if length <= len(self._next_chunk):
+                self._data = self._next_chunk[:length]
+                self._next_chunk = self._next_chunk[length:]
+            else:
+                self._data = self._read_bytes(length - len(self._next_chunk), initial_data=self._next_chunk)
+                self._next_chunk = b""
         elif begin != self._position or length > len(self._data):
             retain_chunk = self._data[begin - self._position:]
-            self._data = self._read_bytes(length - len(retain_chunk), initial_data=retain_chunk)
+            bytes_remaining = length - len(retain_chunk)
+            if 0 < bytes_remaining <= len(self._next_chunk):
+                self._data = retain_chunk + self._next_chunk[:bytes_remaining]
+                self._next_chunk = self._next_chunk[bytes_remaining:]
+            elif bytes_remaining > len(self._next_chunk):
+                retain_chunk += self._next_chunk
+                self._next_chunk = b""
+                self._data = self._read_bytes(length - len(retain_chunk), initial_data=retain_chunk)
 
+        self.peek()
         self._position = begin
         return self._data
 

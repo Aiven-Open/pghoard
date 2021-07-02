@@ -519,3 +519,16 @@ def test_media_stream_upload_read():
     assert msu.getbytes(2, 5) == b"cdefg"
     with pytest.raises(IndexError):
         msu.getbytes(0, 7)
+
+
+def test_media_stream_upload_read_aligned_size():
+    b = b"abcdefghijklmnopqr"
+    bio = BytesIO(b)
+    msu = MediaStreamUpload(bio, chunk_size=6, mime_type="application/octet-stream", name="foo")
+    assert msu.size() is None
+    assert msu.getbytes(0, 6) == b[:6]
+    assert msu.size() is None
+    assert msu.getbytes(6, 6) == b[6:12]
+    assert msu.size() == len(b)
+    assert msu.getbytes(12, 6) == b[12:]
+    assert msu.size() == len(b)
