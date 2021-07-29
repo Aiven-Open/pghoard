@@ -730,6 +730,7 @@ class PGBaseBackup(Thread):
         temp_base_dir, compressed_base = self.get_paths_for_backup(self.basebackup_path)
         os.makedirs(compressed_base)
         data_file_format = "{}/{}.{{0:08d}}.pghoard".format(compressed_base, os.path.basename(compressed_base)).format
+        wait_for_wals = self.config["backup_sites"][self.site]["basebackup_wait_for_wals"]
 
         # Default to 2GB chunks of uncompressed data
         target_chunk_size = self.site_config["basebackup_chunk_size"]
@@ -882,7 +883,7 @@ class PGBaseBackup(Thread):
 
                 # Call the stop backup functions now to get backup label for 9.6+ non-exclusive backups
                 if backup_mode == "non-exclusive":
-                    cursor.execute("SELECT labelfile FROM pg_stop_backup(false)")
+                    cursor.execute("SELECT labelfile FROM pg_stop_backup(false, %s)", 'true' if wait_for_wals else 'false')
                     backup_label = cursor.fetchone()[0]
                 elif backup_mode == "pgespresso":
                     cursor.execute("SELECT pgespresso_stop_backup(%s)", [backup_label])
@@ -907,7 +908,7 @@ class PGBaseBackup(Thread):
                 db_conn.rollback()
                 if not backup_stopped:
                     if backup_mode == "non-exclusive":
-                        cursor.execute("SELECT pg_stop_backup(false)")
+                        cursor.execute("SELECT pg_stop_backup(false, %s)", 'true' if wait_for_wals else 'false')
                     elif backup_mode == "pgespresso":
                         cursor.execute("SELECT pgespresso_stop_backup(%s)", [backup_label])
                     else:
