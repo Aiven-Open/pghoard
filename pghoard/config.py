@@ -82,6 +82,7 @@ def set_and_check_config_defaults(config, *, check_commands=True, check_pgdata=T
 
         site_config.setdefault("basebackup_chunk_size", 1024 * 1024 * 1024 * 2)
         site_config.setdefault("basebackup_chunks_in_progress", 5)
+        site_config.setdefault("basebackup_wait_for_wals", True)
         site_config.setdefault("basebackup_compression_threads", 0)
         site_config.setdefault("basebackup_count", 2)
         site_config.setdefault("basebackup_count_min", 2)
