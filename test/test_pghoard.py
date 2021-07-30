@@ -549,7 +549,7 @@ class TestPGHoardWithPG:
         assert pghoard.check_pg_server_version(conn_str, pghoard.test_site) is None
         assert os.listdir(pghoard.config["alert_file_dir"]) == ["authentication_error"]
 
-    def test_pause_on_disk_full(self, db, pghoard_separate_volume):
+    def test_pause_on_disk_full(self, db, pghoard_separate_volume, caplog):
         pghoard = pghoard_separate_volume
         conn_str = create_connection_string(db.user)
         conn = psycopg2.connect(conn_str)
@@ -560,7 +560,7 @@ class TestPGHoardWithPG:
         os.makedirs(wal_directory, exist_ok=True)
 
         pghoard.receivexlog_listener(pghoard.test_site, db.user, wal_directory)
-        # Create 15 new WAL segments in very quick succession. Our volume for incoming WALs is only 100
+        # Create 15 new WAL segments in very quick succession. Our volume for incoming WALs is only 150
         # MiB so if logic for automatically suspending pg_receive(xlog|wal) wasn't working the volume
         # would certainly fill up and the files couldn't be processed. Now this should work fine.
         for _ in range(16):
@@ -573,13 +573,79 @@ class TestPGHoardWithPG:
                 cursor.execute("SELECT pg_switch_xlog()")
 
         start = time.monotonic()
-        site = "test_pause_on_disk_full"
         while True:
-            xlogs = pghoard.transfer_agent_state[site]["upload"]["xlog"]["xlogs_since_basebackup"]
-            if xlogs >= 15:
-                break
+            xlogs = None
+            # At the start, this is not yet defined
+            transfer_agent_state_for_site = pghoard.transfer_agent_state.get(pghoard.test_site)
+            if transfer_agent_state_for_site:
+                xlogs = transfer_agent_state_for_site["upload"]["xlog"]["xlogs_since_basebackup"]
+                if xlogs >= 15:
+                    break
 
             if time.monotonic() - start > 15:
                 assert False, "Expected at least 15 xlog uploads, got {}".format(xlogs)
 
             time.sleep(0.1)
+        assert "pausing pg_receive(wal|xlog)" in caplog.text
+
+    def test_surviving_pg_receivewal_hickup(self, db, pghoard):
+        conn_str = create_connection_string(db.user)
+        conn = psycopg2.connect(conn_str)
+        conn.autocommit = True
+        cursor = conn.cursor()
+
+        wal_directory = os.path.join(pghoard.config["backup_location"], pghoard.test_site, "xlog_incoming")
+        os.makedirs(wal_directory, exist_ok=True)
+
+        def trigger_new_wal():
+            # Note: do not combine two function call in one select, PG executes it differently and
+            # sometimes looks like it generates less WAL files than we wanted
+            cursor.execute("SELECT txid_current()")
+            if conn.server_version >= 100000:
+                cursor.execute("SELECT pg_switch_wal()")
+            else:
+                cursor.execute("SELECT pg_switch_xlog()")
+
+        def wait_for_xlog(count: int):
+            start = time.monotonic()
+            while True:
+                xlogs = None
+                # At the start, this is not yet defined
+                transfer_agent_state_for_site = pghoard.transfer_agent_state.get(pghoard.test_site)
+                if transfer_agent_state_for_site:
+                    xlogs = transfer_agent_state_for_site["upload"]["xlog"]["xlogs_since_basebackup"]
+                    if xlogs >= count:
+                        break
+
+                if time.monotonic() - start > 15:
+                    assert False, "Expected at least {} xlog uploads, got {}".format(count, xlogs)
+
+                time.sleep(0.1)
+
+        pghoard.receivexlog_listener(pghoard.test_site, db.user, wal_directory)
+
+        # Make sure we have already a few files so pg_receivewal has something to start from when it eventually restarts
+        # +1: to finish the current one
+        for _ in range(3 + 1):
+            trigger_new_wal()
+
+        wait_for_xlog(3)
+
+        # stop pg_receivewal so we cannot process new WAL segments
+        pghoard.receivexlogs[pghoard.test_site].running = False
+        if pghoard.receivexlogs[pghoard.test_site].is_alive():
+            pghoard.receivexlogs[pghoard.test_site].join()
+        del pghoard.receivexlogs[pghoard.test_site]
+
+        n_xlogs = pghoard.transfer_agent_state[pghoard.test_site]["upload"]["xlog"]["xlogs_since_basebackup"]
+
+        # add more WAL segments
+        for _ in range(10):
+            trigger_new_wal()
+
+        # restart
+        pghoard.receivexlog_listener(pghoard.test_site, db.user, wal_directory)
+        assert pghoard.receivexlogs[pghoard.test_site].is_alive()
+
+        # We should now process all created segments, not only the ones which were created after pg_receivewal was restarted
+        wait_for_xlog(n_xlogs + 10)

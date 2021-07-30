@@ -8,13 +8,15 @@ import hashlib
 import logging
 import os
 import socket
+import time
 from io import BytesIO
 from queue import Empty, Queue
 from tempfile import NamedTemporaryFile
 from threading import Event, Thread
-from typing import Dict, Optional
+from typing import Dict, Optional, Set
 
-from pghoard import config, wal
+from pghoard import config as pgh_config
+from pghoard import wal
 from pghoard.common import write_json_file
 from pghoard.metrics import Metrics
 from pghoard.rohmu import errors, rohmufile
@@ -31,6 +33,7 @@ class CompressorThread(Thread):
         transfer_queue: Queue,
         metrics: Metrics,
         critical_failure_event: Event,
+        wal_file_deletion_queue: Queue,
     ):
         super().__init__()
         self.log = logging.getLogger("Compressor")
@@ -39,6 +42,7 @@ class CompressorThread(Thread):
         self.state = {}
         self.compression_queue = compression_queue
         self.transfer_queue = transfer_queue
+        self.wal_file_deletion_queue = wal_file_deletion_queue
         self.running = True
         self.critical_failure_event = critical_failure_event
         self.log.debug("Compressor initialized")
@@ -136,7 +140,7 @@ class CompressorThread(Thread):
                 input_obj=BytesIO(event["blob"]),
                 output_obj=output_obj,
                 metadata=event.get("metadata"),
-                key_lookup=config.key_lookup_for_site(self.config, event["site"]),
+                key_lookup=pgh_config.key_lookup_for_site(self.config, event["site"]),
                 log_func=self.log.debug,
             )
 
@@ -239,7 +243,16 @@ class CompressorThread(Thread):
             transfer_object["local_path"] = event["full_path"]
 
         if event.get("delete_file_after_compression", True):
-            os.unlink(event["full_path"])
+            if filetype == "xlog":
+                delete_request = {
+                    "type": "delete_file",
+                    "site": site,
+                    "local_path": event["full_path"],
+                }
+                self.log.info("Adding to Uncompressed WAL file to deletion queue: %s", event["full_path"])
+                self.wal_file_deletion_queue.put(delete_request)
+            else:
+                os.unlink(event["full_path"])
 
         self.transfer_queue.put(transfer_object)
         return True
@@ -263,3 +276,82 @@ class CompressorThread(Thread):
                     "count": 0
                 },
             }
+
+
+class WALFileDeleterThread(Thread):
+    """Deletes files which got compressed by the Compressor Thread, but keeps one file around
+
+    pg_receivewal, after some hickup, will use the files to compute the next wal segment to download.
+    if there are none, it will start at the current server position and so might miss wal segments. This
+    would mean that the backup is incomplete until the next base backup is taken and the service would
+    fail to be restored.
+
+    So the idea is to only unlink all files but the latest one.
+    """
+    def __init__(
+        self,
+        config: Dict,
+        wal_file_deletion_queue: Queue,
+        metrics: Metrics,
+    ):
+        super().__init__()
+        self.log = logging.getLogger("WALFileDeleter")
+        self.config = config
+        self.metrics = metrics
+        self.wal_file_deletion_queue = wal_file_deletion_queue
+        self.running = True
+        self.to_be_deleted_files: Dict[str, Set[str]] = {}
+        self.log.debug("WALFileDeleter initialized")
+
+    def run(self):
+        while self.running:
+            wait_timeout = 1.0
+            # config can be changed in another thread, so we have to lookup this within the loop
+            config_wait_timeout = self.config.get("deleter_event_get_timeout", wait_timeout)
+            try:
+                # prevent bad formats killing the thread
+                wait_timeout = float(config_wait_timeout)
+            except ValueError:
+                self.log.warning("Bad value for deleter_event_get_timeout: %r", config_wait_timeout)
+
+            try:
+                event = self.wal_file_deletion_queue.get(timeout=wait_timeout)
+            except Empty:
+                continue
+
+            try:
+                if event["type"] == "QUIT":
+                    break
+                if event["type"] == "delete_file":
+                    site = event["site"]
+                    local_path = event["local_path"]
+                    if site not in self.to_be_deleted_files:
+                        self.to_be_deleted_files[site] = set()
+                    self.to_be_deleted_files[site].add(local_path)
+                else:
+                    raise RuntimeError("Received bad event")
+                self.deleted_unneeded_files()
+            except Exception as ex:  # pylint: disable=broad-except
+                self.log.exception("Problem handling event %r: %s: %s", event, ex.__class__.__name__, ex)
+                self.metrics.unexpected_exception(ex, where="wal_file_deleter_run")
+                # Don't block the whole CPU in case something is persistently crashing
+                time.sleep(0.1)
+                # If we have a problem, just keep running for now, at the worst we accumulate files
+                continue
+
+        self.log.debug("Quitting WALFileDeleter")
+
+    def deleted_unneeded_files(self):
+        """Deletes all but the latest file in the current list of files"""
+        for site, to_be_deleted_files_per_site in self.to_be_deleted_files.items():
+            if len(to_be_deleted_files_per_site) <= 1:
+                # Nothing to do (yet)
+                continue
+            for file in sorted(to_be_deleted_files_per_site)[:-1]:
+                try:
+                    os.unlink(file)
+                    self.log.info("Deleted uncompressed WAL file: %s", file)
+                except FileNotFoundError as ex:
+                    self.log.exception("WAL file does not exist: site %s, file %s", site, file)
+                    self.metrics.unexpected_exception(ex, where="wal_file_deleter_delete_unneeded_files")
+                to_be_deleted_files_per_site.remove(file)

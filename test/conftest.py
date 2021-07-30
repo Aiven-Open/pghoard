@@ -207,7 +207,8 @@ def pghoard_separate_volume(db, tmpdir, request):
     # environments where sudo can be executed without password prompts.
     try:
         subprocess.check_call(
-            ["sudo", "-S", "mount", "-t", "tmpfs", "-o", "size=100m", "tmpfs", tmpfs_volume],
+            # We need 150MB because we keep at least one wal file around, 100MB is too small
+            ["sudo", "-S", "mount", "-t", "tmpfs", "-o", "size=150m", "tmpfs", tmpfs_volume],
             stdin=subprocess.DEVNULL,
         )
     except subprocess.CalledProcessError as ex:
@@ -285,6 +286,8 @@ def pghoard_base(
         # is separate test case that executes the multiprocess version.
         "restore_process_count": 1,
         "tar_executable": "tar",
+        # to speed up the tests
+        "deleter_event_get_timeout": 0.01,
     }
 
     if metrics_cfg is not None:
