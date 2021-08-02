@@ -129,6 +129,12 @@ class CompressorThread(Thread):
             return "basebackup"
         elif (move or close_write) and wal.TIMELINE_RE.match(os.path.basename(event["full_path"])):
             return "timeline"
+        # for xlog we get both move and close_write on pg10+ (in that order: the write is from an fsync by name)
+        # -> for now we pick MOVE because that's compatible with pg9.x, but this leaves us open to a problem with
+        #    in case the compressor is so fast to compress and then unlink the file that the fsync by name does
+        #    not find the file anymore. This ends up in a hickup in pg_receivewal.
+        # TODO: when we drop pg9.x support, switch to close_write here and in all other places where we generate an xlog/WAL
+        #       compression event: https://github.com/aiven/pghoard/commit/29d2ee76139e8231b40619beea0703237eb6b9cc
         elif move and wal.WAL_RE.match(os.path.basename(event["full_path"])):
             return "xlog"
 
