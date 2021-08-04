@@ -52,9 +52,11 @@ class PGHoardTestCase:
         # NOTE: we set pg_receivexlog_path and pg_basebackup_path per site and globally mostly to verify that
         # it works, the config keys are deprecated and will be removed in a future release at which point we'll
         # switch to using pg_bin_directory config.
-        pgexe, ver = find_pg_binary("postgres")
-        if pgexe is not None:
+        bindir = os.environ.get("PG_BINDIR")
+        if not bindir:
+            pgexe, _ = find_pg_binary("postgres")
             bindir = os.path.dirname(pgexe)
+        ver = self._check_all_needed_commands_found(bindir)
 
         if hasattr(psycopg2.extras, "PhysicalReplicationConnection"):
             active_backup_mode = "walreceiver"
@@ -103,3 +105,14 @@ class PGHoardTestCase:
 
     def teardown_method(self, method):  # pylint: disable=unused-argument
         rmtree(self.temp_dir)
+
+    def _check_all_needed_commands_found(self, bindir):
+        version = None
+        for command in ["postgres", "pg_receivexlog", "pg_basebackup"]:
+            command_path, ver = find_pg_binary(command, pg_bin_directory=bindir)
+            assert ver is not None
+            if version is None:
+                version = ver
+            assert version == ver
+            assert os.path.dirname(command_path) == bindir
+        return version
