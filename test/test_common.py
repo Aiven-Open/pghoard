@@ -11,7 +11,8 @@ import os
 import pytest
 
 from pghoard.common import (
-    convert_pg_command_version_to_number, create_pgpass_file, default_json_serialization, json_encode, write_json_file
+    create_pgpass_file, default_json_serialization, extract_pg_command_version_string, json_encode, pg_major_version,
+    pg_version_string_to_number, write_json_file
 )
 from pghoard.rohmu.errors import Error
 
@@ -48,20 +49,6 @@ class TestCommon(PGHoardTestCase):
         assert get_pgpass_contents() == b"localhost:5432:replication:another:bar\nlocalhost:5432:replication:foo:xyz\n"
         os.environ["HOME"] = original_home
 
-    def test_pg_versions(self):
-        assert convert_pg_command_version_to_number("pg_basebackup (PostgreSQL) 9.3.20") == 90320
-        assert convert_pg_command_version_to_number("foobar (PostgreSQL) 9.4.1") == 90401
-        assert convert_pg_command_version_to_number("pg_basebackup (PostgreSQL) 9.5.8") == 90508
-        assert convert_pg_command_version_to_number("asdf (PostgreSQL) 9.5alpha1") == 90500
-        assert convert_pg_command_version_to_number("pg_dummyutil (PostgreSQL) 9.6devel") == 90600
-        assert convert_pg_command_version_to_number("pg_basebackup (PostgreSQL) 9.6.6") == 90606
-        assert convert_pg_command_version_to_number("pg_basebackup (PostgreSQL) 10.0") == 100000
-        assert convert_pg_command_version_to_number("pg_basebackup (PostgreSQL) 10.1") == 100001
-        with pytest.raises(Error):
-            convert_pg_command_version_to_number("PostgreSQL) 9.6devel")
-        with pytest.raises(Error):
-            convert_pg_command_version_to_number("test (PostgreSQL) 9devel")
-
     def test_json_serialization(self, tmpdir):
         ob = {
             "foo": [
@@ -94,3 +81,39 @@ class TestCommon(PGHoardTestCase):
         ob2_ = json.loads(output_data)
 
         assert ob2 == ob2_
+
+
+def test_pg_major_version():
+    assert pg_major_version("10") == "10"
+    assert pg_major_version("10.2") == "10"
+    assert pg_major_version("9.6") == "9.6"
+    assert pg_major_version("9.6.1") == "9.6"
+
+
+def test_pg_version_string_to_number():
+    assert pg_version_string_to_number("10") == 100000
+    assert pg_version_string_to_number("9.3") == 90300
+    assert pg_version_string_to_number("9.3.12") == 90312
+
+
+def test_extract_pg_command_version_string():
+    assert extract_pg_command_version_string("pg_basebackup (PostgreSQL) 9.3.20") == "9.3.20"
+    assert extract_pg_command_version_string("pg_basebackup (PostgreSQL) 10devel") == "10"
+
+
+def test_command_version_to_number():
+    # Test the whole round trip
+    def convert_pg_command_version_to_number(command_version_string):
+        return pg_version_string_to_number(extract_pg_command_version_string(command_version_string))
+
+    assert convert_pg_command_version_to_number("pg_basebackup (PostgreSQL) 9.3.20") == 90320
+    assert convert_pg_command_version_to_number("foobar (PostgreSQL) 9.4.1") == 90401
+    assert convert_pg_command_version_to_number("pg_basebackup (PostgreSQL) 9.5.8") == 90508
+    assert convert_pg_command_version_to_number("asdf (PostgreSQL) 9.5alpha1") == 90500
+    assert convert_pg_command_version_to_number("pg_dummyutil (PostgreSQL) 9.6devel") == 90600
+    assert convert_pg_command_version_to_number("pg_basebackup (PostgreSQL) 9.6.6") == 90606
+    assert convert_pg_command_version_to_number("pg_basebackup (PostgreSQL) 10.0") == 100000
+    assert convert_pg_command_version_to_number("pg_basebackup (PostgreSQL) 10.1") == 100001
+    with pytest.raises(Error):
+        convert_pg_command_version_to_number("PostgreSQL) 9.6devel")
+    assert convert_pg_command_version_to_number("test (PostgreSQL) 15devel") == 150000

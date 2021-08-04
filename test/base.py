@@ -52,7 +52,9 @@ class PGHoardTestCase:
         # NOTE: we set pg_receivexlog_path and pg_basebackup_path per site and globally mostly to verify that
         # it works, the config keys are deprecated and will be removed in a future release at which point we'll
         # switch to using pg_bin_directory config.
-        bindir, ver = find_pg_binary("")
+        pgexe, ver = find_pg_binary("postgres")
+        if pgexe is not None:
+            bindir = os.path.dirname(pgexe)
 
         if hasattr(psycopg2.extras, "PhysicalReplicationConnection"):
             active_backup_mode = "walreceiver"

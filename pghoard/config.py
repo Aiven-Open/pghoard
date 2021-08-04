@@ -8,9 +8,9 @@ import json
 import multiprocessing
 import os
 import subprocess
-from distutils.version import LooseVersion
+from typing import Optional
 
-from pghoard.common import convert_pg_command_version_to_number
+from pghoard.common import (extract_pg_command_version_string, pg_major_version, pg_version_string_to_number)
 from pghoard.postgres_command import PGHOARD_HOST, PGHOARD_PORT
 from pghoard.rohmu import get_class_for_transfer
 from pghoard.rohmu.errors import InvalidConfigurationError
@@ -23,16 +23,57 @@ def get_cpu_count():
     return multiprocessing.cpu_count()
 
 
-def find_pg_binary(program, versions=None):
+def get_command_version(command: str) -> Optional[str]:
+    """
+    Run the given command identified by it's full path with the --version
+    option.
+    """
+    if os.path.exists(command) and os.access(command, os.X_OK):
+        try:
+            version_output = subprocess.check_output([command, "--version"])
+            version_string = version_output.decode("ascii").strip()
+            version_string = extract_pg_command_version_string(version_string)
+            return version_string
+        except subprocess.CalledProcessError:
+            pass
+    return None
+
+
+def find_pg_binary(wanted_program, versions=None, pg_bin_directory=None, check_commands=False):
+    """
+    Find pg binary tries to find the wanted_program in one of the wanted
+    versions using the following locations:
+     - if the pg_bin_directory is provided, try that first
+     - if we can't find it in the pg_bin_directory, look for "well known
+       locations", which are where RPM / DEB packages install multiple versions
+       of postgresql
+    - if we still can't find it in those locations, fall back to examining the
+      path.
+    """
+    if wanted_program in ("pg_receivexlog", "pg_receivewal"):
+        programs = ["pg_receivexlog", "pg_receivewal"]
+    else:
+        programs = [wanted_program]
     pathformats = ["/usr/pgsql-{ver}/bin/{prog}", "/usr/lib/postgresql/{ver}/bin/{prog}"]
-    for ver in versions or SUPPORTED_VERSIONS:
+    if pg_bin_directory is not None:
+        pathformats = [pg_bin_directory + "/{prog}"] + pathformats
+    versions = versions or SUPPORTED_VERSIONS
+    for ver in versions:
         for pathfmt in pathformats:
-            if LooseVersion(ver) >= "10" and program == "pg_receivexlog":
-                program = "pg_receivewal"
-            pgbin = pathfmt.format(ver=ver, prog=program)
-            if os.path.exists(pgbin):
-                return pgbin, ver
-    return os.path.join("/usr/bin", program), None
+            for program in programs:
+                command = pathfmt.format(ver=ver, prog=program)
+                if os.path.exists(command):
+                    if (check_commands is False or get_command_version(command) is not None):
+                        return command, ver
+    # We couldn't find a supported version in the "well known locations",
+    # let's search in the path.
+    for path in os.environ["PATH"].split(os.pathsep):
+        for program in programs:
+            command = os.path.join(path, program)
+            version_string = get_command_version(command)
+            if version_string and pg_major_version(version_string) in versions:
+                return command, version_string
+    raise RuntimeError("Cannot find program(s): {}".format(", ".join(programs)))
 
 
 def set_and_check_config_defaults(config, *, check_commands=True, check_pgdata=True):
@@ -137,27 +178,25 @@ def set_and_check_config_defaults(config, *, check_commands=True, check_pgdata=T
             # NOTE: pg_basebackup_path and pg_receivexlog_path removed from documentation after 1.6.0 release
             command_key = "{}_path".format(command)
             command_path = site_config.get(command_key) or config.get(command_key)
+            version_int = None
             if not command_path:
-                command_path = os.path.join(bin_dir, command) if bin_dir else None
-                if not command_path or not os.path.exists(command_path):
-                    pg_versions_to_check = None
-                    if "pg_data_directory_version" in site_config:
-                        pg_versions_to_check = [site_config["pg_data_directory_version"]]
-                    command_path, _ = find_pg_binary(command, pg_versions_to_check)
+                pg_versions_to_check = None
+                needs_check = check_commands and site_config["active"]
+                if "pg_data_directory_version" in site_config:
+                    pg_versions_to_check = [site_config["pg_data_directory_version"]]
+                try:
+                    command_path, version_string = find_pg_binary(command, pg_versions_to_check, bin_dir, needs_check)
+                    version_int = pg_version_string_to_number(version_string)
+                except RuntimeError as _:
+                    # Only raise an error if we are expected to validate
+                    # the commands. Otherwise let it fail later
+                    if needs_check:
+                        raise InvalidConfigurationError(
+                            "Site {!r} command {!r} not found from path {}".format(site_name, command, command_path)
+                        )
             site_config[command_key] = command_path
-
-            if check_commands and site_config["active"]:
-                if not command_path or not os.path.exists(command_path):
-                    raise InvalidConfigurationError(
-                        "Site {!r} command {!r} not found from path {}".format(site_name, command, command_path)
-                    )
-                version_output = subprocess.check_output([command_path, "--version"])
-                version_string = version_output.decode("ascii").strip()
-                site_config[command + "_version"] = convert_pg_command_version_to_number(version_string)
-            else:
-                site_config[command + "_version"] = None
-
-    return config
+            site_config[command + "_version"] = version_int
+        return config
 
 
 def read_json_config_file(filename, *, check_commands=True, add_defaults=True, check_pgdata=True):
