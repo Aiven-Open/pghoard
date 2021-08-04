@@ -551,7 +551,8 @@ class PGBaseBackup(Thread):
         callback_queue,
         filetype="basebackup_chunk",
         extra_metadata=None,
-        delta_stats=None
+        delta_stats=None,
+        encrypt=True
     ):
         start_time = time.monotonic()
 
@@ -561,7 +562,7 @@ class PGBaseBackup(Thread):
                 compression_algorithm=self.compression_data.algorithm,
                 compression_level=self.compression_data.level,
                 compression_threads=self.site_config["basebackup_compression_threads"],
-                rsa_public_key=self.encryption_data.rsa_public_key,
+                rsa_public_key=self.encryption_data.rsa_public_key if encrypt else None,
                 fileobj=raw_output_obj
             ) as output_obj:
                 with tarfile.TarFile(fileobj=output_obj, mode="w") as output_tar:
@@ -574,7 +575,7 @@ class PGBaseBackup(Thread):
             os.link(raw_output_obj.name, chunk_path)
 
         rohmufile.log_compression_result(
-            encrypted=bool(self.encryption_data.encryption_key_id),
+            encrypted=bool(self.encryption_data.encryption_key_id) if encrypt else False,
             elapsed=time.monotonic() - start_time,
             original_size=input_size,
             result_size=result_size,
@@ -595,7 +596,7 @@ class PGBaseBackup(Thread):
 
         metadata = {
             "compression-algorithm": self.compression_data.algorithm,
-            "encryption-key-id": self.encryption_data.encryption_key_id,
+            "encryption-key-id": self.encryption_data.encryption_key_id if encrypt else None,
             "format": BaseBackupFormat.v2,
             "original-file-size": input_size,
             "host": socket.gethostname(),
@@ -944,6 +945,7 @@ class PGBaseBackup(Thread):
             temp_dir=temp_base_dir,
             files_to_backup=control_files,
             filetype="basebackup",
+            encrypt=False, # dont encrypt the metadata file
             extra_metadata={
                 **self.metadata,
                 "end-time": backup_end_time,
