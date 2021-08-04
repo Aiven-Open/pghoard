@@ -309,7 +309,7 @@ class TestWebServer:
             "recovery_target_timeline = 'latest'",
             "restore_command = 'false'",
         ]
-        if LooseVersion(db.ver) >= "12":
+        if LooseVersion(db.pgver) >= "12":
             with open(os.path.join(db.pgdata, "standby.signal"), "w") as fp:
                 pass
 

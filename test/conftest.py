@@ -178,7 +178,7 @@ def recovery_db():
             "recovery_target_timeline = 'latest'",
             "restore_command = 'false'",
         ]
-        if LooseVersion(pg.ver) >= "12":
+        if LooseVersion(pg.pgver) >= "12":
             with open(os.path.join(pg.pgdata, "standby.signal"), "w") as fp:
                 pass
 
