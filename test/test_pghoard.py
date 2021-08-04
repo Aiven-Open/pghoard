@@ -247,6 +247,16 @@ dbname|"""
         assert to_delete == bbs[:len(to_delete)]
         assert bbs_copy == bbs[len(to_delete):]
 
+        # Basebackups are disabled for this site (basebackup_interval_hours=None)
+        # verify that determine_backups_to_delete still executes correctly
+        site_config = {"basebackup_count": 4, "basebackup_count_min": 2, "basebackup_interval_hours": None}
+        bbs_copy = list(bbs)
+        to_delete = self.pghoard.determine_backups_to_delete(basebackups=bbs_copy, site_config=site_config)
+        assert len(bbs_copy) == 4
+        assert len(to_delete) == len(bbs) - len(bbs_copy)
+        assert to_delete == bbs[:len(to_delete)]
+        assert bbs_copy == bbs[len(to_delete):]
+
     def test_local_refresh_backup_list_and_delete_old(self):
         basebackup_storage_path = os.path.join(self.local_storage_dir, "basebackup")
         wal_storage_path = os.path.join(self.local_storage_dir, "xlog")
