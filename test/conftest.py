@@ -91,7 +91,8 @@ def setup_pg():
     # try to find the binaries for these versions in some path
     pgdata = os.path.join(tmpdir, "pgdata")
     db = PGTester(pgdata)  # pylint: disable=redefined-outer-name
-    db.run_cmd("initdb", "-D", pgdata, "--encoding", "utf-8")
+    db.run_cmd("initdb", "-D", pgdata, "--encoding", "utf-8",
+               "--lc-messages=C")
     # NOTE: does not use TCP ports, no port conflicts
     db.user = dict(host=pgdata, user="pghoard", password="pghoard", dbname="postgres", port="5432")
     # NOTE: point $HOME to tmpdir - $HOME shouldn't affect most tests, but
