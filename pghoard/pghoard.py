@@ -270,8 +270,10 @@ class PGHoard:
             wal_path = os.path.join(self._get_site_prefix(site), "xlog", wal.name_for_tli_log_seg(tli, log, seg))
             self.log.debug("Deleting wal_file: %r", wal_path)
             try:
-                storage.delete_key(wal_path)
-                valid_timeline = True
+                # wal_path can be null
+                if wal_path:
+                    storage.delete_key(wal_path)
+                    valid_timeline = True
             except FileNotFoundFromStorageError:
                 if not valid_timeline or tli <= 1:
                     # if we didn't find any WALs to delete on this timeline or we're already at
