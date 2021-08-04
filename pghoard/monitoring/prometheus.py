@@ -39,7 +39,8 @@ class PrometheusClient:
         ts = str(int(time.time())) + "000"
 
         metric = metric.replace(".", "_")
-        tags = {**self._tags, **tags}
+        # tags can be None
+        tags = {**self._tags, **tags} if tags else {**self._tags}
         tag_list = []
         for k in sorted(tags.keys()):
             tag_list.append("{}=\"{}\"".format(k, tags[k]))
