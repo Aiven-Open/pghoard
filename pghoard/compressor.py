@@ -6,6 +6,7 @@ See LICENSE for details
 """
 import hashlib
 import logging
+import math
 import os
 import socket
 import time
@@ -314,11 +315,14 @@ class WALFileDeleterThread(Thread):
             wait_timeout = 1.0
             # config can be changed in another thread, so we have to lookup this within the loop
             config_wait_timeout = self.config.get("deleter_event_get_timeout", wait_timeout)
-            try:
-                # prevent bad formats killing the thread
-                wait_timeout = float(config_wait_timeout)
-            except ValueError:
-                self.log.warning("Bad value for deleter_event_get_timeout: %r", config_wait_timeout)
+            if isinstance(config_wait_timeout,
+                          (float, int)) and math.isfinite(config_wait_timeout) and config_wait_timeout > 0:
+                wait_timeout = config_wait_timeout
+            else:
+                self.log.warning(
+                    "Bad value for deleter_event_get_timeout: %r, using default value instead: %r", config_wait_timeout,
+                    wait_timeout
+                )
 
             try:
                 event = self.wal_file_deletion_queue.get(timeout=wait_timeout)
