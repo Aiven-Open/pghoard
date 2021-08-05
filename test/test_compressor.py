@@ -83,6 +83,7 @@ class CompressionCase(PGHoardTestCase):
         })
         self.compression_queue = Queue()
         self.transfer_queue = Queue()
+        self.wal_file_deletion_queue = Queue()
         self.incoming_path = os.path.join(
             self.config["backup_location"],
             self.config["backup_sites"][self.test_site]["prefix"],
@@ -102,6 +103,7 @@ class CompressionCase(PGHoardTestCase):
             transfer_queue=self.transfer_queue,
             metrics=metrics.Metrics(statsd={}),
             critical_failure_event=Event(),
+            wal_file_deletion_queue=self.wal_file_deletion_queue
         )
         self.compressor.start()
 
@@ -239,12 +241,14 @@ class CompressionCase(PGHoardTestCase):
     )
     def test_compress_error_retry(self, side_effects, is_failure):
         compression_queue = Queue()
+        wal_file_deletion_queue = Queue()
         test_compressor = CompressorThread(
             config_dict=self.config,
             compression_queue=compression_queue,
             transfer_queue=Queue(),
             metrics=metrics.Metrics(statsd={}),
             critical_failure_event=Event(),
+            wal_file_deletion_queue=wal_file_deletion_queue
         )
         test_compressor.MAX_FAILED_RETRY_ATTEMPTS = 2
         test_compressor.RETRY_INTERVAL = 0

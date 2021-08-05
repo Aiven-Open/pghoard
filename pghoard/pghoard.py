@@ -32,7 +32,7 @@ from pghoard.common import (
     BaseBackupFormat, BaseBackupMode, create_alert_file, extract_pghoard_bb_v2_metadata, extract_pghoard_delta_v1_metadata,
     get_object_storage_config, replication_connection_string_and_slot_using_pgpass, write_json_file
 )
-from pghoard.compressor import CompressorThread
+from pghoard.compressor import CompressorThread, WALFileDeleterThread
 from pghoard.receivexlog import PGReceiveXLog
 from pghoard.rohmu import dates, get_transfer, rohmufile
 from pghoard.rohmu.compat import suppress
@@ -64,6 +64,7 @@ class PGHoard:
         self.config_path = config_path
         self.compression_queue = Queue()
         self.transfer_queue = Queue()
+        self.wal_file_deletion_queue = Queue()
         self.syslog_handler = None
         self.basebackups = {}
         self.basebackups_callbacks = {}
@@ -106,6 +107,10 @@ class PGHoard:
             self.config, self.requested_basebackup_sites, self.compression_queue, self.transfer_queue, self.metrics
         )
 
+        self.wal_file_deleter = WALFileDeleterThread(
+            config=self.config, wal_file_deletion_queue=self.wal_file_deletion_queue, metrics=self.metrics
+        )
+
         for _ in range(self.config["compression"]["thread_count"]):
             compressor = CompressorThread(
                 config_dict=self.config,
@@ -113,6 +118,7 @@ class PGHoard:
                 transfer_queue=self.transfer_queue,
                 metrics=self.metrics,
                 critical_failure_event=self.thread_critical_failure_event,
+                wal_file_deletion_queue=self.wal_file_deletion_queue,
             )
             self.compressors.append(compressor)
 
@@ -562,6 +568,7 @@ class PGHoard:
         # Startup threads
         self.inotify.start()
         self.webserver.start()
+        self.wal_file_deleter.start()
         for compressor in self.compressors:
             compressor.start()
         for ta in self.transfer_agents:
@@ -827,11 +834,15 @@ class PGHoard:
 
     def _get_all_threads(self):
         all_threads = []
-        if hasattr(self, "webserver"):  # on first config load webserver isn't initialized yet
+        # on first config load webserver isn't initialized yet
+        if hasattr(self, "webserver"):
             all_threads.append(self.webserver)
         all_threads.extend(self.basebackups.values())
         all_threads.extend(self.receivexlogs.values())
         all_threads.extend(self.walreceivers.values())
+        # also not yet initialized on first config load
+        if hasattr(self, "wal_file_deleter"):
+            all_threads.append(self.wal_file_deleter)
         all_threads.extend(self.compressors)
         all_threads.extend(self.transfer_agents)
         return all_threads
