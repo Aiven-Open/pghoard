@@ -39,6 +39,9 @@ class PrometheusClient:
         ts = str(int(time.time())) + "000"
 
         metric = metric.replace(".", "_")
+        # some metrics use a - which is also not supported by prometheus
+        metric = metric.replace("-", "_")
+
         tags = {**self._tags, **tags}
         tag_list = []
         for k in sorted(tags.keys()):
