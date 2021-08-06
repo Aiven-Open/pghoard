@@ -235,6 +235,42 @@ class TestBasebackupFetcher(unittest.TestCase):
         for tar in ["tar", "pghoard/gnutaremu.py"]:
             self.run_restore_test("basebackup", tar, self.real_processing)
 
+    # Simulate a tar failure similar to what we have when running into
+    # concurrency issues
+    # We use a basebackup with one chunk to make sure all retries
+    # deal with the same file
+    def test_tar_recovery(self):
+        pass_after_retry = 2
+
+        def simulate_tar_failure(fetcher, restore_dir):
+            # Mock "_build_tar_args" to get the information we need
+            retry = 0
+            original_tar_executable = fetcher.config["tar_executable"]
+            fetcher.config["tar_executable"] = "test/tar_failer"
+            original_build_tar_args = ChunkFetcher._build_tar_args  # pylint: disable=protected-access
+
+            def _build_tar_args(self, metadata):
+                nonlocal retry, pass_after_retry
+                retry += 1
+                if retry >= pass_after_retry:
+                    self.config["tar_executable"] = original_tar_executable
+                return original_build_tar_args(self, metadata)
+
+            with patch("pghoard.restore.ChunkFetcher._build_tar_args", new=_build_tar_args):
+                # Now launch the test progress_percent
+                fetcher.fetch_all()
+                self.check_sha256(
+                    os.path.join(restore_dir, "base", "1", "3608"),
+                    "cd461a152a9259c2d311ee348a4fa6722c119c1ff9a5b3147a86058d76f9bba8"
+                )
+
+        # Check that after 1 failure, we succeed
+        self.run_restore_test("basebackup_one_chunk", "tar", simulate_tar_failure)
+        pass_after_retry = 10
+        # Check that after 3 failure, we fail
+        with pytest.raises(RestoreError):
+            self.run_restore_test("basebackup_one_chunk", "tar", simulate_tar_failure)
+
     def real_processing(self, fetcher, restore_dir):
         assert fetcher.pool_class == multiprocessing.Pool  # pylint: disable=comparison-with-callable
         fetcher.fetch_all()
