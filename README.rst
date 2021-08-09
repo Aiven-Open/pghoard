@@ -126,23 +126,21 @@ Vagrant
 The Vagrantfile can be used to setup a vagrant development environment, consisting of two
 vagrant virtual machines.
 
-1) Postgresql 9.4, python 3.5 and 3.6::
+1) Postgresql 9.5 and 3.6::
 
     vagrant up
     vagrant ssh postgres9
     cd /vagrant
-    source ~/venv3/bin/activate
-    make test
-    source ~/venv3.6/bin/activate
-    make test
+    make unittest
 
 2) Postgresql 10 and python 3.7::
 
     vagrant ssh postgres10
     cd /vagrant
-    make test
+    make unittest
 
-Note: make deb does not work from vagrant at the moment, hopefully this will be resolved soon
+By default vagrant will bring up a Virtualbox environment.   These boxes will also work for libvirt, just prefix
+VAGRANT_DEFAULT_PROVIDER=libvirt to the vagrant up command.
 
 Building
 ========
