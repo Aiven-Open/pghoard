@@ -47,28 +47,47 @@ PGHoard has been developed and tested on modern Linux x86-64 systems, but
 should work on other platforms that provide the required modules.
 
 Vagrant
--------
+=======
 
-The Vagrantfile can be used to setup a vagrant development environment, consisting of two
-vagrant virtual machines.
+The Vagrantfile can be used to setup a vagrant development environment.   The vagrant environment has
+python 3.6, 3.7, 3.8 and 3.9 virtual environments and installations of postgresql 9.6, 10, 11 and 12.
 
-1) Postgresql 9.4, python 3.5 and 3.6::
+By default vagrant up will start a Virtualbox environment.   The Vagrantfile will also work for libvirt, just prefix
+VAGRANT_DEFAULT_PROVIDER=libvirt to the vagrant up command.
 
-    vagrant up
-    vagrant ssh postgres9
-    cd /vagrant
-    source ~/venv3/bin/activate
-    make test
-    source ~/venv3.6/bin/activate
-    make test
+Any combination of Python (3.6, 3.7 and 3.8) and Postgresql (9.6, 10, 11 and 12)
 
-2) Postgresql 10 and python 3.7::
+Bring up vagrant instance and connect via ssh::
 
-    vagrant ssh postgres10
-    cd /vagrant
-    make test
+vagrant up
+vagrant ssh
+vagrant@ubuntu2004:~$ cd /vagrant
 
-Note: make deb does not work from vagrant at the moment, hopefully this will be resolved soon
+Test with Python 3.6 and Postgresql 9.6
+
+vagrant@ubuntu2004:~$ source ~/venv3.6/bin/activate
+vagrant@ubuntu2004:~$ PG_VERSION=9.6 make unittest
+vagrant@ubuntu2004:~$ deactivate
+
+Test with Python 3.7 and Postgresql 10
+
+vagrant@ubuntu2004:~$ source ~/venv3.7/bin/activate
+vagrant@ubuntu2004:~$ PG_VERSION=10 make unittest
+vagrant@ubuntu2004:~$ deactivate
+
+Test with Python 3.8 and Postgresql 11
+
+vagrant@ubuntu2004:~$ source ~/venv3.8/bin/activate
+vagrant@ubuntu2004:~$ PG_VERSION=11 make unittest
+vagrant@ubuntu2004:~$ deactivate
+
+Test with Python 3.9 and Postgresql 12
+
+vagrant@ubuntu2004:~$ source ~/venv3.9/bin/activate
+vagrant@ubuntu2004:~$ PG_VERSION=12 make unittest
+vagrant@ubuntu2004:~$ deactivate
+
+And so on
 
 .. _building_from_source:
 
