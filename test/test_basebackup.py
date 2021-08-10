@@ -16,7 +16,7 @@ import dateutil.parser
 import psycopg2
 import pytest
 
-from pghoard import common, metrics, pgutil
+from pghoard import common, metrics
 from pghoard.basebackup import PGBaseBackup
 from pghoard.common import BaseBackupMode
 from pghoard.restore import Restore, RestoreError
@@ -378,10 +378,9 @@ LABEL: pg_basebackup base backup
     def test_basebackups_local_tar_exclusive_conflict(self, capsys, db, pghoard, tmpdir):
         if db.pgver >= "9.6":
             pytest.skip("PostgreSQL < 9.6 required for exclusive backup tests")
-        conn_str = pgutil.create_connection_string(db.user)
         need_stop = False
         try:
-            with psycopg2.connect(conn_str) as conn:
+            with db.connect() as conn:
                 conn.autocommit = True
                 cursor = conn.cursor()
                 cursor.execute("SELECT pg_start_backup('conflicting')")  # pylint: disable=used-before-assignment
@@ -390,14 +389,13 @@ LABEL: pg_basebackup base backup
             need_stop = False
         finally:
             if need_stop:
-                with psycopg2.connect(conn_str) as conn:
+                with db.connect() as conn:
                     conn.autocommit = True
                     cursor = conn.cursor()
                     cursor.execute("SELECT pg_stop_backup()")
 
     def test_basebackups_local_tar_pgespresso(self, capsys, db, pghoard, tmpdir):
-        conn_str = pgutil.create_connection_string(db.user)
-        with psycopg2.connect(conn_str) as conn:
+        with db.connect() as conn:
             conn.autocommit = True
             cursor = conn.cursor()
             cursor.execute("SELECT 1 FROM pg_available_extensions WHERE name = 'pgespresso' AND default_version >= '1.2'")
@@ -415,8 +413,7 @@ LABEL: pg_basebackup base backup
         self._test_basebackups(capsys, recovery_db, pghoard, tmpdir, BaseBackupMode.local_tar, replica=True)
 
     def test_basebackups_replica_local_tar_pgespresso(self, capsys, recovery_db, pghoard, tmpdir):
-        conn_str = pgutil.create_connection_string(recovery_db.user)
-        with psycopg2.connect(conn_str) as conn:
+        with recovery_db.connect() as conn:
             conn.autocommit = True
             cursor = conn.cursor()
             cursor.execute("SELECT 1 FROM pg_available_extensions WHERE name = 'pgespresso' AND default_version >= '1.2'")
@@ -433,8 +430,7 @@ LABEL: pg_basebackup base backup
         # tablespace could interfere with other tests
         tspath = tmpdir.join("extra-ts").strpath
         os.makedirs(tspath)
-        conn_str = pgutil.create_connection_string(db.user)
-        conn = psycopg2.connect(conn_str)
+        conn = db.connect()
         conn.autocommit = True
         cursor = conn.cursor()
         cursor.execute("CREATE TABLESPACE tstest LOCATION %s", [tspath])
@@ -451,19 +447,9 @@ LABEL: pg_basebackup base backup
             wal_directory = os.path.join(pghoard.config["backup_location"], pghoard.test_site, "xlog_incoming")
             makedirs(wal_directory, exist_ok=True)
             pghoard.receivexlog_listener(pghoard.test_site, db.user, wal_directory)
-            if conn.server_version >= 100000:
-                cursor.execute("SELECT txid_current(), pg_switch_wal()")
-            else:
-                cursor.execute("SELECT txid_current(), pg_switch_xlog()")
-
+            db.switch_wal()
             self._test_create_basebackup(capsys, db, pghoard, "local-tar")
-
-            if conn.server_version >= 100000:
-                cursor.execute("SELECT txid_current(), pg_switch_wal()")
-                cursor.execute("SELECT txid_current(), pg_switch_wal()")
-            else:
-                cursor.execute("SELECT txid_current(), pg_switch_xlog()")
-                cursor.execute("SELECT txid_current(), pg_switch_xlog()")
+            db.switch_wal()
 
             backup_out = tmpdir.join("test-restore").strpath
             backup_ts_out = tmpdir.join("test-restore-tstest").strpath
@@ -574,13 +560,12 @@ LABEL: pg_basebackup base backup
             r_db = PGTester(backup_out)
             r_db.user = dict(db.user, host=backup_out)
             r_db.run_pg()
-            r_conn_str = pgutil.create_connection_string(r_db.user)
 
             # Wait for PG to start up
             start_time = time.monotonic()
             while True:
                 try:
-                    r_conn = psycopg2.connect(r_conn_str)
+                    r_conn = r_db.connect()
                     break
                 except psycopg2.OperationalError as ex:
                     if "starting up" in str(ex):

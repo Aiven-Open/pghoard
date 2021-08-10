@@ -13,8 +13,6 @@ import time
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-import psycopg2
-
 from pghoard import common
 from pghoard.common import (BaseBackupFormat, create_alert_file, delete_alert_file, write_json_file)
 from pghoard.pghoard import PGHoard
@@ -551,10 +549,6 @@ class TestPGHoardWithPG:
 
     def test_pause_on_disk_full(self, db, pghoard_separate_volume, caplog):
         pghoard = pghoard_separate_volume
-        conn_str = create_connection_string(db.user)
-        conn = psycopg2.connect(conn_str)
-        conn.autocommit = True
-        cursor = conn.cursor()
 
         wal_directory = os.path.join(pghoard.config["backup_location"], pghoard.test_site, "xlog_incoming")
         os.makedirs(wal_directory, exist_ok=True)
@@ -566,11 +560,7 @@ class TestPGHoardWithPG:
         for _ in range(16):
             # Note: do not combine two function call in one select, PG executes it differently and
             # sometimes looks like it generates less WAL files than we wanted
-            cursor.execute("SELECT txid_current()")
-            if conn.server_version >= 100000:
-                cursor.execute("SELECT pg_switch_wal()")
-            else:
-                cursor.execute("SELECT pg_switch_xlog()")
+            db.switch_wal()
 
         start = time.monotonic()
         while True:
@@ -589,22 +579,8 @@ class TestPGHoardWithPG:
         assert "pausing pg_receive(wal|xlog)" in caplog.text
 
     def test_surviving_pg_receivewal_hickup(self, db, pghoard):
-        conn_str = create_connection_string(db.user)
-        conn = psycopg2.connect(conn_str)
-        conn.autocommit = True
-        cursor = conn.cursor()
-
         wal_directory = os.path.join(pghoard.config["backup_location"], pghoard.test_site, "xlog_incoming")
         os.makedirs(wal_directory, exist_ok=True)
-
-        def trigger_new_wal():
-            # Note: do not combine two function call in one select, PG executes it differently and
-            # sometimes looks like it generates less WAL files than we wanted
-            cursor.execute("SELECT txid_current()")
-            if conn.server_version >= 100000:
-                cursor.execute("SELECT pg_switch_wal()")
-            else:
-                cursor.execute("SELECT pg_switch_xlog()")
 
         def wait_for_xlog(count: int):
             start = time.monotonic()
@@ -627,7 +603,7 @@ class TestPGHoardWithPG:
         # Make sure we have already a few files so pg_receivewal has something to start from when it eventually restarts
         # +1: to finish the current one
         for _ in range(3 + 1):
-            trigger_new_wal()
+            db.switch_wal()
 
         wait_for_xlog(3)
 
@@ -641,7 +617,7 @@ class TestPGHoardWithPG:
 
         # add more WAL segments
         for _ in range(10):
-            trigger_new_wal()
+            db.switch_wal()
 
         # restart
         pghoard.receivexlog_listener(pghoard.test_site, db.user, wal_directory)

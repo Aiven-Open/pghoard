@@ -42,6 +42,7 @@ class PGTester:
         self.pgdata = pgdata
         self.pg = None
         self.user = None
+        self._connection = None
 
     @property
     def pgver(self):
@@ -82,6 +83,24 @@ class PGTester:
             time.sleep(0.1)
         if not force and self.pg.poll() is None:
             raise Exception("PG pid {} not dead".format(self.pg.pid))
+
+    def connect(self):
+        connection_string = pgutil.create_connection_string(self.user)
+        conn = psycopg2.connect(connection_string)
+        return conn
+
+    def switch_wal(self):
+        if self._connection is None:
+            self._connection = self.connect()
+            self._connection.autocommit = True
+        cur = self._connection.cursor()
+        # Force allocating a XID, otherwise if there was no activity we will
+        # stay on the same WAL
+        cur.execute("SELECT txid_current()")
+        if self._connection.server_version >= 100000:
+            cur.execute("SELECT pg_switch_wal()")
+        else:
+            cur.execute("SELECT pg_switch_xlog()")
 
 
 @contextlib.contextmanager
