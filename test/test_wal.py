@@ -65,6 +65,16 @@ def test_construct_wal_name():
     assert wal.construct_wal_name(sysinfo) == "000000040000000F00000019"
 
 
+def test_lsn_of_next_wal_start():
+    lsn_str = "0/10000AB"
+    lsn_int = wal.lsn_int_from_str(lsn_str)
+    assert lsn_int == 16777216
+    lsn_start = wal.get_lsn_from_start_of_wal_file(lsn_str)
+    assert lsn_start == "0/1000000"
+    next_wal_start_lsn = wal.lsn_of_next_wal_start(lsn_int)
+    assert next_wal_start_lsn == 33554432
+
+
 def test_verify_wal(tmpdir):
     b = BytesIO(WAL_HEADER_95 + b"XXX" * 100)
     with pytest.raises(wal.LsnMismatchError) as excinfo:
