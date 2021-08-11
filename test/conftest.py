@@ -218,6 +218,13 @@ def pghoard(db, tmpdir, request):  # pylint: disable=redefined-outer-name
     yield from pghoard_base(db, tmpdir, request)
 
 
+@pytest.yield_fixture
+def pghoard_walreceiver(db, tmpdir, request):
+    # Initialize with only one transfer agent, as we want a reliable
+    # last transfered state.
+    yield from pghoard_base(db, tmpdir, request, active_backup_mode="walreceiver", transfer_count=1, compression_count=1)
+
+
 @pytest.yield_fixture  # pylint: disable=redefined-outer-name
 def pghoard_separate_volume(db, tmpdir, request):
     tmpfs_volume = os.path.join(str(tmpdir), "tmpfs")
@@ -259,19 +266,19 @@ def pghoard_base(
     metrics_cfg=None,
     *,
     backup_location=None,
-    pg_receivexlog_config=None
+    pg_receivexlog_config=None,
+    active_backup_mode="pg_receivexlog",
+    slot_name=None,
+    compression_count=None
 ):
     test_site = request.function.__name__
 
-    if pg_receivexlog_config:
-        active_backup_mode = "pg_receivexlog"
-    elif os.environ.get("pghoard_test_walreceiver"):
-        active_backup_mode = "walreceiver"
-    else:
-        active_backup_mode = "pg_receivexlog"
-
     if compression == "snappy" and not snappy:
         compression = "lzma"
+
+    node = db.user.copy()
+    if slot_name is not None:
+        node["slot"] = slot_name
 
     backup_location = backup_location or os.path.join(str(tmpdir), "backupspool")
     config = {
@@ -285,7 +292,7 @@ def pghoard_base(
                 "pg_bin_directory": db.pgbin,
                 "pg_data_directory": db.pgdata,
                 "pg_receivexlog": pg_receivexlog_config or {},
-                "nodes": [db.user],
+                "nodes": [node],
                 "object_storage": {
                     "storage_type": "local",
                     "directory": os.path.join(str(tmpdir), "backups"),
@@ -314,6 +321,9 @@ def pghoard_base(
 
     if transfer_count is not None:
         config["transfer"] = {"thread_count": transfer_count}
+
+    if compression_count is not None:
+        config["compression"]["thread_count"] = compression_count
 
     confpath = os.path.join(str(tmpdir), "config.json")
     with open(confpath, "w") as fp:
