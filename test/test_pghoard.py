@@ -21,6 +21,7 @@ from pghoard.pgutil import create_connection_string
 from pghoard.rohmu import rohmufile
 
 from .base import PGHoardTestCase
+from .util import wait_for_xlog
 
 
 class TestPGHoard(PGHoardTestCase):
@@ -582,22 +583,6 @@ class TestPGHoardWithPG:
         wal_directory = os.path.join(pghoard.config["backup_location"], pghoard.test_site, "xlog_incoming")
         os.makedirs(wal_directory, exist_ok=True)
 
-        def wait_for_xlog(count: int):
-            start = time.monotonic()
-            while True:
-                xlogs = None
-                # At the start, this is not yet defined
-                transfer_agent_state_for_site = pghoard.transfer_agent_state.get(pghoard.test_site)
-                if transfer_agent_state_for_site:
-                    xlogs = transfer_agent_state_for_site["upload"]["xlog"]["xlogs_since_basebackup"]
-                    if xlogs >= count:
-                        break
-
-                if time.monotonic() - start > 15:
-                    assert False, "Expected at least {} xlog uploads, got {}".format(count, xlogs)
-
-                time.sleep(0.1)
-
         pghoard.receivexlog_listener(pghoard.test_site, db.user, wal_directory)
 
         # Make sure we have already a few files so pg_receivewal has something to start from when it eventually restarts
@@ -605,7 +590,7 @@ class TestPGHoardWithPG:
         for _ in range(3 + 1):
             db.switch_wal()
 
-        wait_for_xlog(3)
+        wait_for_xlog(pghoard, 3)
 
         # stop pg_receivewal so we cannot process new WAL segments
         pghoard.receivexlogs[pghoard.test_site].running = False
@@ -624,4 +609,4 @@ class TestPGHoardWithPG:
         assert pghoard.receivexlogs[pghoard.test_site].is_alive()
 
         # We should now process all created segments, not only the ones which were created after pg_receivewal was restarted
-        wait_for_xlog(n_xlogs + 10)
+        wait_for_xlog(pghoard, n_xlogs + 10)
