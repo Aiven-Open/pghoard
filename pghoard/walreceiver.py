@@ -13,6 +13,7 @@ from queue import Empty, Queue
 from threading import Thread
 
 import psycopg2
+import psycopg2.errors
 from psycopg2.extras import (  # pylint: disable=no-name-in-module
     REPLICATION_PHYSICAL, PhysicalReplicationConnection
 )
@@ -66,10 +67,8 @@ class WALReceiver(Thread):
     def create_replication_slot(self):
         try:
             self.c.create_replication_slot(self.replication_slot, slot_type=REPLICATION_PHYSICAL)
-        except psycopg2.ProgrammingError as ex:
-            if "already exists" in ex.pgerror:
-                return
-            raise
+        except psycopg2.errors.DuplicateObject as _:  # pylint: disable=no-member
+            self.log.info("Replication slot %s already exists", self.replication_slot)
 
     def fetch_timeline_history_files(self, max_timeline):
         """Copy all timeline history files found on the server without
