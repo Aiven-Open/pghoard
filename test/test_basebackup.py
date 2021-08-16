@@ -625,17 +625,22 @@ LABEL: pg_basebackup base backup
 
         # adjust basebackup interval to be slightly longer than what this
         # basebackup took and make sure it's not retriggered
-        site_config["basebackup_interval_hours"] = (time.monotonic() - backup_start + 1) / 3600
+        # We save some buffer by using two times the backup_duration
+        backup_duration = max((time.monotonic() - backup_start), 1)
+        site_config["basebackup_interval_hours"] = (backup_duration * 2) / 3600
         pghoard.handle_site(pghoard.test_site, site_config)
         assert pghoard.test_site not in pghoard.basebackups
 
         # create a new backup now that we have some state
-        time.sleep(2)
+        time.sleep(backup_duration * 2 + 1)
         pghoard.handle_site(pghoard.test_site, site_config)
         assert pghoard.test_site in pghoard.basebackups
         # wait for backup to complete and put the event back in so pghoard finds it, too
         pghoard.basebackups_callbacks[pghoard.test_site].put(pghoard.basebackups_callbacks[pghoard.test_site].get())
         # now call handle_site so it notices the backup has finished (this must not start a new one)
+        # We should be fine since the interval is at least two times the
+        # duration of one backup, so even if this backup took longer than
+        # expected it should still not start a new one.
         pghoard.handle_site(pghoard.test_site, site_config)
         assert pghoard.test_site not in pghoard.basebackups
         first_basebackups = pghoard.state["backup_sites"][pghoard.test_site]["basebackups"]
