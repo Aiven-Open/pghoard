@@ -1,0 +1,98 @@
+Development
+===========
+
+Requirements
+------------
+
+PGHoard can backup and restore PostgreSQL versions 9.3 and above.  The
+daemon is implemented in Python and works with CPython version 3.5 or newer.
+The following Python modules are required:
+
+* psycopg2_ to look up transaction log metadata
+* requests_ for the internal client-server architecture
+
+.. _`psycopg2`: http://initd.org/psycopg/
+.. _`requests`: http://www.python-requests.org/en/latest/
+
+Optional requirements include:
+
+* azure_ for Microsoft Azure object storage (patched version required, see link)
+* botocore_ for AWS S3 (or Ceph-S3) object storage
+* google-api-client_ for Google Cloud object storage
+* cryptography_ for backup encryption and decryption (version 0.8 or newer required)
+* snappy_ for Snappy compression and decompression
+* zstandard_ for Zstandard (zstd) compression and decompression
+* systemd_ for systemd integration
+* swiftclient_ for OpenStack Swift object storage
+* paramiko_  for sftp object storage
+
+.. _`azure`: https://github.com/aiven/azure-sdk-for-python/tree/aiven/rpm_fixes
+.. _`botocore`: https://github.com/boto/botocore
+.. _`google-api-client`: https://github.com/google/google-api-python-client
+.. _`cryptography`: https://cryptography.io/
+.. _`snappy`: https://github.com/andrix/python-snappy
+.. _`zstandard`: https://github.com/indygreg/python-zstandard
+.. _`systemd`: https://github.com/systemd/python-systemd
+.. _`swiftclient`: https://github.com/openstack/python-swiftclient
+.. _`paramiko`: https://github.com/paramiko/paramiko
+
+Developing and testing PGHoard also requires the following utilities:
+flake8_, pylint_ and pytest_.
+
+.. _`flake8`: https://flake8.readthedocs.io/
+.. _`pylint`: https://www.pylint.org/
+.. _`pytest`: http://pytest.org/
+
+PGHoard has been developed and tested on modern Linux x86-64 systems, but
+should work on other platforms that provide the required modules.
+
+Vagrant
+-------
+
+The Vagrantfile can be used to setup a vagrant development environment, consisting of two
+vagrant virtual machines.
+
+1) Postgresql 9.4, python 3.5 and 3.6::
+
+    vagrant up
+    vagrant ssh postgres9
+    cd /vagrant
+    source ~/venv3/bin/activate
+    make test
+    source ~/venv3.6/bin/activate
+    make test
+
+2) Postgresql 10 and python 3.7::
+
+    vagrant ssh postgres10
+    cd /vagrant
+    make test
+
+Note: make deb does not work from vagrant at the moment, hopefully this will be resolved soon
+
+.. _building_from_source:
+
+Building
+--------
+
+To build an installation package for your distribution, go to the root
+directory of a PGHoard Git checkout and run:
+
+Debian::
+
+  make deb
+
+This will produce a ``.deb`` package into the parent directory of the Git
+checkout.
+
+Fedora::
+
+  make rpm
+
+This will produce a ``.rpm`` package usually into ``rpm/RPMS/noarch/``.
+
+Python/Other::
+
+  python setup.py bdist_egg
+
+This will produce an egg file into a dist directory within the same folder.
