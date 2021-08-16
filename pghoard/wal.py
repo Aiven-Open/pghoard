@@ -68,6 +68,14 @@ def name_to_tli_log_seg(name):
     return (tli, log, seg)
 
 
+def lsn_of_next_wal_start(lsn: int):
+    """
+    Compute the LSN of the start of the wal segment after the one which
+    contains the given LSN.
+    """
+    return (lsn + WAL_SEG_SIZE) & 0xFFFF0000
+
+
 def get_previous_wal_on_same_timeline(seg, log, pg_version):
     if seg == 0:
         log -= 1
@@ -104,6 +112,11 @@ def lsn_from_name(name):
     _, log, seg = name_to_tli_log_seg(name)
     pos = seg * WAL_SEG_SIZE
     return "{:X}/{:X}".format(log, pos)
+
+
+def lsn_int_from_str(str_lsn):
+    log_hex, seg_hex = str_lsn.split("/", 1)
+    return int(log_hex, 16) + (int(seg_hex, 16) >> 24) * WAL_SEG_SIZE
 
 
 def construct_wal_name(sysinfo):

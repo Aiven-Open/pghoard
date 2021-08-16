@@ -19,7 +19,9 @@ from psycopg2.extras import (  # pylint: disable=no-name-in-module
 )
 
 from pghoard.common import suppress
-from pghoard.wal import (WAL_SEG_SIZE, convert_integer_to_lsn, get_lsn_from_start_of_wal_file, name_for_tli_log_seg)
+from pghoard.wal import (
+    WAL_SEG_SIZE, convert_integer_to_lsn, get_lsn_from_start_of_wal_file, lsn_of_next_wal_start, name_for_tli_log_seg
+)
 
 KEEPALIVE_INTERVAL = 10.0
 
@@ -181,31 +183,41 @@ class WALReceiver(Thread):
 
             if wal_name and self.latest_wal != wal_name or self.buffer.tell() >= WAL_SEG_SIZE:
                 self.switch_wal()
-
-            for wal_start, queue in self.callbacks.items():
-                with suppress(Empty):
-                    transfer_result = queue.get_nowait()
-                    self.log.debug("Transfer result: %r", transfer_result)
-                    self.completed_wal_segments.add(wal_start)
-
-            for completed_lsn in sorted(self.completed_wal_segments):
-                self.callbacks.pop(completed_lsn)
-                if self.callbacks:
-                    if completed_lsn > min(self.callbacks):
-                        pass  # Do nothing since a smaller lsn is still being transferred
-                    else:  # Earlier lsn than earlist on-going transfer, just advance flush_lsn
-                        self.c.send_feedback(flush_lsn=completed_lsn)
-                        self.completed_wal_segments.discard(completed_lsn)
-                        self.last_flushed_lsn = completed_lsn
-                        self.log.debug("Sent flush_lsn feedback as: %r", self.last_flushed_lsn)
-                else:  # No on-going transfer, just advance flush_lsn
-                    self.c.send_feedback(flush_lsn=completed_lsn)
-                    self.completed_wal_segments.discard(completed_lsn)
-                    self.last_flushed_lsn = completed_lsn
-                    self.log.debug("Sent flush_lsn feedback as: %r", self.last_flushed_lsn)
+            self.process_completed_segments()
 
             if not msg:
                 timeout = KEEPALIVE_INTERVAL - (datetime.datetime.now() - self.c.io_timestamp).total_seconds()
                 with suppress(InterruptedError):
                     if not any(select.select([self.c], [], [], max(0, timeout))):
                         self.c.send_feedback()  # timing out, send keepalive
+        # When we stop, process sent wals to update last_flush lsn.
+        self.process_completed_segments(block=True)
+
+    def process_completed_segments(self, *, block=False):
+        for wal_start, queue in self.callbacks.items():
+            if block:
+                transfer_result = queue.get()
+                self.log.debug("Transfer result: %r", transfer_result)
+            else:
+                with suppress(Empty):
+                    transfer_result = queue.get_nowait()
+                    self.log.debug("Transfer result: %r", transfer_result)
+            self.completed_wal_segments.add(wal_start)
+
+        for completed_lsn in sorted(self.completed_wal_segments):
+            # The flush position is the end of the wal file.
+            next_wal_start_lsn = lsn_of_next_wal_start(completed_lsn)
+            self.callbacks.pop(completed_lsn)
+            if self.callbacks:
+                if completed_lsn > min(self.callbacks):
+                    pass  # Do nothing since a smaller lsn is still being transferred
+                else:  # Earlier lsn than earlist on-going transfer, just advance flush_lsn
+                    self.c.send_feedback(flush_lsn=next_wal_start_lsn)
+                    self.completed_wal_segments.discard(completed_lsn)
+                    self.last_flushed_lsn = next_wal_start_lsn
+                    self.log.debug("Sent flush_lsn feedback as: %r", self.last_flushed_lsn)
+            else:  # No on-going transfer, just advance flush_lsn
+                self.c.send_feedback(flush_lsn=next_wal_start_lsn)
+                self.completed_wal_segments.discard(completed_lsn)
+                self.last_flushed_lsn = next_wal_start_lsn
+                self.log.debug("Sent flush_lsn feedback as: %r", self.last_flushed_lsn)
