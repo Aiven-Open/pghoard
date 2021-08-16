@@ -4,57 +4,20 @@ on:
   push:
     branches:
       - master
+      - rdunklau-debugtests
     tags:
       - '**'
   pull_request:
 
 jobs:
 
-  lint:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        # only use one version for the lint step
-        python-version: [3.9]
-
-    steps:
-
-      - id: checkout-code
-        uses: actions/checkout@v2
-
-      - id: prepare-python
-        uses: actions/setup-python@v2
-        with:
-          python-version: ${{ matrix.python-version }}
-
-      - id: dependencies
-        run: |
-          pip install -r requirements.txt
-          pip install -r requirements.dev.txt
-
-      - id: pylint
-        run: make lint
-
-      - id: mypy
-        run: make mypy
-
-      - id: validate-style
-        run: |
-          make fmt
-          if [ $(git diff --name-only --diff-filter=ACMR | wc -l ) != 0 ]; then
-            echo "Reformatting failed! Please run make fmt on your commits and resubmit!" 1>&2;
-            git diff;
-            exit 1;
-          fi
-
   test:
     runs-on: ubuntu-latest
-    needs: lint
     strategy:
       max-parallel: 4
       matrix:
-        python-version: [3.6, 3.7, 3.8, 3.9]
-        pg-version: [9.6, 10, 11, 12, 13, 14]
+        python-version: [3.9]
+        pg-version: [14]
 
     steps:
       - id: checkout-code
@@ -81,4 +44,4 @@ jobs:
           pip install -e .
 
       - id: unittest
-        run: make unittest
+        run: pytest test/ -k test_pause_on_disk_full

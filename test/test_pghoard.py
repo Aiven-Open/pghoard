@@ -22,6 +22,7 @@ from pghoard.rohmu import rohmufile
 
 from .base import PGHoardTestCase
 from .util import switch_wal, wait_for_xlog
+import pytest
 
 
 class TestPGHoard(PGHoardTestCase):
@@ -558,7 +559,9 @@ class TestPGHoardWithPG:
         assert pghoard.check_pg_server_version(conn_str, pghoard.test_site) is None
         assert os.listdir(pghoard.config["alert_file_dir"]) == ["authentication_error"]
 
-    def test_pause_on_disk_full(self, db, pghoard_separate_volume, caplog):
+    @pytest.mark.parametrize('execution_number', range(50))
+    def test_pause_on_disk_full(self, db, pghoard_separate_volume, caplog,
+            execution_number):
         pghoard = pghoard_separate_volume
         conn = db.connect()
         conn.autocommit = True

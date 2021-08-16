@@ -10,7 +10,7 @@ PYTEST_ARG ?= -v
 
 .PHONY: unittest
 unittest: version
-	$(PYTHON) -m pytest -vv test/
+	$(PYTHON) -m pytest -vv test/ -k test_handle_site
 
 .PHONY: lint
 lint: version
