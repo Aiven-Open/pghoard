@@ -24,6 +24,7 @@ from pghoard.rohmu import get_transfer
 from pghoard.rohmu.compat import makedirs
 
 from .conftest import PGTester
+from .util import switch_wal
 
 Restore.log_tracebacks = True
 
@@ -447,9 +448,9 @@ LABEL: pg_basebackup base backup
             wal_directory = os.path.join(pghoard.config["backup_location"], pghoard.test_site, "xlog_incoming")
             makedirs(wal_directory, exist_ok=True)
             pghoard.receivexlog_listener(pghoard.test_site, db.user, wal_directory)
-            db.switch_wal()
+            switch_wal(conn)
             self._test_create_basebackup(capsys, db, pghoard, "local-tar")
-            db.switch_wal()
+            switch_wal(conn)
 
             backup_out = tmpdir.join("test-restore").strpath
             backup_ts_out = tmpdir.join("test-restore-tstest").strpath

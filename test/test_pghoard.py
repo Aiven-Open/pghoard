@@ -21,7 +21,7 @@ from pghoard.pgutil import create_connection_string
 from pghoard.rohmu import rohmufile
 
 from .base import PGHoardTestCase
-from .util import wait_for_xlog
+from .util import switch_wal, wait_for_xlog
 
 
 class TestPGHoard(PGHoardTestCase):
@@ -550,6 +550,8 @@ class TestPGHoardWithPG:
 
     def test_pause_on_disk_full(self, db, pghoard_separate_volume, caplog):
         pghoard = pghoard_separate_volume
+        conn = db.connect()
+        conn.autocommit = True
 
         wal_directory = os.path.join(pghoard.config["backup_location"], pghoard.test_site, "xlog_incoming")
         os.makedirs(wal_directory, exist_ok=True)
@@ -561,22 +563,10 @@ class TestPGHoardWithPG:
         for _ in range(16):
             # Note: do not combine two function call in one select, PG executes it differently and
             # sometimes looks like it generates less WAL files than we wanted
-            db.switch_wal()
+            switch_wal(conn)
+        conn.close()
 
-        start = time.monotonic()
-        while True:
-            xlogs = None
-            # At the start, this is not yet defined
-            transfer_agent_state_for_site = pghoard.transfer_agent_state.get(pghoard.test_site)
-            if transfer_agent_state_for_site:
-                xlogs = transfer_agent_state_for_site["upload"]["xlog"]["xlogs_since_basebackup"]
-                if xlogs >= 15:
-                    break
-
-            if time.monotonic() - start > 15:
-                assert False, "Expected at least 15 xlog uploads, got {}".format(xlogs)
-
-            time.sleep(0.1)
+        wait_for_xlog(pghoard, 15)
         assert "pausing pg_receive(wal|xlog)" in caplog.text
 
     def test_surviving_pg_receivewal_hickup(self, db, pghoard):
@@ -584,11 +574,13 @@ class TestPGHoardWithPG:
         os.makedirs(wal_directory, exist_ok=True)
 
         pghoard.receivexlog_listener(pghoard.test_site, db.user, wal_directory)
+        conn = db.connect()
+        conn.autocommit = True
 
         # Make sure we have already a few files so pg_receivewal has something to start from when it eventually restarts
         # +1: to finish the current one
         for _ in range(3 + 1):
-            db.switch_wal()
+            switch_wal(conn)
 
         wait_for_xlog(pghoard, 3)
 
@@ -602,7 +594,8 @@ class TestPGHoardWithPG:
 
         # add more WAL segments
         for _ in range(10):
-            db.switch_wal()
+            switch_wal(conn)
+        conn.close()
 
         # restart
         pghoard.receivexlog_listener(pghoard.test_site, db.user, wal_directory)

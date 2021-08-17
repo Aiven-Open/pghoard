@@ -89,19 +89,6 @@ class PGTester:
         conn = psycopg2.connect(connection_string)
         return conn
 
-    def switch_wal(self):
-        if self._connection is None:
-            self._connection = self.connect()
-            self._connection.autocommit = True
-        cur = self._connection.cursor()
-        # Force allocating a XID, otherwise if there was no activity we will
-        # stay on the same WAL
-        cur.execute("SELECT txid_current()")
-        if self._connection.server_version >= 100000:
-            cur.execute("SELECT pg_switch_wal()")
-        else:
-            cur.execute("SELECT pg_switch_xlog()")
-
 
 @contextlib.contextmanager
 def setup_pg():
