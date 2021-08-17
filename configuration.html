@@ -1,0 +1,782 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  
+  <title>Configuration &mdash; PGHoard 2.2.1-44-ge0fe987 documentation</title>
+  
+
+  
+  <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
+  <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+  <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+  <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
+
+  
+  
+
+  
+  
+
+  
+
+  
+  <!--[if lt IE 9]>
+    <script src="_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+    
+      <script type="text/javascript" id="documentation_options" data-url_root="./" src="_static/documentation_options.js"></script>
+        <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
+        <script src="_static/jquery.js"></script>
+        <script src="_static/underscore.js"></script>
+        <script src="_static/doctools.js"></script>
+    
+    <script type="text/javascript" src="_static/js/theme.js"></script>
+
+    
+    <link rel="author" title="About these documents" href="about.html" />
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Development" href="development.html" />
+    <link rel="prev" title="Monitoring" href="monitoring.html" /> 
+</head>
+
+<body class="wy-body-for-nav">
+
+   
+  <div class="wy-grid-for-nav">
+    
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+          
+
+          
+            <a href="index.html" class="icon icon-home"> PGHoard
+          
+
+          
+          </a>
+
+          
+            
+            
+          
+
+          
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+
+          
+        </div>
+
+        
+        <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
+          
+            
+            
+              
+            
+            
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="about.html">About PGHoard</a></li>
+<li class="toctree-l1"><a class="reference internal" href="quickstart.html">QuickStart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="install.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="install.html#postgresql-configuration">PostgreSQL Configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="commands.html">Commands</a></li>
+<li class="toctree-l1"><a class="reference internal" href="monitoring.html">Monitoring</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Configuration</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#global-configuration">Global Configuration</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#generic-configuration">Generic Configuration</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#logging-configuration">Logging configuration</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#monitoring">Monitoring</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#http-server-configuration">HTTP Server configuration</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#compression">Compression</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#backup-sites">Backup sites</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#basebackup-configuration">Basebackup configuration</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#archiving-configuration">Archiving configuration</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#restore-configuration">Restore configuration</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#storage-configuration">Storage configuration</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#encryption">Encryption</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="development.html">Development</a></li>
+</ul>
+
+            
+          
+        </div>
+        
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+
+      
+      <nav class="wy-nav-top" aria-label="top navigation">
+        
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">PGHoard</a>
+        
+      </nav>
+
+
+      <div class="wy-nav-content">
+        
+        <div class="rst-content">
+        
+          
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div role="navigation" aria-label="breadcrumbs navigation">
+
+  <ul class="wy-breadcrumbs">
+    
+      <li><a href="index.html" class="icon icon-home"></a> &raquo;</li>
+        
+      <li>Configuration</li>
+    
+    
+      <li class="wy-breadcrumbs-aside">
+        
+          
+            <a href="_sources/configuration.rst.txt" rel="nofollow"> View page source</a>
+          
+        
+      </li>
+    
+  </ul>
+
+  
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+            
+  <div class="section" id="configuration">
+<span id="id1"></span><h1>Configuration<a class="headerlink" href="#configuration" title="Permalink to this headline">¶</a></h1>
+<p>The configuration file is in the JSON format. It consists of nested
+key-value pairs.</p>
+<p>For example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+    <span class="s2">&quot;json_state_file_path&quot;</span><span class="p">:</span> <span class="s2">&quot;/var/lib/pghoard/pghoard_state.json&quot;</span>
+    <span class="s2">&quot;backup_sites&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;mycluster&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;nodes&quot;</span><span class="p">:</span> <span class="p">[</span>
+                <span class="p">{</span>
+                    <span class="s2">&quot;host&quot;</span><span class="p">:</span> <span class="s2">&quot;127.0.0.1&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;password&quot;</span><span class="p">:</span> <span class="s2">&quot;secret&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;port&quot;</span><span class="p">:</span> <span class="mi">5432</span><span class="p">,</span>
+                    <span class="s2">&quot;user&quot;</span><span class="p">:</span> <span class="s2">&quot;backup&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;slot&quot;</span><span class="p">:</span> <span class="s2">&quot;pghoard&quot;</span>
+                <span class="p">}</span>
+            <span class="p">],</span>
+            <span class="s2">&quot;basebackup_count&quot;</span><span class="p">:</span> <span class="mi">5</span><span class="p">,</span>
+            <span class="s2">&quot;basebackup_mode&quot;</span><span class="p">:</span> <span class="s2">&quot;delta&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;object_storage&quot;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s2">&quot;storage_type&quot;</span><span class="p">:</span> <span class="s2">&quot;local&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;directory&quot;</span><span class="p">:</span> <span class="s2">&quot;/tmp/pghoard/backups&quot;</span>
+            <span class="p">}</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<div class="section" id="global-configuration">
+<h2>Global Configuration<a class="headerlink" href="#global-configuration" title="Permalink to this headline">¶</a></h2>
+<p>Global configuration options are specified at the top-level.
+In this documentation we group them by categories.</p>
+<div class="section" id="generic-configuration">
+<h3>Generic Configuration<a class="headerlink" href="#generic-configuration" title="Permalink to this headline">¶</a></h3>
+<dl>
+<dt>active (default <code class="docutils literal notranslate"><span class="pre">true</span></code>)</dt><dd><p>Can also be set on the <code class="docutils literal notranslate"><span class="pre">backup_site</span></code> level to disable taking of new backups
+and to stop the deletion of old ones</p>
+</dd>
+<dt>backup_location</dt><dd><p>Where <code class="docutils literal notranslate"><span class="pre">pghoard</span></code> will create its internal data structures for local
+state data.</p>
+</dd>
+<dt>hash_algorithm (default <code class="docutils literal notranslate"><span class="pre">&quot;sha1&quot;</span></code>)</dt><dd><p>The hash algorithm used for calculating checksums for WAL or other files. Must
+be one of the algorithms supported by Python’s <a class="reference external" href="https://docs.python.org/3/library/hashlib.html#hash-algorithms">hashlib</a></p>
+</dd>
+<dt>json_state_file_path (default <code class="docutils literal notranslate"><span class="pre">&quot;/var/lib/pghoard/pghoard_state.json&quot;</span></code>)</dt><dd><p>Location of the JSON state file path which describes the state of the
+<code class="docutils literal notranslate"><span class="pre">pghoard</span></code> process.</p>
+</dd>
+<dt>maintenance_mode_file (default <code class="docutils literal notranslate"><span class="pre">&quot;/var/lib/pghoard/maintenance_mode_file&quot;</span></code>)</dt><dd><p>Trigger file for maintenance mode: if a file exists at
+this location no new backup actions will be started)
+FIXME: define “new backup actions”</p>
+</dd>
+<dt>transfer (default see below)</dt><dd><p>A JSON object defining the WAL/basebackup tranfer parameters.</p>
+<p>Example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+  <span class="n">transfer</span><span class="p">:</span> <span class="p">{</span>
+    <span class="n">thread_count</span><span class="p">:</span> <span class="mi">4</span><span class="p">,</span>
+    <span class="n">upload_retries_warning_limit</span><span class="p">:</span> <span class="mi">3</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<dl class="simple">
+<dt>thread_count (default <code class="docutils literal notranslate"><span class="pre">min(cpu_count</span> <span class="pre">+</span> <span class="pre">3,</span> <span class="pre">20)</span></code>)</dt><dd><p>Number of parallel uploads / downloads</p>
+</dd>
+<dt>upload_retries_warning_limit (default <code class="docutils literal notranslate"><span class="pre">3</span></code>)</dt><dd><p>Create an alert file <code class="docutils literal notranslate"><span class="pre">upload_retries_warning</span></code> after this many failed
+upload attempts. See (FIXME: link to alert system)</p>
+</dd>
+</dl>
+</dd>
+<dt>tar_executable (default <code class="docutils literal notranslate"><span class="pre">&quot;pghoard_gnutaremu&quot;</span></code>)</dt><dd><p>The tar command to use for restoring basebackups. This must be GNU tar because some
+advanced switches like <code class="docutils literal notranslate"><span class="pre">--transform</span></code> are needed. If this value is not defined (or
+is explicitly set to <code class="docutils literal notranslate"><span class="pre">&quot;pghoard_gnutaremu&quot;</span></code>), Python’s internal tarfile
+implementation is used. The Python implementation is somewhat slower than the
+actual tar command and in environments with fast disk IO (compared to available CPU
+capacity) it is recommended to set this to <code class="docutils literal notranslate"><span class="pre">&quot;tar&quot;</span></code>.</p>
+</dd>
+<dt>restore_prefetch (default <code class="docutils literal notranslate"><span class="pre">transfer.thread_count</span></code>)</dt><dd><p>Number of files to prefetch when performing archive recovery.  The default
+is the number of Transfer Agent threads to try to utilize them all.</p>
+</dd>
+</dl>
+</div>
+<div class="section" id="logging-configuration">
+<span id="configuration-logging"></span><h3>Logging configuration<a class="headerlink" href="#logging-configuration" title="Permalink to this headline">¶</a></h3>
+<dl class="simple">
+<dt>log_level (default <code class="docutils literal notranslate"><span class="pre">&quot;INFO&quot;</span></code>)</dt><dd><p>Determines log level of <code class="docutils literal notranslate"><span class="pre">pghoard</span></code>.</p>
+</dd>
+<dt>syslog (default <code class="docutils literal notranslate"><span class="pre">false</span></code>)</dt><dd><p>Enable / disable syslog logging</p>
+</dd>
+<dt>syslog_address (default <code class="docutils literal notranslate"><span class="pre">&quot;/dev/log&quot;</span></code>)</dt><dd><p>Determines syslog address to use in logging (requires syslog to be true as
+well)</p>
+</dd>
+<dt>syslog_facility (default <code class="docutils literal notranslate"><span class="pre">&quot;local2&quot;</span></code>)</dt><dd><p>Determines syslog log facility. (requires syslog to be true as well)</p>
+</dd>
+</dl>
+</div>
+<div class="section" id="monitoring">
+<span id="configuration-monitoring"></span><h3>Monitoring<a class="headerlink" href="#monitoring" title="Permalink to this headline">¶</a></h3>
+<dl>
+<dt>alert_file_dir (default <code class="docutils literal notranslate"><span class="pre">backup_location</span></code> if set else <code class="docutils literal notranslate"><span class="pre">os.getcwd()</span></code>)</dt><dd><p>Directory in which alert files for replication warning and failover are
+created.</p>
+</dd>
+<dt>stats (default <code class="docutils literal notranslate"><span class="pre">null</span></code>)</dt><dd><p>When set, enables sending to a statsd daemon that supports Telegrag or DataDog
+syntax with tags.
+The value is a JSON object, for example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+    <span class="s2">&quot;host&quot;</span><span class="p">:</span> <span class="s2">&quot;&lt;statsd address&gt;&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;port&quot;</span><span class="p">:</span> <span class="o">&lt;</span><span class="n">statsd</span> <span class="n">port</span><span class="o">&gt;</span><span class="p">,</span>
+    <span class="s2">&quot;format&quot;</span><span class="p">:</span> <span class="s2">&quot;&lt;statsd message format&gt;&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;tags&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;&lt;tag&gt;&quot;</span><span class="p">:</span> <span class="s2">&quot;&lt;value&gt;&quot;</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<dl>
+<dt>host</dt><dd><p>The statsd host address</p>
+</dd>
+<dt>port</dt><dd><p>The statsd listening port</p>
+</dd>
+<dt>format (default <code class="docutils literal notranslate"><span class="pre">&quot;telegraf&quot;</span></code>)</dt><dd><p>Determines statsd message format. Following formats are supported:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">telegraf</span></code> <a class="reference external" href="https://github.com/influxdata/telegraf/tree/master/plugins/inputs/statsd">Telegraf spec</a></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">datadog</span></code> <a class="reference external" href="http://docs.datadoghq.com/guides/dogstatsd/#datagram-format">DataDog spec</a></p></li>
+</ul>
+</div></blockquote>
+</dd>
+</dl>
+<dl class="field-list simple">
+<dt class="field-odd">tags</dt>
+<dd class="field-odd"><p>(default null)
+The tag key can be used to enter optional tag values for the metrics</p>
+</dd>
+</dl>
+</dd>
+<dt>push_gateway (default <code class="docutils literal notranslate"><span class="pre">null</span></code>)</dt><dd><p>When set, enables sending metrics to a Prometheus Pushgateway with tags.
+The value is a JSON obejct, for example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+    <span class="s2">&quot;endpoint&quot;</span><span class="p">:</span> <span class="s2">&quot;&lt;pushgateway address&gt;&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;tags&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;&lt;tag&gt;&quot;</span><span class="p">:</span> <span class="s2">&quot;&lt;value&gt;&quot;</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<dl class="simple">
+<dt>endpoint</dt><dd><p>The pushgateway address</p>
+</dd>
+<dt>tags</dt><dd><p>An object mapping tags to their values.</p>
+</dd>
+</dl>
+</dd>
+</dl>
+</div>
+<div class="section" id="http-server-configuration">
+<span id="configuration-http"></span><h3>HTTP Server configuration<a class="headerlink" href="#http-server-configuration" title="Permalink to this headline">¶</a></h3>
+<p>The pghoard daemon needs to listen on an HTTP port for the archive command and
+for fetching of basebackups/WAL’s when restoring if not using an object store.</p>
+<dl class="simple">
+<dt>http_address (default <code class="docutils literal notranslate"><span class="pre">&quot;127.0.0.1&quot;</span></code>)</dt><dd><p>Address to bind the PGHoard HTTP server to.  Set to an empty string to
+listen to all available addresses.</p>
+</dd>
+<dt>http_port (default <code class="docutils literal notranslate"><span class="pre">16000</span></code>)</dt><dd><p>HTTP webserver port. Used for the archive command and for fetching of
+basebackups/WAL’s when restoring if not using an object store.</p>
+</dd>
+</dl>
+</div>
+<div class="section" id="compression">
+<span id="configuration-compression"></span><h3>Compression<a class="headerlink" href="#compression" title="Permalink to this headline">¶</a></h3>
+<p>The PostgreSQL write-ahead log (WAL) and basebackups are compressed with
+Snappy (default), Zstandard (configurable, level 3 by default) or LZMA (configurable,
+level 0 by default) in order to ensure good compression speed and relatively small backup size.
+For performance critical applications it is recommended to test compression
+algorithms to find the most suitable trade-off for the particular use-case.
+E.g. Snappy is fast but yields larger compressed files, Zstandard (zstd) on the other hand
+offers a very wide range of compression/speed trade-off.</p>
+<p>The top-level <code class="docutils literal notranslate"><span class="pre">compression</span></code> key allows to define compression options:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+  <span class="s2">&quot;compression&quot;</span><span class="p">:</span> <span class="p">{</span>
+    <span class="s2">&quot;algorithm&quot;</span><span class="p">:</span> <span class="s2">&quot;snappy&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;level&quot;</span><span class="p">:</span> <span class="mi">3</span><span class="p">,</span>
+    <span class="s2">&quot;thread_count&quot;</span><span class="p">:</span> <span class="mi">4</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<dl class="simple">
+<dt>algorithm (default <code class="docutils literal notranslate"><span class="pre">snappy</span></code>)</dt><dd><p>The compression algorithm to use. Available algorithms are
+<code class="docutils literal notranslate"><span class="pre">snappy</span></code>, <code class="docutils literal notranslate"><span class="pre">zstd</span></code>, and <code class="docutils literal notranslate"><span class="pre">lzma</span></code></p>
+</dd>
+<dt>level (default <code class="docutils literal notranslate"><span class="pre">0</span></code> for <code class="docutils literal notranslate"><span class="pre">lzma</span></code> and <code class="docutils literal notranslate"><span class="pre">zstd</span></code>, <code class="docutils literal notranslate"><span class="pre">3</span></code> for <code class="docutils literal notranslate"><span class="pre">snappy</span></code>)</dt><dd><p>The compression level to use. Depends on the algorithm used.</p>
+</dd>
+<dt>thread_count (default to <code class="docutils literal notranslate"><span class="pre">cpu_count</span></code> + 1)</dt><dd><p>The number of threads used for parallel compression.
+Contrary to <code class="docutils literal notranslate"><span class="pre">basebackup_compression_threads</span></code> this is the number of
+compression threads started by <code class="docutils literal notranslate"><span class="pre">pghoard</span></code>, not internal compression
+threads for libraries supporting it, and is then applicable to any
+compression algorithm.</p>
+</dd>
+</dl>
+</div>
+</div>
+<div class="section" id="backup-sites">
+<h2>Backup sites<a class="headerlink" href="#backup-sites" title="Permalink to this headline">¶</a></h2>
+<p>The key <code class="docutils literal notranslate"><span class="pre">backup_sites</span></code> contains configuration for groups of PostgreSQL clusters (here
+called <code class="docutils literal notranslate"><span class="pre">sites</span></code>). Each backup site configures how to backup the different nodes
+it comprises. Each site can be configured separately, under an idenfiying
+site name (example: <code class="docutils literal notranslate"><span class="pre">mysite</span></code>).</p>
+<p>A backup site contains an array of at least one node. For each node, the connection
+information is required. The keys for a node are libpq parameters, for example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+  <span class="s2">&quot;backup_sites&quot;</span><span class="p">:</span> <span class="p">{</span>
+    <span class="s2">&quot;mysite&quot;</span><span class="p">:</span> <span class="p">{</span>
+      <span class="s2">&quot;nodes&quot;</span><span class="p">:</span> <span class="p">[</span>
+          <span class="p">{</span>
+              <span class="s2">&quot;host&quot;</span><span class="p">:</span> <span class="s2">&quot;127.0.0.1&quot;</span><span class="p">,</span>
+              <span class="s2">&quot;password&quot;</span><span class="p">:</span> <span class="s2">&quot;secret&quot;</span><span class="p">,</span>
+              <span class="s2">&quot;port&quot;</span><span class="p">:</span> <span class="mi">5432</span><span class="p">,</span>
+              <span class="s2">&quot;user&quot;</span><span class="p">:</span> <span class="s2">&quot;backup&quot;</span><span class="p">,</span>
+              <span class="s2">&quot;slot&quot;</span><span class="p">:</span> <span class="s2">&quot;pghoard&quot;</span><span class="p">,</span>
+              <span class="s2">&quot;sslmode&quot;</span><span class="p">:</span> <span class="s2">&quot;require&quot;</span>
+          <span class="p">}</span>
+      <span class="p">]</span>
+    <span class="p">}</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>It is advised to use a replication slot when performing a form of wal streaming archiving (<code class="docutils literal notranslate"><span class="pre">pg_receivexlog</span></code> or <code class="docutils literal notranslate"><span class="pre">walreceiver</span></code> modes).</p>
+<dl class="simple">
+<dt>nodes (no default)</dt><dd><p>A node can be described as an object of libpq key: value connection info pairs or libpq
+connection string or a <code class="docutils literal notranslate"><span class="pre">postgres://</span></code> connection uri. If for example you’d
+like to use a streaming replication slot use the syntax {… “slot”: “slotname”}.</p>
+</dd>
+<dt>pg_data_directory (no default)</dt><dd><p>This is used when the <code class="docutils literal notranslate"><span class="pre">local-tar</span></code> or <code class="docutils literal notranslate"><span class="pre">delta</span></code> <code class="docutils literal notranslate"><span class="pre">basebackup_mode</span></code> is in
+use. The data directory must point to PostgreSQL’s <code class="docutils literal notranslate"><span class="pre">$PGDATA</span></code> and must be readable by the
+<code class="docutils literal notranslate"><span class="pre">pghoard</span></code> daemon.</p>
+</dd>
+<dt>prefix: (default site_name)</dt><dd><p>Path prefix to use for all backups related to this site.</p>
+</dd>
+<dt>pg_bin_directory: (default find binaries from well-known directories)</dt><dd><p>Where to find the <code class="docutils literal notranslate"><span class="pre">pg_basebackup</span></code> and <code class="docutils literal notranslate"><span class="pre">pg_receivewal</span></code> (<code class="docutils literal notranslate"><span class="pre">pg_receivexlog</span></code>
+for PG &lt; 10).
+If a value is not supplied, <code class="docutils literal notranslate"><span class="pre">pghoard</span></code> will attempt to find matching binaries
+from various well-known locations. If <code class="docutils literal notranslate"><span class="pre">pg_data_directory</span></code> is set and points to a
+valid data directory the lookup is restricted to the version contained in
+the given data directory.</p>
+</dd>
+</dl>
+<div class="section" id="basebackup-configuration">
+<span id="configuration-basebackup"></span><h3>Basebackup configuration<a class="headerlink" href="#basebackup-configuration" title="Permalink to this headline">¶</a></h3>
+<p>The following options all concern various aspect of the basebackup process and
+their retention policy.</p>
+<dl>
+<dt>basebackup_mode (default <code class="docutils literal notranslate"><span class="pre">&quot;basic&quot;</span></code>)</dt><dd><p>The way basebackups should be created. We support 4 different modes, the first
+two use <code class="docutils literal notranslate"><span class="pre">pg_basebackup</span></code> while the rest directly read the files from the
+cluster. Neither <code class="docutils literal notranslate"><span class="pre">basic</span></code> nor <code class="docutils literal notranslate"><span class="pre">pipe</span></code> modes support multiple tablespaces.</p>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">basic</span></code></dt><dd><p>runs <code class="docutils literal notranslate"><span class="pre">pg_basebackup</span></code> and waits for it to write an uncompressed tar file on the
+disk before compressing and optionally encrypting it.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">pipe</span></code></dt><dd><p>pipes the data directly from <code class="docutils literal notranslate"><span class="pre">pg_basebackup</span></code> to PGHoard’s
+compression and encryption processing reducing the amount of temporary disk
+space that’s required.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">local-tar</span></code></dt><dd><p>Can be used only when running on the same host as the
+PostgreSQL cluster. Instead of using <code class="docutils literal notranslate"><span class="pre">pg_basebackup</span></code>, PGHoard reads the files directly from <code class="docutils literal notranslate"><span class="pre">$PGDATA</span></code> in this mode and compresses and optionally encrypts them.  This mode allows backing up user
+tablespaces. Note that the <code class="docutils literal notranslate"><span class="pre">local-tar</span></code> backup mode can not be used on replica servers
+prior to PostgreSQL 9.6 unless the pgespresso extension is installed.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">delta</span></code></dt><dd><p>similar to <code class="docutils literal notranslate"><span class="pre">local-tar</span></code>, but only changed files are uploaded into the storage.
+On every backup snapshot of the data files is taken, this results in a manifest file,
+describing the hashes of all the files needed to be backed up.
+New hashes are uploaded to the storage and used together with complementary
+manifest from control file for restoration.</p>
+</dd>
+</dl>
+<p>In order to properly assess the efficiency of <code class="docutils literal notranslate"><span class="pre">delta</span></code> mode in comparison with
+<code class="docutils literal notranslate"><span class="pre">local-tar</span></code>, one can use <code class="docutils literal notranslate"><span class="pre">local-tar-delta-stats</span></code> mode, which behaves the same as
+<code class="docutils literal notranslate"><span class="pre">local-tar</span></code>, but also collects the metrics as if it was <code class="docutils literal notranslate"><span class="pre">delta</span></code> mode. It can help
+in decision making of switching to <code class="docutils literal notranslate"><span class="pre">delta</span></code> mode.</p>
+</dd>
+<dt>basebackup_thread (default <code class="docutils literal notranslate"><span class="pre">1</span></code>)</dt><dd><p>How many threads to use for tar, compress and encrypt tasks. Only applies for
+<code class="docutils literal notranslate"><span class="pre">local-tar</span></code> basebackup mode. Only values 1 and 2 are likely to be sensible for
+this, with higher thread count speed improvement is negligible and CPU time is
+lost switching between threads.</p>
+</dd>
+</dl>
+<p>The following options define how to schedule basebackups.</p>
+<dl class="simple">
+<dt>basebackup_interval_hours (default <code class="docutils literal notranslate"><span class="pre">24</span></code>)</dt><dd><p>How often to take a new basebackup of a cluster.  The shorter the interval,
+the faster your recovery will be, but the more CPU/IO usage is required from
+the servers it takes the basebackup from.  If set to a null value basebackups
+are not automatically taken at all.</p>
+</dd>
+<dt>basebackup_hour (default undefined)</dt><dd><p>The hour of day during which to start new basebackup. If backup interval is
+less than 24 hours this is the base hour used to calculate the hours at which
+backup should be taken. E.g. if backup interval is 6 hours and this value is
+set to 1 backups will be taken at hours 1, 7, 13 and 19. This value is only
+effective if also <code class="docutils literal notranslate"><span class="pre">basebackup_interval_hours</span></code> and <code class="docutils literal notranslate"><span class="pre">basebackup_minute</span></code> are
+set.</p>
+</dd>
+<dt>basebackup_minute (default undefined)</dt><dd><p>The minute of hour during which to start new basebackup. This value is only
+effective if also <code class="docutils literal notranslate"><span class="pre">basebackup_interval_hours</span></code> and <code class="docutils literal notranslate"><span class="pre">basebackup_hour</span></code> are
+set.</p>
+</dd>
+<dt>basebackup_chunks_in_progress (default  <code class="docutils literal notranslate"><span class="pre">5</span></code>)</dt><dd><p>How many basebackup chunks can there be simultaneously on disk while
+it is being taken. For chunk size configuration see <code class="docutils literal notranslate"><span class="pre">basebackup_chunk_size</span></code>.</p>
+</dd>
+<dt>basebackup_chunk_size (default <code class="docutils literal notranslate"><span class="pre">2147483648</span></code>)</dt><dd><p>In how large backup chunks to take a <code class="docutils literal notranslate"><span class="pre">local-tar</span></code> basebackup. Disk space
+needed for a successful backup is <code class="docutils literal notranslate"><span class="pre">basebackup_chunk_size</span> <span class="pre">*</span>
+<span class="pre">basebackup_chunks_in_progress</span></code>.</p>
+</dd>
+<dt>basebackup_compression_threads (default <code class="docutils literal notranslate"><span class="pre">0</span></code>)</dt><dd><p>Number of threads to use within compression library during basebackup. Only
+applicable when using compression library that supports internal multithreading,
+namely zstd at the moment. Default value <code class="docutils literal notranslate"><span class="pre">0</span></code> means not to use multithreading.</p>
+</dd>
+</dl>
+<p>The following options manage the retention policy.</p>
+<dl class="simple">
+<dt>basebackup_age_days_max (default <code class="docutils literal notranslate"><span class="pre">null</span></code>)</dt><dd><p>Maximum age for basebackups. Basebackups older than this will be removed. By
+default this value is not defined and basebackups are deleted based on total
+count instead.</p>
+</dd>
+<dt>basebackup_count (default <code class="docutils literal notranslate"><span class="pre">2</span></code>)</dt><dd><p>How many basebackups should be kept around for restoration purposes.  The
+more there are the more diskspace will be used. If <code class="docutils literal notranslate"><span class="pre">basebackup_max_age</span></code> is
+defined this controls the maximum number of basebackups to keep; if backup
+interval is less than 24 hour or extra backups are created there can be more
+than one basebackup per day and it is often desirable to set
+<code class="docutils literal notranslate"><span class="pre">basebackup_count</span></code> to something slightly higher than the max age in days.</p>
+</dd>
+<dt>basebackup_count_min (default <code class="docutils literal notranslate"><span class="pre">2</span></code>)</dt><dd><p>Minimum number of basebackups to keep. This is only effective when
+<code class="docutils literal notranslate"><span class="pre">basebackup_age_days_max</span></code> has been defined. If for example the server is
+powered off and then back on a month later, all existing backups would be very
+old. However, in that case it is usually not desirable to immediately delete
+all old backups. This setting allows specifying a minimum number of backups
+that should always be preserved regardless of their age.</p>
+</dd>
+</dl>
+</div>
+<div class="section" id="archiving-configuration">
+<span id="configuration-archiving"></span><h3>Archiving configuration<a class="headerlink" href="#archiving-configuration" title="Permalink to this headline">¶</a></h3>
+<dl>
+<dt>active_backup_mode (default <code class="docutils literal notranslate"><span class="pre">pg_receivexlog</span></code>)</dt><dd><p>Can be either <code class="docutils literal notranslate"><span class="pre">pg_receivexlog</span></code> or <code class="docutils literal notranslate"><span class="pre">archive_command</span></code>. If set to
+<code class="docutils literal notranslate"><span class="pre">pg_receivexlog</span></code>, <code class="docutils literal notranslate"><span class="pre">pghoard</span></code> will start up a <code class="docutils literal notranslate"><span class="pre">pg_receivexlog</span></code> process to be
+run against the database server.  If <code class="docutils literal notranslate"><span class="pre">archive_command</span></code> is set, we rely on the
+user setting the correct <code class="docutils literal notranslate"><span class="pre">archive_command</span></code> in
+<code class="docutils literal notranslate"><span class="pre">postgresql.conf</span></code>. You can also set this to the experimental <code class="docutils literal notranslate"><span class="pre">walreceiver</span></code> mode
+whereby pghoard will start communicating directly with PostgreSQL
+through the replication protocol. (Note requires psycopg2 &gt;= 2.7)</p>
+</dd>
+<dt>pg_receivexlog</dt><dd><p>When active backup mode is set to <code class="docutils literal notranslate"><span class="pre">&quot;pg_receivexlog&quot;</span></code> this object may
+optionally specify additional configuration options. The currently available
+options are all related to monitoring disk space availability and optionally
+pausing xlog/WAL receiving when disk space goes below configured threshold.
+This is useful when PGHoard is configured to create its temporary files on
+a different volume than where the main PostgreSQL data directory resides. By
+default this logic is disabled and the minimum free bytes must be configured
+to enable it.</p>
+<p>Example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+  <span class="s2">&quot;backup_sites&quot;</span><span class="p">:</span> <span class="p">{</span>
+    <span class="s2">&quot;mysite&quot;</span><span class="p">:</span> <span class="p">{</span>
+      <span class="s2">&quot;pg_receivexlog&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;disk_space_check_interval&quot;</span><span class="p">:</span> <span class="mi">10</span><span class="p">,</span>
+        <span class="s2">&quot;min_disk_free_bytes&quot;</span><span class="p">:</span> <span class="n">null</span><span class="p">,</span>
+        <span class="s2">&quot;resume_multiplier&quot;</span><span class="p">:</span> <span class="mf">1.5</span>
+      <span class="p">}</span>
+    <span class="p">}</span>
+  <span class="p">}</span>
+</pre></div>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">disk_space_check_interval</dt>
+<dd class="field-odd"><p>(default <code class="docutils literal notranslate"><span class="pre">10</span></code>)
+How often (in seconds) to check available disk space.</p>
+</dd>
+<dt class="field-even">min_disk_free_bytes</dt>
+<dd class="field-even"><p>(default <code class="docutils literal notranslate"><span class="pre">null</span></code>)
+Minimum bytes (in integer) that must be available in order to keep receiving
+xlogs/WAL from PostgreSQL. If available disk space goes below this
+limit a <code class="docutils literal notranslate"><span class="pre">STOP</span></code> signal is sent to the <code class="docutils literal notranslate"><span class="pre">pg_receivexlog</span></code> / <code class="docutils literal notranslate"><span class="pre">pg_receivewal</span></code>
+application.</p>
+</dd>
+<dt class="field-odd">resume_multiplier</dt>
+<dd class="field-odd"><p>(default <code class="docutils literal notranslate"><span class="pre">1.5</span></code>)
+Number of times the <code class="docutils literal notranslate"><span class="pre">min_disk_free_bytes</span></code> bytes of disk space that is
+required to start receiving xlog/WAL again (i.e. send the <code class="docutils literal notranslate"><span class="pre">CONT</span></code> signal to
+the <code class="docutils literal notranslate"><span class="pre">pg_receivexlog</span></code> / <code class="docutils literal notranslate"><span class="pre">pg_receivewal</span></code> process). Multiplier above 1
+should be used to avoid stopping and continuing the process constantly.</p>
+</dd>
+</dl>
+</dd>
+</dl>
+</div>
+</div>
+<div class="section" id="restore-configuration">
+<span id="configuration-restore"></span><h2>Restore configuration<a class="headerlink" href="#restore-configuration" title="Permalink to this headline">¶</a></h2>
+<div class="section" id="storage-configuration">
+<span id="configuration-storage"></span><h3>Storage configuration<a class="headerlink" href="#storage-configuration" title="Permalink to this headline">¶</a></h3>
+<p>FIXME: reformat that according to what’s been done above</p>
+<p><code class="docutils literal notranslate"><span class="pre">object_storage</span></code> (no default)</p>
+<p>Configured in <code class="docutils literal notranslate"><span class="pre">backup_sites</span></code> under a specific site.  If set, it must be an
+object describing a remote object storage.  The object must contain a key
+<code class="docutils literal notranslate"><span class="pre">storage_type</span></code> describing the type of the store, other keys and values are
+specific to the storage type.</p>
+<p><code class="docutils literal notranslate"><span class="pre">proxy_info</span></code> (no default)</p>
+<p>Dictionary specifying proxy information. The dictionary must contain keys <code class="docutils literal notranslate"><span class="pre">type</span></code>,
+<code class="docutils literal notranslate"><span class="pre">host</span></code> and <code class="docutils literal notranslate"><span class="pre">port</span></code>. Type can be either <code class="docutils literal notranslate"><span class="pre">socks5</span></code> or <code class="docutils literal notranslate"><span class="pre">http</span></code>.  Optionally,
+<code class="docutils literal notranslate"><span class="pre">user</span></code> and <code class="docutils literal notranslate"><span class="pre">pass</span></code> can be specified for proxy authentication.  Supported by
+Azure, Google and S3 drivers.</p>
+<p>The following object storage types are supported:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">local</span></code> makes backups to a local directory, see <code class="docutils literal notranslate"><span class="pre">pghoard-local-minimal.json</span></code>
+for example. Required keys:</p></li>
+</ul>
+<blockquote>
+<div><ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">directory</span></code> for the path to the backup target (local) storage directory</p></li>
+</ul>
+</div></blockquote>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">sftp</span></code> makes backups to a sftp server, required keys:</p></li>
+</ul>
+<blockquote>
+<div><ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">server</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">port</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">username</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">password</span></code> or <code class="docutils literal notranslate"><span class="pre">private_key</span></code></p></li>
+</ul>
+</div></blockquote>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">google</span></code> for Google Cloud Storage, required configuration keys:</p></li>
+</ul>
+<blockquote>
+<div><ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">project_id</span></code> containing the Google Storage project identifier</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">bucket_name</span></code> bucket where you want to store the files</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">credential_file</span></code> for the path to the Google JSON credential file</p></li>
+</ul>
+</div></blockquote>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">s3</span></code> for Amazon Web Services S3, required configuration keys:</p></li>
+</ul>
+<blockquote>
+<div><ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">aws_access_key_id</span></code> for the AWS access key id</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">aws_secret_access_key</span></code> for the AWS secret access key</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">region</span></code> S3 region of the bucket</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">bucket_name</span></code> name of the S3 bucket</p></li>
+</ul>
+</div></blockquote>
+<p>Optional keys for Amazon Web Services S3:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">encrypted</span></code> if True, use server-side encryption. Default is False.</p></li>
+</ul>
+</div></blockquote>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">s3</span></code> for other S3 compatible services such as Ceph, required
+configuration keys:</p></li>
+</ul>
+<blockquote>
+<div><ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">aws_access_key_id</span></code> for the AWS access key id</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">aws_secret_access_key</span></code> for the AWS secret access key</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">bucket_name</span></code> name of the S3 bucket</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">host</span></code> for overriding host for non AWS-S3 implementations</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">port</span></code> for overriding port for non AWS-S3 implementations</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">is_secure</span></code> for overriding the requirement for https for non AWS-S3</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">is_verify_tls</span></code> for configuring tls verify for non AWS-S3
+implementations</p></li>
+</ul>
+</div></blockquote>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">azure</span></code> for Microsoft Azure Storage, required configuration keys:</p></li>
+</ul>
+<blockquote>
+<div><ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">account_name</span></code> for the name of the Azure Storage account</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">account_key</span></code> for the secret key of the Azure Storage account</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">bucket_name</span></code> for the name of Azure Storage container used to store
+objects</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">azure_cloud</span></code> Azure cloud selector, <code class="docutils literal notranslate"><span class="pre">&quot;public&quot;</span></code> (default) or <code class="docutils literal notranslate"><span class="pre">&quot;germany&quot;</span></code></p></li>
+</ul>
+</div></blockquote>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">swift</span></code> for OpenStack Swift, required configuration keys:</p></li>
+</ul>
+<blockquote>
+<div><ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">user</span></code> for the Swift user (‘subuser’ in Ceph RadosGW)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">key</span></code> for the Swift secret_key</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">auth_url</span></code> for Swift authentication URL</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">container_name</span></code> name of the data container</p></li>
+<li><p>Optional configuration keys for Swift:</p></li>
+</ul>
+<blockquote>
+<div><ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">auth_version</span></code> - <code class="docutils literal notranslate"><span class="pre">2.0</span></code> (default) or <code class="docutils literal notranslate"><span class="pre">3.0</span></code> for keystone, use <code class="docutils literal notranslate"><span class="pre">1.0</span></code> with
+Ceph Rados GW.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">segment_size</span></code> - defaults to <code class="docutils literal notranslate"><span class="pre">1024**3</span></code> (1 gigabyte).  Objects larger
+than this will be split into multiple segments on upload.  Many Swift
+installations require large files (usually 5 gigabytes) to be segmented.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">tenant_name</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">region_name</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">user_id</span></code> - for auth_version 3.0</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">user_domain_id</span></code> - for auth_version 3.0</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">user_domain_name</span></code> - for auth_version 3.0</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">tenant_id</span></code> - for auth_version 3.0</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">project_id</span></code> - for auth_version 3.0</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">project_name</span></code> - for auth_version 3.0</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">project_domain_id</span></code> - for auth_version 3.0</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">project_domain_name</span></code> - for auth_version 3.0</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">service_type</span></code> - for auth_version 3.0</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">endpoint_type</span></code> - for auth_version 3.0</p></li>
+</ul>
+</div></blockquote>
+</div></blockquote>
+</div>
+<div class="section" id="encryption">
+<span id="configuration-encryption"></span><h3>Encryption<a class="headerlink" href="#encryption" title="Permalink to this headline">¶</a></h3>
+<p>It is possible to set up encryption on a per-site basis.</p>
+<p>To generate this configuration, you can use <code class="docutils literal notranslate"><span class="pre">pghoard_create_keys</span></code> to generate
+and output encryption keys in the <code class="docutils literal notranslate"><span class="pre">pghoard</span></code> configuration format.</p>
+<dl class="simple">
+<dt>encryption_key_id (no default)</dt><dd><p>Specifies the encryption key used when storing encrypted backups. If this
+configuration directive is specified, you must also define the public key
+for storing as well as private key for retrieving stored backups. These
+keys are specified with <code class="docutils literal notranslate"><span class="pre">encryption_keys</span></code> dictionary.</p>
+</dd>
+</dl>
+<dl class="field-list simple">
+<dt class="field-odd">encryption_keys</dt>
+<dd class="field-odd"><p>(no default)
+This key is a mapping from key id to keys. Keys in turn are mapping from
+<code class="docutils literal notranslate"><span class="pre">public</span></code> and <code class="docutils literal notranslate"><span class="pre">private</span></code> to PEM encoded RSA public and private keys
+respectively. Public key needs to be specified for storing backups. Private
+key needs to be in place for restoring encrypted backups.</p>
+</dd>
+</dl>
+</div>
+</div>
+</div>
+
+
+           </div>
+           
+          </div>
+          <footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
+        <a href="development.html" class="btn btn-neutral float-right" title="Development" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="monitoring.html" class="btn btn-neutral float-left" title="Monitoring" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>
+        &#169; Copyright 2021, Aiven.
+
+    </p>
+  </div>
+    
+    
+    
+    Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    
+    provided by <a href="https://readthedocs.org">Read the Docs</a>. 
+
+</footer>
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+  
+
+  <script type="text/javascript">
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script>
+
+  
+  
+    
+   
+
+</body>
+</html>

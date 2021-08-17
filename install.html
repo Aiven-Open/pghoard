@@ -1,0 +1,316 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  
+  <title>Installation &mdash; PGHoard 2.2.1-44-ge0fe987 documentation</title>
+  
+
+  
+  <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
+  <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+  <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+  <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
+
+  
+  
+
+  
+  
+
+  
+
+  
+  <!--[if lt IE 9]>
+    <script src="_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+    
+      <script type="text/javascript" id="documentation_options" data-url_root="./" src="_static/documentation_options.js"></script>
+        <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
+        <script src="_static/jquery.js"></script>
+        <script src="_static/underscore.js"></script>
+        <script src="_static/doctools.js"></script>
+    
+    <script type="text/javascript" src="_static/js/theme.js"></script>
+
+    
+    <link rel="author" title="About these documents" href="about.html" />
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Commands" href="commands.html" />
+    <link rel="prev" title="Architecture" href="architecture.html" /> 
+</head>
+
+<body class="wy-body-for-nav">
+
+   
+  <div class="wy-grid-for-nav">
+    
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+          
+
+          
+            <a href="index.html" class="icon icon-home"> PGHoard
+          
+
+          
+          </a>
+
+          
+            
+            
+          
+
+          
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+
+          
+        </div>
+
+        
+        <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
+          
+            
+            
+              
+            
+            
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="about.html">About PGHoard</a></li>
+<li class="toctree-l1"><a class="reference internal" href="quickstart.html">QuickStart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Installation</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#installation-from-your-distribution-package-manager">Installation from your distribution package manager</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#rhel">RHEL</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#debian">Debian</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#installation-from-pip">Installation from pip</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="#postgresql-configuration">PostgreSQL Configuration</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#wal-level">wal_level</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#replication-connections">Replication connections</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="commands.html">Commands</a></li>
+<li class="toctree-l1"><a class="reference internal" href="monitoring.html">Monitoring</a></li>
+<li class="toctree-l1"><a class="reference internal" href="configuration.html">Configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="development.html">Development</a></li>
+</ul>
+
+            
+          
+        </div>
+        
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+
+      
+      <nav class="wy-nav-top" aria-label="top navigation">
+        
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">PGHoard</a>
+        
+      </nav>
+
+
+      <div class="wy-nav-content">
+        
+        <div class="rst-content">
+        
+          
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div role="navigation" aria-label="breadcrumbs navigation">
+
+  <ul class="wy-breadcrumbs">
+    
+      <li><a href="index.html" class="icon icon-home"></a> &raquo;</li>
+        
+      <li>Installation</li>
+    
+    
+      <li class="wy-breadcrumbs-aside">
+        
+          
+            <a href="_sources/install.rst.txt" rel="nofollow"> View page source</a>
+          
+        
+      </li>
+    
+  </ul>
+
+  
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+            
+  <div class="section" id="installation">
+<h1>Installation<a class="headerlink" href="#installation" title="Permalink to this headline">¶</a></h1>
+<p>To run <code class="docutils literal notranslate"><span class="pre">PGHoard</span></code> you need to install it, and configure PostgreSQL according
+to the modes of backup and archiving you chose.</p>
+<p>This section only describes how to install it using a package manager.
+See <a class="reference internal" href="development.html#building-from-source"><span class="std std-ref">Building</span></a> for other installation methods.</p>
+<div class="section" id="installation-from-your-distribution-package-manager">
+<span id="installation-package"></span><h2>Installation from your distribution package manager<a class="headerlink" href="#installation-from-your-distribution-package-manager" title="Permalink to this headline">¶</a></h2>
+<div class="section" id="rhel">
+<h3>RHEL<a class="headerlink" href="#rhel" title="Permalink to this headline">¶</a></h3>
+<p>FIXME: the RPM package seems to be available on yum.postgresql.org. Write a
+proper documentation for that.</p>
+</div>
+<div class="section" id="debian">
+<h3>Debian<a class="headerlink" href="#debian" title="Permalink to this headline">¶</a></h3>
+<p>FIXME: can the package be included in apt.postgresql.org ? doesn’t seem to be
+the case for now.</p>
+</div>
+</div>
+<div class="section" id="installation-from-pip">
+<h2>Installation from pip<a class="headerlink" href="#installation-from-pip" title="Permalink to this headline">¶</a></h2>
+<p>You can also install it using pip:</p>
+<p><code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">pghoard</span></code></p>
+<p>FIXME: version of pghoard on pypi isn’t up to date.</p>
+</div>
+</div>
+<div class="section" id="postgresql-configuration">
+<span id="installation-postgresql-configuration"></span><h1>PostgreSQL Configuration<a class="headerlink" href="#postgresql-configuration" title="Permalink to this headline">¶</a></h1>
+<p>PosgreSQL should be configured to allow replication connections, and have a
+high enough <code class="docutils literal notranslate"><span class="pre">wal_level</span></code>.</p>
+<div class="section" id="wal-level">
+<h2>wal_level<a class="headerlink" href="#wal-level" title="Permalink to this headline">¶</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">wal_level</span></code> should be set to at least <code class="docutils literal notranslate"><span class="pre">replica</span></code> (or <code class="docutils literal notranslate"><span class="pre">archive</span></code> for
+PostgreSQL versions prior to 9.6).</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Changing <code class="docutils literal notranslate"><span class="pre">wal_level</span></code> requires restarting PostgreSQL.</p>
+</div>
+</div>
+<div class="section" id="replication-connections">
+<h2>Replication connections<a class="headerlink" href="#replication-connections" title="Permalink to this headline">¶</a></h2>
+<p>If you use the one of the non-local basebackup strategies (<code class="docutils literal notranslate"><span class="pre">basic</span></code>  or
+<code class="docutils literal notranslate"><span class="pre">pipe</span></code>), you will need to allow <code class="docutils literal notranslate"><span class="pre">pg_basebackup</span></code> to connect using a
+replication connection.</p>
+<p>Additionally, if you use a WAL-streaming archiving mode (<code class="docutils literal notranslate"><span class="pre">pg_receivexlog</span></code> or
+<code class="docutils literal notranslate"><span class="pre">walreceiver</span></code>) you will need another replication connection for those.</p>
+<p>The parameter <code class="docutils literal notranslate"><span class="pre">max_wal_senders</span></code> must then be setup accordingly to allow for
+at least that number of connections. You should of course take into account the
+other replication connections that you may need, for one or several replicas.</p>
+<p>Example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">max_wal_senders</span> <span class="o">=</span> <span class="mi">4</span>
+</pre></div>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Changing <code class="docutils literal notranslate"><span class="pre">max_wal_senders</span></code> requires restrating PostgreSQL</p>
+</div>
+<p>You also need a PostgreSQL user account with the <code class="docutils literal notranslate"><span class="pre">REPLICATION</span></code> attribute,
+using psql:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="o">--</span> <span class="n">create</span> <span class="n">the</span> <span class="n">user</span>
+<span class="n">CREATE</span> <span class="n">USER</span> <span class="n">pghoard</span> <span class="n">REPLICATION</span><span class="p">;</span>
+<span class="o">--</span> <span class="n">Setup</span> <span class="n">a</span> <span class="n">password</span> <span class="k">for</span> <span class="n">the</span> <span class="n">pghoard</span> <span class="n">user</span>
+\<span class="n">password</span> <span class="n">pghoard</span>
+</pre></div>
+</div>
+<p>This user will need to be allowed to connect. For this you will need to edit
+the <code class="docutils literal notranslate"><span class="pre">pg_hba.conf</span></code> file on your PostgreSQL cluster.</p>
+<p>For example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="c1"># TYPE  DATABASE     USER     ADDRESS       METHOD</span>
+<span class="n">host</span>    <span class="n">replication</span>  <span class="n">pghoard</span>  <span class="mf">127.0.0.1</span><span class="o">/</span><span class="mi">32</span>  <span class="n">md5</span>
+</pre></div>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>See <a class="reference external" href="https://www.postgresql.org/docs/current/auth-pg-hba-conf.html">PostgreSQL documentation</a> for
+more information</p>
+</div>
+<p>After editing, please reload the configuration with either:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">SELECT</span> <span class="n">pg_reload_conf</span><span class="p">();</span>
+</pre></div>
+</div>
+<p>or by using your distribution service manager (ex: <code class="docutils literal notranslate"><span class="pre">systemctl</span> <span class="pre">reload</span>
+<span class="pre">postgresql</span></code>)</p>
+<p>Now you can move on to <a class="reference internal" href="configuration.html#configuration"><span class="std std-ref">Configuration</span></a> for how to setup PGHoard.:</p>
+</div>
+</div>
+
+
+           </div>
+           
+          </div>
+          <footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
+        <a href="commands.html" class="btn btn-neutral float-right" title="Commands" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="architecture.html" class="btn btn-neutral float-left" title="Architecture" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>
+        &#169; Copyright 2021, Aiven.
+
+    </p>
+  </div>
+    
+    
+    
+    Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    
+    provided by <a href="https://readthedocs.org">Read the Docs</a>. 
+
+</footer>
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+  
+
+  <script type="text/javascript">
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script>
+
+  
+  
+    
+   
+
+</body>
+</html>

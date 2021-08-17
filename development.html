@@ -1,0 +1,297 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  
+  <title>Development &mdash; PGHoard 2.2.1-44-ge0fe987 documentation</title>
+  
+
+  
+  <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
+  <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+  <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+  <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
+
+  
+  
+
+  
+  
+
+  
+
+  
+  <!--[if lt IE 9]>
+    <script src="_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+    
+      <script type="text/javascript" id="documentation_options" data-url_root="./" src="_static/documentation_options.js"></script>
+        <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
+        <script src="_static/jquery.js"></script>
+        <script src="_static/underscore.js"></script>
+        <script src="_static/doctools.js"></script>
+    
+    <script type="text/javascript" src="_static/js/theme.js"></script>
+
+    
+    <link rel="author" title="About these documents" href="about.html" />
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="prev" title="Configuration" href="configuration.html" /> 
+</head>
+
+<body class="wy-body-for-nav">
+
+   
+  <div class="wy-grid-for-nav">
+    
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+          
+
+          
+            <a href="index.html" class="icon icon-home"> PGHoard
+          
+
+          
+          </a>
+
+          
+            
+            
+          
+
+          
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+
+          
+        </div>
+
+        
+        <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
+          
+            
+            
+              
+            
+            
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="about.html">About PGHoard</a></li>
+<li class="toctree-l1"><a class="reference internal" href="quickstart.html">QuickStart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="install.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="install.html#postgresql-configuration">PostgreSQL Configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="commands.html">Commands</a></li>
+<li class="toctree-l1"><a class="reference internal" href="monitoring.html">Monitoring</a></li>
+<li class="toctree-l1"><a class="reference internal" href="configuration.html">Configuration</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Development</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#requirements">Requirements</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#vagrant">Vagrant</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#building">Building</a></li>
+</ul>
+</li>
+</ul>
+
+            
+          
+        </div>
+        
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+
+      
+      <nav class="wy-nav-top" aria-label="top navigation">
+        
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">PGHoard</a>
+        
+      </nav>
+
+
+      <div class="wy-nav-content">
+        
+        <div class="rst-content">
+        
+          
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div role="navigation" aria-label="breadcrumbs navigation">
+
+  <ul class="wy-breadcrumbs">
+    
+      <li><a href="index.html" class="icon icon-home"></a> &raquo;</li>
+        
+      <li>Development</li>
+    
+    
+      <li class="wy-breadcrumbs-aside">
+        
+          
+            <a href="_sources/development.rst.txt" rel="nofollow"> View page source</a>
+          
+        
+      </li>
+    
+  </ul>
+
+  
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+            
+  <div class="section" id="development">
+<h1>Development<a class="headerlink" href="#development" title="Permalink to this headline">¶</a></h1>
+<div class="section" id="requirements">
+<h2>Requirements<a class="headerlink" href="#requirements" title="Permalink to this headline">¶</a></h2>
+<p>PGHoard can backup and restore PostgreSQL versions 9.3 and above.  The
+daemon is implemented in Python and works with CPython version 3.5 or newer.
+The following Python modules are required:</p>
+<ul class="simple">
+<li><p><a class="reference external" href="http://initd.org/psycopg/">psycopg2</a> to look up transaction log metadata</p></li>
+<li><p><a class="reference external" href="http://www.python-requests.org/en/latest/">requests</a> for the internal client-server architecture</p></li>
+</ul>
+<p>Optional requirements include:</p>
+<ul class="simple">
+<li><p><a class="reference external" href="https://github.com/aiven/azure-sdk-for-python/tree/aiven/rpm_fixes">azure</a> for Microsoft Azure object storage (patched version required, see link)</p></li>
+<li><p><a class="reference external" href="https://github.com/boto/botocore">botocore</a> for AWS S3 (or Ceph-S3) object storage</p></li>
+<li><p><a class="reference external" href="https://github.com/google/google-api-python-client">google-api-client</a> for Google Cloud object storage</p></li>
+<li><p><a class="reference external" href="https://cryptography.io/">cryptography</a> for backup encryption and decryption (version 0.8 or newer required)</p></li>
+<li><p><a class="reference external" href="https://github.com/andrix/python-snappy">snappy</a> for Snappy compression and decompression</p></li>
+<li><p><a class="reference external" href="https://github.com/indygreg/python-zstandard">zstandard</a> for Zstandard (zstd) compression and decompression</p></li>
+<li><p><a class="reference external" href="https://github.com/systemd/python-systemd">systemd</a> for systemd integration</p></li>
+<li><p><a class="reference external" href="https://github.com/openstack/python-swiftclient">swiftclient</a> for OpenStack Swift object storage</p></li>
+<li><p><a class="reference external" href="https://github.com/paramiko/paramiko">paramiko</a>  for sftp object storage</p></li>
+</ul>
+<p>Developing and testing PGHoard also requires the following utilities:
+<a class="reference external" href="https://flake8.readthedocs.io/">flake8</a>, <a class="reference external" href="https://www.pylint.org/">pylint</a> and <a class="reference external" href="http://pytest.org/">pytest</a>.</p>
+<p>PGHoard has been developed and tested on modern Linux x86-64 systems, but
+should work on other platforms that provide the required modules.</p>
+</div>
+<div class="section" id="vagrant">
+<h2>Vagrant<a class="headerlink" href="#vagrant" title="Permalink to this headline">¶</a></h2>
+<p>The Vagrantfile can be used to setup a vagrant development environment, consisting of two
+vagrant virtual machines.</p>
+<ol class="arabic">
+<li><p>Postgresql 9.4, python 3.5 and 3.6:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">vagrant</span> <span class="n">up</span>
+<span class="n">vagrant</span> <span class="n">ssh</span> <span class="n">postgres9</span>
+<span class="n">cd</span> <span class="o">/</span><span class="n">vagrant</span>
+<span class="n">source</span> <span class="o">~/</span><span class="n">venv3</span><span class="o">/</span><span class="nb">bin</span><span class="o">/</span><span class="n">activate</span>
+<span class="n">make</span> <span class="n">test</span>
+<span class="n">source</span> <span class="o">~/</span><span class="n">venv3</span><span class="mf">.6</span><span class="o">/</span><span class="nb">bin</span><span class="o">/</span><span class="n">activate</span>
+<span class="n">make</span> <span class="n">test</span>
+</pre></div>
+</div>
+</li>
+<li><p>Postgresql 10 and python 3.7:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">vagrant</span> <span class="n">ssh</span> <span class="n">postgres10</span>
+<span class="n">cd</span> <span class="o">/</span><span class="n">vagrant</span>
+<span class="n">make</span> <span class="n">test</span>
+</pre></div>
+</div>
+</li>
+</ol>
+<p>Note: make deb does not work from vagrant at the moment, hopefully this will be resolved soon</p>
+</div>
+<div class="section" id="building">
+<span id="building-from-source"></span><h2>Building<a class="headerlink" href="#building" title="Permalink to this headline">¶</a></h2>
+<p>To build an installation package for your distribution, go to the root
+directory of a PGHoard Git checkout and run:</p>
+<p>Debian:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">make</span> <span class="n">deb</span>
+</pre></div>
+</div>
+<p>This will produce a <code class="docutils literal notranslate"><span class="pre">.deb</span></code> package into the parent directory of the Git
+checkout.</p>
+<p>Fedora:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">make</span> <span class="n">rpm</span>
+</pre></div>
+</div>
+<p>This will produce a <code class="docutils literal notranslate"><span class="pre">.rpm</span></code> package usually into <code class="docutils literal notranslate"><span class="pre">rpm/RPMS/noarch/</span></code>.</p>
+<p>Python/Other:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">python</span> <span class="n">setup</span><span class="o">.</span><span class="n">py</span> <span class="n">bdist_egg</span>
+</pre></div>
+</div>
+<p>This will produce an egg file into a dist directory within the same folder.</p>
+</div>
+</div>
+
+
+           </div>
+           
+          </div>
+          <footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
+        <a href="configuration.html" class="btn btn-neutral float-left" title="Configuration" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>
+        &#169; Copyright 2021, Aiven.
+
+    </p>
+  </div>
+    
+    
+    
+    Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    
+    provided by <a href="https://readthedocs.org">Read the Docs</a>. 
+
+</footer>
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+  
+
+  <script type="text/javascript">
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script>
+
+  
+  
+    
+   
+
+</body>
+</html>

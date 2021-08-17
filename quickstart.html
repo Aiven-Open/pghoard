@@ -1,0 +1,395 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  
+  <title>QuickStart &mdash; PGHoard 2.2.1-44-ge0fe987 documentation</title>
+  
+
+  
+  <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
+  <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+  <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+  <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
+
+  
+  
+
+  
+  
+
+  
+
+  
+  <!--[if lt IE 9]>
+    <script src="_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+    
+      <script type="text/javascript" id="documentation_options" data-url_root="./" src="_static/documentation_options.js"></script>
+        <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
+        <script src="_static/jquery.js"></script>
+        <script src="_static/underscore.js"></script>
+        <script src="_static/doctools.js"></script>
+    
+    <script type="text/javascript" src="_static/js/theme.js"></script>
+
+    
+    <link rel="author" title="About these documents" href="about.html" />
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Architecture" href="architecture.html" />
+    <link rel="prev" title="About PGHoard" href="about.html" /> 
+</head>
+
+<body class="wy-body-for-nav">
+
+   
+  <div class="wy-grid-for-nav">
+    
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+          
+
+          
+            <a href="index.html" class="icon icon-home"> PGHoard
+          
+
+          
+          </a>
+
+          
+            
+            
+          
+
+          
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+
+          
+        </div>
+
+        
+        <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
+          
+            
+            
+              
+            
+            
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="about.html">About PGHoard</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">QuickStart</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#installation">Installation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#configuration">Configuration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#testing-your-first-backup">Testing your first backup</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#launching-pghoard">Launching pghoard</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#restoration">Restoration</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#optional-adding-encryption">Optional: Adding encryption</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="install.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="install.html#postgresql-configuration">PostgreSQL Configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="commands.html">Commands</a></li>
+<li class="toctree-l1"><a class="reference internal" href="monitoring.html">Monitoring</a></li>
+<li class="toctree-l1"><a class="reference internal" href="configuration.html">Configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="development.html">Development</a></li>
+</ul>
+
+            
+          
+        </div>
+        
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+
+      
+      <nav class="wy-nav-top" aria-label="top navigation">
+        
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">PGHoard</a>
+        
+      </nav>
+
+
+      <div class="wy-nav-content">
+        
+        <div class="rst-content">
+        
+          
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div role="navigation" aria-label="breadcrumbs navigation">
+
+  <ul class="wy-breadcrumbs">
+    
+      <li><a href="index.html" class="icon icon-home"></a> &raquo;</li>
+        
+      <li>QuickStart</li>
+    
+    
+      <li class="wy-breadcrumbs-aside">
+        
+          
+            <a href="_sources/quickstart.rst.txt" rel="nofollow"> View page source</a>
+          
+        
+      </li>
+    
+  </ul>
+
+  
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+            
+  <div class="section" id="quickstart">
+<h1>QuickStart<a class="headerlink" href="#quickstart" title="Permalink to this headline">¶</a></h1>
+<p>This quickstart will help you setup PGHoard for simple use case:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>“Remote” basebackup using pg_basebackup</p></li>
+<li><p>WAL Archiving using the <code class="docutils literal notranslate"><span class="pre">pg_receivewal</span></code> tool</p></li>
+<li><p>Local archiving to <code class="docutils literal notranslate"><span class="pre">/mnt/pghoard_backup/</span></code></p></li>
+</ul>
+</div></blockquote>
+<p>The local archiving is chosen because it’s the easiest to demonstrate without
+external dependencies. For the object storage of your choice (S3, Azure,
+GCP…), refer to the appropriate section at <a class="reference internal" href="configuration.html#configuration-storage"><span class="std std-ref">Storage configuration</span></a>.</p>
+<div class="section" id="installation">
+<h2>Installation<a class="headerlink" href="#installation" title="Permalink to this headline">¶</a></h2>
+<p>Follow the instructions at <a class="reference internal" href="install.html#installation-package"><span class="std std-ref">Installation from your distribution package manager</span></a>.
+Then, setup PostgreSQL following <a class="reference internal" href="install.html#installation-postgresql-configuration"><span class="std std-ref">PostgreSQL Configuration</span></a>.</p>
+</div>
+<div class="section" id="configuration">
+<h2>Configuration<a class="headerlink" href="#configuration" title="Permalink to this headline">¶</a></h2>
+<p>It is advised to use a replication slot to prevent WAL files from being recycled
+when we haven’t consumed them yet.</p>
+<p>You can use pg_receivewal to create your replication slot:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">pg_receivewal</span> <span class="o">--</span><span class="n">create</span><span class="o">-</span><span class="n">slot</span> <span class="o">-</span><span class="n">S</span> <span class="n">pghoard_slot</span> <span class="o">-</span><span class="n">U</span> <span class="n">pghoard</span>
+</pre></div>
+</div>
+<p>Create a <code class="docutils literal notranslate"><span class="pre">/var/lib/pghoard.json</span></code> file containing the following information, replacing
+the user and password you chose at the previous step:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+    <span class="s2">&quot;backup_location&quot;</span><span class="p">:</span> <span class="s2">&quot;/mnt/pghoard_backup/state/&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;backup_sites&quot;</span><span class="p">:</span> <span class="p">{</span>
+      <span class="s2">&quot;my_test_cluster&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;nodes&quot;</span><span class="p">:</span> <span class="p">[</span>
+          <span class="p">{</span>
+            <span class="s2">&quot;host&quot;</span><span class="p">:</span> <span class="s2">&quot;127.0.0.1&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;password&quot;</span><span class="p">:</span> <span class="s2">&quot;secret&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;user&quot;</span><span class="p">:</span> <span class="s2">&quot;pghoard&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;slot&quot;</span><span class="p">:</span> <span class="s2">&quot;pghoard_slot&quot;</span>
+          <span class="p">}</span>
+        <span class="p">],</span>
+        <span class="s2">&quot;object_storage&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;storage_type&quot;</span><span class="p">:</span> <span class="s2">&quot;local&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;directory&quot;</span><span class="p">:</span> <span class="s2">&quot;/mnt/pghoard_backup/&quot;</span>
+        <span class="p">},</span>
+        <span class="s2">&quot;pg_data_directory&quot;</span><span class="p">:</span> <span class="s2">&quot;/var/lib/postgres/data/&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;pg_receivexlog_path&quot;</span><span class="p">:</span> <span class="s2">&quot;/usr/bin/pg_receivewal&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;pg_basebackup_path&quot;</span><span class="p">:</span> <span class="s2">&quot;/usr/bin/pg_basebackup&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;basebackup_interval_hours&quot;</span><span class="p">:</span> <span class="mi">24</span><span class="p">,</span>
+        <span class="s2">&quot;active_backup_mode&quot;</span><span class="p">:</span> <span class="s2">&quot;basic&quot;</span>
+
+      <span class="p">}</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</div>
+<div class="section" id="testing-your-first-backup">
+<h2>Testing your first backup<a class="headerlink" href="#testing-your-first-backup" title="Permalink to this headline">¶</a></h2>
+<div class="section" id="launching-pghoard">
+<h3>Launching pghoard<a class="headerlink" href="#launching-pghoard" title="Permalink to this headline">¶</a></h3>
+<p>Launch pghoard using:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">pghoard</span> <span class="n">pghoard</span><span class="o">.</span><span class="n">json</span>
+</pre></div>
+</div>
+<p>If everything went well, you should see something like this in the logs of
+pghoard:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="mi">2021</span><span class="o">-</span><span class="mi">07</span><span class="o">-</span><span class="mi">30</span> <span class="mi">15</span><span class="p">:</span><span class="mi">56</span><span class="p">:</span><span class="mi">48</span><span class="p">,</span><span class="mi">678</span> <span class="n">PGBaseBackup</span>    <span class="n">Thread</span><span class="o">-</span><span class="mi">23</span>       <span class="n">INFO</span>    <span class="n">Started</span><span class="p">:</span> <span class="p">[</span><span class="s1">&#39;/usr/bin/pg_basebackup&#39;</span><span class="p">,</span> <span class="s1">&#39;--format&#39;</span><span class="p">,</span> <span class="s1">&#39;tar&#39;</span><span class="p">,</span> <span class="s1">&#39;--label&#39;</span><span class="p">,</span> <span class="s1">&#39;pghoard_base_backup&#39;</span><span class="p">,</span> <span class="s1">&#39;--verbose&#39;</span><span class="p">,</span> <span class="s1">&#39;--pgdata&#39;</span><span class="p">,</span> <span class="s1">&#39;/mnt/pghoard_backup/state/my_test_cluster/basebackup_incoming/2021-07-30_13-56_0&#39;</span><span class="p">,</span> <span class="s1">&#39;--wal-method=none&#39;</span><span class="p">,</span> <span class="s1">&#39;--progress&#39;</span><span class="p">,</span> <span class="s1">&#39;--dbname&#39;</span><span class="p">,</span> <span class="s2">&quot;dbname=&#39;replication&#39; host=&#39;127.0.0.1&#39; replication=&#39;true&#39; user=&#39;pghoard&#39;&quot;</span><span class="p">],</span> <span class="n">running</span> <span class="k">as</span> <span class="n">PID</span><span class="p">:</span> <span class="mi">3652881</span><span class="p">,</span> <span class="n">basebackup_location</span><span class="p">:</span> <span class="s1">&#39;/mnt/pghoard_backup/state/my_test_cluster/basebackup_incoming/2021-07-30_13-56_0/base.tar&#39;</span>
+<span class="mi">2021</span><span class="o">-</span><span class="mi">07</span><span class="o">-</span><span class="mi">30</span> <span class="mi">15</span><span class="p">:</span><span class="mi">56</span><span class="p">:</span><span class="mi">48</span><span class="p">,</span><span class="mi">805</span> <span class="n">PGBaseBackup</span>    <span class="n">Thread</span><span class="o">-</span><span class="mi">23</span>       <span class="n">INFO</span>    <span class="n">Ran</span><span class="p">:</span> <span class="p">[</span><span class="s1">&#39;/usr/bin/pg_basebackup&#39;</span><span class="p">,</span> <span class="s1">&#39;--format&#39;</span><span class="p">,</span> <span class="s1">&#39;tar&#39;</span><span class="p">,</span> <span class="s1">&#39;--label&#39;</span><span class="p">,</span> <span class="s1">&#39;pghoard_base_backup&#39;</span><span class="p">,</span> <span class="s1">&#39;--verbose&#39;</span><span class="p">,</span> <span class="s1">&#39;--pgdata&#39;</span><span class="p">,</span> <span class="s1">&#39;/mnt/pghoard_backup/state/my_test_cluster/basebackup_incoming/2021-07-30_13-56_0&#39;</span><span class="p">,</span> <span class="s1">&#39;--wal-method=none&#39;</span><span class="p">,</span> <span class="s1">&#39;--progress&#39;</span><span class="p">,</span> <span class="s1">&#39;--dbname&#39;</span><span class="p">,</span> <span class="s2">&quot;dbname=&#39;replication&#39; host=&#39;127.0.0.1&#39; replication=&#39;true&#39; user=&#39;pghoard&#39;&quot;</span><span class="p">],</span> <span class="n">took</span><span class="p">:</span> <span class="mf">0.127</span><span class="n">s</span> <span class="n">to</span> <span class="n">run</span><span class="p">,</span> <span class="n">returncode</span><span class="p">:</span> <span class="mi">0</span>
+<span class="mi">2021</span><span class="o">-</span><span class="mi">07</span><span class="o">-</span><span class="mi">30</span> <span class="mi">15</span><span class="p">:</span><span class="mi">56</span><span class="p">:</span><span class="mi">48</span><span class="p">,</span><span class="mi">922</span> <span class="n">Compressor</span>      <span class="n">Thread</span><span class="o">-</span><span class="mi">3</span>        <span class="n">INFO</span>    <span class="n">Compressed</span> <span class="mi">33009152</span> <span class="n">byte</span> <span class="nb">open</span> <span class="n">file</span> <span class="s1">&#39;/mnt/pghoard_backup/state/my_test_cluster/basebackup_incoming/2021-07-30_13-56_0/base.tar&#39;</span> <span class="n">to</span> <span class="mi">6797509</span> <span class="nb">bytes</span> <span class="p">(</span><span class="mi">21</span><span class="o">%</span><span class="p">),</span> <span class="n">took</span><span class="p">:</span> <span class="mf">0.091</span><span class="n">s</span>
+<span class="mi">2021</span><span class="o">-</span><span class="mi">07</span><span class="o">-</span><span class="mi">30</span> <span class="mi">15</span><span class="p">:</span><span class="mi">56</span><span class="p">:</span><span class="mi">48</span><span class="p">,</span><span class="mi">925</span> <span class="n">TransferAgent</span>   <span class="n">Thread</span><span class="o">-</span><span class="mi">12</span>       <span class="n">INFO</span>    <span class="n">Uploading</span> <span class="n">file</span> <span class="n">to</span> <span class="nb">object</span> <span class="n">store</span><span class="p">:</span> <span class="n">src</span><span class="o">=</span><span class="s1">&#39;/mnt/pghoard_backup/state/my_test_cluster/basebackup/2021-07-30_13-56_0&#39;</span> <span class="n">dst</span><span class="o">=</span><span class="s1">&#39;my_test_cluster/basebackup/2021-07-30_13-56_0&#39;</span>
+<span class="mi">2021</span><span class="o">-</span><span class="mi">07</span><span class="o">-</span><span class="mi">30</span> <span class="mi">15</span><span class="p">:</span><span class="mi">56</span><span class="p">:</span><span class="mi">48</span><span class="p">,</span><span class="mi">928</span> <span class="n">TransferAgent</span>   <span class="n">Thread</span><span class="o">-</span><span class="mi">12</span>       <span class="n">INFO</span>    <span class="n">Deleting</span> <span class="n">file</span><span class="p">:</span> <span class="s1">&#39;/mnt/pghoard_backup/state/my_test_cluster/basebackup/2021-07-30_13-56_0&#39;</span> <span class="n">since</span> <span class="n">it</span> <span class="n">has</span> <span class="n">been</span> <span class="n">uploaded</span>
+</pre></div>
+</div>
+<p>What this means is that pghoard performed the following sequence of actions:</p>
+<ul class="simple">
+<li><p>it launched pg_basebackup to perform the first basebackup of your cluster,
+and stored it in a temporary location (<code class="docutils literal notranslate"><span class="pre">backup_location</span></code> from the config file)</p></li>
+<li><p>then it “uploaded” it. Since we chose a local storage for backup, it is just
+copied to the destination.</p></li>
+<li><p>finally it removes the temporary files</p></li>
+</ul>
+<p>This process would have been the same had you used a remote object storage like
+<code class="docutils literal notranslate"><span class="pre">S3</span></code> or <code class="docutils literal notranslate"><span class="pre">Swift</span></code>.</p>
+<p>You can check the contents of the final storage location:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>❯ tree  /mnt/pghoard_backup/my_test_cluster
+/mnt/pghoard_backup/my_test_cluster
+└── basebackup
+    ├── 2021-07-30_13-56_0
+    └── 2021-07-30_13-56_0.metadata
+</pre></div>
+</div>
+</div>
+<div class="section" id="restoration">
+<h3>Restoration<a class="headerlink" href="#restoration" title="Permalink to this headline">¶</a></h3>
+<p>You can list your database basebackups by running:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>❯ pghoard_restore list-basebackups --config pghoard.json -v
+Available &#39;my_test_cluster&#39; basebackups:
+
+Basebackup                                Backup size    Orig size  Start time
+----------------------------------------  -----------  -----------  --------------------
+my_test_cluster/basebackup/2021-07-30_13-56_0         6 MB        31 MB  2021-07-30T13:56:48Z
+    metadata: {&#39;backup-decision-time&#39;: &#39;2021-07-30T13:56:48.673846+00:00&#39;, &#39;backup-reason&#39;: &#39;scheduled&#39;, &#39;start-wal-segment&#39;: &#39;000000010000000000000081&#39;, &#39;pg-version&#39;: &#39;130003&#39;, &#39;compression-algorithm&#39;: &#39;snappy&#39;, &#39;compression-level&#39;: &#39;0&#39;, &#39;original-file-size&#39;: &#39;33009152&#39;, &#39;host&#39;: &#39;myhost&#39;}
+</pre></div>
+</div>
+<p>If we’d want to restore to the latest point in time we could fetch the
+required basebackup by running:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">pghoard_restore</span> <span class="n">get</span><span class="o">-</span><span class="n">basebackup</span> <span class="o">--</span><span class="n">config</span> <span class="n">pghoard</span><span class="o">.</span><span class="n">json</span> \
+    <span class="o">--</span><span class="n">target</span><span class="o">-</span><span class="nb">dir</span> <span class="o">&lt;</span><span class="n">destination</span><span class="o">&gt;</span> <span class="o">--</span><span class="n">restore</span><span class="o">-</span><span class="n">to</span><span class="o">-</span><span class="n">master</span>
+
+<span class="n">Basebackup</span> <span class="n">complete</span><span class="o">.</span>
+<span class="n">You</span> <span class="n">can</span> <span class="n">start</span> <span class="n">PostgreSQL</span> <span class="n">by</span> <span class="n">running</span> <span class="n">pg_ctl</span> <span class="o">-</span><span class="n">D</span> <span class="n">foo</span> <span class="n">start</span>
+<span class="n">On</span> <span class="n">systemd</span> <span class="n">based</span> <span class="n">systems</span> <span class="n">you</span> <span class="n">can</span> <span class="n">run</span> <span class="n">systemctl</span> <span class="n">start</span> <span class="n">postgresql</span>
+<span class="n">On</span> <span class="n">SYSV</span> <span class="n">Init</span> <span class="n">based</span> <span class="n">systems</span> <span class="n">you</span> <span class="n">can</span> <span class="n">run</span> <span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">init</span><span class="o">.</span><span class="n">d</span><span class="o">/</span><span class="n">postgresql</span> <span class="n">start</span>
+</pre></div>
+</div>
+<p>Note that the <code class="docutils literal notranslate"><span class="pre">target-dir</span></code> needs to be either an empty or non-existent
+directory in which case PGHoard will automatically create it.</p>
+<p>After this we’d proceed to start both the PGHoard server process and the
+PostgreSQL server normally by running (on systemd based systems, assuming
+PostgreSQL 9.5 is used):</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">systemctl</span> <span class="n">start</span> <span class="n">pghoard</span>
+<span class="n">systemctl</span> <span class="n">start</span> <span class="n">postgresql</span><span class="o">-</span><span class="mf">9.5</span>
+</pre></div>
+</div>
+<p>Which will make PostgreSQL start recovery process to the latest point
+in time. PGHoard must be running before you start up the
+PostgreSQL server. To see other possible restoration options please look at
+<a class="reference internal" href="commands.html#commands-restore"><span class="std std-ref">pghoard_restore</span></a>.</p>
+</div>
+</div>
+<div class="section" id="optional-adding-encryption">
+<span id="quickstart-encryption"></span><h2>Optional: Adding encryption<a class="headerlink" href="#optional-adding-encryption" title="Permalink to this headline">¶</a></h2>
+<p>If you want to encrypt your backups, you need to generate a public / private RSA
+key pair.</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">pghoard_create_keys</span></code> script is used for that:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">pghoard_create_keys</span> <span class="o">--</span><span class="n">site</span> <span class="n">my_test_site</span> <span class="o">--</span><span class="n">key</span><span class="o">-</span><span class="nb">id</span> <span class="mi">1</span>
+</pre></div>
+</div>
+<p>It will output a config snippet of the form:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+    <span class="s2">&quot;backup_sites&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;my_test_site&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;encryption_key_id&quot;</span><span class="p">:</span> <span class="s2">&quot;1&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;encryption_keys&quot;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s2">&quot;1&quot;</span><span class="p">:</span> <span class="p">{</span>
+                    <span class="s2">&quot;private&quot;</span><span class="p">:</span> <span class="s2">&quot;-----BEGIN PRIVATE KEY-----&lt;actual key&gt;-----END PRIVATE KEY-----</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;public&quot;</span><span class="p">:</span> <span class="s2">&quot;-----BEGIN PUBLIC KEY-----&lt;actual key&gt;-----END PUBLIC KEY-----</span><span class="se">\n</span><span class="s2">&quot;</span>
+                <span class="p">}</span>
+            <span class="p">}</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>If you want this server to perform both backup and restore, you will need to
+copy both keys to your config file, under the <code class="docutils literal notranslate"><span class="pre">backup_sites/my_test_site</span></code>
+section.</p>
+<p>If you only need to perform backups, you can store only the public key, in which
+case the host running pghoard will not be able to decipher the encrypted
+backups.</p>
+<div class="admonition danger">
+<p class="admonition-title">Danger</p>
+<p>Always keep a safe copy of your private key ! You WILL need it
+to access your backups</p>
+</div>
+</div>
+</div>
+
+
+           </div>
+           
+          </div>
+          <footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
+        <a href="architecture.html" class="btn btn-neutral float-right" title="Architecture" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="about.html" class="btn btn-neutral float-left" title="About PGHoard" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>
+        &#169; Copyright 2021, Aiven.
+
+    </p>
+  </div>
+    
+    
+    
+    Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    
+    provided by <a href="https://readthedocs.org">Read the Docs</a>. 
+
+</footer>
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+  
+
+  <script type="text/javascript">
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script>
+
+  
+  
+    
+   
+
+</body>
+</html>
