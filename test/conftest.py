@@ -36,8 +36,9 @@ logutil.configure_logging()
 class PGTester:
     def __init__(self, pgdata):
         pgver = os.getenv("PG_VERSION")
-        pgbin, ver = pghconfig.find_pg_binary("", versions=[pgver] if pgver else None)
-        self.pgbin = pgbin
+        postgresbin, ver = pghconfig.find_pg_binary("postgres", versions=[pgver] if pgver else None)
+        if postgresbin is not None:
+            self.pgbin = os.path.dirname(postgresbin)
         self.ver = ver
         self.pgdata = pgdata
         self.pg = None
@@ -91,7 +92,7 @@ def setup_pg():
     # try to find the binaries for these versions in some path
     pgdata = os.path.join(tmpdir, "pgdata")
     db = PGTester(pgdata)  # pylint: disable=redefined-outer-name
-    db.run_cmd("initdb", "-D", pgdata, "--encoding", "utf-8")
+    db.run_cmd("initdb", "-D", pgdata, "--encoding", "utf-8", "--lc-messages=C")
     # NOTE: does not use TCP ports, no port conflicts
     db.user = dict(host=pgdata, user="pghoard", password="pghoard", dbname="postgres", port="5432")
     # NOTE: point $HOME to tmpdir - $HOME shouldn't affect most tests, but
@@ -177,7 +178,7 @@ def recovery_db():
             "recovery_target_timeline = 'latest'",
             "restore_command = 'false'",
         ]
-        if LooseVersion(pg.ver) >= "12":
+        if LooseVersion(pg.pgver) >= "12":
             with open(os.path.join(pg.pgdata, "standby.signal"), "w") as fp:
                 pass
 

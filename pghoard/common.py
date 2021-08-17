@@ -142,11 +142,24 @@ def terminate_subprocess(proc, timeout=0.1, log=None):
     return proc.returncode
 
 
-def convert_pg_command_version_to_number(command_version_string):
+def extract_pg_command_version_string(command_version_string: str) -> str:
     """
-    Convert a string like `psql (PostgreSQL) 9.4.4` to 90404.  also
-    handle pre-release versioning where the version string is something like
+    Extract the version part of a --version output like `psql (PostgreSQL) 9.4.4`
+    Also handle pre-release versioning where the version string is something like
     9.5alpha1 or 9.6devel.
+
+    """
+    match = re.search(r" \(PostgreSQL\) ([0-9]+(?:\.[0-9]+)+)", command_version_string)
+    if not match:
+        match = re.search(r" \(PostgreSQL\) ([0-9]+)((beta([0-9]))|(devel))", command_version_string)
+        if not match:
+            raise Error("Unrecognized PostgreSQL version string {!r}".format(command_version_string))
+    return match.group(1)
+
+
+def pg_version_string_to_number(version_string):
+    """
+    Convert a string like `9.4.4` to 90404.
 
     Version <  10.0 int format:  ABBCC, where A.BB=major and CC=minor
     Version >= 10.0 int format: AAxxCC, where AA=major, xx is unused and CC=minor
@@ -155,13 +168,7 @@ def convert_pg_command_version_to_number(command_version_string):
     "10.0"  -> 100000
     "10.1"  -> 100001
     """
-    match = re.search(r" \(PostgreSQL\) ([0-9]+(?:\.[0-9]+)+)", command_version_string)
-    if not match:
-        match = re.search(r" \(PostgreSQL\) ([0-9]+)beta([0-9])", command_version_string)
-        if not match:
-            raise Error("Unrecognized PostgreSQL version string {!r}".format(command_version_string))
-
-    parts = match.group(1).split(".")  # ['9', '6', '5'] or ['10', '1']
+    parts = version_string.split(".")  # ['9', '6', '5'] or ['10', '1']
 
     if int(parts[0]) >= 10:  # PG 10+: just major and minor
         if len(parts) == 1:  # development version above 10
@@ -171,6 +178,23 @@ def convert_pg_command_version_to_number(command_version_string):
         parts.append("0")  # padding for development version numbers
 
     return int(parts[0]) * 10000 + int(parts[1]) * 100 + int(parts[2])
+
+
+def pg_major_version(version_string):
+    """
+    Extract a major version string from a full version string.
+
+    Ex: "13.3" -> "13"
+        "9.6"  -> "9.6"
+    """
+    major_version_number = pg_version_string_to_number(version_string)
+    major_version_parts = []
+    for i in [10000, 100]:
+        component, major_version_number = divmod(major_version_number, i)
+        if component == 0:
+            break
+        major_version_parts.append(str(component))
+    return ".".join(major_version_parts)
 
 
 def default_json_serialization(obj):
