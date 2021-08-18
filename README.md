@@ -1,3 +1,3 @@
 GitHub Pages of [aiven/pghoard](https://github.com/aiven/pghoard.git)
 ===
-Sphinx html documentation of [dc91552d](https://github.com/aiven/pghoard/tree/dc91552d31d3d2abced13b4d76c45806c2ae1f97)
+Sphinx html documentation of [81d5ef29](https://github.com/aiven/pghoard/tree/81d5ef2989516372c0e788e3ae0a8065d45ebf62)
