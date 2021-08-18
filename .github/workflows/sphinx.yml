@@ -1,0 +1,18 @@
+name: Sphinx Pages
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  build:
+    name: Sphinx Pages
+    runs-on: ubuntu-latest
+    steps:
+      - uses: seanzhengw/sphinx-pages@d29427677b3b89c1b5311d9eb135fb4168f4ba4a
+        id: sphinx-pages
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          create_readme: true
+          source_dir: docs/
