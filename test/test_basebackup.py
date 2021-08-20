@@ -9,6 +9,7 @@ import os
 import tarfile
 import time
 from copy import deepcopy
+from distutils.version import LooseVersion
 from queue import Queue
 from subprocess import check_call
 
@@ -367,17 +368,17 @@ LABEL: pg_basebackup base backup
         self._test_basebackups(capsys, db, pghoard, tmpdir, BaseBackupMode.local_tar_delta_stats)
 
     def test_basebackups_local_tar_nonexclusive(self, capsys, db, pghoard, tmpdir):
-        if db.pgver < "9.6":
+        if LooseVersion(db.pgver) < "9.6":
             pytest.skip("PostgreSQL 9.6+ required for non-exclusive backups")
         self._test_basebackups(capsys, db, pghoard, tmpdir, BaseBackupMode.local_tar)
 
     def test_basebackups_local_tar_legacy(self, capsys, db, pghoard, tmpdir):
-        if db.pgver >= "9.6":
+        if LooseVersion(db.pgver) >= "9.6":
             pytest.skip("PostgreSQL < 9.6 required for exclusive backup tests")
         self._test_basebackups(capsys, db, pghoard, tmpdir, BaseBackupMode.local_tar)
 
     def test_basebackups_local_tar_exclusive_conflict(self, capsys, db, pghoard, tmpdir):
-        if db.pgver >= "9.6":
+        if LooseVersion(db.pgver) >= "9.6":
             pytest.skip("PostgreSQL < 9.6 required for exclusive backup tests")
         need_stop = False
         try:
@@ -409,7 +410,7 @@ LABEL: pg_basebackup base backup
                 cursor.execute("DROP EXTENSION pgespresso")
 
     def test_basebackups_replica_local_tar_nonexclusive(self, capsys, recovery_db, pghoard, tmpdir):
-        if recovery_db.pgver < "9.6":
+        if LooseVersion(recovery_db.pgver) < "9.6":
             pytest.skip("PostgreSQL 9.6+ required for non-exclusive backups")
         self._test_basebackups(capsys, recovery_db, pghoard, tmpdir, BaseBackupMode.local_tar, replica=True)
 
