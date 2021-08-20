@@ -13,6 +13,7 @@ class GnuTarEmulator:
     are supported."""
     def __init__(self):
         parser = argparse.ArgumentParser()
+        parser.add_argument("-z", "--gunzip", help="Filter the archive through gzip", action="store_true", required=True)
         parser.add_argument("-x", "--extract", help="Extract a file", action="store_true", required=True)
         parser.add_argument("-f", "--file", help="Specify the file to extract, - for stdin", type=str, required=True)
         parser.add_argument("-C", "--directory", help="Target directory for extraction", type=str)
@@ -40,7 +41,7 @@ class GnuTarEmulator:
 
     def _extract(self, file):
         paths = []
-        with tarfile.open(fileobj=file, mode="r|") as tar:
+        with tarfile.open(fileobj=file, mode="r|" if not self.args.gunzip else "r|gz") as tar:
             for tarinfo in tar:
                 target_name = self._build_target_name(tarinfo.name)
                 if not target_name:

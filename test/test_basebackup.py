@@ -12,6 +12,7 @@ from copy import deepcopy
 from distutils.version import LooseVersion
 from queue import Queue
 from subprocess import check_call
+import json
 
 import dateutil.parser
 import psycopg2
@@ -268,8 +269,14 @@ LABEL: pg_basebackup base backup
                 assert dateutil.parser.parse(backup["metadata"]["end-time"]).tzinfo  # pylint: disable=no-member
 
             assert backups[0]["metadata"]["active-backup-mode"] == active_backup_mode
+            assert backups[0]["metadata"]["basebackup-mode"] == mode
 
-    def _test_restore_basebackup(self, db, pghoard, tmpdir, active_backup_mode="archive_command"):
+    def _test_restore_basebackup(self, db, pghoard, tmpdir, active_backup_mode="archive_command", tar_executable=None):
+        if tar_executable:
+            pghoard.config['tar_executable'] = tar_executable
+            with open(pghoard.config_path, "w") as fp:
+                json.dump(pghoard.config, fp)
+
         backup_out = tmpdir.join("test-restore").strpath
         # Restoring to empty directory works
         os.makedirs(backup_out)
@@ -345,12 +352,16 @@ LABEL: pg_basebackup base backup
         else:
             assert os.path.isfile(path) is False
 
-    def _test_basebackups(self, capsys, db, pghoard, tmpdir, mode, *, replica=False):
+    def _test_basebackups(self, capsys, db, pghoard, tmpdir, mode, *, replica=False, restore_tar_executable=None):
         self._test_create_basebackup(capsys, db, pghoard, mode, replica=replica)
-        self._test_restore_basebackup(db, pghoard, tmpdir)
+        self._test_restore_basebackup(db, pghoard, tmpdir, tar_executable=restore_tar_executable)
 
     def test_basic_standalone_hot_backups(self, capsys, db, pghoard, tmpdir):
         self._test_create_basebackup(capsys, db, pghoard, BaseBackupMode.basic, False, "standalone_hot_backup")
+        self._test_restore_basebackup(db, pghoard, tmpdir, "standalone_hot_backup")
+
+    def test_basic_gzip_standalone_hot_backups(self, capsys, db, pghoard, tmpdir):
+        self._test_create_basebackup(capsys, db, pghoard, BaseBackupMode.basic_gzip, False, "standalone_hot_backup")
         self._test_restore_basebackup(db, pghoard, tmpdir, "standalone_hot_backup")
 
     def test_pipe_standalone_hot_backups(self, capsys, db, pghoard, tmpdir):
@@ -359,6 +370,12 @@ LABEL: pg_basebackup base backup
 
     def test_basebackups_basic(self, capsys, db, pghoard, tmpdir):
         self._test_basebackups(capsys, db, pghoard, tmpdir, BaseBackupMode.basic)
+
+    def test_basebackups_basic_gzip(self, capsys, db, pghoard, tmpdir):
+        self._test_basebackups(capsys, db, pghoard, tmpdir, BaseBackupMode.basic_gzip)
+
+    def test_basebackups_basic_gzip_with_gnutaremu(self, capsys, db, pghoard, tmpdir):
+        self._test_basebackups(capsys, db, pghoard, tmpdir, BaseBackupMode.basic_gzip, restore_tar_executable="pghoard/gnutaremu.py")
 
     def test_basebackups_basic_lzma(self, capsys, db, pghoard_lzma, tmpdir):
         self._test_basebackups(capsys, db, pghoard_lzma, tmpdir, BaseBackupMode.basic)
