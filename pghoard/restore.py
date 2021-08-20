@@ -31,7 +31,7 @@ from typing import Dict, List, Optional
 from psycopg2.extensions import adapt
 from requests import Session
 
-from pghoard.common import BaseBackupFormat, StrEnum
+from pghoard.common import BaseBackupFormat, BaseBackupMode, StrEnum
 from pghoard.rohmu import compat, dates, get_transfer, rohmufile
 from pghoard.rohmu.errors import (Error, InvalidConfigurationError, MaybeRecoverableError)
 
@@ -119,6 +119,7 @@ def create_recovery_conf(
         "--xlog",
         "%f",
     ]
+
     with open(os.path.join(dirpath, "PG_VERSION"), "r") as fp:
         pg_version = LooseVersion(fp.read().strip())
 
@@ -527,6 +528,21 @@ class Restore:
             tablespaces, basebackup_data_files, empty_dirs = self._get_delta_basebackup_data(
                 site, metadata, basebackup["name"]
             )
+        elif metadata.get("format") == BaseBackupFormat.standalone:
+            basebackup_data_files = [FilePathInfo(name=basebackup["name"], size=basebackup["size"])]
+
+            # have a base.tar and pg_wal.tar[.gz] or pg_xlog.tar[.gz] file for the wal files
+            xlogs_bb_metadata = self.storage.get_basebackup_metadata(
+                basebackup["name"].replace("/basebackup/", "/basebackup_xlogs/"))
+
+            basebackup_data_files.append(FilePathInfo(metadata=xlogs_bb_metadata,
+                name=os.path.join(self._get_site_prefix(site), "basebackup_xlogs", os.path.basename(basebackup["name"])),
+                size=int(xlogs_bb_metadata["original-file-size"])))
+
+            pg_version = xlogs_bb_metadata["pg-version"]
+            # the basebackup_xlogs might be encountered before the main basebackup so have to pre-emptively create
+            # the pg_wal / pg_xlog directory
+            dirs_to_create.append(pgdata + "/" + "pg_wal" if pg_version >= "10" else "pg_xlog")
         else:
             # Object is a raw (encrypted, compressed) basebackup
             basebackup_data_files = [FilePathInfo(name=basebackup["name"], size=basebackup["size"])]
@@ -908,7 +924,7 @@ class ChunkFetcher:
         file_format = metadata.get("format")
         if not file_format:
             return base_args
-        elif file_format in {BaseBackupFormat.v1, BaseBackupFormat.v2, BaseBackupFormat.delta_v1}:
+        elif file_format in {BaseBackupFormat.standalone, BaseBackupFormat.v1, BaseBackupFormat.v2, BaseBackupFormat.delta_v1}:
             extra_args = ["--exclude", ".pghoard_tar_metadata.json", "--transform", "s,^pgdata/,,"]
             if file_format == BaseBackupFormat.delta_v1:
                 extra_args += ["--exclude", ".manifest.json"]
@@ -921,7 +937,23 @@ class ChunkFetcher:
                         tsname.replace("\\", "\\\\").replace(",", "\\,"), settings["path"].replace(",", "\\,")
                     )
                 )
+
+            if file_format == BaseBackupFormat.standalone:
+                basebackup_mode = metadata.get("basebackup-mode")
+                if basebackup_mode == BaseBackupMode.basic_gzip:
+                    base_args[1] = "-zxf"
+
             return base_args + extra_args
+        elif file_format == BaseBackupFormat.standalone_bb_xlogs:
+            pg_version = metadata.get("pg-version")
+            basebackup_mode = metadata.get("basebackup-mode")
+            if basebackup_mode == BaseBackupMode.basic_gzip:
+                base_args[1] = "-zxf"
+
+            # extract the wal files to the pg_wal / pg_xlog directory
+            base_args[-1] = base_args[-1] + "/" + "pg_wal" if pg_version >= "10" else "pg_xlog"
+
+            return base_args
         else:
             raise RestoreError("Unrecognized basebackup format {!r}".format(file_format))
 

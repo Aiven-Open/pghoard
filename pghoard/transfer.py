@@ -37,31 +37,25 @@ class TransferAgent(Thread):
         self.log.debug("TransferAgent initialized")
 
     def set_state_defaults_for_site(self, site):
+        EMPTY = {
+            "data": 0,
+            "count": 0,
+            "time_taken": 0.0,
+            "failures": 0,
+            "xlogs_since_basebackup": 0,
+            "last_success": None
+        }
+
         if site not in self.state:
-            EMPTY = {
-                "data": 0,
-                "count": 0,
-                "time_taken": 0.0,
-                "failures": 0,
-                "xlogs_since_basebackup": 0,
-                "last_success": None
-            }
+            self.state[site] = {}
 
-            def defaults():
-                return {
-                    "basebackup": EMPTY.copy(),
-                    "basebackup_chunk": EMPTY.copy(),
-                    "basebackup_delta": EMPTY.copy(),
-                    "timeline": EMPTY.copy(),
-                    "xlog": EMPTY.copy(),
-                }
+        for type in ["upload", "download", "metadata", "list"]:
+            if type not in self.state[site]:
+                self.state[site][type] = {}
 
-            self.state[site] = {
-                "upload": defaults(),
-                "download": defaults(),
-                "metadata": defaults(),
-                "list": defaults(),
-            }
+            for dir in ["basebackup", "basebackup_chunk", "basebackup_delta", "basebackup_xlogs", "timeline", "xlog"]:
+                if dir not in self.state[site][type]:
+                    self.state[site][type][dir] = EMPTY.copy()
 
     def get_object_storage(self, site_name):
         storage = self.site_transfers.get(site_name)
@@ -79,6 +73,11 @@ class TransferAgent(Thread):
             name = os.path.join(name_parts[-2], name_parts[-1])
         elif file_to_transfer["filetype"] == "basebackup_delta":
             name = file_to_transfer["delta"]["hexdigest"]
+        elif file_to_transfer["filetype"] == "basebackup_xlogs":
+            # the compressed pg_wal.tar[.gz] / pg_xlog.tar[.gz] was given a .wals extension
+            # while being compressed and possibly encrypted, but the wals file
+            # gets uploaded to a separate directory so remove the suffix now
+            name = name_parts[-1].replace(".wals", "")
         else:
             name = name_parts[-1]
         return os.path.join(file_to_transfer["prefix"], file_to_transfer["filetype"], name)
@@ -246,7 +245,7 @@ class TransferAgent(Thread):
             else:
                 # Basebackups may be multipart uploads, depending on the driver.
                 # Swift needs to know about this so it can do possible cleanups.
-                multipart = file_to_transfer["filetype"] in {"basebackup", "basebackup_chunk", "basebackup_delta"}
+                multipart = file_to_transfer["filetype"] in {"basebackup", "basebackup_xlogs", "basebackup_chunk", "basebackup_delta"}
                 try:
                     self.log.info("Uploading file to object store: src=%r dst=%r", file_to_transfer["local_path"], key)
                     storage.store_file_from_disk(

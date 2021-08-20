@@ -142,8 +142,8 @@ class PGBaseBackup(Thread):
     def run(self):
         try:
             basebackup_mode = self.site_config["basebackup_mode"]
-            if basebackup_mode == BaseBackupMode.basic:
-                self.run_basic_basebackup()
+            if basebackup_mode in {BaseBackupMode.basic, BaseBackupMode.basic_gzip}:
+                self.run_basic_basebackup(basebackup_mode)
             elif basebackup_mode == BaseBackupMode.local_tar:
                 self.run_local_tar_basebackup()
             elif basebackup_mode == BaseBackupMode.delta:
@@ -185,7 +185,7 @@ class PGBaseBackup(Thread):
                     return raw_basebackup, compressed_basebackup
             i += 1
 
-    def get_command_line(self, output_name):
+    def get_command_line(self, output_name, basebackup_mode):
         command = [
             self.site_config["pg_basebackup_path"],
             "--format",
@@ -197,32 +197,45 @@ class PGBaseBackup(Thread):
             output_name,
         ]
 
+        if basebackup_mode == BaseBackupMode.basic_gzip:
+            command.extend(["--gzip"])
+
+        wal_method = "none"
         if self.site_config["active_backup_mode"] == "standalone_hot_backup":
-            if self.pg_version_server >= 100000:
-                command.extend(["--wal-method=fetch"])
-            else:
-                command.extend(["--xlog-method=fetch"])
-        elif self.pg_version_server >= 100000:
-            command.extend(["--wal-method=none"])
+            wal_method = "stream" if output_name != "-" else "fetch"
+
+        if self.pg_version_server >= 100000:
+            command.extend(["--wal-method=" + wal_method])
+        else:
+            command.extend(["--xlog-method=" + wal_method])
 
         connection_string, _ = replication_connection_string_and_slot_using_pgpass(self.connection_info)
         command.extend(["--progress", "--dbname", connection_string])
 
         return command
 
-    def check_command_success(self, proc, output_file):
+    def check_command_success(self, proc, *output_files):
         rc = terminate_subprocess(proc, log=self.log)
         msg = "Ran: {!r}, took: {:.3f}s to run, returncode: {}".format(
             proc.args,
             time.monotonic() - proc.basebackup_start_time, rc
         )
-        if rc == 0 and os.path.exists(output_file):
-            self.log.info(msg)
-            return True
 
-        if output_file:
-            with suppress(FileNotFoundError):
-                os.unlink(output_file)
+        if rc == 0:
+            for output_file in output_files:
+                found_all = True
+                if not os.path.exists(output_file):
+                    self.log.error("Missing file %s", [output_file])
+                    found_all = False
+            if found_all:
+                self.log.info(msg)
+                return True
+
+        if output_files:
+            for output_file in output_files:
+                with suppress(FileNotFoundError):
+                    os.unlink(output_file)
+
         raise BackupFailure(msg)
 
     def basebackup_compression_pipe(self, proc, basebackup_path):
@@ -294,7 +307,7 @@ class PGBaseBackup(Thread):
         start_wal_segment = wal.get_current_wal_from_identify_system(connection_string)
 
         temp_basebackup_dir, compressed_basebackup = self.get_paths_for_backup(self.basebackup_path)
-        command = self.get_command_line("-")
+        command = self.get_command_line("-", BaseBackupMode.pipe)
         self.log.debug("Starting to run: %r", command)
         proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         setattr(proc, "basebackup_start_time", time.monotonic())
@@ -337,6 +350,7 @@ class PGBaseBackup(Thread):
             "original-file-size": original_input_size,
             "pg-version": self.pg_version_server,
             "active-backup-mode": self.site_config["active_backup_mode"],
+            "basebackup-mode": self.site_config["basebackup_mode"],
         })
         metadata.update(self.metadata)
 
@@ -364,14 +378,16 @@ class PGBaseBackup(Thread):
         return start_wal_segment, start_time
 
     def parse_backup_label_in_tar(self, basebackup_path):
-        with tarfile.TarFile(name=basebackup_path, mode="r") as tar:
+        with tarfile.open(name=basebackup_path, mode="r:gz" if "tar.gz" in basebackup_path else "r") as tar:
             content = tar.extractfile("backup_label").read()  # pylint: disable=no-member
         return self.parse_backup_label(content)
 
-    def run_basic_basebackup(self):
+    def run_basic_basebackup(self, basebackup_mode):
         basebackup_directory, _ = self.get_paths_for_backup(self.basebackup_path)
-        basebackup_tar_file = os.path.join(basebackup_directory, "base.tar")
-        command = self.get_command_line(basebackup_directory)
+        basebackup_file_extension = "tar.gz" if basebackup_mode == BaseBackupMode.basic_gzip else "tar"
+        basebackup_tar_filename = "base." + basebackup_file_extension
+        basebackup_tar_file = os.path.join(basebackup_directory, basebackup_tar_filename)
+        command = self.get_command_line(basebackup_directory, basebackup_mode)
 
         self.log.debug("Starting to run: %r", command)
         proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -390,18 +406,42 @@ class PGBaseBackup(Thread):
                     self.latest_activity = datetime.datetime.utcnow()
             if proc.poll() is not None:
                 break
-        self.check_command_success(proc, basebackup_tar_file)
+
+        if self.site_config["active_backup_mode"] == "standalone_hot_backup":
+            basebackup_wal_file = os.path.join(basebackup_directory, "pg_wal." + basebackup_file_extension if self.pg_version_server >= 100000 else "pg_xlog." + basebackup_file_extension)
+            self.check_command_success(proc, basebackup_tar_file, basebackup_wal_file)
+
+            self.compression_queue.put({
+                "full_path": basebackup_wal_file,
+                "metadata": {
+                    "format": BaseBackupFormat.standalone_bb_xlogs,
+                    "pg-version": self.pg_version_server,
+                    "basebackup-mode": self.site_config["basebackup_mode"],
+                },
+                "type": "CLOSE_WRITE",
+            })
+        else:
+            self.check_command_success(proc, basebackup_tar_file)
 
         start_wal_segment, start_time = self.parse_backup_label_in_tar(basebackup_tar_file)
+        metadata = {
+            **self.metadata,
+            "start-time": start_time,
+            "start-wal-segment": start_wal_segment,
+            "pg-version": self.pg_version_server,
+            "active-backup-mode": self.site_config["active_backup_mode"],
+            "basebackup-mode": self.site_config["basebackup_mode"],
+        }
+
+        if self.site_config["active_backup_mode"] == "standalone_hot_backup":
+            metadata.update({
+                "format": BaseBackupFormat.standalone
+            })
+
         self.compression_queue.put({
             "callback_queue": self.callback_queue,
             "full_path": basebackup_tar_file,
-            "metadata": {
-                **self.metadata,
-                "start-time": start_time,
-                "start-wal-segment": start_wal_segment,
-                "active-backup-mode": self.site_config["active_backup_mode"],
-            },
+            "metadata": metadata,
             "type": "CLOSE_WRITE",
         })
 
@@ -952,6 +992,7 @@ class PGBaseBackup(Thread):
                 "end-wal-segment": backup_end_wal_segment,
                 "pg-version": self.pg_version_server,
                 "active-backup-mode": self.site_config["active_backup_mode"],
+                "basebackup-mode": self.site_config["basebackup_mode"],
                 "start-time": backup_start_time,
                 "start-wal-segment": backup_start_wal_segment,
                 "total-size-plain": total_size_plain,

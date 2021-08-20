@@ -53,6 +53,14 @@ class CompressorThread(Thread):
             rest, _ = os.path.split(original_path)
             rest, backupname = os.path.split(rest)
             object_path = os.path.join("basebackup", backupname)
+        elif filetype == "basebackup_xlogs":
+            rest, _ = os.path.split(original_path)
+            rest, backupname = os.path.split(rest)
+
+            # the pg_wal.tar[.gz] / pg_xlog.tar[.gz] gets written to the basebackup directory
+            # so we need to temporarily append a different extension to the wals
+            # file so we can properly upload it to storage later on
+            object_path = os.path.join("basebackup", backupname + ".wals")
         else:
             object_path = os.path.join("xlog", os.path.basename(original_path))
 
@@ -126,9 +134,12 @@ class CompressorThread(Thread):
         close_write = event["type"] == "CLOSE_WRITE"
         move = event["type"] == "MOVE" and event["src_path"].endswith(".partial")
 
-        if close_write and os.path.basename(event["full_path"]) == "base.tar":
+        basename = os.path.basename(event["full_path"])
+        if close_write and (basename == "base.tar" or basename == "base.tar.gz"):
             return "basebackup"
-        elif (move or close_write) and wal.TIMELINE_RE.match(os.path.basename(event["full_path"])):
+        elif (move or close_write) and wal.TIMELINE_RE.match(basename):
+            return "timeline"
+        elif (move or close_write) and wal.TIMELINE_RE.match(basename):
             return "timeline"
         # for xlog we get both move and close_write on pg10+ (in that order: the write is from an fsync by name)
         # -> for now we pick MOVE because that's compatible with pg9.x, but this leaves us open to a problem with
@@ -136,8 +147,10 @@ class CompressorThread(Thread):
         #    not find the file anymore. This ends up in a hickup in pg_receivewal.
         # TODO: when we drop pg9.x support, switch to close_write here and in all other places where we generate an xlog/WAL
         #       compression event: https://github.com/aiven/pghoard/commit/29d2ee76139e8231b40619beea0703237eb6b9cc
-        elif move and wal.WAL_RE.match(os.path.basename(event["full_path"])):
+        elif move and wal.WAL_RE.match(basename):
             return "xlog"
+        elif close_write and (basename == "pg_wal.tar" or basename == "pg_xlog.tar" or basename == "pg_wal.tar.gz" or basename == "pg_xlog.tar.gz"):
+            return "basebackup_xlogs"
 
         return None
 
@@ -268,6 +281,11 @@ class CompressorThread(Thread):
         if site not in self.state:
             self.state[site] = {
                 "basebackup": {
+                    "original_data": 0,
+                    "compressed_data": 0,
+                    "count": 0
+                },
+                "basebackup_xlogs": {
                     "original_data": 0,
                     "compressed_data": 0,
                     "count": 0

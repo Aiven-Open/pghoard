@@ -268,6 +268,7 @@ LABEL: pg_basebackup base backup
                 assert dateutil.parser.parse(backup["metadata"]["end-time"]).tzinfo  # pylint: disable=no-member
 
             assert backups[0]["metadata"]["active-backup-mode"] == active_backup_mode
+            assert backups[0]["metadata"]["basebackup-mode"] == mode
 
     def _test_restore_basebackup(self, db, pghoard, tmpdir, active_backup_mode="archive_command"):
         backup_out = tmpdir.join("test-restore").strpath
@@ -353,12 +354,19 @@ LABEL: pg_basebackup base backup
         self._test_create_basebackup(capsys, db, pghoard, BaseBackupMode.basic, False, "standalone_hot_backup")
         self._test_restore_basebackup(db, pghoard, tmpdir, "standalone_hot_backup")
 
+    def test_basic_gzip_standalone_hot_backups(self, capsys, db, pghoard, tmpdir):
+        self._test_create_basebackup(capsys, db, pghoard, BaseBackupMode.basic_gzip, False, "standalone_hot_backup")
+        self._test_restore_basebackup(db, pghoard, tmpdir, "standalone_hot_backup")
+
     def test_pipe_standalone_hot_backups(self, capsys, db, pghoard, tmpdir):
         self._test_create_basebackup(capsys, db, pghoard, BaseBackupMode.pipe, False, "standalone_hot_backup")
         self._test_restore_basebackup(db, pghoard, tmpdir, "standalone_hot_backup")
 
     def test_basebackups_basic(self, capsys, db, pghoard, tmpdir):
         self._test_basebackups(capsys, db, pghoard, tmpdir, BaseBackupMode.basic)
+
+    def test_basebackups_basic_gzip(self, capsys, db, pghoard, tmpdir):
+        self._test_basebackups(capsys, db, pghoard, tmpdir, BaseBackupMode.basic_gzip)
 
     def test_basebackups_basic_lzma(self, capsys, db, pghoard_lzma, tmpdir):
         self._test_basebackups(capsys, db, pghoard_lzma, tmpdir, BaseBackupMode.basic)

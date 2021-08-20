@@ -34,12 +34,15 @@ class StrEnum(str, enum.Enum):
 class BaseBackupFormat(StrEnum):
     v1 = "pghoard-bb-v1"
     v2 = "pghoard-bb-v2"
+    standalone = "pghoard-bb-standalone"
+    standalone_bb_xlogs = "pghoard-bb-standalone-xlogs"
     delta_v1 = "pghoard-delta-v1"
 
 
 @enum.unique
 class BaseBackupMode(StrEnum):
     basic = "basic"
+    basic_gzip = "basic-gzip"
     delta = "delta"
     local_tar = "local-tar"
     local_tar_delta_stats = "local-tar-delta-stats"
