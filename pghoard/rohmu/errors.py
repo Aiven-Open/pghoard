@@ -28,3 +28,7 @@ class LocalFileIsRemoteFileError(StorageError):
 
 class MissingLibraryError(Exception):
     """Missing dependency library"""
+
+
+class MaybeRecoverableError(Error):
+    """An error that may be recoverable"""

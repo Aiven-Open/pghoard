@@ -1,0 +1,5 @@
+#!/bin/bash
+# This is a mock program to simulate tar race conditions failure
+cat - > /dev/null
+echo "Cannot open: No such file or directory" >&2
+exit 2

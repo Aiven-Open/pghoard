@@ -33,7 +33,7 @@ from requests import Session
 
 from pghoard.common import BaseBackupFormat, StrEnum
 from pghoard.rohmu import compat, dates, get_transfer, rohmufile
-from pghoard.rohmu.errors import Error, InvalidConfigurationError
+from pghoard.rohmu.errors import (Error, InvalidConfigurationError, MaybeRecoverableError)
 
 from . import common, config, logutil, version
 from .postgres_command import PGHOARD_HOST, PGHOARD_PORT
@@ -640,6 +640,7 @@ class BasebackupFetcher:
         self.manager_class = multiprocessing.Manager if self._process_count() > 1 else ThreadingManager
         self.max_stale_seconds = 120
         self.pending_jobs = set()
+        self.jobs_to_retry = set()
         self.pgdata = pgdata
         # There's no point in spawning child processes if process count is 1
         self.pool_class = multiprocessing.Pool if self._process_count() > 1 else multiprocessing.pool.ThreadPool
@@ -648,6 +649,7 @@ class BasebackupFetcher:
         self.sleep_fn = time.sleep
         self.tablespaces = tablespaces
         self.total_download_size = 0
+        self.retry_per_file = {}
 
     def fetch_all(self):
         for retry in range(3):
@@ -656,7 +658,7 @@ class BasebackupFetcher:
                     self._setup_progress_tracking(manager)
                     with self.pool_class(processes=self._process_count()) as pool:
                         self._queue_jobs(pool)
-                        self._wait_for_jobs_to_complete()
+                        self._wait_for_jobs_to_complete(pool)
                         # Context manager does not seem to properly wait for the subprocesses to exit, let's join
                         # the pool manually (close need to be called before joining)
                         pool.close()
@@ -738,8 +740,25 @@ class BasebackupFetcher:
             if key in self.pending_jobs:
                 self.pending_jobs.remove(key)
                 self.completed_jobs.add(key)
+                self.retry_per_file.pop(key, None)
 
     def job_failed(self, key, exception):
+        if isinstance(exception, MaybeRecoverableError):
+            self.log.warning("Got error which can be recoverable from chunk download %s", exception)
+            with self.lock:
+                if key in self.pending_jobs:
+                    retries = self.retry_per_file.get(key, 0) + 1
+                    self.retry_per_file[key] = retries
+                    self.pending_jobs.remove(key)
+                    if retries <= 2:
+                        self.jobs_to_retry.add(key)
+                        return
+                    self.errors += 1
+                    self.completed_jobs.add(key)
+                    self.retry_per_file.pop(key, None)
+                    self.log.error("Giving up on recoverable error: %s", exception)
+                    return
+
         self.log.error("Got error from chunk download: %s", exception)
         self.last_progress_ts = time.monotonic()
         with self.lock:
@@ -747,6 +766,7 @@ class BasebackupFetcher:
                 self.errors += 1
                 self.pending_jobs.remove(key)
                 self.completed_jobs.add(key)
+                self.retry_per_file.pop(key, None)
 
     def jobs_in_progress(self):
         with self.lock:
@@ -788,8 +808,18 @@ class BasebackupFetcher:
             }
         )
 
-    def _wait_for_jobs_to_complete(self):
+    def _wait_for_jobs_to_complete(self, pool):
         while self.jobs_in_progress():
+            to_queue = []
+            with self.lock:
+                if self.jobs_to_retry:
+                    for item in self.data_files:
+                        if item.id in self.jobs_to_retry:
+                            self.pending_jobs.add(item.id)
+                            self.jobs_to_retry.remove(item.id)
+                            to_queue.append(item)
+            for item in to_queue:
+                self._queue_job(pool, item)
             self._print_download_progress()
             if self.status_output_file:
                 self._write_status_output_to_file(self.status_output_file)
@@ -910,12 +940,16 @@ class ChunkFetcher:
         )
 
     def _fetch_and_extract_one_backup(self, metadata, file_size, fetch_fn):
+        # Force tar to use the C locale to match errors in stderr
+        tar_env = os.environ.copy()
+        tar_env["LANG"] = "C"
         with subprocess.Popen(
             self._build_tar_args(metadata),
             bufsize=0,
             stdin=subprocess.PIPE,
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE
+            stderr=subprocess.PIPE,
+            env=tar_env
         ) as tar:
             common.increase_pipe_capacity(tar.stdin, tar.stderr)
             sink = rohmufile.create_sink_pipeline(
@@ -939,7 +973,18 @@ class ChunkFetcher:
             exit_code = tar.wait()
             file_name = "<mem_bytes>" if isinstance(self.file_info, FileDataInfo) else self.file_info.name
             if exit_code != 0:
-                raise Exception("tar exited with code {!r} for file {!r}, output: {!r}".format(exit_code, file_name, output))
+                ex_message = "tar exited with code {!r} for file {!r}, output: {!r}".format(exit_code, file_name, output)
+                # Running multiple tar commands in parallel in the same
+                # directory can lead to race conditions while creating the
+                # intermediate directories.
+                # In that case, try to recover from it.
+                # See issue #452 and https://savannah.gnu.org/bugs/index.php?61015
+                if exit_code == 2 and b"Cannot open: No such file or directory" in output:
+                    raise MaybeRecoverableError(ex_message)
+                else:
+                    raise Exception(
+                        "tar exited with code {!r} for file {!r}, output: {!r}".format(exit_code, file_name, output)
+                    )
             self.log.info("Processing of %r completed successfully", file_name)
 
 
