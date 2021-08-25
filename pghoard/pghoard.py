@@ -421,7 +421,8 @@ class PGHoard:
             )
             basebackups_to_delete.append(basebackups.pop(0))
 
-        backup_interval = datetime.timedelta(hours=site_config["basebackup_interval_hours"])
+        basebackup_interval_hours = site_config["basebackup_interval_hours"]
+        backup_interval = datetime.timedelta(hours=basebackup_interval_hours if basebackup_interval_hours else 0)
         min_backups = site_config["basebackup_count_min"]
         max_age_days = site_config.get("basebackup_age_days_max")
         current_time = datetime.datetime.now(datetime.timezone.utc)
