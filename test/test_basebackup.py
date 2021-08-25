@@ -267,6 +267,8 @@ LABEL: pg_basebackup base backup
                 assert "end-time" in backup["metadata"]
                 assert dateutil.parser.parse(backup["metadata"]["end-time"]).tzinfo  # pylint: disable=no-member
 
+            assert backups[0]["metadata"]["active-backup-mode"] == active_backup_mode
+
     def _test_restore_basebackup(self, db, pghoard, tmpdir, active_backup_mode="archive_command"):
         backup_out = tmpdir.join("test-restore").strpath
         # Restoring to empty directory works
