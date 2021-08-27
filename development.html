@@ -7,7 +7,7 @@
   
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-  <title>Development &mdash; PGHoard 2.2.1-60-g1fc8cc7 documentation</title>
+  <title>Development &mdash; PGHoard 2.2.1-62-g2699a36 documentation</title>
   
 
   
@@ -99,7 +99,9 @@
 <li class="toctree-l1"><a class="reference internal" href="configuration.html">Configuration</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Development</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#requirements">Requirements</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#vagrant">Vagrant</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="#vagrant">Vagrant</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#building">Building</a></li>
 </ul>
 </li>
@@ -198,32 +200,35 @@ The following Python modules are required:</p>
 <p>PGHoard has been developed and tested on modern Linux x86-64 systems, but
 should work on other platforms that provide the required modules.</p>
 </div>
+</div>
 <div class="section" id="vagrant">
-<h2>Vagrant<a class="headerlink" href="#vagrant" title="Permalink to this headline">¶</a></h2>
-<p>The Vagrantfile can be used to setup a vagrant development environment, consisting of two
-vagrant virtual machines.</p>
-<ol class="arabic">
-<li><p>Postgresql 9.4, python 3.5 and 3.6:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">vagrant</span> <span class="n">up</span>
-<span class="n">vagrant</span> <span class="n">ssh</span> <span class="n">postgres9</span>
-<span class="n">cd</span> <span class="o">/</span><span class="n">vagrant</span>
-<span class="n">source</span> <span class="o">~/</span><span class="n">venv3</span><span class="o">/</span><span class="nb">bin</span><span class="o">/</span><span class="n">activate</span>
-<span class="n">make</span> <span class="n">test</span>
-<span class="n">source</span> <span class="o">~/</span><span class="n">venv3</span><span class="mf">.6</span><span class="o">/</span><span class="nb">bin</span><span class="o">/</span><span class="n">activate</span>
-<span class="n">make</span> <span class="n">test</span>
-</pre></div>
-</div>
-</li>
-<li><p>Postgresql 10 and python 3.7:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">vagrant</span> <span class="n">ssh</span> <span class="n">postgres10</span>
-<span class="n">cd</span> <span class="o">/</span><span class="n">vagrant</span>
-<span class="n">make</span> <span class="n">test</span>
-</pre></div>
-</div>
-</li>
-</ol>
-<p>Note: make deb does not work from vagrant at the moment, hopefully this will be resolved soon</p>
-</div>
+<h1>Vagrant<a class="headerlink" href="#vagrant" title="Permalink to this headline">¶</a></h1>
+<p>The Vagrantfile can be used to setup a vagrant development environment.   The vagrant environment has
+python 3.6, 3.7, 3.8 and 3.9 virtual environments and installations of postgresql 9.6, 10, 11 and 12.</p>
+<p>By default vagrant up will start a Virtualbox environment.   The Vagrantfile will also work for libvirt, just prefix
+VAGRANT_DEFAULT_PROVIDER=libvirt to the vagrant up command.</p>
+<p>Any combination of Python (3.6, 3.7 and 3.8) and Postgresql (9.6, 10, 11 and 12)</p>
+<p>Bring up vagrant instance and connect via ssh:</p>
+<p>vagrant up
+vagrant ssh
+<a class="reference external" href="mailto:vagrant&#37;&#52;&#48;ubuntu2004">vagrant<span>&#64;</span>ubuntu2004</a>:~$ cd /vagrant</p>
+<p>Test with Python 3.6 and Postgresql 9.6</p>
+<p><a class="reference external" href="mailto:vagrant&#37;&#52;&#48;ubuntu2004">vagrant<span>&#64;</span>ubuntu2004</a>:~$ source ~/venv3.6/bin/activate
+<a class="reference external" href="mailto:vagrant&#37;&#52;&#48;ubuntu2004">vagrant<span>&#64;</span>ubuntu2004</a>:~$ PG_VERSION=9.6 make unittest
+<a class="reference external" href="mailto:vagrant&#37;&#52;&#48;ubuntu2004">vagrant<span>&#64;</span>ubuntu2004</a>:~$ deactivate</p>
+<p>Test with Python 3.7 and Postgresql 10</p>
+<p><a class="reference external" href="mailto:vagrant&#37;&#52;&#48;ubuntu2004">vagrant<span>&#64;</span>ubuntu2004</a>:~$ source ~/venv3.7/bin/activate
+<a class="reference external" href="mailto:vagrant&#37;&#52;&#48;ubuntu2004">vagrant<span>&#64;</span>ubuntu2004</a>:~$ PG_VERSION=10 make unittest
+<a class="reference external" href="mailto:vagrant&#37;&#52;&#48;ubuntu2004">vagrant<span>&#64;</span>ubuntu2004</a>:~$ deactivate</p>
+<p>Test with Python 3.8 and Postgresql 11</p>
+<p><a class="reference external" href="mailto:vagrant&#37;&#52;&#48;ubuntu2004">vagrant<span>&#64;</span>ubuntu2004</a>:~$ source ~/venv3.8/bin/activate
+<a class="reference external" href="mailto:vagrant&#37;&#52;&#48;ubuntu2004">vagrant<span>&#64;</span>ubuntu2004</a>:~$ PG_VERSION=11 make unittest
+<a class="reference external" href="mailto:vagrant&#37;&#52;&#48;ubuntu2004">vagrant<span>&#64;</span>ubuntu2004</a>:~$ deactivate</p>
+<p>Test with Python 3.9 and Postgresql 12</p>
+<p><a class="reference external" href="mailto:vagrant&#37;&#52;&#48;ubuntu2004">vagrant<span>&#64;</span>ubuntu2004</a>:~$ source ~/venv3.9/bin/activate
+<a class="reference external" href="mailto:vagrant&#37;&#52;&#48;ubuntu2004">vagrant<span>&#64;</span>ubuntu2004</a>:~$ PG_VERSION=12 make unittest
+<a class="reference external" href="mailto:vagrant&#37;&#52;&#48;ubuntu2004">vagrant<span>&#64;</span>ubuntu2004</a>:~$ deactivate</p>
+<p>And so on</p>
 <div class="section" id="building">
 <span id="building-from-source"></span><h2>Building<a class="headerlink" href="#building" title="Permalink to this headline">¶</a></h2>
 <p>To build an installation package for your distribution, go to the root
