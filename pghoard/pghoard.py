@@ -355,6 +355,8 @@ class PGHoard:
                     )
         elif metadata.get("format") == BaseBackupFormat.delta_v1:
             basebackup_data_files.extend(self._get_delta_basebackup_files(site, storage, metadata, basebackup, basebackups))
+        elif metadata.get("format") == BaseBackupFormat.standalone:
+            basebackup_data_files.extend([os.path.join(self._get_site_prefix(site), "basebackup_xlogs", basebackup)])
 
         self.log.debug("Deleting basebackup datafiles: %r", ", ".join(basebackup_data_files))
         for obj_key in basebackup_data_files:

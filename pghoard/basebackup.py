@@ -200,32 +200,41 @@ class PGBaseBackup(Thread):
         if basebackup_mode == BaseBackupMode.basic_gzip:
             command.extend(["--gzip"])
 
+        wal_method = "none"
         if self.site_config["active_backup_mode"] == "standalone_hot_backup":
-            if self.pg_version_server >= 100000:
-                command.extend(["--wal-method=fetch"])
-            else:
-                command.extend(["--xlog-method=fetch"])
-        elif self.pg_version_server >= 100000:
-            command.extend(["--wal-method=none"])
+            wal_method = "stream" if output_name != "-" else "fetch"
+
+        if self.pg_version_server >= 100000:
+            command.extend(["--wal-method=" + wal_method])
+        else:
+            command.extend(["--xlog-method=" + wal_method])
 
         connection_string, _ = replication_connection_string_and_slot_using_pgpass(self.connection_info)
         command.extend(["--progress", "--dbname", connection_string])
 
         return command
 
-    def check_command_success(self, proc, output_file):
+    def check_command_success(self, proc, *output_files):
         rc = terminate_subprocess(proc, log=self.log)
         msg = "Ran: {!r}, took: {:.3f}s to run, returncode: {}".format(
             proc.args,
             time.monotonic() - proc.basebackup_start_time, rc
         )
-        if rc == 0 and os.path.exists(output_file):
-            self.log.info(msg)
-            return True
 
-        if output_file:
-            with suppress(FileNotFoundError):
-                os.unlink(output_file)
+        if rc == 0:
+            for output_file in output_files:
+                found_all = True
+                if not os.path.exists(output_file):
+                    self.log.error("Missing file %s", [output_file])
+                    found_all = False
+            if found_all:
+                self.log.info(msg)
+                return True
+
+        if output_files:
+            for output_file in output_files:
+                with suppress(FileNotFoundError):
+                    os.unlink(output_file)
 
         raise BackupFailure(msg)
 
@@ -398,7 +407,24 @@ class PGBaseBackup(Thread):
             if proc.poll() is not None:
                 break
 
-        self.check_command_success(proc, basebackup_tar_file)
+        if self.site_config["active_backup_mode"] == "standalone_hot_backup":
+            if self.pg_version_server >= 100000:
+                basebackup_wal_file = os.path.join(basebackup_directory, "pg_wal." + basebackup_file_extension)
+            else:
+                basebackup_wal_file = os.path.join(basebackup_directory, "pg_xlog." + basebackup_file_extension)
+            self.check_command_success(proc, basebackup_tar_file, basebackup_wal_file)
+
+            self.compression_queue.put({
+                "full_path": basebackup_wal_file,
+                "metadata": {
+                    "format": BaseBackupFormat.standalone_bb_xlogs,
+                    "pg-version": self.pg_version_server,
+                    "basebackup-mode": self.site_config["basebackup_mode"],
+                },
+                "type": "CLOSE_WRITE",
+            })
+        else:
+            self.check_command_success(proc, basebackup_tar_file)
 
         start_wal_segment, start_time = self.parse_backup_label_in_tar(basebackup_tar_file)
         metadata = {
@@ -409,6 +435,9 @@ class PGBaseBackup(Thread):
             "active-backup-mode": self.site_config["active_backup_mode"],
             "basebackup-mode": self.site_config["basebackup_mode"],
         }
+
+        if self.site_config["active_backup_mode"] == "standalone_hot_backup":
+            metadata.update({"format": BaseBackupFormat.standalone})
 
         self.compression_queue.put({
             "callback_queue": self.callback_queue,

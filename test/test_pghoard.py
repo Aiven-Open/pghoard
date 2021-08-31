@@ -354,6 +354,137 @@ dbname|"""
         assert len(basebackups) == 1
         assert len(os.listdir(wal_storage_path)) == 1
 
+    def test_standalone_local_refresh_backup_list_and_delete_old(self):
+        basebackup_storage_path = os.path.join(self.local_storage_dir, "basebackup")
+        basebackup_xlog_storage_path = os.path.join(self.local_storage_dir, "basebackup_xlogs")
+        wal_storage_path = os.path.join(self.local_storage_dir, "xlog")
+
+        os.makedirs(basebackup_storage_path)
+        os.makedirs(basebackup_xlog_storage_path)
+        os.makedirs(wal_storage_path)
+
+        self.pghoard.set_state_defaults(self.test_site)
+        assert self.pghoard.get_remote_basebackups_info(self.test_site) == []
+
+        def write_backup_and_wal_files(what):
+            for bb, obj in what.items():
+                bb_format = obj["format"] if "format" in obj else BaseBackupFormat.v1
+                wals = obj["wals"]
+                if bb:
+                    bb_path = os.path.join(basebackup_storage_path, bb)
+                    bbl_path = os.path.join(basebackup_xlog_storage_path, bb)
+                    date_parts = [int(part) for part in bb.replace("_", "-").split("-")]
+                    start_time = datetime.datetime(*date_parts, tzinfo=datetime.timezone.utc)
+                    with open(bb_path, "wb") as fp:
+                        fp.write(b"something")
+                    if bb_format == BaseBackupFormat.standalone:
+                        with open(bbl_path, "wb") as fp:
+                            fp.write(b"something")
+                    with open(bb_path + ".metadata", "w") as fp:
+                        json.dump({
+                            "start-wal-segment": wals[0],
+                            "format": bb_format,
+                            "start-time": start_time.isoformat(),
+                        }, fp)
+
+                # for standalone the WALs are not written to the xlog directory
+                if bb_format != BaseBackupFormat.standalone:
+                    for wal in wals:
+                        with open(os.path.join(wal_storage_path, wal), "wb") as fp:
+                            fp.write(b"something")
+
+        backups_and_wals = {
+            "2015-08-25_0": {
+                "wals": [
+                    # NOTE: gap between this and next segment means that cleanup shouldn't find this
+                    "000000010000000A000000FB",
+                ]
+            },
+            "2015-08-25_1": {
+                "wals": [
+                    "000000020000000A000000FD",
+                    "000000020000000A000000FE",
+                ]
+            },
+            "2015-08-25_2": {
+                "wals": [
+                    "000000030000000A000000FF",
+                    "000000030000000B00000000",
+                    "000000030000000B00000001",
+                    "000000040000000B00000002",
+                ]
+            },
+            "2015-08-25_3": {
+                "wals": [
+                    "000000040000000B00000003"  # in this case this is the start wal inside the basebackup_xlogs file
+                ],
+                "format": BaseBackupFormat.standalone
+            }
+        }
+        write_backup_and_wal_files(backups_and_wals)
+        basebackups = self.pghoard.get_remote_basebackups_info(self.test_site)
+        assert len(basebackups) == 4
+        self.pghoard.refresh_backup_list_and_delete_old(self.test_site)
+        basebackups = self.pghoard.get_remote_basebackups_info(self.test_site)
+        assert len(basebackups) == 1
+
+        # no wals were stored for the standalone base backup
+        # but the 2015-08-25_0 lone wal sticks around
+        assert len(os.listdir(wal_storage_path)) == 1
+        assert len(os.listdir(basebackup_xlog_storage_path)) == 1
+
+        # Put all WAL segments between 1 and 9 in place to see that they're deleted and we don't try to go back
+        # any further from TLI 1.  Note that timeline 3 is now "empty" so deletion shouldn't touch timelines 2
+        # or 1.
+        new_backups_and_wals = {
+            "": {
+                "wals": [
+                    "000000020000000A000000FC",
+                    "000000020000000A000000FD",
+                    "000000020000000A000000FE",
+                    "000000020000000A000000FF",
+                    "000000020000000B00000000",
+                    "000000020000000B00000001",
+                    "000000020000000B00000002",
+                ]
+            },
+            "2015-08-25_4": {
+                "wals": [
+                    "000000040000000B00000005",
+                ]
+            },
+        }
+        write_backup_and_wal_files(new_backups_and_wals)
+        assert len(os.listdir(wal_storage_path)) == 9
+        self.pghoard.refresh_backup_list_and_delete_old(self.test_site)
+        basebackups = self.pghoard.get_remote_basebackups_info(self.test_site)
+        assert len(basebackups) == 1
+        assert len(os.listdir(basebackup_xlog_storage_path)) == 0
+        expected_wal_count = len(backups_and_wals["2015-08-25_0"]["wals"])
+        expected_wal_count += len(new_backups_and_wals[""]["wals"])
+        expected_wal_count += len(new_backups_and_wals["2015-08-25_4"]["wals"])
+        assert len(os.listdir(wal_storage_path)) == expected_wal_count
+        # Now put WAL files in place with no gaps anywhere
+        gapless_backups_and_wals = {
+            "2015-08-25_3": {
+                "wals": [
+                    "000000030000000B00000003",
+                    "000000040000000B00000004",
+                ]
+            },
+            "2015-08-25_4": {
+                "wals": [
+                    "000000040000000B00000005",
+                ]
+            },
+        }
+        write_backup_and_wal_files(gapless_backups_and_wals)
+        assert len(os.listdir(wal_storage_path)) >= 10
+        self.pghoard.refresh_backup_list_and_delete_old(self.test_site)
+        basebackups = self.pghoard.get_remote_basebackups_info(self.test_site)
+        assert len(basebackups) == 1
+        assert len(os.listdir(wal_storage_path)) == 1
+
     def test_local_refresh_backup_list_and_delete_old_delta_format(self):
         basebackup_storage_path = os.path.join(self.local_storage_dir, "basebackup")
         basebackup_delta_path = os.path.join(self.local_storage_dir, "basebackup_delta")

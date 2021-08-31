@@ -347,6 +347,11 @@ in the relevant site, for example::
 For more information refer to the postgresql documentation
 https://www.postgresql.org/docs/9.5/continuous-archiving.html#BACKUP-STANDALONE
 
+If configured with a basebackup_mode of 'pipe' standalone hot backups will not use replication slots.
+If configured with 'basic' or 'basic_gzip' basebackup_mode, then standalone hot backup will be executed with
+the -X stream option, which will use a temporary replication slot  (pghoard currently does not support
+using a physical replication slot for base backups).
+
 Restoring databases
 ===================
 

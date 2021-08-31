@@ -528,6 +528,27 @@ class Restore:
             tablespaces, basebackup_data_files, empty_dirs = self._get_delta_basebackup_data(
                 site, metadata, basebackup["name"]
             )
+        elif metadata.get("format") == BaseBackupFormat.standalone:
+            basebackup_data_files = [FilePathInfo(name=basebackup["name"], size=basebackup["size"])]
+
+            # have a base.tar and pg_wal.tar[.gz] or pg_xlog.tar[.gz] file for the wal files
+            basebackup_xlogs_key = basebackup["name"].replace("/basebackup/", "/basebackup_xlogs/")
+
+            xlogs_bb_metadata = self.storage.get_basebackup_metadata(basebackup_xlogs_key)
+            size = self.storage.get_file_size(basebackup_xlogs_key)
+
+            basebackup_data_files.append(
+                FilePathInfo(
+                    metadata=xlogs_bb_metadata,
+                    name=os.path.join(self._get_site_prefix(site), "basebackup_xlogs", os.path.basename(basebackup["name"])),
+                    size=size
+                )
+            )
+
+            pg_version = xlogs_bb_metadata["pg-version"]
+            # the basebackup_xlogs might be encountered before the main basebackup so have to pre-emptively create
+            # the pg_wal / pg_xlog directory
+            dirs_to_create.append(pgdata + "/" + "pg_wal" if pg_version >= "10" else "pg_xlog")
         else:
             # Object is a raw (encrypted, compressed) basebackup
             basebackup_data_files = [FilePathInfo(name=basebackup["name"], size=basebackup["size"])]
@@ -913,7 +934,9 @@ class ChunkFetcher:
         file_format = metadata.get("format")
         if not file_format:
             return base_args
-        elif file_format in {BaseBackupFormat.v1, BaseBackupFormat.v2, BaseBackupFormat.delta_v1}:
+        elif file_format in {
+            BaseBackupFormat.standalone, BaseBackupFormat.v1, BaseBackupFormat.v2, BaseBackupFormat.delta_v1
+        }:
             extra_args = ["--exclude", ".pghoard_tar_metadata.json", "--transform", "s,^pgdata/,,"]
             if file_format == BaseBackupFormat.delta_v1:
                 extra_args += ["--exclude", ".manifest.json"]
@@ -928,6 +951,13 @@ class ChunkFetcher:
                 )
 
             return base_args + extra_args
+        elif file_format == BaseBackupFormat.standalone_bb_xlogs:
+            pg_version = metadata.get("pg-version")
+
+            # extract the wal files to the pg_wal / pg_xlog directory
+            base_args[-1] = base_args[-1] + "/" + "pg_wal" if pg_version >= "10" else "pg_xlog"
+
+            return base_args
         else:
             raise RestoreError("Unrecognized basebackup format {!r}".format(file_format))
 
@@ -1015,6 +1045,9 @@ class ObjectStore:
 
     def get_basebackup_file_to_fileobj(self, basebackup, fileobj, *, progress_callback=None):
         return self.storage.get_contents_to_fileobj(basebackup, fileobj, progress_callback=progress_callback)
+
+    def get_file_size(self, name):
+        return self.storage.get_file_size(name)
 
     def get_file_bytes(self, name):
         return self.storage.get_contents_to_string(name)[0]

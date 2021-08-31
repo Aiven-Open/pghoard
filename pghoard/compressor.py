@@ -53,6 +53,14 @@ class CompressorThread(Thread):
             rest, _ = os.path.split(original_path)
             rest, backupname = os.path.split(rest)
             object_path = os.path.join("basebackup", backupname)
+        elif filetype == "basebackup_xlogs":
+            rest, _ = os.path.split(original_path)
+            rest, backupname = os.path.split(rest)
+
+            # the pg_wal.tar[.gz] / pg_xlog.tar[.gz] gets written to the basebackup directory
+            # so we need to temporarily append a different extension to the wals
+            # file so we can properly upload it to storage later on
+            object_path = os.path.join("basebackup", backupname + ".wals")
         else:
             object_path = os.path.join("xlog", os.path.basename(original_path))
 
@@ -141,6 +149,8 @@ class CompressorThread(Thread):
         #       compression event: https://github.com/aiven/pghoard/commit/29d2ee76139e8231b40619beea0703237eb6b9cc
         elif move and wal.WAL_RE.match(basename):
             return "xlog"
+        elif close_write and basename in {"pg_wal.tar", "pg_xlog.tar", "pg_wal.tar.gz", "pg_xlog.tar.gz"}:
+            return "basebackup_xlogs"
 
         return None
 
@@ -271,6 +281,11 @@ class CompressorThread(Thread):
         if site not in self.state:
             self.state[site] = {
                 "basebackup": {
+                    "original_data": 0,
+                    "compressed_data": 0,
+                    "count": 0
+                },
+                "basebackup_xlogs": {
                     "original_data": 0,
                     "compressed_data": 0,
                     "count": 0

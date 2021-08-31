@@ -34,6 +34,8 @@ class StrEnum(str, enum.Enum):
 class BaseBackupFormat(StrEnum):
     v1 = "pghoard-bb-v1"
     v2 = "pghoard-bb-v2"
+    standalone = "pghoard-bb-standalone"
+    standalone_bb_xlogs = "pghoard-bb-standalone-xlogs"
     delta_v1 = "pghoard-delta-v1"
 
 
