@@ -347,7 +347,6 @@ in the relevant site, for example::
 For more information refer to the postgresql documentation
 https://www.postgresql.org/docs/9.5/continuous-archiving.html#BACKUP-STANDALONE
 
-
 Restoring databases
 ===================
 
@@ -694,12 +693,16 @@ set.
 
 The way basebackups should be created.  The default mode, ``basic`` runs
 ``pg_basebackup`` and waits for it to write an uncompressed tar file on the
-disk before compressing and optionally encrypting it.  The alternative mode
-``pipe`` pipes the data directly from ``pg_basebackup`` to PGHoard's
-compression and encryption processing reducing the amount of temporary disk
-space that's required.
+disk before compressing and optionally encrypting it.  A ``basic-gzip`` mode
+is also available and behaves exactly the same as ``basic`` except it waits
+for ``pg_basebackup`` to write a gzip compressed tar file, which is useful
+for situations where there is insufficient disk space for an uncompressed
+backup file (especially useful for basic standalone hot backup).  The
+alternative mode ``pipe`` pipes the data directly from ``pg_basebackup`` to
+PGHoard's compression and encryption processing reducing the amount of
+temporary disk space that's required.
 
-Neither ``basic`` nor ``pipe`` modes support multiple tablespaces.
+Base backup modes ``basic``, ``basic-gzip`` and ``pipe`` do not support multiple tablespaces.
 
 Setting ``basebackup_mode`` to ``local-tar`` avoids using ``pg_basebackup``
 entirely when ``pghoard`` is running on the same host as the database.

@@ -31,7 +31,7 @@ from typing import Dict, List, Optional
 from psycopg2.extensions import adapt
 from requests import Session
 
-from pghoard.common import BaseBackupFormat, StrEnum
+from pghoard.common import BaseBackupFormat, BaseBackupMode, StrEnum
 from pghoard.rohmu import compat, dates, get_transfer, rohmufile
 from pghoard.rohmu.errors import (Error, InvalidConfigurationError, MaybeRecoverableError)
 
@@ -119,6 +119,7 @@ def create_recovery_conf(
         "--xlog",
         "%f",
     ]
+
     with open(os.path.join(dirpath, "PG_VERSION"), "r") as fp:
         pg_version = LooseVersion(fp.read().strip())
 
@@ -905,6 +906,10 @@ class ChunkFetcher:
 
     def _build_tar_args(self, metadata):
         base_args = [self.config["tar_executable"], "-xf", "-", "-C", self.pgdata]
+        basebackup_mode = metadata.get("basebackup-mode")
+        if basebackup_mode == BaseBackupMode.basic_gzip:
+            base_args[1] = "-zxf"
+
         file_format = metadata.get("format")
         if not file_format:
             return base_args
@@ -921,6 +926,7 @@ class ChunkFetcher:
                         tsname.replace("\\", "\\\\").replace(",", "\\,"), settings["path"].replace(",", "\\,")
                     )
                 )
+
             return base_args + extra_args
         else:
             raise RestoreError("Unrecognized basebackup format {!r}".format(file_format))

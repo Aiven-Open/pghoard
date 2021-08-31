@@ -40,6 +40,7 @@ class BaseBackupFormat(StrEnum):
 @enum.unique
 class BaseBackupMode(StrEnum):
     basic = "basic"
+    basic_gzip = "basic-gzip"
     delta = "delta"
     local_tar = "local-tar"
     local_tar_delta_stats = "local-tar-delta-stats"

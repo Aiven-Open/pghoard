@@ -275,6 +275,12 @@ basebackup_mode (default ``"basic"``)
   ``basic``
     runs ``pg_basebackup`` and waits for it to write an uncompressed tar file on the
     disk before compressing and optionally encrypting it.
+
+  ``basic-gzip``
+    runs ``pg_basebackup`` and waits for it to write an gzip compressed tar file on the
+    disk before compressing and optionally encrypting it.    This mode is especially
+    useful if doing standalone base backups and there is insufficient disk space for
+    an uncompressed base backup.
   ``pipe``
     pipes the data directly from ``pg_basebackup`` to PGHoard's
     compression and encryption processing reducing the amount of temporary disk

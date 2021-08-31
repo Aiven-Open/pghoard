@@ -126,9 +126,12 @@ class CompressorThread(Thread):
         close_write = event["type"] == "CLOSE_WRITE"
         move = event["type"] == "MOVE" and event["src_path"].endswith(".partial")
 
-        if close_write and os.path.basename(event["full_path"]) == "base.tar":
+        basename = os.path.basename(event["full_path"])
+        if close_write and basename in {"base.tar", "base.tar.gz"}:
             return "basebackup"
-        elif (move or close_write) and wal.TIMELINE_RE.match(os.path.basename(event["full_path"])):
+        elif (move or close_write) and wal.TIMELINE_RE.match(basename):
+            return "timeline"
+        elif (move or close_write) and wal.TIMELINE_RE.match(basename):
             return "timeline"
         # for xlog we get both move and close_write on pg10+ (in that order: the write is from an fsync by name)
         # -> for now we pick MOVE because that's compatible with pg9.x, but this leaves us open to a problem with
@@ -136,7 +139,7 @@ class CompressorThread(Thread):
         #    not find the file anymore. This ends up in a hickup in pg_receivewal.
         # TODO: when we drop pg9.x support, switch to close_write here and in all other places where we generate an xlog/WAL
         #       compression event: https://github.com/aiven/pghoard/commit/29d2ee76139e8231b40619beea0703237eb6b9cc
-        elif move and wal.WAL_RE.match(os.path.basename(event["full_path"])):
+        elif move and wal.WAL_RE.match(basename):
             return "xlog"
 
         return None
