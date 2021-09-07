@@ -43,7 +43,7 @@ class ArchiveSync:
 
     def get_current_wal_file(self):
         # identify the (must be) local database
-        return wal.get_current_wal_file(self.backup_site["nodes"][0])
+        return wal.get_current_lsn(self.backup_site["nodes"][0]).walfile_name
 
     def get_first_required_wal_segment(self):
         resp = requests.get("{base}/basebackup".format(base=self.base_url))
@@ -163,8 +163,8 @@ class ArchiveSync:
             raise SyncError("No basebackups found")
         self.log.info("Verifying archive integrity from %r to %r", current_wal_file, first_required_wal_file)
 
-        current_tli, current_log, current_seg = wal.name_to_tli_log_seg(current_wal_file)
-        target_tli, target_log, target_seg = wal.name_to_tli_log_seg(first_required_wal_file)
+        current_lsn = wal.LSN.from_walfile_name(current_wal_file, pg_version)
+        first_required_lsn = wal.LSN.from_walfile_name(first_required_wal_file, pg_version)
 
         # TODO: Need to check .history files as well
         archive_type = "xlog"
@@ -173,14 +173,13 @@ class ArchiveSync:
         while True:
             if valid_timeline:
                 # Decrement one segment if we're on a valid timeline
-                current_seg, current_log = wal.get_previous_wal_on_same_timeline(current_seg, current_log, pg_version)
-
-            wal_file = wal.name_for_tli_log_seg(current_tli, current_log, current_seg)
+                current_lsn = current_lsn.previous_walfile_start_lsn
+            wal_file = current_lsn.walfile_name
             resp = requests.head("{base}/archive/{file}".format(base=self.base_url, file=wal_file))
             if resp.status_code == 200:
                 self.log.info("%s file %r correctly archived", archive_type, wal_file)
                 file_count += 1
-                if current_seg == target_seg and current_log == target_log and current_tli == target_tli:
+                if current_lsn == first_required_lsn:
                     self.log.info("Found all required WAL files: %r", file_count)
                     return 0
                 valid_timeline = True
@@ -199,7 +198,7 @@ class ArchiveSync:
             # Go back one timeline and flag the current timeline as invalid, this will prevent segment
             # number from being decreased on the next iteration.
             valid_timeline = False
-            current_tli -= 1
+            current_lsn = current_lsn.at_timeline(current_lsn.tli - 1)
 
     def request_basebackup(self):
         resp = requests.put("{base}/archive/basebackup".format(base=self.base_url))

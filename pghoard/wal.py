@@ -6,8 +6,10 @@ See LICENSE for details
 """
 import re
 import struct
-import subprocess
 from collections import namedtuple
+
+import psycopg2
+from psycopg2.extras import PhysicalReplicationConnection
 
 from .common import replication_connection_string_and_slot_using_pgpass
 
@@ -42,7 +44,120 @@ class WalBlobLengthError(ValueError):
     """WAL blob is shorter than the WAL header"""
 
 
-WalHeader = namedtuple("WalHeader", ("version", "timeline", "lsn", "filename"))
+WalHeader = namedtuple("WalHeader", ("version", "lsn"))
+
+
+class LSN:
+
+    SEGSIZE = WAL_SEG_SIZE
+
+    def __init__(self, value, server_version: int, tli: int = None):
+        self.tli = tli
+        self.server_version = server_version
+        if isinstance(value, int):
+            self.lsn = value
+        elif isinstance(value, str):
+            log_hex, seg_hex = value.split("/", 1)
+            self.lsn = ((int(log_hex, 16) << 32) + int(seg_hex, 16))
+        else:
+            raise ValueError("LSN constructor accepts either an int, " "or a %X/%X formatted string")
+
+    @classmethod
+    def _cls_segments_per_xlogid(cls, server_version):
+        if server_version is not None and server_version < 90300:
+            return 0x0FFFFFFFF // cls.SEGSIZE
+        return 0x100000000 // cls.SEGSIZE
+
+    @property
+    def segments_per_xlogid(self):
+        return self._cls_segments_per_xlogid(self.server_version)
+
+    @classmethod
+    def from_walfile_name(cls, wal_filename, server_version):
+        n = int(wal_filename, 16)
+        tli = n >> 64
+        logid = (n >> 32) & 0xFFFFFFFF
+        segno = n & 0xFFFFFFFF
+        lsn = (logid * cls._cls_segments_per_xlogid(server_version) + segno) * cls.SEGSIZE
+        return cls(lsn, server_version, tli=tli)
+
+    @property
+    def log(self):
+        return self.lsn >> 32
+
+    @property
+    def seg(self):
+        return self.lsn // self.SEGSIZE
+
+    @property
+    def pos(self):
+        return self.lsn & 0xFFFFFFFF
+
+    @property
+    def walfile_name(self):
+        if self.tli is None:
+            raise ValueError("LSN is not associated to a timeline")
+        return "{:08X}{:08X}{:08X}".format(
+            self.tli, self.seg // self.segments_per_xlogid, self.seg % self.segments_per_xlogid
+        )
+
+    def __str__(self):
+        return "{:X}/{:X}".format(self.log, self.pos)
+
+    def _assert_sane_for_comparison(self, other):
+        if not isinstance(other, LSN):
+            raise ValueError(f"Cannot compare LSN to {type(other)}")
+        if self.tli != other.tli:
+            raise ValueError("Cannot compare LSN on different timelines")
+        if self.server_version != other.server_version:
+            raise ValueError("Cannot compare LSN on different server versions")
+
+    def __eq__(self, other):
+        return self.lsn == other.lsn and self.tli == other.tli and self.server_version == other.server_version
+
+    def __lt__(self, other):
+        self._assert_sane_for_comparison(other)
+        return self.lsn < other.lsn
+
+    def __lte__(self, other):
+        self._assert_sane_for_comparison(other)
+        return self.lsn <= other.lsn
+
+    def __gt__(self, other):
+        self._assert_sane_for_comparison(other)
+        return self.lsn > other.lsn
+
+    def __gte__(self, other):
+        self._assert_sane_for_comparison(other)
+        return self.lsn >= other.lsn
+
+    def __add__(self, other):
+        return LSN(self.lsn + other, tli=self.tli, server_version=self.server_version)
+
+    def __sub__(self, other):
+        if isinstance(other, LSN):
+            self._assert_sane_for_comparison(self, other)
+            val = other.lsn
+        elif isinstance(other, int):
+            val = other
+        return self.lsn - val
+
+    @property
+    def walfile_start_lsn(self):
+        return LSN(self.lsn & 0xFFFFFFFF000000, tli=self.tli, server_version=self.server_version)
+
+    @property
+    def next_walfile_start_lsn(self):
+        return self.walfile_start_lsn + self.SEGSIZE
+
+    @property
+    def previous_walfile_start_lsn(self):
+        if self.walfile_start_lsn.lsn == 0:
+            return None
+        return LSN(self.walfile_start_lsn.lsn - self.SEGSIZE, tli=self.tli, server_version=self.server_version)
+
+    def at_timeline(self, tli):
+        return LSN(self.lsn, self.server_version, tli=tli)
 
 
 def read_header(blob):
@@ -52,97 +167,30 @@ def read_header(blob):
         )
     magic, info, tli, pageaddr, rem_len = struct.unpack("=HHIQI", blob[:WAL_HEADER_LEN])  # pylint: disable=unused-variable
     version = WAL_MAGIC[magic]
-    log = pageaddr >> 32
-    pos = pageaddr & 0xFFFFFFFF
-    seg = pos // WAL_SEG_SIZE
-    lsn = "{:X}/{:X}".format(log, pos)
-    filename = name_for_tli_log_seg(tli, log, seg)
-    return WalHeader(version=version, timeline=tli, lsn=lsn, filename=filename)
+    lsn = LSN(pageaddr, tli=tli, server_version=version)
+    return WalHeader(version=version, lsn=lsn)
 
 
-def name_to_tli_log_seg(name):
-    n = int(name, 16)
-    tli = n >> 64
-    log = (n >> 32) & 0xFFFFFFFF
-    seg = n & 0xFFFFFFFF
-    return (tli, log, seg)
-
-
-def lsn_of_next_wal_start(lsn: int):
+def lsn_from_sysinfo(sysinfo, pg_version=None):
+    """Get wal file name out of a IDENTIFY_SYSTEM tuple
     """
-    Compute the LSN of the start of the wal segment after the one which
-    contains the given LSN.
-    """
-    return (lsn + WAL_SEG_SIZE) & 0xFFFF0000
+    return LSN(sysinfo[2], tli=int(sysinfo[1]), server_version=pg_version)
 
 
-def get_previous_wal_on_same_timeline(seg, log, pg_version):
-    if seg == 0:
-        log -= 1
-        # Pre 9.3 PG versions have a gap in their WAL ranges
-        if pg_version and int(pg_version) < 90300:
-            seg = 0xFE
-        else:
-            seg = 0xFF
-    else:
-        seg -= 1
-    return seg, log
+def get_current_lsn_from_identify_system(conn_str):
+    conn = psycopg2.connect(conn_str, connection_factory=PhysicalReplicationConnection)
+
+    pg_version = conn.server_version
+    cur = conn.cursor()
+    cur.execute("IDENTIFY_SYSTEM")
+    sysinfo = cur.fetchone()
+    conn.close()
+    return lsn_from_sysinfo(sysinfo, pg_version)
 
 
-def name_for_tli_log_seg(tli, log, seg):
-    return "{:08X}{:08X}{:08X}".format(tli, log, seg)
-
-
-def convert_integer_to_lsn(value):
-    log = value >> 32
-    pos = value & 0xFFFFFFFF
-    seg = pos // WAL_SEG_SIZE
-    return log, pos, seg
-
-
-def get_lsn_from_start_of_wal_file(lsn):
-    log_hex, seg_hex = lsn.split("/", 1)
-    log = int(log_hex, 16)
-    seg = int(seg_hex, 16) >> 24
-    pos = seg * WAL_SEG_SIZE
-    return "{:X}/{:X}".format(log, pos)
-
-
-def lsn_from_name(name):
-    _, log, seg = name_to_tli_log_seg(name)
-    pos = seg * WAL_SEG_SIZE
-    return "{:X}/{:X}".format(log, pos)
-
-
-def lsn_int_from_str(str_lsn):
-    log_hex, seg_hex = str_lsn.split("/", 1)
-    return int(log_hex, 16) + (int(seg_hex, 16) >> 24) * WAL_SEG_SIZE
-
-
-def construct_wal_name(sysinfo):
-    """Get wal file name out of something like this:
-    {'dbname': '', 'systemid': '6181331723016416192', 'timeline': '1', 'xlogpos': '0/90001B0'}
-    """
-    log_hex, seg_hex = sysinfo["xlogpos"].split("/", 1)
-    # seg_hex's topmost 8 bits are filename, low 24 bits are position in
-    # file which we are not interested in
-    return name_for_tli_log_seg(tli=int(sysinfo["timeline"]), log=int(log_hex, 16), seg=int(seg_hex, 16) >> 24)
-
-
-def get_current_wal_from_identify_system(conn_str):
-    # unfortunately psycopg2's available versions don't support
-    # replication protocol so we'll just have to execute psql to figure
-    # out the current WAL position.
-    out = subprocess.check_output(["psql", "--no-psqlrc", "-Aqxc", "IDENTIFY_SYSTEM", conn_str])
-    sysinfo = dict(line.split("|", 1) for line in out.decode("ascii").splitlines())
-    # construct the currently open WAL file name using sysinfo, we need
-    # everything older than that
-    return construct_wal_name(sysinfo)
-
-
-def get_current_wal_file(node_info):
+def get_current_lsn(node_info):
     conn_str, _ = replication_connection_string_and_slot_using_pgpass(node_info)
-    return get_current_wal_from_identify_system(conn_str)
+    return get_current_lsn_from_identify_system(conn_str)
 
 
 def verify_wal(*, wal_name, fileobj=None, filepath=None):
@@ -163,7 +211,7 @@ def verify_wal(*, wal_name, fileobj=None, filepath=None):
         fmt = "WAL file {name!r} verification failed: {ex.__class__.__name__}: {ex}"
         raise ValueError(fmt.format(name=source_name, ex=ex))
 
-    expected_lsn = lsn_from_name(wal_name)
+    expected_lsn = LSN.from_walfile_name(wal_name, server_version=hdr.version)
     if hdr.lsn != expected_lsn:
         fmt = "Expected LSN {lsn!r} in WAL file {name!r}; found {found!r}"
-        raise LsnMismatchError(fmt.format(lsn=expected_lsn, name=source_name, found=hdr.lsn))
+        raise LsnMismatchError(fmt.format(lsn=str(expected_lsn), name=source_name, found=str(hdr.lsn)))

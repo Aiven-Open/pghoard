@@ -19,9 +19,7 @@ from psycopg2.extras import (  # pylint: disable=no-name-in-module
 )
 
 from pghoard.common import suppress
-from pghoard.wal import (
-    WAL_SEG_SIZE, convert_integer_to_lsn, get_lsn_from_start_of_wal_file, lsn_of_next_wal_start, name_for_tli_log_seg
-)
+from pghoard.wal import LSN, WAL_SEG_SIZE, lsn_from_sysinfo
 
 KEEPALIVE_INTERVAL = 10.0
 
@@ -109,11 +107,10 @@ class WALReceiver(Thread):
 
         # Figure out the LSN we should try to replicate from
         if self.last_flushed_lsn:
-            log, pos, _ = convert_integer_to_lsn(self.last_flushed_lsn)
-            lsn = "{:X}/{:X}".format(log, pos)
+            lsn = LSN(self.last_flushed_lsn, self.pg_version_server)
         else:
-            lsn = get_lsn_from_start_of_wal_file(identify_system[2])
-
+            lsn = lsn_from_sysinfo(identify_system, self.pg_version_server)
+        lsn = str(lsn.walfile_start_lsn)
         self.log.info("Starting replication from %r, timeline: %r with slot: %r", lsn, timeline, self.replication_slot)
         if self.replication_slot:
             self.c.start_replication(
@@ -170,16 +167,16 @@ class WALReceiver(Thread):
             self.log.debug("replication_msg: %r, buffer: %r/%r", msg, self.buffer.tell(), WAL_SEG_SIZE)
             if msg:
                 self.latest_activity = datetime.datetime.utcnow()
-                log, _, seg = convert_integer_to_lsn(msg.data_start)
-                wal_name = name_for_tli_log_seg(timeline, log, seg)
+                lsn = LSN(msg.data_start, tli=timeline, server_version=self.pg_version_server)
+                wal_name = lsn.walfile_name
 
                 if not self.latest_wal:
-                    self.latest_wal_start = msg.data_start
+                    self.latest_wal_start = lsn.lsn
                     self.latest_wal = wal_name
                 self.buffer.write(msg.payload)
 
                 # TODO: Calculate end pos and transmit that?
-                msg.cursor.send_feedback(write_lsn=msg.data_start)
+                msg.cursor.send_feedback(write_lsn=lsn.lsn)
 
             if wal_name and self.latest_wal != wal_name or self.buffer.tell() >= WAL_SEG_SIZE:
                 self.switch_wal()
@@ -206,7 +203,8 @@ class WALReceiver(Thread):
 
         for completed_lsn in sorted(self.completed_wal_segments):
             # The flush position is the end of the wal file.
-            next_wal_start_lsn = lsn_of_next_wal_start(completed_lsn)
+            lsn = LSN(completed_lsn, server_version=self.pg_version_server)
+            next_wal_start_lsn = lsn.next_walfile_start_lsn.lsn
             self.callbacks.pop(completed_lsn)
             if self.callbacks:
                 if completed_lsn > min(self.callbacks):

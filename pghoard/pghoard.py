@@ -266,20 +266,20 @@ class PGHoard:
         self.log.info("Starting WAL deletion from: %r before: %r, pg_version: %r", site, wal_segment, pg_version)
         storage = self.site_transfers.get(site)
         valid_timeline = True
-        tli, log, seg = wal.name_to_tli_log_seg(wal_segment)
+        lsn = wal.LSN.from_walfile_name(wal_segment, server_version=pg_version)
         while True:
             if valid_timeline:
                 # Decrement one segment if we're on a valid timeline
-                if seg == 0 and log == 0:
+                lsn = lsn.previous_walfile_start_lsn
+                if lsn is None:
                     break
-                seg, log = wal.get_previous_wal_on_same_timeline(seg, log, pg_version)
-            wal_path = os.path.join(self._get_site_prefix(site), "xlog", wal.name_for_tli_log_seg(tli, log, seg))
+            wal_path = os.path.join(self._get_site_prefix(site), "xlog", lsn.walfile_name)
             self.log.debug("Deleting wal_file: %r", wal_path)
             try:
                 storage.delete_key(wal_path)
                 valid_timeline = True
             except FileNotFoundFromStorageError:
-                if not valid_timeline or tli <= 1:
+                if not valid_timeline or lsn.tli <= 1:
                     # if we didn't find any WALs to delete on this timeline or we're already at
                     # timeline 1 there's no need or possibility to try older timelines, break.
                     self.log.info("Could not delete wal_file: %r, returning", wal_path)
@@ -287,10 +287,10 @@ class PGHoard:
                 # let's try the same segment number on a previous timeline, but flag that timeline
                 # as "invalid" until we're able to delete at least one segment on it.
                 valid_timeline = False
-                tli -= 1
+                lsn = lsn.at_timeline(lsn.tli - 1)
                 self.log.info(
                     "Could not delete wal_file: %r, trying the same segment on a previous "
-                    "timeline (%s)", wal_path, wal.name_for_tli_log_seg(tli, log, seg)
+                    "timeline (%s)", wal_path, lsn.walfile_name
                 )
             except Exception as ex:  # FIXME: don't catch all exceptions; pylint: disable=broad-except
                 self.log.exception("Problem deleting: %r", wal_path)
@@ -459,7 +459,8 @@ class PGHoard:
             basebackups_to_delete = self.determine_backups_to_delete(basebackups=basebackups, site_config=site_config)
 
             for basebackup_to_be_deleted in basebackups_to_delete:
-                pg_version = basebackup_to_be_deleted["metadata"].get("pg-version")
+                pg_version_str = basebackup_to_be_deleted["metadata"].get("pg-version")
+                pg_version = None if pg_version_str is None else int(pg_version_str)
                 last_wal_segment_still_needed = 0
                 if basebackups:
                     last_wal_segment_still_needed = basebackups[0]["metadata"]["start-wal-segment"]
