@@ -13,20 +13,20 @@ import pytest
 
 from pghoard import wal
 
-# PG 9.5; LSN 11/9C000000; TLI 47 (0x2f)
+# PG 9.5; LSN 11/9C000000; timeline_id 47 (0x2f)
 WAL_HEADER_95 = codecs.decode(b"87d006002f0000000000009c1100000000000000", "hex_codec")
 
 
 def wal_header_for_file(name, version=90500):
     lsn = wal.LSN.from_walfile_name(name, server_version=version)
-    tli = lsn.tli
-    log = lsn.log
-    seg = lsn.seg
+    timeline_id = lsn.timeline_id
+    log = lsn._log  # pylint: disable=protected-access
+    seg = lsn._seg  # pylint: disable=protected-access
     if version < 90300:
         recoff = seg * wal.WAL_SEG_SIZE
-        return struct.pack("=HHILLI", wal.WAL_MAGIC_BY_VERSION[version], 0, tli, log, recoff, 0)
+        return struct.pack("=HHILLI", wal.WAL_MAGIC_BY_VERSION[version], 0, timeline_id, log, recoff, 0)
     pageaddr = (log << 32) | (seg * wal.WAL_SEG_SIZE)
-    return struct.pack("=HHIQI", wal.WAL_MAGIC_BY_VERSION[version], 0, tli, pageaddr, 0)
+    return struct.pack("=HHIQI", wal.WAL_MAGIC_BY_VERSION[version], 0, timeline_id, pageaddr, 0)
 
 
 def test_wal_header_pg95():
@@ -38,7 +38,7 @@ def test_wal_header_pg95():
 
 def test_wal_header():
     blob95 = WAL_HEADER_95
-    lsn = wal.LSN("11/9C000000", tli=47, server_version=90500)
+    lsn = wal.LSN("11/9C000000", timeline_id=47, server_version=90500)
     assert lsn.walfile_name == "0000002F000000110000009C"
     hdr95 = wal.WalHeader(version=90500, lsn=lsn)
     assert wal.read_header(blob95) == hdr95
@@ -47,7 +47,7 @@ def test_wal_header():
     with pytest.raises(wal.WalBlobLengthError):
         wal.read_header(blob95[:18])
     blob94 = b"\x7e\xd0" + blob95[2:]
-    lsn = wal.LSN("11/9C000000", tli=47, server_version=90400)
+    lsn = wal.LSN("11/9C000000", timeline_id=47, server_version=90400)
     hdr94 = wal.WalHeader(version=90400, lsn=lsn)
     assert wal.read_header(blob94) == hdr94
     blob9X = b"\x7F\xd0" + blob95[2:]
@@ -72,7 +72,7 @@ def test_lsn_from_name():
 
 def test_construct_wal_name():
     sysinfo = ("6181331723016416192", "4", "F/190001B0", "")
-    assert wal.lsn_from_sysinfo(sysinfo, None) == wal.LSN("F/190001B0", tli=4, server_version=None)
+    assert wal.lsn_from_sysinfo(sysinfo, None) == wal.LSN("F/190001B0", timeline_id=4, server_version=None)
     assert wal.lsn_from_sysinfo(sysinfo, None).walfile_name == "000000040000000F00000019"
     assert str(wal.lsn_from_sysinfo(sysinfo, None).walfile_start_lsn) == "F/19000000"
 

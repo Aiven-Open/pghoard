@@ -279,7 +279,7 @@ class PGHoard:
                 storage.delete_key(wal_path)
                 valid_timeline = True
             except FileNotFoundFromStorageError:
-                if not valid_timeline or lsn.tli <= 1:
+                if not valid_timeline or lsn.timeline_id <= 1:
                     # if we didn't find any WALs to delete on this timeline or we're already at
                     # timeline 1 there's no need or possibility to try older timelines, break.
                     self.log.info("Could not delete wal_file: %r, returning", wal_path)
@@ -287,7 +287,7 @@ class PGHoard:
                 # let's try the same segment number on a previous timeline, but flag that timeline
                 # as "invalid" until we're able to delete at least one segment on it.
                 valid_timeline = False
-                lsn = lsn.at_timeline(lsn.tli - 1)
+                lsn = lsn.at_timeline(lsn.timeline_id - 1)
                 self.log.info(
                     "Could not delete wal_file: %r, trying the same segment on a previous "
                     "timeline (%s)", wal_path, lsn.walfile_name

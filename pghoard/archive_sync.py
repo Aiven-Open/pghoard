@@ -59,7 +59,7 @@ class ArchiveSync:
         # *by name*.
         latest_basebackup = max(items, key=lambda item: item["name"])
         pg_version = latest_basebackup["metadata"].get("pg-version")
-        return latest_basebackup["metadata"]["start-wal-segment"], pg_version
+        return latest_basebackup["metadata"]["start-wal-segment"], int(pg_version)
 
     def archive_sync(self, verify, new_backup_on_failure, max_hash_checks):
         self.check_and_upload_missing_local_files(max_hash_checks)
@@ -198,7 +198,7 @@ class ArchiveSync:
             # Go back one timeline and flag the current timeline as invalid, this will prevent segment
             # number from being decreased on the next iteration.
             valid_timeline = False
-            current_lsn = current_lsn.at_timeline(current_lsn.tli - 1)
+            current_lsn = current_lsn.at_timeline(current_lsn.timeline_id - 1)
 
     def request_basebackup(self):
         resp = requests.put("{base}/archive/basebackup".format(base=self.base_url))

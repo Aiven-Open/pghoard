@@ -167,7 +167,7 @@ class WALReceiver(Thread):
             self.log.debug("replication_msg: %r, buffer: %r/%r", msg, self.buffer.tell(), WAL_SEG_SIZE)
             if msg:
                 self.latest_activity = datetime.datetime.utcnow()
-                lsn = LSN(msg.data_start, tli=timeline, server_version=self.pg_version_server)
+                lsn = LSN(msg.data_start, timeline_id=timeline, server_version=self.pg_version_server)
                 wal_name = lsn.walfile_name
 
                 if not self.latest_wal:
