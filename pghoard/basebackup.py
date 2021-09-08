@@ -291,7 +291,7 @@ class PGBaseBackup(Thread):
         # This means that this WAL information would not be the oldest required to restore from this
         # basebackup.
         connection_string, _ = replication_connection_string_and_slot_using_pgpass(self.connection_info)
-        start_wal_segment = wal.get_current_wal_from_identify_system(connection_string)
+        start_wal_segment = wal.get_current_lsn_from_identify_system(connection_string).walfile_name
 
         temp_basebackup_dir, compressed_basebackup = self.get_paths_for_backup(self.basebackup_path)
         command = self.get_command_line("-")

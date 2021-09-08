@@ -1,5 +1,5 @@
 from pghoard.pghoard import PGHoard
-from pghoard.wal import (get_current_wal_file, get_previous_wal_on_same_timeline, name_for_tli_log_seg, name_to_tli_log_seg)
+from pghoard.wal import get_current_lsn
 
 from .util import switch_wal, wait_for_xlog
 
@@ -25,14 +25,13 @@ class TestWalReceiver:
         """
         conn = db.connect()
         conn.autocommit = True
-        server_version = conn.server_version
 
         pghoard = pghoard_walreceiver
         node = pghoard.config["backup_sites"][pghoard.test_site]["nodes"][0]
         # The transfer agent state will be used to check what
         # was uploaded
         # Before starting the walreceiver, get the current wal name.
-        wal_name = get_current_wal_file(node)
+        wal_name = get_current_lsn(node).walfile_name
         # Start streaming, force a wal rotation, and check the wal has been
         # archived
         pghoard.start_walreceiver(pghoard.test_site, node, None)
@@ -52,12 +51,8 @@ class TestWalReceiver:
         conn.close()
         # The last wal file is the previous one, as the current one is not
         # complete.
-        wal_name = get_current_wal_file(node)
-        tli, log, seg = name_to_tli_log_seg(wal_name)
-        seg, log = get_previous_wal_on_same_timeline(seg, log, server_version)
-
-        previous_wal_name = name_for_tli_log_seg(tli, log, seg)
-
+        lsn = get_current_lsn(node)
+        previous_wal_name = lsn.previous_walfile_start_lsn.walfile_name
         pghoard.start_walreceiver(pghoard.test_site, node, last_flushed_lsn)
         wait_for_xlog(pghoard, 4)
         last_flushed_lsn = stop_walreceiver(pghoard)
