@@ -116,9 +116,7 @@ class LSN:
 
     def _assert_sane_for_comparison(self, other):
         if not isinstance(other, LSN):
-            raise ValueError(f"Cannot compare LSN to {type(other)}")
-        if self.timeline_id != other.timeline_id:
-            raise ValueError("Cannot compare LSN on different timelines")
+            raise ValueError(f"Cannot compare LSN to {type(other)} ({self} {other}")
         if self.server_version != other.server_version:
             raise ValueError("Cannot compare LSN on different server versions")
 
@@ -131,7 +129,7 @@ class LSN:
         self._assert_sane_for_comparison(other)
         return self.lsn < other.lsn
 
-    def __lte__(self, other) -> bool:
+    def __le__(self, other) -> bool:
         self._assert_sane_for_comparison(other)
         return self.lsn <= other.lsn
 
@@ -139,7 +137,7 @@ class LSN:
         self._assert_sane_for_comparison(other)
         return self.lsn > other.lsn
 
-    def __gte__(self, other) -> bool:
+    def __ge__(self, other) -> bool:
         self._assert_sane_for_comparison(other)
         return self.lsn >= other.lsn
 

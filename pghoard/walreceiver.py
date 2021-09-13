@@ -53,15 +53,22 @@ class WALReceiver(Thread):
         self.latest_wal_start = None
         self.latest_activity = datetime.datetime.utcnow()
         self.callbacks = {}
+        if last_flushed_lsn and not isinstance(last_flushed_lsn, LSN):
+            last_flushed_lsn = LSN(last_flushed_lsn, server_version=self.pg_version_server)
         self.last_flushed_lsn = last_flushed_lsn
+        self.timeline_id = None
         self.metrics = metrics
+        self.stop_after_lsn = None
         self.log.info(
             "WALReceiver initialized with replication_slot: %r, last_flushed_lsn: %r", self.replication_slot,
             last_flushed_lsn
         )
+        self.exception = Queue()
 
     def _init_cursor(self):
-        self.conn = psycopg2.connect(self.dsn, connection_factory=PhysicalReplicationConnection)
+        self.conn = psycopg2.connect(
+            self.dsn, connection_factory=PhysicalReplicationConnection, application_name="pghoard_receivewal"
+        )
         self.c = self.conn.cursor()
 
     def create_replication_slot(self):
@@ -107,7 +114,7 @@ class WALReceiver(Thread):
 
         # Figure out the LSN we should try to replicate from
         if self.last_flushed_lsn:
-            lsn = LSN(self.last_flushed_lsn, self.pg_version_server)
+            lsn = self.last_flushed_lsn
         else:
             lsn = lsn_from_sysinfo(identify_system, self.pg_version_server)
         lsn = str(lsn.walfile_start_lsn)
@@ -122,7 +129,6 @@ class WALReceiver(Thread):
 
     def switch_wal(self):
         self.log.debug("Switching WAL from %r amount of data: %r", self.latest_wal, self.buffer.tell())
-
         self.buffer.seek(0)
         wal_data = BytesIO(self.buffer.read(WAL_SEG_SIZE))
         wal_data.seek(0, os.SEEK_END)
@@ -151,35 +157,33 @@ class WALReceiver(Thread):
         self.buffer = BytesIO(rest_of_data)
         self.buffer.seek(0, os.SEEK_END)
 
-    def run(self):
-        self._init_cursor()
+    def _walreceive(self):
         if self.replication_slot:
             self.create_replication_slot()
-        timeline = self.start_replication()
+        self.timeline_id = self.start_replication()
         while self.running:
             wal_name = None
-            try:
-                msg = self.c.read_message()
-            except psycopg2.DatabaseError as ex:
-                self.log.exception("Unexpected exception in reading walreceiver msg")
-                self.metrics.unexpected_exception(ex, where="walreceiver_run")
-                continue
+            msg = self.c.read_message()
             self.log.debug("replication_msg: %r, buffer: %r/%r", msg, self.buffer.tell(), WAL_SEG_SIZE)
+            end_lsn = None
             if msg:
                 self.latest_activity = datetime.datetime.utcnow()
-                lsn = LSN(msg.data_start, timeline_id=timeline, server_version=self.pg_version_server)
+                lsn = LSN(msg.data_start, timeline_id=self.timeline_id, server_version=self.pg_version_server)
                 wal_name = lsn.walfile_name
 
                 if not self.latest_wal:
                     self.latest_wal_start = lsn.lsn
                     self.latest_wal = wal_name
+                end_lsn = lsn + len(msg.payload)
                 self.buffer.write(msg.payload)
-
                 # TODO: Calculate end pos and transmit that?
                 msg.cursor.send_feedback(write_lsn=lsn.lsn)
-
             if wal_name and self.latest_wal != wal_name or self.buffer.tell() >= WAL_SEG_SIZE:
                 self.switch_wal()
+            if end_lsn and self.stop_after_lsn and end_lsn >= self.stop_after_lsn.next_walfile_start_lsn:
+                self.running = False
+                self.log.info("Stopping walreceiver as we reached %s (%s)", self.stop_after_lsn, end_lsn)
+                break
             self.process_completed_segments()
 
             if not msg:
@@ -190,32 +194,52 @@ class WALReceiver(Thread):
         # When we stop, process sent wals to update last_flush lsn.
         self.process_completed_segments(block=True)
 
+    def run(self):
+        try:
+            self._init_cursor()
+            self._walreceive()
+        except Exception as e:
+            self.exception.put(e)
+            raise
+        finally:
+            if self.conn:
+                self.conn.close()
+
+    def join(self, timeout=None):
+        super().join(timeout=timeout)
+        with suppress(Empty):
+            exception = self.exception.get_nowait()
+            if exception:
+                raise exception
+
     def process_completed_segments(self, *, block=False):
         for wal_start, queue in self.callbacks.items():
             if block:
                 transfer_result = queue.get()
                 self.log.debug("Transfer result: %r", transfer_result)
+                self.completed_wal_segments.add(wal_start)
             else:
                 with suppress(Empty):
                     transfer_result = queue.get_nowait()
                     self.log.debug("Transfer result: %r", transfer_result)
-            self.completed_wal_segments.add(wal_start)
+                    self.completed_wal_segments.add(wal_start)
 
         for completed_lsn in sorted(self.completed_wal_segments):
             # The flush position is the end of the wal file.
-            lsn = LSN(completed_lsn, server_version=self.pg_version_server)
-            next_wal_start_lsn = lsn.next_walfile_start_lsn.lsn
-            self.callbacks.pop(completed_lsn)
+            lsn = LSN(completed_lsn, server_version=self.pg_version_server, timeline_id=self.timeline_id)
+            next_wal_start_lsn = lsn.next_walfile_start_lsn
+            # Remove it from the callbacks if it hasn't been done before
+            self.callbacks.pop(completed_lsn, None)
             if self.callbacks:
                 if completed_lsn > min(self.callbacks):
                     pass  # Do nothing since a smaller lsn is still being transferred
                 else:  # Earlier lsn than earlist on-going transfer, just advance flush_lsn
-                    self.c.send_feedback(flush_lsn=next_wal_start_lsn)
+                    self.c.send_feedback(flush_lsn=next_wal_start_lsn.lsn)
                     self.completed_wal_segments.discard(completed_lsn)
                     self.last_flushed_lsn = next_wal_start_lsn
-                    self.log.debug("Sent flush_lsn feedback as: %r", self.last_flushed_lsn)
+                    self.log.info("Sent flush_lsn feedback as: %r", self.last_flushed_lsn)
             else:  # No on-going transfer, just advance flush_lsn
-                self.c.send_feedback(flush_lsn=next_wal_start_lsn)
+                self.c.send_feedback(flush_lsn=next_wal_start_lsn.lsn)
                 self.completed_wal_segments.discard(completed_lsn)
                 self.last_flushed_lsn = next_wal_start_lsn
-                self.log.debug("Sent flush_lsn feedback as: %r", self.last_flushed_lsn)
+                self.log.info("Sent flush_lsn feedback as: %r", self.last_flushed_lsn)

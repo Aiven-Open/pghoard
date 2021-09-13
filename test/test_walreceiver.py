@@ -1,5 +1,5 @@
 from pghoard.pghoard import PGHoard
-from pghoard.wal import get_current_lsn
+from pghoard.wal import WAL_SEG_SIZE, get_current_lsn
 
 from .util import switch_wal, wait_for_xlog
 
@@ -48,7 +48,6 @@ class TestWalReceiver:
         # and check that we can fetch it once done using the recorded state
         for _ in range(3):
             switch_wal(conn)
-        conn.close()
         # The last wal file is the previous one, as the current one is not
         # complete.
         lsn = get_current_lsn(node)
@@ -59,3 +58,20 @@ class TestWalReceiver:
         state = get_transfer_agent_upload_xlog_state(pghoard)
         assert state.get("xlogs_since_basebackup") == 4
         assert state.get("latest_filename") == previous_wal_name
+
+        # Now try to stop it after a speficic LSN
+        pghoard.start_walreceiver(pghoard.test_site, node, last_flushed_lsn)
+        walreceiver = pghoard.walreceivers[pghoard.test_site]
+        # Do not end on a wal boundary, and make sure we actually wait until
+        # the whole wal has been archived
+        target_lsn = walreceiver.last_flushed_lsn + WAL_SEG_SIZE * 3 + 100
+        walreceiver.stop_after_lsn = target_lsn
+        for _ in range(5):
+            switch_wal(conn)
+        conn.close()
+        walreceiver.join()
+        assert walreceiver.running is False
+        assert walreceiver.last_flushed_lsn >= target_lsn
+        assert walreceiver.last_flushed_lsn < target_lsn + WAL_SEG_SIZE
+        state = get_transfer_agent_upload_xlog_state(pghoard)
+        assert state.get("latest_filename") == target_lsn.walfile_name

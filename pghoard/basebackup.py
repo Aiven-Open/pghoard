@@ -22,6 +22,7 @@ from threading import Thread
 from typing import Dict, Optional
 
 import psycopg2
+from psycopg2.extras import PhysicalReplicationConnection
 
 from pghoard.rohmu import dates, errors, rohmufile
 from pghoard.rohmu.compat import suppress
@@ -36,6 +37,7 @@ from .common import (
 )
 from .patchedtarfile import tarfile
 from .rohmu.delta.common import EMBEDDED_FILE_SIZE
+from .walreceiver import WALReceiver
 
 BASEBACKUP_NAME = "pghoard_base_backup"
 EMPTY_DIRS = [
@@ -132,12 +134,13 @@ class PGBaseBackup(Thread):
         self.metadata = metadata or {}
         self.metrics = metrics
         self.transfer_queue = transfer_queue
-        self.running = True
+        self._running = True
         self.pid = None
         self.pg_version_server = pg_version_server
         self.latest_activity = datetime.datetime.utcnow()
         self.storage = storage
         self.get_remote_basebackups_info = get_remote_basebackups_info
+        self.wal_receiver = None
 
     def run(self):
         try:
@@ -161,13 +164,25 @@ class PGBaseBackup(Thread):
             else:
                 self.log.exception("Backup unexpectedly failed")
                 self.metrics.unexpected_exception(ex, where="PGBaseBackup")
-
             if self.callback_queue:
                 # post a failure event
                 self.callback_queue.put({"success": False})
+            if self.wal_receiver:
+                self.wal_receiver.running = False
+                self.wal_receiver.join()
 
         finally:
             self.running = False
+
+    @property
+    def running(self):
+        return self._running
+
+    @running.setter
+    def running(self, running):
+        self._running = running
+        if self.wal_receiver:
+            self.wal_receiver.running = running
 
     @staticmethod
     def get_paths_for_backup(basebackup_path):
@@ -196,13 +211,7 @@ class PGBaseBackup(Thread):
             "--pgdata",
             output_name,
         ]
-
-        if self.site_config["active_backup_mode"] == "standalone_hot_backup":
-            if self.pg_version_server >= 100000:
-                command.extend(["--wal-method=fetch"])
-            else:
-                command.extend(["--xlog-method=fetch"])
-        elif self.pg_version_server >= 100000:
+        if self.pg_version_server >= 100000:
             command.extend(["--wal-method=none"])
 
         connection_string, _ = replication_connection_string_and_slot_using_pgpass(self.connection_info)
@@ -290,9 +299,39 @@ class PGBaseBackup(Thread):
         # an incorrect start-wal-time since the pg_basebackup from pghoard will not generate a new checkpoint.
         # This means that this WAL information would not be the oldest required to restore from this
         # basebackup.
-        connection_string, _ = replication_connection_string_and_slot_using_pgpass(self.connection_info)
-        start_wal_segment = wal.get_current_lsn_from_identify_system(connection_string).walfile_name
+        connection_string, slot = replication_connection_string_and_slot_using_pgpass(self.connection_info)
+        # Create the replication slot before trying to stream from here.
+        if slot:
+            conn = psycopg2.connect(connection_string, connection_factory=PhysicalReplicationConnection)
+            cur = conn.cursor()
+            try:
+                cur.execute(f"CREATE_REPLICATION_SLOT {slot} PHYSICAL RESERVE_WAL")
+            except psycopg2.errors.DuplicateObject as e:  # pylint: disable=no-member
+                # Ignore problem with already existing slot
+                pass
+            conn.close()
+        current_lsn = wal.get_current_lsn_from_identify_system(connection_string)
+        start_wal_segment = current_lsn.walfile_name
 
+        # In a piped basebackup, we can only use the FETCH method or not fetch
+        # any wal. So don't use pg_basebackup to fetch the logs, and connect
+        # a walreceiver instead if we are in standalone_hot_backup mode.
+        # We'll stop it as soon as we reached the end of the backup
+        self.wal_receiver = None
+        if self.site_config["active_backup_mode"] == "standalone_hot_backup":
+            self.wal_receiver = WALReceiver(
+                config=self.config,
+                connection_string=connection_string,
+                compression_queue=self.compression_queue,  # XXX FIXME
+                site=self.site,
+                last_flushed_lsn=current_lsn.walfile_start_lsn,
+                metrics=self.metrics,
+                pg_version_server=self.pg_version_server,
+                replication_slot=slot
+            )
+            self.log.info("Starting walreceiver...")
+            self.wal_receiver.start()
+        # Wait for the walreceiver to actually start archiving
         temp_basebackup_dir, compressed_basebackup = self.get_paths_for_backup(self.basebackup_path)
         command = self.get_command_line("-")
         self.log.debug("Starting to run: %r", command)
@@ -319,6 +358,22 @@ class PGBaseBackup(Thread):
         self.check_command_success(proc, stream_target)
         os.rename(stream_target, compressed_basebackup)
 
+        # Get the current wal-segment on the primary, and wait until the
+        # walreceiver has actually received it.
+        # It means we may store more WAL than necessary, but at least we won't
+        # store less.
+        # TODO: use PG 13 backup manifest to extract it under the
+        # Wal-Ranges[End-LSN]" key.
+        non_repl_connection_string = connection_string_using_pgpass(self.connection_info)
+        with psycopg2.connect(non_repl_connection_string) as db_conn:
+            if self.wal_receiver is not None:
+                lsn = wal.get_current_lsn_from_identify_system(connection_string)
+                self.wal_receiver.stop_after_lsn = lsn
+                backup_end_wal_segment, backup_end_time = self.get_backup_end_segment_and_time(db_conn, None)
+                self.log.info("Will wait for walreceiver to stop")
+                self.wal_receiver.join()
+            else:
+                backup_end_wal_segment, backup_end_time = self.get_backup_end_segment_and_time(db_conn, None)
         # Since we might not be able to parse the backup label we cheat with the start-wal-segment and
         # start-time a bit. The start-wal-segment is the segment currently being written before
         # the backup and the start_time is taken _after_ the backup has completed and so is conservatively
@@ -337,6 +392,8 @@ class PGBaseBackup(Thread):
             "original-file-size": original_input_size,
             "pg-version": self.pg_version_server,
             "active-backup-mode": self.site_config["active_backup_mode"],
+            "backup_end_time": backup_end_time,
+            "backup_end_wal_segment": backup_end_wal_segment
         })
         metadata.update(self.metadata)
 

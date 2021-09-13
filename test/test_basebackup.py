@@ -269,7 +269,7 @@ LABEL: pg_basebackup base backup
 
             assert backups[0]["metadata"]["active-backup-mode"] == active_backup_mode
 
-    def _test_restore_basebackup(self, db, pghoard, tmpdir, active_backup_mode="archive_command"):
+    def _test_restore_basebackup(self, db, pghoard, tmpdir):
         backup_out = tmpdir.join("test-restore").strpath
         # Restoring to empty directory works
         os.makedirs(backup_out)
@@ -340,10 +340,9 @@ LABEL: pg_basebackup base backup
             wal_dir = "pg_wal"
 
         path = os.path.join(backup_out, wal_dir, backups[0]["metadata"]["start-wal-segment"])
-        if active_backup_mode == "standalone_hot_backup":
-            assert os.path.isfile(path) is True
-        else:
-            assert os.path.isfile(path) is False
+        # Basebackups don't include any wal file. If necessary, they are
+        # fetched by a separate walreceiver process.
+        assert os.path.isfile(path) is False
 
     def _test_basebackups(self, capsys, db, pghoard, tmpdir, mode, *, replica=False):
         self._test_create_basebackup(capsys, db, pghoard, mode, replica=replica)
@@ -351,11 +350,11 @@ LABEL: pg_basebackup base backup
 
     def test_basic_standalone_hot_backups(self, capsys, db, pghoard, tmpdir):
         self._test_create_basebackup(capsys, db, pghoard, BaseBackupMode.basic, False, "standalone_hot_backup")
-        self._test_restore_basebackup(db, pghoard, tmpdir, "standalone_hot_backup")
+        self._test_restore_basebackup(db, pghoard, tmpdir)
 
     def test_pipe_standalone_hot_backups(self, capsys, db, pghoard, tmpdir):
         self._test_create_basebackup(capsys, db, pghoard, BaseBackupMode.pipe, False, "standalone_hot_backup")
-        self._test_restore_basebackup(db, pghoard, tmpdir, "standalone_hot_backup")
+        self._test_restore_basebackup(db, pghoard, tmpdir)
 
     def test_basebackups_basic(self, capsys, db, pghoard, tmpdir):
         self._test_basebackups(capsys, db, pghoard, tmpdir, BaseBackupMode.basic)
