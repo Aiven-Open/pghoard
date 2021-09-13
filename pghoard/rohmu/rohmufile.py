@@ -70,7 +70,6 @@ def create_sink_pipeline(*, output, file_size=None, metadata=None, key_lookup=No
 def read_file(*, input_obj, output_obj, metadata, key_lookup, progress_callback=None, log_func=None):
     start_time = time.monotonic()
 
-    original_size = 0
     with file_reader(fileobj=input_obj, metadata=metadata, key_lookup=key_lookup) as fp_in:
         while True:
             input_data = fp_in.read(IO_BLOCK_SIZE)
@@ -78,10 +77,10 @@ def read_file(*, input_obj, output_obj, metadata, key_lookup, progress_callback=
                 break
 
             output_obj.write(input_data)
-            original_size += len(input_data)
             if progress_callback:
                 progress_callback()
 
+    original_size = input_obj.tell()
     result_size = output_obj.tell()
 
     if log_func:
@@ -90,7 +89,7 @@ def read_file(*, input_obj, output_obj, metadata, key_lookup, progress_callback=
             action += " and decrypted"
 
         log_func(
-            "%s %d bytes to %s bytes, took: %.3fs", action, result_size, _fileobj_name(output_obj),
+            "%s %d bytes to %d bytes in %s, took: %.3fs", action, original_size, result_size, _fileobj_name(output_obj),
             time.monotonic() - start_time
         )
 
@@ -173,4 +172,4 @@ def log_compression_result(*, log_func, source_name, original_size, result_size,
     if encrypted:
         action += " and encrypted"
 
-    log_func("%s %d byte %s to %d bytes%s, took: %.3fs", action, original_size, source_name, result_size, ratio, elapsed)
+    log_func("%s %d byte of %s to %d bytes%s, took: %.3fs", action, original_size, source_name, result_size, ratio, elapsed)
