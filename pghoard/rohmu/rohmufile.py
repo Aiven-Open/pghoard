@@ -12,7 +12,7 @@ from .compat import suppress
 from .compressor import CompressionFile, DecompressionFile, DecompressSink
 from .encryptor import DecryptorFile, DecryptSink, EncryptorFile
 from .errors import InvalidConfigurationError
-from .filewrap import ThrottleSink
+from .filewrap import NoopFileWrap, ThrottleSink
 
 
 def _fileobj_name(input_obj):
@@ -99,10 +99,10 @@ def read_file(*, input_obj, output_obj, metadata, key_lookup, progress_callback=
 def file_writer(*, fileobj, compression_algorithm=None, compression_level=0, compression_threads=0, rsa_public_key=None):
     if rsa_public_key:
         fileobj = EncryptorFile(fileobj, rsa_public_key)
-
     if compression_algorithm:
         fileobj = CompressionFile(fileobj, compression_algorithm, compression_level, compression_threads)
-
+    else:
+        fileobj = NoopFileWrap(fileobj)
     return fileobj
 
 

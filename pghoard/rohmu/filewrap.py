@@ -85,6 +85,21 @@ class FileWrap(io.BufferedIOBase):
         raise io.UnsupportedOperation("Write not supported")
 
 
+class NoopFileWrap(FileWrap):
+    def write(self, data):
+        self._check_not_closed()
+        self.next_fp.write(data)
+        self.offset += len(data)
+        return len(data)
+
+    def read(self, size=-1):
+        self._check_not_closed()
+        out = self.next_fp.read(size)
+        if out:
+            self.offset += len(out)
+        return out
+
+
 class Sink:
     """Sink performs transformation for received input data and passes it forward to
     given target sink. Data is fed to this class via it's `write` method and that in
