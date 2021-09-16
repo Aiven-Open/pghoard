@@ -1,9 +1,11 @@
 # -*- mode: ruby -*-
 # vi: set ft=ruby :
 
-unless system("sudo -n true 2> /dev/null")
-    puts('Sudo is required, do a sudo true')
-    exit
+if ENV['VAGRANT_DEFAULT_PROVIDER'] == "libvirt" and (ARGV[0] == "up" or ARGV[0] == "destroy")
+    unless system("sudo -n true 2> /dev/null")
+        puts('Sudo is required, do a sudo true')
+        exit
+    end
 end
 
 # to be able to modify tests outside of vagrant, we use nfs mount point, for more
