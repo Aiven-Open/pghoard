@@ -15,7 +15,7 @@ jobs:
     strategy:
       matrix:
         # only use one version for the lint step
-        python-version: [3.8]
+        python-version: [3.9]
 
     steps:
 
@@ -50,8 +50,8 @@ jobs:
     strategy:
       max-parallel: 4
       matrix:
-        python-version: [3.6, 3.7, 3.8]
-        pg-version: [9.6, 10, 11, 12]
+        python-version: [3.6, 3.7, 3.8, 3.9]
+        pg-version: [9.6, 10, 11, 12, 13, 14]
 
     steps:
       - id: checkout-code
@@ -65,7 +65,7 @@ jobs:
       - id: dependencies
         run: |
           # Setup the Postgres repositories
-          sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main 14" > /etc/apt/sources.list.d/pgdg.list'
           wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
           sudo apt-get update
           # Setup build deps
