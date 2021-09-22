@@ -1,44 +1,21 @@
-
-
 <!DOCTYPE html>
 <html class="writer-html5" lang="en" >
 <head>
-  <meta charset="utf-8" />
-  
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
+
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  
-  <title>Architecture &mdash; PGHoard 2.2.1-67-gb2eb63d documentation</title>
-  
-
-  
-  <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
-  <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
-  <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
-  <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
-
-  
-  
-
-  
-  
-
-  
-
-  
+  <title>Architecture &mdash; PGHoard 2.2.1-69-g25bf385 documentation</title>
+      <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
   <!--[if lt IE 9]>
     <script src="_static/js/html5shiv.min.js"></script>
   <![endif]-->
   
-    
-      <script type="text/javascript" id="documentation_options" data-url_root="./" src="_static/documentation_options.js"></script>
         <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
         <script src="_static/jquery.js"></script>
         <script src="_static/underscore.js"></script>
         <script src="_static/doctools.js"></script>
-    
-    <script type="text/javascript" src="_static/js/theme.js"></script>
-
-    
+    <script src="_static/js/theme.js"></script>
     <link rel="author" title="About these documents" href="about.html" />
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
@@ -46,29 +23,13 @@
     <link rel="prev" title="QuickStart" href="quickstart.html" /> 
 </head>
 
-<body class="wy-body-for-nav">
-
-   
+<body class="wy-body-for-nav"> 
   <div class="wy-grid-for-nav">
-    
     <nav data-toggle="wy-nav-shift" class="wy-nav-side">
       <div class="wy-side-scroll">
         <div class="wy-side-nav-search" >
-          
-
-          
             <a href="index.html" class="icon icon-home"> PGHoard
-          
-
-          
           </a>
-
-          
-            
-            
-          
-
-          
 <div role="search">
   <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
     <input type="text" name="q" placeholder="Search docs" />
@@ -76,18 +37,7 @@
     <input type="hidden" name="area" value="default" />
   </form>
 </div>
-
-          
-        </div>
-
-        
-        <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
-          
-            
-            
-              
-            
-            
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
               <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
 <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="about.html">About PGHoard</a></li>
@@ -109,73 +59,32 @@
 <li class="toctree-l1"><a class="reference internal" href="development.html#vagrant">Vagrant</a></li>
 </ul>
 
-            
-          
         </div>
-        
       </div>
     </nav>
 
-    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
-
-      
-      <nav class="wy-nav-top" aria-label="top navigation">
-        
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
           <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
           <a href="index.html">PGHoard</a>
-        
       </nav>
 
-
       <div class="wy-nav-content">
-        
         <div class="rst-content">
-        
-          
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-<div role="navigation" aria-label="breadcrumbs navigation">
-
+          <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
-    
       <li><a href="index.html" class="icon icon-home"></a> &raquo;</li>
-        
       <li>Architecture</li>
-    
-    
       <li class="wy-breadcrumbs-aside">
-        
-          
             <a href="_sources/architecture.rst.txt" rel="nofollow"> View page source</a>
-          
-        
       </li>
-    
   </ul>
-
-  
   <hr/>
 </div>
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
-            
-  <div class="section" id="architecture">
-<h1>Architecture<a class="headerlink" href="#architecture" title="Permalink to this headline">¶</a></h1>
+             
+  <section id="architecture">
+<h1>Architecture<a class="headerlink" href="#architecture" title="Permalink to this headline"></a></h1>
 <p>PostgreSQL Point In Time Replication (PITR) consists of having a database
 basebackup and changes after that point go into WAL log files that can be
 replayed to get to the desired replication point.</p>
@@ -186,8 +95,8 @@ tasks of a backup tool for PostgreSQL:</p>
 <li><p>Archiving the WAL</p></li>
 <li><p>Managing backup retention according to a policy.</p></li>
 </ul>
-<div class="section" id="basebackup">
-<h2>Basebackup<a class="headerlink" href="#basebackup" title="Permalink to this headline">¶</a></h2>
+<section id="basebackup">
+<h2>Basebackup<a class="headerlink" href="#basebackup" title="Permalink to this headline"></a></h2>
 <p>The basebackups are taken by the pghoard daemon directly, with no need for an
 external scheduler / crond.</p>
 <p>When pghoard is first launched, it will take a basebackup. After that, the
@@ -199,9 +108,9 @@ frequency of basebackups is determined by configuration files.</p>
 <li><p>By calling <code class="docutils literal notranslate"><span class="pre">pg_basebackup</span></code>, using the <code class="docutils literal notranslate"><span class="pre">basic</span></code> or <code class="docutils literal notranslate"><span class="pre">pipe</span></code> modes.</p></li>
 </ul>
 <p>See <a class="reference internal" href="configuration.html#configuration-basebackup"><span class="std std-ref">Basebackup configuration</span></a> for how to configure it.</p>
-</div>
-<div class="section" id="archiving">
-<h2>Archiving<a class="headerlink" href="#archiving" title="Permalink to this headline">¶</a></h2>
+</section>
+<section id="archiving">
+<h2>Archiving<a class="headerlink" href="#archiving" title="Permalink to this headline"></a></h2>
 <p>PGHoard supports multiple operating models. If you don’t want to modify the
 backuped server archiving configuration, or install anything particular on that
 server, <code class="docutils literal notranslate"><span class="pre">pghoard</span></code> can fetch the WAL using <code class="docutils literal notranslate"><span class="pre">pg_receivewal</span></code> (formerly <code class="docutils literal notranslate"><span class="pre">pg_receivexlog</span></code> on PostgreSQL &lt; 10).
@@ -210,15 +119,15 @@ the <code class="docutils literal notranslate"><span class="pre">walreceiver</sp
 <p>PGHoard also supports a traditional <code class="docutils literal notranslate"><span class="pre">archive_command</span></code> in the form of the
 <code class="docutils literal notranslate"><span class="pre">pghoard_postgres_command</span></code> utility.</p>
 <p>See <a class="reference internal" href="configuration.html#configuration-archiving"><span class="std std-ref">Archiving configuration</span></a> for how to configure it.</p>
-</div>
-<div class="section" id="retention">
-<h2>Retention<a class="headerlink" href="#retention" title="Permalink to this headline">¶</a></h2>
+</section>
+<section id="retention">
+<h2>Retention<a class="headerlink" href="#retention" title="Permalink to this headline"></a></h2>
 <p><code class="docutils literal notranslate"><span class="pre">pghoard</span></code> expires the backups according to the configured retention policy.
 Whenever there is more than the specified number of backups, older backups will
 be removed as well as their associated WAL files.</p>
-</div>
-<div class="section" id="compression-and-encryption">
-<h2>Compression and encryption<a class="headerlink" href="#compression-and-encryption" title="Permalink to this headline">¶</a></h2>
+</section>
+<section id="compression-and-encryption">
+<h2>Compression and encryption<a class="headerlink" href="#compression-and-encryption" title="Permalink to this headline"></a></h2>
 <p>The PostgreSQL write-ahead log (WAL) and basebackups are compressed with
 Snappy (default) in order to ensure good compression speed and relatively small backup size.  for more information. Zstandard or LZMA encryption is also available. See <a class="reference internal" href="configuration.html#configuration-compression"><span class="std std-ref">Compression</span></a> for more information.</p>
 <p>Encryption is not enabled by default, but PGHoard can encrypt backuped data at
@@ -226,59 +135,42 @@ rest. Each individual file is encrypted and authenticated with file specific
 keys.  The file specific keys are included in the backup in turn encrypted with
 a master RSA private/public key pair.</p>
 <p>You should follow the encryption section in the quickstart guide <a class="reference internal" href="quickstart.html#quickstart-encryption"><span class="std std-ref">Optional: Adding encryption</span></a>. For a full reference see <a class="reference internal" href="configuration.html#configuration-encryption"><span class="std std-ref">Encryption</span></a>.</p>
-</div>
-<div class="section" id="deployment-examples">
-<h2>Deployment examples<a class="headerlink" href="#deployment-examples" title="Permalink to this headline">¶</a></h2>
+</section>
+<section id="deployment-examples">
+<h2>Deployment examples<a class="headerlink" href="#deployment-examples" title="Permalink to this headline"></a></h2>
 <p>FIXME: add schemas showing a deployment of pghoard on the same host with</p>
-</div>
-</div>
+</section>
+</section>
 
 
            </div>
-           
           </div>
-          <footer>
-    <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
-        <a href="install.html" class="btn btn-neutral float-right" title="Installation" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
         <a href="quickstart.html" class="btn btn-neutral float-left" title="QuickStart" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="install.html" class="btn btn-neutral float-right" title="Installation" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>
 
   <div role="contentinfo">
-    <p>
-        &#169; Copyright 2021, Aiven.
-
-    </p>
+    <p>&#169; Copyright 2021, Aiven.</p>
   </div>
-    
-    
-    
-    Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
-    
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
     <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
-    
-    provided by <a href="https://readthedocs.org">Read the Docs</a>. 
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
 
 </footer>
         </div>
       </div>
-
     </section>
-
   </div>
-  
-
-  <script type="text/javascript">
+  <script>
       jQuery(function () {
           SphinxRtdTheme.Navigation.enable(true);
       });
-  </script>
-
-  
-  
-    
-   
+  </script> 
 
 </body>
 </html>
