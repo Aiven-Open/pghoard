@@ -20,6 +20,7 @@ import sys
 import time
 from contextlib import closing
 from dataclasses import dataclass
+from pathlib import Path
 from queue import Empty, Queue
 from threading import Event
 from typing import Dict, Optional
@@ -29,30 +30,59 @@ import psycopg2
 from pghoard import config, logutil, metrics, version, wal
 from pghoard.basebackup import PGBaseBackup
 from pghoard.common import (
-    BaseBackupFormat, BaseBackupMode, create_alert_file, extract_pghoard_bb_v2_metadata, extract_pghoard_delta_v1_metadata,
-    get_object_storage_config, replication_connection_string_and_slot_using_pgpass, write_json_file
+    BaseBackupFormat, BaseBackupMode, CallbackEvent, FileType, FileTypePrefixes, create_alert_file,
+    extract_pghoard_bb_v2_metadata, extract_pghoard_delta_v1_metadata, get_object_storage_config,
+    replication_connection_string_and_slot_using_pgpass, write_json_file
 )
-from pghoard.compressor import CompressorThread, WALFileDeleterThread
+from pghoard.compressor import (
+    CompressionEvent, CompressionQueue, CompressorThread, WALFileDeleterThread, WalFileDeletionQueue
+)
 from pghoard.receivexlog import PGReceiveXLog
 from pghoard.rohmu import dates, get_transfer, rohmufile
 from pghoard.rohmu.compat import suppress
 from pghoard.rohmu.dates import now as utc_now
 from pghoard.rohmu.errors import (FileNotFoundFromStorageError, InvalidConfigurationError)
 from pghoard.rohmu.inotify import InotifyWatcher
-from pghoard.transfer import TransferAgent
+from pghoard.transfer import TransferAgent, TransferQueue, UploadEvent
+from pghoard.walreceiver import WALReceiver
 from pghoard.webserver import WebServer
-
-# Imported this way because WALReceiver requires an unreleased version of psycopg2
-try:
-    from pghoard.walreceiver import WALReceiver
-except ImportError:
-    WALReceiver = None
 
 
 @dataclass
 class DeltaBaseBackupFailureInfo:
-    last_failed_time: datetime
+    last_failed_time: datetime.datetime
     retries: int = 0
+
+
+class InotifyAdapter:
+    def __init__(self, queue):
+        self.queue = queue
+        self.path_to_site = {}
+
+    def adapt_event(self, inotify_event):
+        full_path = Path(inotify_event["full_path"])
+        backup_site_key = self.path_to_site[inotify_event["watched_path"]]
+        # Ignore .partial files
+        if full_path.suffix == ".partial":
+            return None
+        if full_path.suffix == ".history":
+            filetype = FileType.Timeline
+        else:
+            filetype = FileType.Wal
+        return CompressionEvent(
+            file_type=filetype,
+            file_path=FileTypePrefixes[filetype] / full_path.name,
+            delete_file_after_compression=True,
+            backup_site_key=backup_site_key,
+            source_data=full_path,
+            callback_queue=None,
+            metadata={}
+        )
+
+    def put(self, item):
+        adapted_event = self.adapt_event(item)
+        if adapted_event is not None:
+            self.queue.put(adapted_event)
 
 
 class PGHoard:
@@ -62,9 +92,9 @@ class PGHoard:
         self.log_level = None
         self.running = True
         self.config_path = config_path
-        self.compression_queue = Queue()
-        self.transfer_queue = Queue()
-        self.wal_file_deletion_queue = Queue()
+        self.compression_queue = CompressionQueue()
+        self.transfer_queue = TransferQueue()
+        self.wal_file_deletion_queue = WalFileDeletionQueue()
         self.syslog_handler = None
         self.basebackups = {}
         self.basebackups_callbacks = {}
@@ -101,8 +131,8 @@ class PGHoard:
         signal.signal(signal.SIGTERM, self.handle_exit_signal)
         self.time_of_last_backup_check = {}
         self.requested_basebackup_sites = set()
-
-        self.inotify = InotifyWatcher(self.compression_queue)
+        self.inotify_adapter = InotifyAdapter(self.compression_queue)
+        self.inotify = InotifyWatcher(self.inotify_adapter)
         self.webserver = WebServer(
             self.config, self.requested_basebackup_sites, self.compression_queue, self.transfer_queue, self.metrics
         )
@@ -125,7 +155,6 @@ class PGHoard:
         for _ in range(self.config["transfer"]["thread_count"]):
             ta = TransferAgent(
                 config=self.config,
-                compression_queue=self.compression_queue,
                 mp_manager=self.mp_manager,
                 transfer_queue=self.transfer_queue,
                 metrics=self.metrics,
@@ -164,7 +193,7 @@ class PGHoard:
         pg_version_server = self.check_pg_server_version(connection_string, site)
         if not self.check_pg_versions_ok(site, pg_version_server, "pg_basebackup"):
             if callback_queue:
-                callback_queue.put({"success": False})
+                callback_queue.put(CallbackEvent(success=True))
             return
 
         thread = PGBaseBackup(
@@ -212,7 +241,16 @@ class PGHoard:
         if not self.check_pg_versions_ok(site, pg_version_server, "pg_receivexlog"):
             return
 
-        self.inotify.add_watch(wal_directory)
+        # Depending on the PG version, we must react either to MOVE (pre-PG10)
+        # or CLOSE_WRITE (PG10+)
+        if pg_version_server >= 100000:
+            events = ["IN_CLOSE_WRITE"]
+        else:
+            events = ["IN_MOVED_TO", "IN_MOVED_FROM"]
+        events += ["IN_DELETE_SELF"]
+
+        self.inotify.add_watch(wal_directory, events)
+        self.inotify_adapter.path_to_site[wal_directory] = site
         thread = PGReceiveXLog(
             config=self.config,
             connection_string=connection_string,
@@ -534,14 +572,15 @@ class PGHoard:
                 if not wal.WAL_RE.match(filename) and not wal.TIMELINE_RE.match(filename):
                     self.log.warning("Found invalid file %r from incoming xlog directory", full_path)
                     continue
-
-                compression_event = {
-                    "delete_file_after_compression": True,
-                    "full_path": full_path,
-                    "site": site,
-                    "src_path": "{}.partial",
-                    "type": "MOVE",
-                }
+                compression_event = CompressionEvent(
+                    file_type=FileType.Wal,
+                    file_path=FileTypePrefixes[FileType.Wal] / filename,
+                    delete_file_after_compression=True,
+                    backup_site_key=site,
+                    source_data=Path(full_path),
+                    callback_queue=None,
+                    metadata={}
+                )
                 self.log.debug("Found: %r when starting up, adding to compression queue", compression_event)
                 self.compression_queue.put(compression_event)
 
@@ -559,14 +598,15 @@ class PGHoard:
                 with open(metadata_path, "r") as fp:
                     metadata = json.load(fp)
 
-                transfer_event = {
-                    "file_size": os.path.getsize(full_path),
-                    "filetype": "xlog" if is_xlog else "timeline",
-                    "local_path": full_path,
-                    "metadata": metadata,
-                    "site": site,
-                    "type": "UPLOAD",
-                }
+                transfer_event = UploadEvent(
+                    file_type=FileType.Wal,
+                    backup_site_key=site,
+                    file_size=os.path.getsize(full_path),
+                    file_path=FileTypePrefixes[FileType.Wal] / filename,
+                    source_data=Path(full_path),
+                    callback_queue=None,
+                    metadata=metadata
+                )
                 self.log.debug("Found: %r when starting up, adding to transfer queue", transfer_event)
                 self.transfer_queue.put(transfer_event)
 
@@ -623,7 +663,7 @@ class PGHoard:
         if site in self.basebackups:
             try:
                 result = self.basebackups_callbacks[site].get(block=False)
-                if result["success"]:
+                if result.success:
                     # No matter which mode, if succeeded reset the counter
                     self.delta_backup_failures.pop(site, None)
                 elif site_config["basebackup_mode"] == BaseBackupMode.delta:

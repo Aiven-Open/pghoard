@@ -230,7 +230,7 @@ LABEL: pg_basebackup base backup
         }
         pghoard.create_basebackup(pghoard.test_site, db.user, basebackup_path, q, metadata)
         result = q.get(timeout=60)
-        assert result["success"]
+        assert result.success
 
         # make sure it shows on the list
         Restore().run([

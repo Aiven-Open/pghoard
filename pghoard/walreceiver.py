@@ -18,7 +18,8 @@ from psycopg2.extras import (  # pylint: disable=no-name-in-module
     REPLICATION_PHYSICAL, PhysicalReplicationConnection
 )
 
-from pghoard.common import suppress
+from pghoard.common import FileType, FileTypePrefixes, suppress
+from pghoard.compressor import CompressionEvent
 from pghoard.wal import LSN, WAL_SEG_SIZE, lsn_from_sysinfo
 
 KEEPALIVE_INTERVAL = 10.0
@@ -81,14 +82,14 @@ class WALReceiver(Thread):
             history_data = timeline_history[1].tobytes()
             self.log.debug("Received timeline history: %s for timeline %r", history_filename, max_timeline)
 
-            compression_event = {
-                "type": "CLOSE_WRITE",
-                "compress_to_memory": True,
-                "delete_file_after_compression": False,
-                "input_data": BytesIO(history_data),
-                "full_path": history_filename,
-                "site": self.site,
-            }
+            compression_event = CompressionEvent(
+                compress_to_memory=True,
+                source_data=BytesIO(history_data),
+                file_path=FileTypePrefixes[FileType.Timeline] / history_filename,
+                file_type=FileType.Timeline,
+                backup_site_key=self.site,
+                metadata={}
+            )
             self.compression_queue.put(compression_event)
             max_timeline -= 1
 
@@ -133,16 +134,15 @@ class WALReceiver(Thread):
         callback_queue = Queue()
         self.callbacks[self.latest_wal_start] = callback_queue
 
-        compression_event = {
-            "type": "MOVE",
-            "callback_queue": callback_queue,
-            "compress_to_memory": True,
-            "delete_file_after_compression": False,
-            "input_data": wal_data,
-            "full_path": self.latest_wal,
-            "site": self.site,
-            "src_path": "{}.partial".format(self.latest_wal),
-        }
+        compression_event = CompressionEvent(
+            callback_queue=callback_queue,
+            compress_to_memory=True,
+            source_data=wal_data,
+            file_type=FileType.Wal,
+            file_path=FileTypePrefixes[FileType.Wal] / self.latest_wal,
+            backup_site_key=self.site,
+            metadata={}
+        )
         self.latest_wal = None
         self.compression_queue.put(compression_event)
 

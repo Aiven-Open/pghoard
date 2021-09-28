@@ -10,6 +10,7 @@ import lzma
 import os
 import random
 import socket
+from pathlib import Path
 from queue import Queue
 from threading import Event
 
@@ -17,7 +18,8 @@ import mock
 import pytest
 
 from pghoard import metrics
-from pghoard.compressor import CompressorThread
+from pghoard.common import FileType, FileTypePrefixes, QuitEvent
+from pghoard.compressor import (CompressionEvent, CompressorThread, DecompressionEvent)
 from pghoard.rohmu import IO_BLOCK_SIZE, compressor, rohmufile
 from pghoard.rohmu.compressor import zstd
 from pghoard.rohmu.snappyfile import SnappyFile, snappy
@@ -31,7 +33,6 @@ class WALTester:
     def __init__(self, path, name, mode):
         """Create a random or zero file resembling a valid WAL, bigger than block size, with a valid header."""
         self.path = os.path.join(path, name)
-        self.path_partial = self.path + ".partial"
         self.contents = wal_header_for_file(name)
         if mode == "random":
             self.contents += os.urandom(IO_BLOCK_SIZE * 2)
@@ -109,43 +110,9 @@ class CompressionCase(PGHoardTestCase):
 
     def teardown_method(self, method):
         self.compressor.running = False
-        self.compression_queue.put({"type": "QUIT"})
+        self.compression_queue.put(QuitEvent)
         self.compressor.join()
         super().teardown_method(method)
-
-    def test_get_event_type(self):
-        # Rename from .partial to final should be recognized
-        event = {
-            "full_path": "/out/00000001000000000000000C",
-            "src_path": "/tmp/00000001000000000000000C.partial",
-            "type": "MOVE",
-        }
-        assert self.compressor.get_event_filetype(event) == "xlog"
-        # Rename from non-partial suffix is not recognized
-        event["src_path"] += "xyz"
-        assert self.compressor.get_event_filetype(event) is None
-        # other event types are ignored
-        event["type"] = "NAKKI"
-        assert self.compressor.get_event_filetype(event) is None
-
-        # Timeline history files are handled the same way (do they actually ever have .partial?)
-        event = {
-            "full_path": "/xlog/0000000A.history",
-            "src_path": "/tmp/0000000A.history.partial",
-            "type": "MOVE",
-        }
-        assert self.compressor.get_event_filetype(event) == "timeline"
-        event["src_path"] += "xyz"
-        assert self.compressor.get_event_filetype(event) is None
-        del event["src_path"]
-        event["type"] = "CLOSE_WRITE"
-        assert self.compressor.get_event_filetype(event) == "timeline"
-
-        event = {
-            "full_path": "/data/base.tar",
-            "type": "CLOSE_WRITE",
-        }
-        assert self.compressor.get_event_filetype(event) == "basebackup"
 
     def test_write_file(self):
         ifile = WALTester(self.incoming_path, "00000001000000000000000D", "random")
@@ -162,7 +129,7 @@ class CompressionCase(PGHoardTestCase):
 
     def test_compress_to_file_wal(self):
         ifile = WALTester(self.incoming_path, "00000001000000000000000F", "random")
-        self._test_compress_to_file("xlog", ifile.size, ifile.path, ifile.path_partial)
+        self._test_compress_to_file("xlog", ifile.size, ifile.path)
 
     def test_compress_to_file_history(self):
         file_path = os.path.join(self.incoming_path, "0000000F.history")
@@ -172,18 +139,27 @@ class CompressionCase(PGHoardTestCase):
             out.write(contents)
             file_size = out.tell()
 
-        self._test_compress_to_file("timeline", file_size, file_path, file_path + ".partial")
+        self._test_compress_to_file("timeline", file_size, file_path)
 
-    def _test_compress_to_file(self, filetype, file_size, file_path, file_path_partial):
-        self.compression_queue.put({
-            "type": "MOVE",
-            "src_path": file_path_partial,
-            "full_path": file_path,
-        })
+    def _test_compress_to_file(self, filetype, file_size, file_path):
+        filetype = FileType(filetype)
+        file_path = Path(file_path)
+        dest_file_path = FileTypePrefixes[filetype] / file_path.name
+        self.compression_queue.put(
+            CompressionEvent(
+                file_path=dest_file_path,
+                source_data=file_path,
+                file_type=FileType(filetype),
+                backup_site_key=self.test_site,
+                callback_queue=None,
+                metadata={}
+            )
+        )
         transfer_event = self.transfer_queue.get(timeout=5.0)
         expected = {
-            "filetype": filetype,
-            "local_path": file_path.replace(self.incoming_path, self.handled_path),
+            "file_type": filetype,
+            "file_path": dest_file_path,
+            "source_data": self.compressor.get_compressed_file_dir(self.test_site) / dest_file_path,
             "metadata": {
                 "compression-algorithm": self.algorithm,
                 "compression-level": 0,
@@ -191,27 +167,34 @@ class CompressionCase(PGHoardTestCase):
                 "original-file-size": file_size,
                 "pg-version": 90500,
             },
-            "site": self.test_site,
+            "backup_site_key": self.test_site,
         }
         for key, value in expected.items():
             if key == "metadata" and filetype == "xlog":
-                assert transfer_event[key].pop("hash")
-                assert transfer_event[key].pop("hash-algorithm") == "sha1"
-            assert transfer_event[key] == value
+                assert transfer_event.metadata.pop("hash")
+                assert transfer_event.metadata.pop("hash-algorithm") == "sha1"
+            assert getattr(transfer_event, key) == value
 
     def test_compress_to_memory(self):
         ifile = WALTester(self.incoming_path, "0000000100000000000000FF", "random")
-        self.compression_queue.put({
-            "compress_to_memory": True,
-            "delete_file_after_compression": False,
-            "full_path": ifile.path,
-            "src_path": ifile.path_partial,
-            "type": "MOVE",
-        })
+        filetype = FileType.Wal
+        file_path = Path(ifile.path)
+        dest_file_path = FileTypePrefixes[filetype] / file_path.name
+        self.compression_queue.put(
+            CompressionEvent(
+                compress_to_memory=True,
+                file_path=dest_file_path,
+                source_data=file_path,
+                file_type=FileType.Wal,
+                backup_site_key=self.test_site,
+                callback_queue=None,
+                metadata={}
+            )
+        )
         expected = {
             "callback_queue": None,
-            "filetype": "xlog",
-            "local_path": ifile.path,
+            "file_type": FileType.Wal,
+            "file_path": dest_file_path,
             "metadata": {
                 "compression-algorithm": self.algorithm,
                 "compression-level": 0,
@@ -219,16 +202,16 @@ class CompressionCase(PGHoardTestCase):
                 "original-file-size": ifile.size,
                 "pg-version": 90500,
             },
-            "site": self.test_site,
+            "backup_site_key": self.test_site,
         }
         transfer_event = self.transfer_queue.get(timeout=3.0)
         for key, value in expected.items():
             if key == "metadata":
-                assert transfer_event[key].pop("hash")
-                assert transfer_event[key].pop("hash-algorithm") == "sha1"
-            assert transfer_event[key] == value
-
-        result = self.decompress(transfer_event["blob"])
+                assert transfer_event.metadata.pop("hash")
+                assert transfer_event.metadata.pop("hash-algorithm") == "sha1"
+            assert getattr(transfer_event, key) == value
+        assert isinstance(transfer_event.source_data, io.BytesIO)
+        result = self.decompress(transfer_event.source_data.getvalue())
         assert result[:100] == ifile.contents[:100]
         assert result == ifile.contents
 
@@ -258,13 +241,18 @@ class CompressionCase(PGHoardTestCase):
         test_compressor.start()
         ifile = WALTester(self.incoming_path, "0000000100000000000000FF", "random")
         assert not test_compressor.critical_failure_event.is_set(), "Critical failure event shouldn't be set yet"
-        compression_queue.put({
-            "compress_to_memory": True,
-            "delete_file_after_compression": False,
-            "full_path": ifile.path,
-            "src_path": ifile.path_partial,
-            "type": "MOVE",
-        })
+        file_path = Path(ifile.path)
+        compression_queue.put(
+            CompressionEvent(
+                compress_to_memory=True,
+                file_path=FileTypePrefixes[FileType.Wal] / file_path.name,
+                source_data=file_path,
+                backup_site_key=self.test_site,
+                file_type=FileType.Wal,
+                callback_queue=None,
+                metadata={}
+            )
+        )
         test_compressor.critical_failure_event.wait(5)
         if is_failure:
             assert test_compressor.critical_failure_event.is_set(), "Critical failure event should be set"
@@ -281,19 +269,23 @@ class CompressionCase(PGHoardTestCase):
 
     def test_compress_encrypt_to_memory(self):
         ifile = WALTester(self.incoming_path, "0000000100000000000000FB", "random")
+        file_path = Path(ifile.path)
+        dest_file_path = FileTypePrefixes[FileType.Wal] / file_path.name
         self.compressor.config["backup_sites"][self.test_site]["encryption_key_id"] = "testkey"
-        event = {
-            "compress_to_memory": True,
-            "delete_file_after_compression": False,
-            "full_path": ifile.path,
-            "src_path": ifile.path_partial,
-            "type": "MOVE",
-        }
-        self.compressor.handle_event(event, filetype="xlog")
+        event = CompressionEvent(
+            compress_to_memory=True,
+            file_path=dest_file_path,
+            source_data=file_path,
+            backup_site_key=self.test_site,
+            file_type=FileType.Wal,
+            callback_queue=None,
+            metadata={}
+        )
+        self.compressor.handle_event(event)
         expected = {
             "callback_queue": None,
-            "filetype": "xlog",
-            "local_path": ifile.path,
+            "file_type": "xlog",
+            "file_path": dest_file_path,
             "metadata": {
                 "compression-algorithm": self.algorithm,
                 "compression-level": 0,
@@ -302,32 +294,35 @@ class CompressionCase(PGHoardTestCase):
                 "original-file-size": ifile.size,
                 "pg-version": 90500,
             },
-            "site": self.test_site,
+            "backup_site_key": self.test_site,
         }
         transfer_event = self.transfer_queue.get(timeout=5.0)
         for key, value in expected.items():
             if key == "metadata":
-                assert transfer_event[key].pop("hash")
-                assert transfer_event[key].pop("hash-algorithm") == "sha1"
-            assert transfer_event[key] == value
+                assert transfer_event.metadata.pop("hash")
+                assert transfer_event.metadata.pop("hash-algorithm") == "sha1"
+            assert getattr(transfer_event, key) == value
 
     def test_archive_command_compression(self):
         zero = WALTester(self.incoming_path, "00000001000000000000000D", "zero")
+        file_path = Path(zero.path)
+        dest_file_path = FileTypePrefixes[FileType.Wal] / file_path.name
         callback_queue = Queue()
-        event = {
-            "callback_queue": callback_queue,
-            "compress_to_memory": True,
-            "delete_file_after_compression": False,
-            "full_path": zero.path,
-            "src_path": zero.path_partial,
-            "type": "MOVE",
-        }
+        event = CompressionEvent(
+            callback_queue=callback_queue,
+            compress_to_memory=True,
+            file_path=dest_file_path,
+            source_data=file_path,
+            backup_site_key=self.test_site,
+            file_type=FileType.Wal,
+            metadata={}
+        )
         self.compression_queue.put(event)
         transfer_event = self.transfer_queue.get(timeout=5.0)
         expected = {
             "callback_queue": callback_queue,
-            "filetype": "xlog",
-            "local_path": zero.path,
+            "file_type": "xlog",
+            "file_path": dest_file_path,
             "metadata": {
                 "compression-algorithm": self.algorithm,
                 "compression-level": 0,
@@ -335,35 +330,40 @@ class CompressionCase(PGHoardTestCase):
                 "original-file-size": zero.size,
                 "pg-version": 90500,
             },
-            "site": self.test_site,
+            "backup_site_key": self.test_site,
         }
         for key, value in expected.items():
             if key == "metadata":
-                assert transfer_event[key].pop("hash")
-                assert transfer_event[key].pop("hash-algorithm") == "sha1"
-            assert transfer_event[key] == value
-
-        assert self.decompress(transfer_event["blob"]) == zero.contents
+                assert transfer_event.metadata.pop("hash")
+                assert transfer_event.metadata.pop("hash-algorithm") == "sha1"
+            assert getattr(transfer_event, key) == value
+        assert isinstance(transfer_event.source_data, io.BytesIO)
+        assert self.decompress(transfer_event.source_data.getvalue()) == zero.contents
 
     def test_decompression_event(self):
         ifile = WALTester(self.incoming_path, "00000001000000000000000A", "random")
         callback_queue = Queue()
         local_filepath = os.path.join(self.temp_dir, "00000001000000000000000A")
-        self.compression_queue.put({
-            "blob": self.compress(ifile.contents),
-            "callback_queue": callback_queue,
-            "filetype": "xlog",
-            "local_path": local_filepath,
-            "metadata": {
-                "compression-algorithm": self.algorithm,
-                "compression-level": 0,
-                "host": socket.gethostname(),
-                "original-file-size": ifile.size,
-                "pg-version": 90500,
-            },
-            "site": self.test_site,
-            "type": "DECOMPRESSION",
-        })
+        file_path = Path(local_filepath)
+        dest_file_path = FileTypePrefixes[FileType.Wal] / file_path.name
+        data = io.BytesIO(self.compress(ifile.contents))
+        self.compression_queue.put(
+            DecompressionEvent(
+                source_data=data,
+                file_path=dest_file_path,
+                callback_queue=callback_queue,
+                file_type=FileType.Wal,
+                destination_path=file_path,
+                metadata={
+                    "compression-algorithm": self.algorithm,
+                    "compression-level": 0,
+                    "host": socket.gethostname(),
+                    "original-file-size": ifile.size,
+                    "pg-version": 90500,
+                },
+                backup_site_key=self.test_site,
+            )
+        )
         callback_queue.get(timeout=5.0)
         assert os.path.exists(local_filepath) is True
         with open(local_filepath, "rb") as fp:
@@ -385,22 +385,24 @@ class CompressionCase(PGHoardTestCase):
             )
         callback_queue = Queue()
         local_filepath = os.path.join(self.temp_dir, "00000001000000000000000E")
-        self.compression_queue.put({
-            "blob": output_obj.getvalue(),
-            "callback_queue": callback_queue,
-            "filetype": "xlog",
-            "local_path": local_filepath,
-            "metadata": {
-                "compression-algorithm": self.algorithm,
-                "compression-level": 0,
-                "encryption-key-id": "testkey",
-                "host": socket.gethostname(),
-                "original-file-size": ifile.size,
-                "pg-version": 90500,
-            },
-            "site": self.test_site,
-            "type": "DECOMPRESSION",
-        })
+        self.compression_queue.put(
+            DecompressionEvent(
+                source_data=output_obj,
+                callback_queue=callback_queue,
+                file_type=FileType.Wal,
+                file_path=FileTypePrefixes[FileType.Wal] / Path(local_filepath).name,
+                destination_path=Path(local_filepath),
+                metadata={
+                    "compression-algorithm": self.algorithm,
+                    "compression-level": 0,
+                    "encryption-key-id": "testkey",
+                    "host": socket.gethostname(),
+                    "original-file-size": ifile.size,
+                    "pg-version": 90500,
+                },
+                backup_site_key=self.test_site,
+            )
+        )
         callback_queue.get(timeout=5.0)
         assert os.path.exists(local_filepath) is True
         with open(local_filepath, "rb") as fp:

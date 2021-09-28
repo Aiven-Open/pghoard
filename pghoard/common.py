@@ -15,7 +15,11 @@ import re
 import tarfile
 import tempfile
 import time
+from dataclasses import dataclass, field
 from distutils.version import LooseVersion
+from pathlib import Path
+from queue import Queue
+from typing import Any, Dict, Optional
 
 from pghoard import pgutil
 from pghoard.rohmu import IO_BLOCK_SIZE
@@ -28,6 +32,40 @@ LOG = logging.getLogger("pghoard.common")
 class StrEnum(str, enum.Enum):
     def __str__(self):
         return str(self.value)
+
+
+@dataclass(frozen=True)
+class CallbackEvent:
+    success: bool
+    exception: Optional[Exception] = None
+    opaque: Optional[Any] = None
+    payload: Optional[Dict[str, str]] = field(default_factory=dict)
+
+
+# Should be changed to Queue[CallbackEvent] once
+# we drop older python versions
+CallbackQueue = Queue
+
+QuitEvent = object()
+
+
+@enum.unique
+class FileType(StrEnum):
+    Wal = "xlog"
+    Basebackup = "basebackup"
+    Basebackup_chunk = "basebackup_chunk"
+    Basebackup_delta = "basebackup_delta"
+    Metadata = "metadata"
+    Timeline = "timeline"
+
+
+FileTypePrefixes = {
+    FileType.Wal: Path("xlog/"),
+    FileType.Timeline: Path("timeline/"),
+    FileType.Basebackup: Path("basebackup/"),
+    FileType.Basebackup_chunk: Path("basebackup_chunk/"),
+    FileType.Basebackup_delta: Path("basebackup_delta/"),
+}
 
 
 @enum.unique
