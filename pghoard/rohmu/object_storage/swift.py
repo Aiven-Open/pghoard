@@ -291,6 +291,16 @@ class SwiftTransfer(BaseTransfer):
 
     def get_or_create_container(self, container_name):
         start_time = time.monotonic()
-        self.conn.put_container(container_name, headers={})
-        self.log.debug("Created container: %r successfully, took: %.3fs", container_name, time.monotonic() - start_time)
+        try:
+            self.conn.get_container(container_name, headers={}, limit=1)  # Limit 1 here to not traverse the entire folder
+        except exceptions.ClientException as ex:
+            if ex.http_status == 404:
+                self.conn.put_container(container_name, headers={})
+                self.log.debug(
+                    "Created container: %r successfully, took: %.3fs",
+                    container_name,
+                    time.monotonic() - start_time,
+                )
+                return container_name
+            raise
         return container_name
