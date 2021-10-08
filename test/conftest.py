@@ -36,7 +36,10 @@ logutil.configure_logging()
 class PGTester:
     def __init__(self, pgdata):
         pgver = os.getenv("PG_VERSION")
-        postgresbin, ver = pghconfig.find_pg_binary("postgres", versions=[pgver] if pgver else None)
+        bindir = os.environ.get("PG_BINDIR")
+        postgresbin, ver = pghconfig.find_pg_binary(
+            "postgres", versions=[pgver] if pgver else None, check_commands=False, pg_bin_directory=bindir
+        )
         if postgresbin is not None:
             self.pgbin = os.path.dirname(postgresbin)
         self.ver = ver
@@ -149,9 +152,9 @@ def setup_pg():
     # now start pg and create test users
     db.run_pg()
     try:
-        db.run_cmd("createuser", "-h", db.user["host"], "-p", db.user["port"], "disabled")
-        db.run_cmd("createuser", "-h", db.user["host"], "-p", db.user["port"], "passwordy")
-        db.run_cmd("createuser", "-h", db.user["host"], "-p", db.user["port"], "-s", db.user["user"])
+        db.run_cmd(os.path.join(db.pgbin, "createuser"), "-h", db.user["host"], "-p", db.user["port"], "disabled")
+        db.run_cmd(os.path.join(db.pgbin, "createuser"), "-h", db.user["host"], "-p", db.user["port"], "passwordy")
+        db.run_cmd(os.path.join(db.pgbin, "createuser"), "-h", db.user["host"], "-p", db.user["port"], "-s", db.user["user"])
         yield db
     finally:
         db.kill()

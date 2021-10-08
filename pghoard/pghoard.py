@@ -146,6 +146,10 @@ class PGHoard:
             create_alert_file(self.config, "version_unsupported_error")
             return False
         pg_version_client = self.config["backup_sites"][site][command + "_version"]
+        if not pg_version_client:
+            self.log.error("Unknown %s version", command)
+            return False
+
         if pg_version_server // 100 != pg_version_client // 100:
             self.log.error(
                 "Server version: %r does not match %s version: %r", pg_version_server, self.config[command + "_path"],
