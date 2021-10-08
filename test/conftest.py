@@ -36,7 +36,7 @@ logutil.configure_logging()
 class PGTester:
     def __init__(self, pgdata):
         pgver = os.getenv("PG_VERSION")
-        postgresbin, ver = pghconfig.find_pg_binary("postgres", versions=[pgver] if pgver else None)
+        postgresbin, ver = pghconfig.find_pg_binary("postgres", versions=[pgver] if pgver else None, check_commands=False)
         if postgresbin is not None:
             self.pgbin = os.path.dirname(postgresbin)
         self.ver = ver

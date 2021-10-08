@@ -16,14 +16,14 @@ from pghoard.rohmu import get_class_for_transfer
 from pghoard.rohmu.errors import InvalidConfigurationError
 from pghoard.rohmu.snappyfile import snappy
 
-SUPPORTED_VERSIONS = ["13", "12", "11", "10", "9.6", "9.5", "9.4", "9.3"]
+SUPPORTED_VERSIONS = ["14", "13", "12", "11", "10", "9.6", "9.5", "9.4", "9.3"]
 
 
 def get_cpu_count():
     return multiprocessing.cpu_count()
 
 
-def get_command_version(command: str) -> Optional[str]:
+def get_command_version(command: str, can_fail=True) -> Optional[str]:
     """
     Run the given command identified by it's full path with the --version
     option.
@@ -35,11 +35,14 @@ def get_command_version(command: str) -> Optional[str]:
             version_string = extract_pg_command_version_string(version_string)
             return version_string
         except subprocess.CalledProcessError:
-            pass
+            if not can_fail:
+                raise
+    elif not can_fail:
+        raise FileNotFoundError(f"{command} doesn't exist")
     return None
 
 
-def find_pg_binary(wanted_program, versions=None, pg_bin_directory=None, check_commands=False):
+def find_pg_binary(wanted_program, versions=None, pg_bin_directory=None, check_commands=True):
     """
     Find pg binary tries to find the wanted_program in one of the wanted
     versions using the following locations:
@@ -63,13 +66,18 @@ def find_pg_binary(wanted_program, versions=None, pg_bin_directory=None, check_c
             for program in programs:
                 command = pathfmt.format(ver=ver, prog=program)
                 if os.path.exists(command):
-                    if (check_commands is False or get_command_version(command) is not None):
+                    if check_commands is False:
                         return command, ver
+                    command_version = get_command_version(command)
+                    if pg_major_version(command_version) == ver:
+                        return command, command_version
     # We couldn't find a supported version in the "well known locations",
     # let's search in the path.
     for path in os.environ["PATH"].split(os.pathsep):
         for program in programs:
             command = os.path.join(path, program)
+            if not os.path.exists(command):
+                continue
             version_string = get_command_version(command)
             if version_string and pg_major_version(version_string) in versions:
                 return command, version_string
@@ -166,37 +174,44 @@ def set_and_check_config_defaults(config, *, check_commands=True, check_pgdata=T
                 raise InvalidConfigurationError(
                     "Site {0!r} object_storage: {1.__class__.__name__!s}: {1!s}".format(site_name, ex)
                 )
+        fill_config_command_paths(config, site_name, check_commands)
+    return config
 
-        # Set command paths and check their versions per site.  We use a configured value if one was provided
-        # (either at top level or per site), if it wasn't provided but we have a valid pg_data_directory with
-        # PG_VERSION in it we'll look for commands for that version from the expected paths for Debian and
-        # RHEL/Fedora PGDG packages or otherwise fall back to iterating over the available versions.
-        # Instead of setting paths explicitly for both commands, it's also possible to just set the
-        # pg_bin_directory to point to the version-specific bin directory.
-        bin_dir = site_config.get("pg_bin_directory")
-        for command in ["pg_basebackup", "pg_receivexlog"]:
-            # NOTE: pg_basebackup_path and pg_receivexlog_path removed from documentation after 1.6.0 release
-            command_key = "{}_path".format(command)
-            command_path = site_config.get(command_key) or config.get(command_key)
-            version_int = None
-            if not command_path:
-                pg_versions_to_check = None
-                needs_check = check_commands and site_config["active"]
-                if "pg_data_directory_version" in site_config:
-                    pg_versions_to_check = [site_config["pg_data_directory_version"]]
-                try:
-                    command_path, version_string = find_pg_binary(command, pg_versions_to_check, bin_dir, needs_check)
-                    version_int = pg_version_string_to_number(version_string)
-                except RuntimeError as _:
-                    # Only raise an error if we are expected to validate
-                    # the commands. Otherwise let it fail later
-                    if needs_check:
-                        raise InvalidConfigurationError(
-                            "Site {!r} command {!r} not found from path {}".format(site_name, command, command_path)
-                        )
-            site_config[command_key] = command_path
-            site_config[command + "_version"] = version_int
-        return config
+
+def fill_config_command_paths(config, site_name, check_commands):
+    # Set command paths and check their versions per site.  We use a configured value if one was provided
+    # (either at top level or per site), if it wasn't provided but we have a valid pg_data_directory with
+    # PG_VERSION in it we'll look for commands for that version from the expected paths for Debian and
+    # RHEL/Fedora PGDG packages or otherwise fall back to iterating over the available versions.
+    # Instead of setting paths explicitly for both commands, it's also possible to just set the
+    # pg_bin_directory to point to the version-specific bin directory.
+    site_config = config["backup_sites"][site_name]
+    bin_dir = site_config.get("pg_bin_directory")
+    for command in ["pg_basebackup", "pg_receivexlog"]:
+        # NOTE: pg_basebackup_path and pg_receivexlog_path removed from documentation after 1.6.0 release
+        command_key = "{}_path".format(command)
+        command_path = site_config.get(command_key) or config.get(command_key)
+        version_int = None
+        if not command_path:
+            pg_versions_to_check = None
+            needs_check = check_commands and site_config["active"]
+            if "pg_data_directory_version" in site_config:
+                pg_versions_to_check = [site_config["pg_data_directory_version"]]
+            try:
+                command_path, version_string = find_pg_binary(command, pg_versions_to_check, bin_dir, needs_check)
+                version_int = pg_version_string_to_number(version_string)
+            except RuntimeError as _:
+                # Only raise an error if we are expected to validate
+                # the commands. Otherwise let it fail later
+                if needs_check:
+                    raise InvalidConfigurationError(
+                        "Site {!r} command {!r} not found from path {}".format(site_name, command, command_path)
+                    )
+        elif check_commands and site_config["active"]:
+            version_string = get_command_version(command_path, can_fail=False)
+            version_int = pg_version_string_to_number(version_string)
+        site_config[command_key] = command_path
+        site_config[command + "_version"] = version_int
 
 
 def read_json_config_file(filename, *, check_commands=True, add_defaults=True, check_pgdata=True):
