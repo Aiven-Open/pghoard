@@ -100,7 +100,9 @@ class TestConfig(PGHoardTestCase):
             # Convert it to a proper Path
             Path(dest_path).touch()
         with env_context("PATH", str(tmpdir)):
-            config = self.minimal_config_template()
+            # Add a dummy bin directory so that we don't fallback on versions
+            # found in "well known locations"
+            config = self.minimal_config_template("/dummy/bin/directory/")
             site_config = config["backup_sites"][self.test_site]
             with patch("pghoard.config.get_command_version", make_mock_get_command_version("13.2")):
                 pghoard.config.fill_config_command_paths(config, self.test_site, True)
