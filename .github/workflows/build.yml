@@ -3,7 +3,7 @@ name: Build pghoard
 on:
   push:
     branches:
-      - master
+      - debug_tests
     tags:
       - '**'
   pull_request:
@@ -78,4 +78,4 @@ jobs:
           pip install -e .
 
       - id: unittest
-        run: make unittest
+        run: pytest test/ -k 'not test_handle_site'
