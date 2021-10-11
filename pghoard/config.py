@@ -59,7 +59,8 @@ def find_pg_binary(wanted_program, versions=None, pg_bin_directory=None, check_c
         programs = [wanted_program]
     pathformats = ["/usr/pgsql-{ver}/bin/{prog}", "/usr/lib/postgresql/{ver}/bin/{prog}"]
     if pg_bin_directory is not None:
-        pathformats = [pg_bin_directory + "/{prog}"] + pathformats
+        pathformats = [pg_bin_directory + "/{prog}"]
+    print("CHECKING FIRST IN PATHFORMATS: %s" % pathformats)
     versions = versions or SUPPORTED_VERSIONS
     for ver in versions:
         for pathfmt in pathformats:
@@ -73,6 +74,7 @@ def find_pg_binary(wanted_program, versions=None, pg_bin_directory=None, check_c
                         return command, command_version
     # We couldn't find a supported version in the "well known locations",
     # let's search in the path.
+    print("NOW FALLBACK TO PATHS: %s" % os.environ["PATH"])
     for path in os.environ["PATH"].split(os.pathsep):
         for program in programs:
             command = os.path.join(path, program)
