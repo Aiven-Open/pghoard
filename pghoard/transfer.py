@@ -317,20 +317,16 @@ class TransferAgent(Thread):
         try:
             storage = self.get_object_storage(site)
             unlink_local = file_to_transfer.remove_after_upload
-            # Basebackups may be multipart uploads, depending on the driver.
-            # Swift needs to know about this so it can do possible cleanups.
-            # FIXME: make it more obvious what is happening here, since nothing
-            # seems to be specific to multipart here ?
-            multipart = file_to_transfer.filetype in {
-                FileType.Basebackup, FileType.Basebackup_chunk, FileType.Basebackup_delta
-            }
             self.log.info("Uploading file to object store: src=%r dst=%r", file_to_transfer.source_data, key)
             if not isinstance(file_to_transfer.source_data, BytesIO):
                 f = open(file_to_transfer.source_data, "rb")
             else:
                 f = file_to_transfer.source_data
             with f:
-                storage.store_file_object(key, f, metadata=file_to_transfer.metadata)
+                metadata = file_to_transfer.metadata.copy()
+                if file_to_transfer.file_size:
+                    metadata["Content-Length"] = file_to_transfer.file_size
+                storage.store_file_object(key, f, metadata=metadata)
             if unlink_local:
                 try:
                     self.log.info("Deleting file: %r since it has been uploaded", file_to_transfer.source_data)
