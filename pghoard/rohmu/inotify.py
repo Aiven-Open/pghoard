@@ -65,10 +65,11 @@ class InotifyWatcher(Thread):
         self.timeout = 1.0
         self.log.debug("InotifyWatcher initialized")
 
-    def add_watch(self, path):
+    def add_watch(self, path, events=None):
         mask = 0
-        for v in event_types.values():
-            mask |= v
+        events = events or event_types.keys()
+        for key in events:
+            mask |= event_types[key]
         watch = self.libc.inotify_add_watch(self.fd, c_char_p(path.encode("utf8")), c_uint32(mask))
         if watch < 0:
             errno = ctypes.get_errno()
@@ -109,6 +110,7 @@ class InotifyWatcher(Thread):
             return
 
         decoded_name = name.decode("utf8")
+        watched_path = self.watch_to_path[wd]
         full_path = os.path.join(self.watch_to_path[wd], decoded_name)
 
         if mask & event_types["IN_CREATE"] > 0:
@@ -117,10 +119,11 @@ class InotifyWatcher(Thread):
         elif mask & event_types["IN_CLOSE_WRITE"] > 0:
             # file was open for writing and was closed
             self.log_event("IN_CLOSE_WRITE", full_path)
-            self.compression_queue.put({"type": "CLOSE_WRITE", "full_path": full_path})
+            self.compression_queue.put({"type": "CLOSE_WRITE", "full_path": full_path, "watched_path": watched_path})
         elif mask & event_types["IN_DELETE"] > 0:
             self.log_event("IN_DELETE", full_path)
-            self.compression_queue.put({"type": "DELETE", "full_path": full_path})
+            self.compression_queue.put({"type": "DELETE", "full_path": full_path, "watched_path": watched_path})
+
         elif mask & event_types["IN_DELETE_SELF"] > 0:
             # the monitored directory was deleted
             self.log_event("IN_DELETE_SELF", full_path)
@@ -134,9 +137,14 @@ class InotifyWatcher(Thread):
             self.log_event("IN_MOVED_TO", full_path)
             src_path = self.cookies.pop(cookie, None)
             if src_path:
-                self.compression_queue.put({"type": "MOVE", "full_path": full_path, "src_path": src_path})
+                self.compression_queue.put({
+                    "type": "MOVE",
+                    "full_path": full_path,
+                    "src_path": src_path,
+                    "watched_path": watched_path
+                })
             else:
-                self.compression_queue.put({"type": "CREATE", "full_path": full_path})
+                self.compression_queue.put({"type": "CREATE", "full_path": full_path, "watched_path": watched_path})
 
     def run(self):
         self.log.debug("Starting InotifyWatcher")

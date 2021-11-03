@@ -4,29 +4,103 @@ pghoard
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
+import dataclasses
+import enum
 import logging
 import os
 import time
+from dataclasses import dataclass
+from io import BytesIO
+from pathlib import Path
 from queue import Empty
 from threading import Lock, Thread
+from typing import Any, BinaryIO, Dict, Optional, Union
 
-from pghoard.common import create_alert_file, get_object_storage_config
+from pghoard.common import (
+    CallbackEvent, CallbackQueue, FileType, Queue, QuitEvent, StrEnum, create_alert_file, get_object_storage_config
+)
 from pghoard.fetcher import FileFetchManager
 from pghoard.rohmu import get_transfer
 from pghoard.rohmu.compat import suppress
-from pghoard.rohmu.errors import (FileNotFoundFromStorageError, LocalFileIsRemoteFileError)
+from pghoard.rohmu.errors import FileNotFoundFromStorageError
 
 _STATS_LOCK = Lock()
 _last_stats_transmit_time = 0
 
 
+@enum.unique
+class TransferOperation(StrEnum):
+    Download = "download"
+    Upload = "upload"
+    List = "list"
+    Metadata = "metadata"
+
+
+@dataclass(frozen=True)
+class BaseTransferEvent:
+    backup_site_key: str
+    file_type: FileType
+    file_path: Path
+    callback_queue: CallbackQueue
+
+
+@dataclass(frozen=True)
+class UploadEvent(BaseTransferEvent):
+    source_data: Union[BinaryIO, Path]
+    metadata: Dict[str, str]
+    file_size: Optional[int]
+    remove_after_upload: bool = True
+    retry_number: int = 0
+
+    @property
+    def operation(self):
+        return TransferOperation.Upload
+
+
+@dataclass(frozen=True)
+class DownloadEvent(BaseTransferEvent):
+
+    destination_path: Path
+    opaque: Optional[Any] = None
+    file_size: Optional[int] = 0
+
+    @property
+    def operation(self):
+        return TransferOperation.Download
+
+
+@dataclass(frozen=True)
+class ListEvent(BaseTransferEvent):
+    @property
+    def operation(self):
+        return TransferOperation.List
+
+
+@dataclass(frozen=True)
+class MetadataEvent(BaseTransferEvent):
+    @property
+    def operation(self):
+        return TransferOperation.Metadata
+
+
+OperationEvents = {
+    TransferOperation.Download: DownloadEvent,
+    TransferOperation.Upload: UploadEvent,
+    TransferOperation.List: ListEvent,
+    TransferOperation.Metadata: MetadataEvent
+}
+
+# Should be changed to Queue[Union[CompressionEvent, Literal[QuitEvent]] once
+# we drop older python versions
+TransferQueue = Queue
+
+
 class TransferAgent(Thread):
-    def __init__(self, config, compression_queue, mp_manager, transfer_queue, metrics, shared_state_dict):
+    def __init__(self, config, mp_manager, transfer_queue: TransferQueue, metrics, shared_state_dict):
         super().__init__()
         self.log = logging.getLogger("TransferAgent")
         self.config = config
         self.metrics = metrics
-        self.compression_queue = compression_queue
         self.mp_manager = mp_manager
         self.fetch_manager = FileFetchManager(self.config, self.mp_manager, self.get_object_storage)
         self.transfer_queue = transfer_queue
@@ -114,38 +188,40 @@ class TransferAgent(Thread):
                 file_to_transfer = self.transfer_queue.get(timeout=1.0)
             except Empty:
                 continue
-            if file_to_transfer["type"] == "QUIT":
+            if file_to_transfer is QuitEvent:
                 break
 
-            site = file_to_transfer["site"]
-            filetype = file_to_transfer["filetype"]
-            self.log.debug(
-                "Starting to %r %r, size: %r", file_to_transfer["type"], file_to_transfer["local_path"],
-                file_to_transfer.get("file_size", "unknown")
-            )
-            file_to_transfer.setdefault("prefix", self.config["backup_sites"][site]["prefix"])
+            site = file_to_transfer.backup_site_key
+            filetype = file_to_transfer.file_type
+            self.log.info("Processing TransferEvent %r", file_to_transfer)
             start_time = time.monotonic()
-            key = self.form_key_path(file_to_transfer)
-            oper = file_to_transfer["type"].lower()
-            oper_func = getattr(self, "handle_" + oper, None)
-            if oper_func is None:
-                self.log.warning("Invalid operation %r", file_to_transfer["type"])
-                continue
-
-            result = oper_func(site, key, file_to_transfer)
+            key = str(Path(file_to_transfer.backup_site_key) / file_to_transfer.file_path)
+            oper = str(file_to_transfer.operation)
+            if file_to_transfer.operation == TransferOperation.Download:
+                result = self.handle_download(site, key, file_to_transfer)
+            elif file_to_transfer.operation == TransferOperation.Upload:
+                result = self.handle_upload(site, key, file_to_transfer)
+            elif file_to_transfer.operation == TransferOperation.List:
+                result = self.handle_list(site, key, file_to_transfer)
+            elif file_to_transfer.operation == TransferOperation.Metadata:
+                result = self.handle_metadata(site, key, file_to_transfer)
+            else:
+                raise TypeError(f"Invalid transfer operation {file_to_transfer.operation}")
 
             # increment statistics counters
             self.set_state_defaults_for_site(site)
-            oper_size = file_to_transfer.get("file_size", 0)
-            if result["success"]:
-                filename = os.path.basename(file_to_transfer["local_path"])
-                if oper == "upload":
-                    if filetype == "xlog":
+            if not result:
+                self.state[site][oper][filetype]["failures"] += 1
+                continue
+            oper_size = result.payload.get("file_size", 0)
+            if result.success:
+                filename = file_to_transfer.file_path.name
+                if oper == TransferOperation.Upload:
+                    if filetype == FileType.Wal:
                         self.state[site][oper]["xlog"]["xlogs_since_basebackup"] += 1
-                    elif filetype in {"basebackup", "basebackup_delta"}:
+                    elif filetype in {FileType.Basebackup, FileType.Basebackup_chunk}:
                         # reset corresponding xlog stats at basebackup
                         self.state[site][oper]["xlog"]["xlogs_since_basebackup"] = 0
-
                     self.metrics.gauge(
                         "pghoard.xlogs_since_basebackup",
                         self.state[site][oper]["xlog"]["xlogs_since_basebackup"],
@@ -155,6 +231,7 @@ class TransferAgent(Thread):
                 self.state[site][oper][filetype]["last_success"] = time.monotonic()
                 self.state[site][oper][filetype]["count"] += 1
                 self.state[site][oper][filetype]["data"] += oper_size
+
                 self.metrics.gauge(
                     "pghoard.total_upload_size",
                     self.state[site][oper][filetype]["data"],
@@ -168,25 +245,24 @@ class TransferAgent(Thread):
             else:
                 self.state[site][oper][filetype]["failures"] += 1
 
-            if oper in {"download", "upload"}:
+            if file_to_transfer.operation in {TransferOperation.Download, TransferOperation.Upload}:
                 self.metrics.increase(
                     "pghoard.{}_size".format(oper),
                     inc_value=oper_size,
                     tags={
-                        "result": "ok" if result["success"] else "failed",
+                        "result": "ok" if result.success else "failed",
                         "type": filetype,
                         "site": site,
                     }
                 )
 
             # push result to callback_queue if provided
-            if result.get("call_callback", True) and file_to_transfer.get("callback_queue"):
-                file_to_transfer["callback_queue"].put(result)
+            if file_to_transfer.callback_queue:
+                file_to_transfer.callback_queue.put(result)
 
             self.log.info(
-                "%r %stransfer of key: %r, size: %r, origin: %r took %.3fs", file_to_transfer["type"],
-                "FAILED " if not result["success"] else "", key, oper_size,
-                file_to_transfer.get("metadata", {}).get("host"),
+                "%r %stransfer of key: %r, size: %r, took %.3fs", oper, "FAILED " if not result.success else "", key,
+                oper_size,
                 time.monotonic() - start_time
             )
 
@@ -197,93 +273,94 @@ class TransferAgent(Thread):
         try:
             storage = self.get_object_storage(site)
             items = storage.list_path(key)
-            file_to_transfer["file_size"] = len(repr(items))  # approx
-            return {"success": True, "items": items, "opaque": file_to_transfer.get("opaque")}
+            payload = {"file_size": len(repr(items)), "items": items}
+            return CallbackEvent(success=True, payload=payload)
         except FileNotFoundFromStorageError as ex:
             self.log.warning("%r not found from storage", key)
-            return {"success": False, "exception": ex, "opaque": file_to_transfer.get("opaque")}
+            return CallbackEvent(success=False, exception=ex)
         except Exception as ex:  # pylint: disable=broad-except
             self.log.exception("Problem happened when retrieving metadata: %r, %r", key, file_to_transfer)
             self.metrics.unexpected_exception(ex, where="handle_list")
-            return {"success": False, "exception": ex, "opaque": file_to_transfer.get("opaque")}
+            return CallbackEvent(success=False, exception=ex)
 
     def handle_metadata(self, site, key, file_to_transfer):
         try:
             storage = self.get_object_storage(site)
             metadata = storage.get_metadata_for_key(key)
-            file_to_transfer["file_size"] = len(repr(metadata))  # approx
-            return {"success": True, "metadata": metadata, "opaque": file_to_transfer.get("opaque")}
+            payload = {"metadata": metadata, "file_size": len(repr(metadata))}
+            return CallbackEvent(success=True, payload=payload)
         except FileNotFoundFromStorageError as ex:
             self.log.warning("%r not found from storage", key)
-            return {"success": False, "exception": ex, "opaque": file_to_transfer.get("opaque")}
+            return CallbackEvent(success=False, exception=ex)
         except Exception as ex:  # pylint: disable=broad-except
             self.log.exception("Problem happened when retrieving metadata: %r, %r", key, file_to_transfer)
             self.metrics.unexpected_exception(ex, where="handle_metadata")
-            return {"success": False, "exception": ex, "opaque": file_to_transfer.get("opaque")}
+            return CallbackEvent(success=False, exception=ex)
 
     def handle_download(self, site, key, file_to_transfer):
         try:
-            path = file_to_transfer["target_path"]
+            path = file_to_transfer.destination_path
             self.log.info("Requesting download of object key: src=%r dst=%r", key, path)
             file_size, metadata = self.fetch_manager.fetch_file(site, key, path)
-            file_to_transfer["file_size"] = file_size
-            return {"success": True, "opaque": file_to_transfer.get("opaque"), "target_path": path, "metadata": metadata}
+            payload = {"file_size": file_size, "metadata": metadata, "target_path": path}
+            return CallbackEvent(success=True, opaque=file_to_transfer.opaque, payload=payload)
         except FileNotFoundFromStorageError as ex:
             self.log.warning("%r not found from storage", key)
-            return {"success": False, "exception": ex, "opaque": file_to_transfer.get("opaque")}
+            return CallbackEvent(success=False, exception=ex, opaque=file_to_transfer.opaque)
         except Exception as ex:  # pylint: disable=broad-except
             self.log.exception("Problem happened when downloading: %r, %r", key, file_to_transfer)
             self.metrics.unexpected_exception(ex, where="handle_download")
-            return {"success": False, "exception": ex, "opaque": file_to_transfer.get("opaque")}
+            return CallbackEvent(success=False, exception=ex, opaque=file_to_transfer.opaque)
 
     def handle_upload(self, site, key, file_to_transfer):
+        payload = {"file_size": file_to_transfer.file_size}
         try:
             storage = self.get_object_storage(site)
-            unlink_local = False
-            if "blob" in file_to_transfer:
-                self.log.info("Uploading memory-blob to object store: dst=%r", key)
-                storage.store_file_from_memory(key, file_to_transfer["blob"], metadata=file_to_transfer["metadata"])
+            unlink_local = file_to_transfer.remove_after_upload
+            self.log.info("Uploading file to object store: src=%r dst=%r", file_to_transfer.source_data, key)
+            if not isinstance(file_to_transfer.source_data, BytesIO):
+                f = open(file_to_transfer.source_data, "rb")
             else:
-                # Basebackups may be multipart uploads, depending on the driver.
-                # Swift needs to know about this so it can do possible cleanups.
-                multipart = file_to_transfer["filetype"] in {"basebackup", "basebackup_chunk", "basebackup_delta"}
-                try:
-                    self.log.info("Uploading file to object store: src=%r dst=%r", file_to_transfer["local_path"], key)
-                    storage.store_file_from_disk(
-                        key, file_to_transfer["local_path"], metadata=file_to_transfer["metadata"], multipart=multipart
-                    )
-                    unlink_local = True
-                except LocalFileIsRemoteFileError:
-                    pass
+                f = file_to_transfer.source_data
+            with f:
+                metadata = file_to_transfer.metadata.copy()
+                if file_to_transfer.file_size:
+                    metadata["Content-Length"] = file_to_transfer.file_size
+                storage.store_file_object(key, f, metadata=metadata)
             if unlink_local:
                 try:
-                    self.log.info("Deleting file: %r since it has been uploaded", file_to_transfer["local_path"])
-                    os.unlink(file_to_transfer["local_path"])
-                    metadata_path = file_to_transfer["local_path"] + ".metadata"
-                    with suppress(FileNotFoundError):
-                        os.unlink(metadata_path)
+                    self.log.info("Deleting file: %r since it has been uploaded", file_to_transfer.source_data)
+                    os.unlink(file_to_transfer.source_data)
+                    # If we're working from pathes, then compute the .metadata
+                    # path.
+                    # FIXME: should be part of the event itself
+                    if isinstance(file_to_transfer.source_data, Path):
+                        metadata_path = file_to_transfer.source_data.with_name(
+                            file_to_transfer.source_data.name + ".metadata"
+                        )
+                        with suppress(FileNotFoundError):
+                            os.unlink(metadata_path)
                 except Exception as ex:  # pylint: disable=broad-except
-                    self.log.exception("Problem in deleting file: %r", file_to_transfer["local_path"])
+                    self.log.exception("Problem in deleting file: %r", file_to_transfer.source_data)
                     self.metrics.unexpected_exception(ex, where="handle_upload_unlink")
-            return {"success": True, "opaque": file_to_transfer.get("opaque")}
+            return CallbackEvent(success=True, payload=payload)
         except Exception as ex:  # pylint: disable=broad-except
-            if file_to_transfer.get("retry_number", 0) > 0:
-                self.log.exception("Problem in moving file: %r, need to retry", file_to_transfer["local_path"])
+            if file_to_transfer.retry_number > 0:
+                self.log.exception("Problem in moving file: %r, need to retry", file_to_transfer.source_data)
                 # Ignore the exception the first time round as some object stores have frequent Internal Errors
                 # and the upload usually goes through without any issues the second time round
                 self.metrics.unexpected_exception(ex, where="handle_upload")
             else:
                 self.log.warning(
-                    "Problem in moving file: %r, need to retry (%s: %s)", file_to_transfer["local_path"],
+                    "Problem in moving file: %r, need to retry (%s: %s)", file_to_transfer.source_data,
                     ex.__class__.__name__, ex
                 )
-
-            file_to_transfer["retry_number"] = file_to_transfer.get("retry_number", 0) + 1
-            if file_to_transfer["retry_number"] > self.config["upload_retries_warning_limit"]:
+            file_to_transfer = dataclasses.replace(file_to_transfer, retry_number=file_to_transfer.retry_number + 1)
+            if file_to_transfer.retry_number > self.config["upload_retries_warning_limit"]:
                 create_alert_file(self.config, "upload_retries_warning")
 
             # Sleep for a bit to avoid busy looping. Increase sleep time if the op fails multiple times
-            self.sleep(min(0.5 * 2 ** (file_to_transfer["retry_number"] - 1), 20))
+            self.sleep(min(0.5 * 2 ** (file_to_transfer.retry_number - 1), 20))
 
             self.transfer_queue.put(file_to_transfer)
-            return {"success": False, "call_callback": False, "exception": ex}
+            return None

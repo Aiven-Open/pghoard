@@ -123,7 +123,7 @@ class TestWebServer:
         pghoard.config["backup_sites"][pghoard.test_site]["basebackup_mode"] = mode
         pghoard.create_basebackup(pghoard.test_site, db.user, basebackup_path, q)
         result = q.get(timeout=60)
-        assert result["success"]
+        assert result.success
         backups_after = set(f for f in os.listdir(backup_dir) if not f.endswith(".metadata"))
         new_backups = backups_after - backups_before
         assert len(new_backups) == 1

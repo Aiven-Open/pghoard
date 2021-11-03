@@ -49,14 +49,14 @@ class WalBlobLengthError(ValueError):
 WalHeader = namedtuple("WalHeader", ("version", "lsn"))
 
 
-def segments_per_xlogid(server_version: int) -> int:
+def segments_per_xlogid(server_version: Optional[int]) -> int:
     if server_version is not None and server_version < 90300:
         return 0x0FFFFFFFF // WAL_SEG_SIZE
     return 0x100000000 // WAL_SEG_SIZE
 
 
 class LSN:
-    def __init__(self, value: Union[int, str], server_version: int, timeline_id: Optional[int] = None):
+    def __init__(self, value: Union[int, str], server_version: Optional[int], timeline_id: Optional[int] = None):
         self.timeline_id = timeline_id
         self.server_version = server_version
         if isinstance(value, int):
@@ -149,7 +149,7 @@ class LSN:
 
     def __sub__(self, other) -> int:
         if isinstance(other, LSN):
-            self._assert_sane_for_comparison(self, other)
+            self._assert_sane_for_comparison(other)
             val = other.lsn
         elif isinstance(other, int):
             val = other
@@ -198,7 +198,7 @@ def read_header(blob):
     return WalHeader(version=version, lsn=lsn)
 
 
-def lsn_from_sysinfo(sysinfo: tuple, pg_version: str = None) -> LSN:
+def lsn_from_sysinfo(sysinfo: tuple, pg_version: Optional[int] = None) -> LSN:
     """Get wal file name out of a IDENTIFY_SYSTEM tuple
     """
     return LSN(sysinfo[2], timeline_id=int(sysinfo[1]), server_version=pg_version)

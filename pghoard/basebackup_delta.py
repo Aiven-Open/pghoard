@@ -10,16 +10,18 @@ import time
 import uuid
 from contextlib import suppress
 from multiprocessing.dummy import Pool
+from pathlib import Path
 from queue import Empty, Queue
 from tempfile import NamedTemporaryFile
 from typing import Callable, Dict
 
-from pghoard.common import (BackupFailure, BaseBackupFormat, extract_pghoard_delta_v1_metadata)
+from pghoard.common import (BackupFailure, BaseBackupFormat, FileType, extract_pghoard_delta_v1_metadata)
 from pghoard.rohmu import rohmufile
 from pghoard.rohmu.dates import now
 from pghoard.rohmu.delta.common import (BackupManifest, SnapshotFile, SnapshotHash, SnapshotResult, SnapshotUploadResult)
 from pghoard.rohmu.delta.snapshot import Snapshotter
 from pghoard.rohmu.errors import FileNotFoundFromStorageError
+from pghoard.transfer import UploadEvent
 
 
 class DeltaBaseBackup:
@@ -169,18 +171,19 @@ class DeltaBaseBackup:
             "host": socket.gethostname(),
         }
 
-        self.transfer_queue.put({
-            "callback_queue": callback_queue,
-            "file_size": result_size,
-            "filetype": "basebackup_delta",
-            "local_path": chunk_path,
-            "metadata": metadata,
-            "site": self.site,
-            "type": "UPLOAD",
-            "delta": {
-                "hexdigest": result_digest,
-            },
-        })
+        dest_path = Path("basebackup_delta") / result_digest
+
+        self.transfer_queue.put(
+            UploadEvent(
+                callback_queue=callback_queue,
+                file_size=result_size,
+                file_type=FileType.Basebackup_delta,
+                backup_site_key=self.site,
+                metadata=metadata,
+                file_path=dest_path,
+                source_data=chunk_path
+            )
+        )
 
         return input_size, result_size, result_digest, skip_upload
 

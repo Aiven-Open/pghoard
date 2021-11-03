@@ -13,14 +13,17 @@ from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
 from queue import Empty, Queue
 from socketserver import ThreadingMixIn
 from threading import RLock, Thread
 
 from pghoard import wal
-from pghoard.common import get_pg_wal_directory, json_encode
+from pghoard.common import (FileType, FileTypePrefixes, get_pg_wal_directory, json_encode)
+from pghoard.compressor import CompressionEvent
 from pghoard.rohmu.compat import suppress
 from pghoard.rohmu.errors import Error, FileNotFoundFromStorageError
+from pghoard.transfer import DownloadEvent, OperationEvents, TransferOperation
 from pghoard.version import __version__
 
 
@@ -222,15 +225,12 @@ class RequestHandler(BaseHTTPRequestHandler):
         start_time = time.time()
 
         self.server.log.debug("Requesting site: %r, filename: %r, filetype: %r", site, filename, filetype)
-
+        filetype = FileType(filetype)
+        filepath = Path(FileTypePrefixes[filetype]) / filename
         callback_queue = Queue()
-        self.server.transfer_queue.put({
-            "callback_queue": callback_queue,
-            "filetype": filetype,
-            "local_path": filename,
-            "site": site,
-            "type": method,
-        })
+        cls = OperationEvents[method]
+        ev = cls(callback_queue=callback_queue, file_type=filetype, file_path=filepath, backup_site_key=site)
+        self.server.transfer_queue.put(ev)
 
         try:
             try:
@@ -238,14 +238,14 @@ class RequestHandler(BaseHTTPRequestHandler):
                 self.server.log.debug("Handled a %s request for: %r, took: %.3fs", method, site, time.time() - start_time)
             except Empty:
                 self.server.log.exception(
-                    "Timeout on a %s request for: %r, took: %.3fs", method, site,
-                    time.time() - start_time
+                    "Timeout on a %s request for: %r, took: %.3fs %s", method, site,
+                    time.time() - start_time, ev
                 )
                 raise HttpResponse("TIMEOUT", status=500)
 
-            if not response["success"]:
-                if isinstance(response.get("exception"), FileNotFoundFromStorageError):
-                    raise HttpResponse("{0.__class__.__name__}: {0}".format(response["exception"]), status=404)
+            if not response.success:
+                if isinstance(response.exception, FileNotFoundFromStorageError):
+                    raise HttpResponse("{0.__class__.__name__}: {0}".format(response.exception), status=404)
                 raise HttpResponse(status=500)
         except HttpResponse as ex:
             if ex.status == 500 and retries:
@@ -330,41 +330,42 @@ class RequestHandler(BaseHTTPRequestHandler):
             started_at=time.monotonic(),
             target_path=target_path,
         )
-        self.server.transfer_queue.put({
-            "callback_queue": self.server.download_results,
-            "filetype": filetype,
-            "local_path": obname,
-            "opaque": key,
-            "site": site,
-            "target_path": tmp_target_path,
-            "type": "DOWNLOAD",
-        })
+        self.server.transfer_queue.put(
+            DownloadEvent(
+                callback_queue=self.server.download_results,
+                file_type=filetype,
+                file_path=FileTypePrefixes[filetype] / obname,
+                backup_site_key=site,
+                destination_path=Path(tmp_target_path),
+                opaque=key
+            )
+        )
 
     def _process_completed_download_operations(self, timeout=None):
         while True:
             try:
                 result = self.server.download_results.get(block=timeout is not None, timeout=timeout)
-                key = result["opaque"]
+                key = result.opaque
                 with self.server.lock:
                     op = self.server.pending_download_ops.pop(key, None)
                     if not op:
                         self.server.log.warning("Orphaned download operation %r completed: %r", key, result)
-                        if result["success"]:
+                        if result.success:
                             with suppress(OSError):
-                                os.unlink(result["target_path"])
+                                os.unlink(result.payload["target_path"])
                         continue
-                    if result["success"]:
+                    if result.success:
                         if os.path.isfile(op["target_path"]):
                             self.server.log.warning("Target path for %r already exists, skipping", key)
                             continue
-                        os.rename(result["target_path"], op["target_path"])
-                        metadata = result["metadata"] or {}
+                        os.rename(result.payload["target_path"], op["target_path"])
+                        metadata = result.payload["metadata"] or {}
                         self.server.log.info(
-                            "Renamed %s to %s. Original upload from %r, hash %s:%s", result["target_path"],
+                            "Renamed %s to %s. Original upload from %r, hash %s:%s", result.payload["target_path"],
                             op["target_path"], metadata.get("host"), metadata.get("hash-algorithm"), metadata.get("hash")
                         )
                     else:
-                        ex = result.get("exception", Error)
+                        ex = result.exception or Error
                         if isinstance(ex, FileNotFoundFromStorageError):
                             # don't try prefetching this file again
                             self.server.prefetch_404.append(key)
@@ -492,8 +493,8 @@ class RequestHandler(BaseHTTPRequestHandler):
         raise HttpResponse("TIMEOUT", status=500)
 
     def list_basebackups(self, site):
-        response = self._transfer_agent_op(site, "", "basebackup", "LIST")
-        raise HttpResponse({"basebackups": response["items"]}, status=200)
+        response = self._transfer_agent_op(site, "", "basebackup", TransferOperation.List)
+        raise HttpResponse({"basebackups": response.payload["items"]}, status=200)
 
     def handle_archival_request(self, site, filename, filetype):
         if filetype == "basebackup":
@@ -519,15 +520,20 @@ class RequestHandler(BaseHTTPRequestHandler):
             compress_to_memory = False
         else:
             compress_to_memory = True
-        compression_event = {
-            "type": "MOVE",
-            "callback_queue": callback_queue,
-            "compress_to_memory": compress_to_memory,
-            "delete_file_after_compression": False,
-            "full_path": xlog_path,
-            "site": site,
-            "src_path": "{}.partial".format(xlog_path),
-        }
+        if filename.endswith(".history"):
+            filetype = FileType.Timeline
+        else:
+            filetype = FileType.Wal
+        compression_event = CompressionEvent(
+            callback_queue=callback_queue,
+            compress_to_memory=compress_to_memory,
+            delete_file_after_compression=False,
+            file_path=FileTypePrefixes[filetype] / filename,
+            source_data=Path(xlog_path),
+            file_type=filetype,
+            backup_site_key=site,
+            metadata={}
+        )
         self.server.compression_queue.put(compression_event)
         try:
             response = callback_queue.get(timeout=30)
@@ -542,7 +548,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             )
             raise HttpResponse("TIMEOUT", status=500)
 
-        if not response["success"]:
+        if not response.success:
             raise HttpResponse(status=500)
         raise HttpResponse(status=201)
 
@@ -557,8 +563,8 @@ class RequestHandler(BaseHTTPRequestHandler):
             site, obtype, obname = self._parse_request(path)
             if self.headers.get("x-pghoard-target-path"):
                 raise HttpResponse("x-pghoard-target-path header is only valid for downloads", status=400)
-            response = self._transfer_agent_op(site, obname, obtype, "METADATA")
-            metadata = response["metadata"]
+            response = self._transfer_agent_op(site, obname, obtype, TransferOperation.Metadata)
+            metadata = response.payload["metadata"]
             headers = {}
             if metadata.get("hash") and metadata.get("hash-algorithm"):
                 headers["metadata-hash"] = metadata["hash"]

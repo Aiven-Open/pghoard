@@ -180,17 +180,17 @@ class Snapshotter:
         progress.start(3)
 
         if self.src_iterate_func:
-            src_dirs = set()
-            src_files = set()
+            src_dirs_set = set()
+            src_files_set = set()
             for item in self.src_iterate_func():
                 path = Path(item)
                 if path.is_file() and not path.is_symlink():
-                    src_files.add(path.relative_to(self.src))
+                    src_files_set.add(path.relative_to(self.src))
                 elif path.is_dir():
-                    src_dirs.add(path.relative_to(self.src))
+                    src_dirs_set.add(path.relative_to(self.src))
 
-            src_dirs = sorted(src_dirs | {p.parent for p in src_files})
-            src_files = sorted(src_files)
+            src_dirs = sorted(src_dirs_set | {p.parent for p in src_files_set})
+            src_files = sorted(src_files_set)
         else:
             src_dirs, src_files = self._list_dirs_and_files(self.src)
 
