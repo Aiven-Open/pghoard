@@ -7,10 +7,10 @@ See LICENSE for details
 import logging
 import os
 import time
+from contextlib import suppress
 
 from swiftclient import client, exceptions  # pylint: disable=import-error
 
-from ..compat import suppress
 from ..dates import parse_timestamp
 from ..errors import FileNotFoundFromStorageError
 from .base import KEY_TYPE_OBJECT, KEY_TYPE_PREFIX, BaseTransfer, IterKeyItem

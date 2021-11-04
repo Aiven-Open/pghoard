@@ -15,6 +15,7 @@ import re
 import tarfile
 import tempfile
 import time
+from contextlib import suppress
 from dataclasses import dataclass, field
 from distutils.version import LooseVersion
 from pathlib import Path
@@ -23,7 +24,6 @@ from typing import Any, Dict, Optional
 
 from pghoard import pgutil
 from pghoard.rohmu import IO_BLOCK_SIZE
-from pghoard.rohmu.compat import suppress
 from pghoard.rohmu.errors import Error, InvalidConfigurationError
 
 LOG = logging.getLogger("pghoard.common")

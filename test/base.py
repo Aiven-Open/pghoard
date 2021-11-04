@@ -14,7 +14,6 @@ from tempfile import mkdtemp
 import psycopg2.extras
 
 from pghoard.config import find_pg_binary, set_and_check_config_defaults
-from pghoard.rohmu import compat
 
 CONSTANT_TEST_RSA_PUBLIC_KEY = """\
 -----BEGIN PUBLIC KEY-----
@@ -96,7 +95,7 @@ class PGHoardTestCase:
                     config["backup_sites"][site_name] = site_override
             config.update(override)
 
-        compat.makedirs(config["alert_file_dir"], exist_ok=True)
+        os.makedirs(config["alert_file_dir"], exist_ok=True)
         return set_and_check_config_defaults(config)
 
     def setup_method(self, method):

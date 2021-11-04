@@ -9,10 +9,9 @@ import logging
 import os
 import select
 import struct
+from contextlib import suppress
 from ctypes import c_char_p, c_int, c_uint32
 from threading import Thread
-
-from .compat import suppress
 
 
 class InotifyEvent(ctypes.Structure):

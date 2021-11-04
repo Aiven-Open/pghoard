@@ -7,6 +7,7 @@ See LICENSE for details
 import abc
 import argparse
 import base64
+import contextlib
 import datetime
 import enum
 import errno
@@ -32,7 +33,7 @@ from psycopg2.extensions import adapt
 from requests import Session
 
 from pghoard.common import BaseBackupFormat, StrEnum
-from pghoard.rohmu import compat, dates, get_transfer, rohmufile
+from pghoard.rohmu import dates, get_transfer, rohmufile
 from pghoard.rohmu.errors import (Error, InvalidConfigurationError, MaybeRecoverableError)
 
 from . import common, config, logutil, version
@@ -678,7 +679,7 @@ class BasebackupFetcher:
         if self.errors:
             raise RestoreError("Backup download/extraction failed with {} errors".format(self.errors))
         self._create_tablespace_symlinks()
-        with compat.suppress(OSError):
+        with contextlib.suppress(OSError):
             os.rmdir(os.path.join(self.pgdata, "pgdata"))
 
     def _create_tablespace_symlinks(self):
@@ -698,7 +699,7 @@ class BasebackupFetcher:
         # tar's limitations in exclude parameter behavior
         tsnames = [os.path.join("tablespaces", tsname) for tsname in self.tablespaces.keys()]
         for exclude in tsnames + ["tablespaces"]:
-            with compat.suppress(OSError):
+            with contextlib.suppress(OSError):
                 os.rmdir(os.path.join(self.pgdata, exclude))
 
     def _process_count(self):

@@ -15,6 +15,7 @@ import stat
 import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from queue import Empty, Queue
@@ -26,7 +27,6 @@ import psycopg2
 
 from pghoard.compressor import CompressionEvent
 from pghoard.rohmu import dates, errors, rohmufile
-from pghoard.rohmu.compat import suppress
 
 # pylint: disable=superfluous-parens
 from . import common, version, wal
@@ -36,7 +36,7 @@ from .common import (
     extract_pghoard_bb_v2_metadata, replication_connection_string_and_slot_using_pgpass, set_stream_nonblocking,
     set_subprocess_stdout_and_stderr_nonblocking, terminate_subprocess
 )
-from .patchedtarfile import tarfile
+import tarfile
 from .rohmu.delta.common import EMBEDDED_FILE_SIZE
 from .transfer import UploadEvent
 

@@ -9,6 +9,7 @@ import enum
 import logging
 import os
 import time
+from contextlib import suppress
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
@@ -21,7 +22,6 @@ from pghoard.common import (
 )
 from pghoard.fetcher import FileFetchManager
 from pghoard.rohmu import get_transfer
-from pghoard.rohmu.compat import suppress
 from pghoard.rohmu.errors import FileNotFoundFromStorageError
 
 _STATS_LOCK = Lock()

@@ -10,6 +10,7 @@ import tarfile
 import time
 from copy import deepcopy
 from distutils.version import LooseVersion
+from os import makedirs
 from queue import Queue
 from subprocess import check_call
 
@@ -22,7 +23,6 @@ from pghoard.basebackup import PGBaseBackup
 from pghoard.common import BaseBackupMode
 from pghoard.restore import Restore, RestoreError
 from pghoard.rohmu import get_transfer
-from pghoard.rohmu.compat import makedirs
 
 from .conftest import PGTester
 from .util import switch_wal

@@ -14,6 +14,7 @@ import signal
 import subprocess
 import tempfile
 import time
+from contextlib import suppress
 from distutils.version import LooseVersion
 from pathlib import Path
 from unittest import SkipTest
@@ -25,7 +26,6 @@ from py import path as py_path  # pylint: disable=no-name-in-module
 from pghoard import config as pghconfig
 from pghoard import logutil, pgutil
 from pghoard.pghoard import PGHoard
-from pghoard.rohmu.compat import suppress
 from pghoard.rohmu.delta.common import EMBEDDED_FILE_SIZE, Progress
 from pghoard.rohmu.delta.snapshot import Snapshotter
 from pghoard.rohmu.snappyfile import snappy
