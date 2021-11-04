@@ -1,5 +1,6 @@
 # Use pip for build requirements to harmonize between OS versions
 mock
+mypy
 pylint>=2.4.3,<=2.7.2
 pylint-quotes
 pytest
@@ -12,3 +13,11 @@ coverage
 coveralls
 responses
 unify
+types-botocore
+types-httplib2
+types-mock
+types-paramiko
+types-psycopg2
+types-python-dateutil
+types-requests
+types-six

@@ -35,6 +35,9 @@ jobs:
       - id: pylint
         run: make lint
 
+      - id: mypy
+        run: make mypy
+
       - id: validate-style
         run: |
           make fmt
