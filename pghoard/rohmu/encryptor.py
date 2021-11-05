@@ -22,7 +22,7 @@ from cryptography.hazmat.primitives.hmac import HMAC
 from . import IO_BLOCK_SIZE
 from .filewrap import FileWrap, Sink, Stream
 
-if cryptography.__version__ < "1.6":
+if cryptography.__version__ < "1.6":  # type: ignore
     # workaround for deadlock https://github.com/pyca/cryptography/issues/2911
     cryptography.hazmat.backends.openssl.backend.activate_builtin_random()
 

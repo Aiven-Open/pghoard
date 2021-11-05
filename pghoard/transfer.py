@@ -23,6 +23,7 @@ from pghoard.common import (
 from pghoard.fetcher import FileFetchManager
 from pghoard.rohmu import get_transfer
 from pghoard.rohmu.errors import FileNotFoundFromStorageError
+from pghoard.rohmu.object_storage.base import BaseTransfer
 
 _STATS_LOCK = Lock()
 _last_stats_transmit_time = 0
@@ -107,7 +108,7 @@ class TransferAgent(Thread):
         self.running = True
         self.sleep = time.sleep
         self.state = shared_state_dict
-        self.site_transfers = {}
+        self.site_transfers: Dict[str, BaseTransfer] = {}
         self.log.debug("TransferAgent initialized")
 
     def set_state_defaults_for_site(self, site):

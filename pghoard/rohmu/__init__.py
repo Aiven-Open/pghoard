@@ -4,12 +4,15 @@ rohmu
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
+from typing import Type
+
 from .errors import InvalidConfigurationError
+from .object_storage.base import BaseTransfer
 
 IO_BLOCK_SIZE = 2 ** 20  # 1 MiB
 
 
-def get_class_for_transfer(obj_store):
+def get_class_for_transfer(obj_store) -> Type[BaseTransfer]:
     storage_type = obj_store["storage_type"]
     if storage_type == "azure":
         from .object_storage.azure import AzureTransfer
@@ -33,7 +36,7 @@ def get_class_for_transfer(obj_store):
     raise InvalidConfigurationError("unsupported storage type {0!r}".format(storage_type))
 
 
-def get_transfer(storage_config):
+def get_transfer(storage_config) -> BaseTransfer:
     storage_class = get_class_for_transfer(storage_config)
     storage_config = storage_config.copy()
     storage_config.pop("storage_type")

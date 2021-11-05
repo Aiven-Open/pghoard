@@ -11,11 +11,11 @@ import uuid
 from contextlib import suppress
 from multiprocessing.dummy import Pool
 from pathlib import Path
-from queue import Empty, Queue
+from queue import Empty
 from tempfile import NamedTemporaryFile
 from typing import Callable, Dict
 
-from pghoard.common import (BackupFailure, BaseBackupFormat, FileType, extract_pghoard_delta_v1_metadata)
+from pghoard.common import (BackupFailure, BaseBackupFormat, CallbackQueue, FileType, extract_pghoard_delta_v1_metadata)
 from pghoard.rohmu import rohmufile
 from pghoard.rohmu.dates import now
 from pghoard.rohmu.delta.common import (BackupManifest, SnapshotFile, SnapshotHash, SnapshotResult, SnapshotUploadResult)
@@ -49,6 +49,8 @@ class DeltaBaseBackup:
         snapshotter.snapshot(reuse_old_snapshotfiles=False)
         snapshot_result = SnapshotResult()
         snapshot_result.state = snapshotter.get_snapshot_state()
+        if snapshot_result.state is None:
+            raise ValueError("snapshot_result should not have a None state attribute")
         snapshot_result.hashes = [
             SnapshotHash(hexdigest=ssfile.hexdigest, size=ssfile.file_size)
             for ssfile in snapshot_result.state.files
@@ -268,12 +270,14 @@ class DeltaBaseBackup:
         return uploaded_count, uploaded_size
 
     def _delta_upload(self, snapshot_result: SnapshotResult, snapshotter: Snapshotter, start_time_utc):
-        callback_queue = Queue()
+        callback_queue = CallbackQueue()
 
         # Determine which digests already exist and which need to be uploaded, also restore the backup size of re-used
         # files from manifests
-        snapshot_hashes = set(snapshot_result.hashes)
+        snapshot_hashes = set(snapshot_result.hashes or [])
         already_uploaded_hashes = set()
+        if snapshot_result.state is None:
+            raise ValueError("snapshot_result state must not be None")
         for snapshot_file in snapshot_result.state.files:
             if snapshot_file.hexdigest in self.tracked_snapshot_files:
                 snapshot_file_from_manifest = self.tracked_snapshot_files[snapshot_file.hexdigest]
@@ -296,6 +300,8 @@ class DeltaBaseBackup:
         total_digests_stored_size = 0
 
         snapshot_result.state = snapshotter.get_snapshot_state()
+        if snapshot_result.state is None:
+            raise ValueError("snapshot_result state must not be None")
         for snapshot_file in snapshot_result.state.files:
             total_size += snapshot_file.file_size
             if snapshot_file.hexdigest:

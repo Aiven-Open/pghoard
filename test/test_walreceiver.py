@@ -1,17 +1,17 @@
-from pghoard.pghoard import PGHoard
 from pghoard.wal import get_current_lsn
 
+from .conftest import PGHoardForTest
 from .util import switch_wal, wait_for_xlog
 
 
-def get_transfer_agent_upload_xlog_state(pghoard: PGHoard):
+def get_transfer_agent_upload_xlog_state(pghoard: PGHoardForTest):
     transfer_agent_state = pghoard.transfer_agent_state.get(pghoard.test_site)
     if transfer_agent_state is None:
         return {}
     return transfer_agent_state["upload"]["xlog"]
 
 
-def stop_walreceiver(pghoard: PGHoard):
+def stop_walreceiver(pghoard: PGHoardForTest):
     walreceiver = pghoard.walreceivers.pop(pghoard.test_site)
     walreceiver.running = False
     walreceiver.join()

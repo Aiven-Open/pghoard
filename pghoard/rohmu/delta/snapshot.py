@@ -4,7 +4,7 @@ import logging
 import os
 import threading
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable, Dict, List, Optional
 
 from pghoard.rohmu.delta.common import (
     EMBEDDED_FILE_SIZE, Progress, SnapshotFile, SnapshotHash, SnapshotState, hash_hexdigest_readable,
@@ -40,11 +40,11 @@ class Snapshotter:
         self.dst = Path(dst)
         self.globs = globs
         self.src_iterate_func = src_iterate_func
-        self.relative_path_to_snapshotfile = {}
-        self.hexdigest_to_snapshotfiles = {}
+        self.relative_path_to_snapshotfile: Dict[Path, SnapshotFile] = {}
+        self.hexdigest_to_snapshotfiles: Dict[str, List[SnapshotFile]] = {}
         self.parallel = parallel
         self.lock = threading.Lock()
-        self.empty_dirs = []
+        self.empty_dirs: List[Path] = []
 
     def _list_files(self, basepath: Path):
         result_files = set()

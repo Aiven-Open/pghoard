@@ -13,6 +13,7 @@ import socket
 from pathlib import Path
 from queue import Queue
 from threading import Event
+from typing import Optional
 
 import mock
 import pytest
@@ -46,7 +47,7 @@ class WALTester:
 
 
 class CompressionCase(PGHoardTestCase):
-    algorithm = None
+    algorithm: Optional[str] = None
 
     def compress(self, data):
         raise NotImplementedError

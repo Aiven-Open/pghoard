@@ -15,12 +15,12 @@ from .zstdfile import open as zstd_open
 try:
     import snappy
 except ImportError:
-    snappy = None
+    snappy = None  # type: ignore
 
 try:
     import zstandard as zstd
 except ImportError:
-    zstd = None
+    zstd = None  # type: ignore
 
 
 def CompressionFile(dst_fp, algorithm, level=0, threads=0):

@@ -13,15 +13,16 @@ import select
 import socket
 import stat
 import subprocess
+import tarfile
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
-from queue import Empty, Queue
+from queue import Empty
 from tempfile import NamedTemporaryFile
 from threading import Thread
-from typing import Dict, Optional
+from typing import Dict, List, Optional, Tuple
 
 import psycopg2
 
@@ -32,11 +33,10 @@ from pghoard.rohmu import dates, errors, rohmufile
 from . import common, version, wal
 from .basebackup_delta import DeltaBaseBackup
 from .common import (
-    BackupFailure, BaseBackupFormat, BaseBackupMode, CallbackEvent, FileType, connection_string_using_pgpass,
+    BackupFailure, BaseBackupFormat, BaseBackupMode, CallbackEvent, CallbackQueue, FileType, connection_string_using_pgpass,
     extract_pghoard_bb_v2_metadata, replication_connection_string_and_slot_using_pgpass, set_stream_nonblocking,
     set_subprocess_stdout_and_stderr_nonblocking, terminate_subprocess
 )
-import tarfile
 from .rohmu.delta.common import EMBEDDED_FILE_SIZE
 from .transfer import UploadEvent
 
@@ -172,7 +172,7 @@ class PGBaseBackup(Thread):
         finally:
             self.running = False
 
-    def get_backup_path(self) -> Path:
+    def get_backup_path(self) -> Tuple[Path, Path]:
         """
         Build a unique backup path
 
@@ -689,15 +689,15 @@ class PGBaseBackup(Thread):
     ):
         start_time = time.monotonic()
         chunk_files = []
-        upload_results = []
-        chunk_callback_queue = Queue()
+        upload_results: List[CallbackEvent] = []
+        chunk_callback_queue = CallbackQueue()
         self.chunks_on_disk = 0
         i = 0
 
         max_chunks_on_disk = self.site_config["basebackup_chunks_in_progress"]
         threads = self.site_config["basebackup_threads"]
         with ThreadPoolExecutor(max_workers=threads) as tpe:
-            pending_compress_and_encrypt_tasks = []
+            pending_compress_and_encrypt_tasks: List[Future] = []
             while i < len(chunks):
                 if len(pending_compress_and_encrypt_tasks) >= threads:
                     # Always expect tasks to complete in order. This can slow down the progress a bit in case
