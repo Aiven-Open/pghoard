@@ -145,6 +145,7 @@ class PGBaseBackup(Thread):
     def run(self):
         try:
             basebackup_mode = self.site_config["basebackup_mode"]
+            start_time = time.monotonic()
             if basebackup_mode == BaseBackupMode.basic:
                 self.run_basic_basebackup()
             elif basebackup_mode == BaseBackupMode.local_tar:
@@ -159,6 +160,7 @@ class PGBaseBackup(Thread):
                 raise errors.InvalidConfigurationError("Unsupported basebackup_mode {!r}".format(basebackup_mode))
 
         except Exception as ex:  # pylint: disable=broad-except
+            self.metrics.increase("pghoard.basebackup_failed")
             if isinstance(ex, (BackupFailure, errors.InvalidConfigurationError)):
                 self.log.error(str(ex))
             else:
@@ -168,6 +170,11 @@ class PGBaseBackup(Thread):
             if self.callback_queue:
                 # post a failure event
                 self.callback_queue.put(CallbackEvent(success=False, exception=ex))
+
+        else:
+            backup_time = time.monotonic() - start_time
+            self.metrics.gauge("pghoard.backup_time", backup_time, tag={"basebackup_mode": basebackup_mode})
+            self.metrics.increase("pghoard.basebackup_completed")
 
         finally:
             self.running = False
@@ -927,11 +934,6 @@ class PGBaseBackup(Thread):
                 backup_stopped = True
 
                 backup_time = time.monotonic() - start_time
-                self.metrics.gauge(
-                    "pghoard.backup_time_{}".format(self.site_config["basebackup_mode"]),
-                    backup_time,
-                )
-
                 self.log.info(
                     "Basebackup generation finished, %r files, %r chunks, "
                     "%r byte input, %r byte output, took %r seconds, waiting to upload", total_file_count, chunks_count,
