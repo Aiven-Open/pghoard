@@ -6,14 +6,7 @@ Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
 
-try:
-    from urllib.parse import (  # pylint: disable=no-name-in-module, import-error
-        parse_qs, urlparse
-    )
-except ImportError:
-    from urlparse import (  # pylint: disable=no-name-in-module, import-error
-        parse_qs, urlparse
-    )
+from urllib.parse import parse_qs, urlparse
 
 
 def create_connection_string(connection_info):

@@ -98,7 +98,7 @@ class CompressorThread(Thread):
         self.log = logging.getLogger("Compressor")
         self.config = config_dict
         self.metrics = metrics
-        self.state = {}
+        self.state: Dict[str, Dict] = {}
         self.compression_queue = compression_queue
         self.transfer_queue = transfer_queue
         self.wal_file_deletion_queue = wal_file_deletion_queue
@@ -322,7 +322,7 @@ class WALFileDeleterThread(Thread):
         self.metrics = metrics
         self.wal_file_deletion_queue = wal_file_deletion_queue
         self.running = True
-        self.to_be_deleted_files: Dict[str, Set[str]] = defaultdict(set)
+        self.to_be_deleted_files: Dict[str, Set[Path]] = defaultdict(set)
         self.log.debug("WALFileDeleter initialized")
 
     def run(self):

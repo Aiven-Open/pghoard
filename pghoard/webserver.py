@@ -11,7 +11,7 @@ import tempfile
 import time
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from queue import Empty, Queue
@@ -21,7 +21,6 @@ from threading import RLock, Thread
 from pghoard import wal
 from pghoard.common import (FileType, FileTypePrefixes, get_pg_wal_directory, json_encode)
 from pghoard.compressor import CompressionEvent
-from pghoard.rohmu.compat import suppress
 from pghoard.rohmu.errors import Error, FileNotFoundFromStorageError
 from pghoard.transfer import DownloadEvent, OperationEvents, TransferOperation
 from pghoard.version import __version__

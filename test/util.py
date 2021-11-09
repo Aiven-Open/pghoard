@@ -1,9 +1,9 @@
 import time
 
-from pghoard.pghoard import PGHoard
+from .conftest import PGHoardForTest
 
 
-def wait_for_xlog(pghoard: PGHoard, count: int):
+def wait_for_xlog(pghoard: PGHoardForTest, count: int):
     start = time.monotonic()
     while True:
         xlogs = None

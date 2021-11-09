@@ -18,7 +18,7 @@ import socket
 import subprocess
 import sys
 import time
-from contextlib import closing
+from contextlib import closing, suppress
 from dataclasses import dataclass
 from pathlib import Path
 from queue import Empty, Queue
@@ -39,7 +39,6 @@ from pghoard.compressor import (
 )
 from pghoard.receivexlog import PGReceiveXLog
 from pghoard.rohmu import dates, get_transfer, rohmufile
-from pghoard.rohmu.compat import suppress
 from pghoard.rohmu.dates import now as utc_now
 from pghoard.rohmu.errors import (FileNotFoundFromStorageError, InvalidConfigurationError)
 from pghoard.rohmu.inotify import InotifyWatcher

@@ -15,15 +15,15 @@ import re
 import tarfile
 import tempfile
 import time
+from contextlib import suppress
 from dataclasses import dataclass, field
 from distutils.version import LooseVersion
 from pathlib import Path
 from queue import Queue
-from typing import Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from pghoard import pgutil
 from pghoard.rohmu import IO_BLOCK_SIZE
-from pghoard.rohmu.compat import suppress
 from pghoard.rohmu.errors import Error, InvalidConfigurationError
 
 LOG = logging.getLogger("pghoard.common")
@@ -39,12 +39,15 @@ class CallbackEvent:
     success: bool
     exception: Optional[Exception] = None
     opaque: Optional[Any] = None
-    payload: Optional[Dict[str, str]] = field(default_factory=dict)
+    payload: Optional[Dict] = field(default_factory=dict)
 
 
-# Should be changed to Queue[CallbackEvent] once
-# we drop older python versions
-CallbackQueue = Queue
+# Queue is not a generic type in older python version,
+# so declare it only when in TYPE_CHECKING mode.
+if TYPE_CHECKING:
+    CallbackQueue = Queue[CallbackEvent]  # pylint: disable=unsubscriptable-object
+else:
+    CallbackQueue = Queue
 
 QuitEvent = object()
 

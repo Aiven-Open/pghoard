@@ -13,20 +13,20 @@ from io import BytesIO
 import pytest
 
 from pghoard.common import get_object_storage_config
-from pghoard.rohmu import compat, errors, get_transfer
+from pghoard.rohmu import errors, get_transfer
 from pghoard.rohmu.object_storage.base import KEY_TYPE_OBJECT
 from pghoard.rohmu.object_storage.google import MediaStreamUpload
 
 try:
-    from . import \
-        test_storage_configs  # pylint: disable=no-name-in-module, import-error
+    from . import test_storage_configs  # type: ignore # noqa
+
 except ImportError:
-    test_storage_configs = object()
+    test_storage_configs = object()  # type: ignore
 
 
 def _test_storage(st, driver, tmpdir, storage_config):
     scratch = tmpdir.join("scratch")
-    compat.makedirs(str(scratch), exist_ok=True)
+    os.makedirs(str(scratch), exist_ok=True)
 
     # File not found cases
     with pytest.raises(errors.FileNotFoundFromStorageError):

@@ -14,8 +14,10 @@ import signal
 import subprocess
 import tempfile
 import time
+from contextlib import suppress
 from distutils.version import LooseVersion
 from pathlib import Path
+from typing import Optional
 from unittest import SkipTest
 
 import psycopg2
@@ -25,7 +27,6 @@ from py import path as py_path  # pylint: disable=no-name-in-module
 from pghoard import config as pghconfig
 from pghoard import logutil, pgutil
 from pghoard.pghoard import PGHoard
-from pghoard.rohmu.compat import suppress
 from pghoard.rohmu.delta.common import EMBEDDED_FILE_SIZE, Progress
 from pghoard.rohmu.delta.snapshot import Snapshotter
 from pghoard.rohmu.snappyfile import snappy
@@ -248,6 +249,11 @@ def pghoard_separate_volume(db, tmpdir, request):
         subprocess.check_call(["sudo", "umount", tmpfs_volume])
 
 
+class PGHoardForTest(PGHoard):
+    test_site: Optional[str] = None
+    Compressor: Optional[type] = None
+
+
 def pghoard_base(
     db,
     tmpdir,
@@ -330,7 +336,7 @@ def pghoard_base(
     os.makedirs(backup_xlog_path)
     os.makedirs(backup_timeline_path)
 
-    pgh = PGHoard(confpath)
+    pgh = PGHoardForTest(confpath)
     pgh.test_site = test_site
     pgh.start_threads_on_startup()
     if compression == "snappy":

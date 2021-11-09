@@ -6,9 +6,9 @@ See LICENSE for details
 """
 
 import time
+from contextlib import suppress
 
 from . import IO_BLOCK_SIZE
-from .compat import suppress
 from .compressor import CompressionFile, DecompressionFile, DecompressSink
 from .encryptor import DecryptorFile, DecryptSink, EncryptorFile
 from .errors import InvalidConfigurationError

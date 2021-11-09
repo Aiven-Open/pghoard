@@ -13,7 +13,7 @@ from .filewrap import FileWrap
 try:
     import zstandard as zstd
 except ImportError:
-    zstd = None
+    zstd = None  # type: ignore
 
 
 class _ZstdFileWriter(FileWrap):

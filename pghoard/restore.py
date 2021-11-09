@@ -7,6 +7,7 @@ See LICENSE for details
 import abc
 import argparse
 import base64
+import contextlib
 import datetime
 import enum
 import errno
@@ -26,13 +27,13 @@ import uuid
 from distutils.version import \
     LooseVersion  # pylint: disable=no-name-in-module,import-error
 from threading import RLock
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 
 from psycopg2.extensions import adapt
 from requests import Session
 
 from pghoard.common import BaseBackupFormat, StrEnum
-from pghoard.rohmu import compat, dates, get_transfer, rohmufile
+from pghoard.rohmu import dates, get_transfer, rohmufile
 from pghoard.rohmu.errors import (Error, InvalidConfigurationError, MaybeRecoverableError)
 
 from . import common, config, logutil, version
@@ -628,19 +629,19 @@ class Restore:
 class BasebackupFetcher:
     def __init__(self, *, app_config, debug, site, pgdata, tablespaces, data_files: List[FileInfo], status_output_file=None):
         self.log = logging.getLogger(self.__class__.__name__)
-        self.completed_jobs = set()
+        self.completed_jobs: Set[str] = set()
         self.config = app_config
         self.data_files = data_files
         self.debug = debug
-        self.download_progress_per_file = {}
+        self.download_progress_per_file: Dict[str, int] = {}
         self.errors = 0
         self.last_progress_ts = time.monotonic()
         self.last_total_downloaded = 0
         self.lock = RLock()
         self.manager_class = multiprocessing.Manager if self._process_count() > 1 else ThreadingManager
         self.max_stale_seconds = 120
-        self.pending_jobs = set()
-        self.jobs_to_retry = set()
+        self.pending_jobs: Set[str] = set()
+        self.jobs_to_retry: Set[str] = set()
         self.pgdata = pgdata
         # There's no point in spawning child processes if process count is 1
         self.pool_class = multiprocessing.Pool if self._process_count() > 1 else multiprocessing.pool.ThreadPool
@@ -649,7 +650,7 @@ class BasebackupFetcher:
         self.sleep_fn = time.sleep
         self.tablespaces = tablespaces
         self.total_download_size = 0
-        self.retry_per_file = {}
+        self.retry_per_file: Dict[str, int] = {}
 
     def fetch_all(self):
         for retry in range(3):
@@ -678,7 +679,7 @@ class BasebackupFetcher:
         if self.errors:
             raise RestoreError("Backup download/extraction failed with {} errors".format(self.errors))
         self._create_tablespace_symlinks()
-        with compat.suppress(OSError):
+        with contextlib.suppress(OSError):
             os.rmdir(os.path.join(self.pgdata, "pgdata"))
 
     def _create_tablespace_symlinks(self):
@@ -698,7 +699,7 @@ class BasebackupFetcher:
         # tar's limitations in exclude parameter behavior
         tsnames = [os.path.join("tablespaces", tsname) for tsname in self.tablespaces.keys()]
         for exclude in tsnames + ["tablespaces"]:
-            with compat.suppress(OSError):
+            with contextlib.suppress(OSError):
                 os.rmdir(os.path.join(self.pgdata, exclude))
 
     def _process_count(self):

@@ -16,6 +16,10 @@ unittest: version
 lint: version
 	$(PYTHON) -m pylint --rcfile .pylintrc $(PYTHON_SOURCE_DIRS)
 
+.PHONY: mypy
+mypy: version
+	$(PYTHON) -m mypy $(PYTHON_SOURCE_DIRS)
+
 .PHONY: fmt
 fmt: version
 	unify --quote '"' --recursive --in-place $(PYTHON_SOURCE_DIRS)

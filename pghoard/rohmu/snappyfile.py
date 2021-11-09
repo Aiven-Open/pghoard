@@ -13,7 +13,7 @@ from .filewrap import FileWrap
 try:
     import snappy
 except ImportError:
-    snappy = None
+    snappy = None  # type: ignore
 
 
 class SnappyFile(FileWrap):
