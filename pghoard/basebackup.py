@@ -158,18 +158,16 @@ class PGBaseBackup(PGHoardThread):
             else:
                 raise errors.InvalidConfigurationError("Unsupported basebackup_mode {!r}".format(basebackup_mode))
 
-        except Exception as ex:  # pylint: disable=broad-except
+        except (BackupFailure, errors.InvalidConfigurationError) as ex:  # pylint: disable=broad-except
             self.metrics.increase("pghoard.basebackup_failed")
-            if isinstance(ex, (BackupFailure, errors.InvalidConfigurationError)):
-                self.log.error(str(ex))
-            else:
-                self.log.exception("Backup unexpectedly failed")
-                self.metrics.unexpected_exception(ex, where="PGBaseBackup")
-
+            self.log.error(str(ex))
             if self.callback_queue:
                 # post a failure event
                 self.callback_queue.put(CallbackEvent(success=False, exception=ex))
-
+        except Exception as ex:
+            self.log.exception("Backup unexpectedly failed")
+            self.metrics.unexpected_exception(ex, where="PGBaseBackup")
+            raise ex
         else:
             backup_time = time.monotonic() - start_time
             self.metrics.gauge("pghoard.backup_time", backup_time, tags={"basebackup_mode": basebackup_mode})
