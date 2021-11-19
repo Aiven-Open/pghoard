@@ -17,12 +17,14 @@ from io import BytesIO
 from pathlib import Path
 from queue import Empty, Queue
 from tempfile import NamedTemporaryFile
-from threading import Event, Thread
+from threading import Event
 from typing import BinaryIO, Dict, Optional, Set, Union
 
 from pghoard import config as pgh_config
 from pghoard import wal
-from pghoard.common import (CallbackEvent, CallbackQueue, FileType, FileTypePrefixes, QuitEvent, StrEnum, write_json_file)
+from pghoard.common import (
+    CallbackEvent, CallbackQueue, FileType, FileTypePrefixes, PGHoardThread, QuitEvent, StrEnum, write_json_file
+)
 from pghoard.metrics import Metrics
 from pghoard.rohmu import rohmufile
 from pghoard.transfer import TransferQueue, UploadEvent
@@ -81,7 +83,7 @@ class WalFileDeletionEvent:
 WalFileDeletionQueue = Queue
 
 
-class CompressorThread(Thread):
+class CompressorThread(PGHoardThread):
     MAX_FAILED_RETRY_ATTEMPTS = 3
     RETRY_INTERVAL = 3.0
 
@@ -117,7 +119,7 @@ class CompressorThread(Thread):
     def compression_algorithm(self):
         return self.config["compression"]["algorithm"]
 
-    def run(self):
+    def run_safe(self):
         event: Optional[CompressionEvent] = None
         while self.running:
             if event is None:
@@ -153,13 +155,11 @@ class CompressorThread(Thread):
                     self.running = False
                     self.metrics.unexpected_exception(ex, where="compressor_run_critical")
                     self.critical_failure_event.set()
-                    break
-
+                    raise
                 attempt = attempt + 1
                 if self.critical_failure_event.wait(self.RETRY_INTERVAL):
                     self.running = False
-                    break
-
+                    raise
         self.log.debug("Quitting Compressor")
 
     def handle_decompression_event(self, event):
@@ -300,7 +300,7 @@ class CompressorThread(Thread):
             }
 
 
-class WALFileDeleterThread(Thread):
+class WALFileDeleterThread(PGHoardThread):
     """Deletes files which got compressed by the Compressor Thread, but keeps one file around
 
     pg_receivewal, after some hickup, will use the files to compute the next wal segment to download.
@@ -325,7 +325,7 @@ class WALFileDeleterThread(Thread):
         self.to_be_deleted_files: Dict[str, Set[Path]] = defaultdict(set)
         self.log.debug("WALFileDeleter initialized")
 
-    def run(self):
+    def run_safe(self):
         while self.running:
             wait_timeout = 1.0
             # config can be changed in another thread, so we have to lookup this within the loop

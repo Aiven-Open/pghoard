@@ -12,12 +12,11 @@ import select
 import signal
 import subprocess
 import time
-from threading import Thread
 
-from .common import (set_subprocess_stdout_and_stderr_nonblocking, terminate_subprocess)
+from .common import (PGHoardThread, set_subprocess_stdout_and_stderr_nonblocking, terminate_subprocess)
 
 
-class PGReceiveXLog(Thread):
+class PGReceiveXLog(PGHoardThread):
     def __init__(self, config, connection_string, wal_location, site, slot, pg_version_server):
         super().__init__()
         pg_receivexlog_config = config["backup_sites"][site]["pg_receivexlog"]
@@ -38,7 +37,7 @@ class PGReceiveXLog(Thread):
         self.latest_activity = datetime.datetime.utcnow()
         self.log.debug("Initialized PGReceiveXLog")
 
-    def run(self):
+    def run_safe(self):
         self.running = True
 
         command = [
