@@ -173,7 +173,7 @@ class PGBaseBackup(Thread):
 
         else:
             backup_time = time.monotonic() - start_time
-            self.metrics.gauge("pghoard.backup_time", backup_time, tag={"basebackup_mode": basebackup_mode})
+            self.metrics.gauge("pghoard.backup_time", backup_time, tags={"basebackup_mode": basebackup_mode})
             self.metrics.increase("pghoard.basebackup_completed")
 
         finally:
