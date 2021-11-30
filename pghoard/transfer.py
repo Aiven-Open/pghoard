@@ -147,17 +147,6 @@ class TransferAgent(Thread):
 
         return storage
 
-    @staticmethod
-    def form_key_path(file_to_transfer):
-        name_parts = file_to_transfer["local_path"].split("/")
-        if file_to_transfer["filetype"] == "basebackup_chunk":
-            name = os.path.join(name_parts[-2], name_parts[-1])
-        elif file_to_transfer["filetype"] == "basebackup_delta":
-            name = file_to_transfer["delta"]["hexdigest"]
-        else:
-            name = name_parts[-1]
-        return os.path.join(file_to_transfer["prefix"], file_to_transfer["filetype"], name)
-
     def transmit_metrics(self):
         """
         Keep metrics updated about how long time ago each filetype was successfully uploaded.
@@ -196,7 +185,8 @@ class TransferAgent(Thread):
             filetype = file_to_transfer.file_type
             self.log.info("Processing TransferEvent %r", file_to_transfer)
             start_time = time.monotonic()
-            key = str(Path(file_to_transfer.backup_site_key) / file_to_transfer.file_path)
+            site_prefix = self.config["backup_sites"][file_to_transfer.backup_site_key]["prefix"]
+            key = str(Path(site_prefix) / file_to_transfer.file_path)
             oper = str(file_to_transfer.operation)
             if file_to_transfer.operation == TransferOperation.Download:
                 result = self.handle_download(site, key, file_to_transfer)

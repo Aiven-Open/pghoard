@@ -8,7 +8,7 @@ import os
 import time
 from pathlib import Path
 from queue import Empty, Queue
-from unittest.mock import Mock
+from unittest.mock import ANY, Mock
 
 import pytest
 
@@ -81,9 +81,12 @@ class TestTransferAgent(PGHoardTestCase):
         self.transfer_agent.join()
         super().teardown_method(method)
 
+    def _inject_prefix(self, prefix):
+        self.config["backup_sites"][self.test_site]["prefix"] = prefix
+
     def test_handle_download(self):
         callback_queue = Queue()
-        self.transfer_agent.get_object_storage = MockStorage()
+        # Check the local storage fails and returns correctly
         self.transfer_queue.put(
             DownloadEvent(
                 callback_queue=callback_queue,
@@ -99,10 +102,29 @@ class TestTransferAgent(PGHoardTestCase):
         assert event.opaque == 42
         assert isinstance(event.exception, FileNotFoundFromStorageError)
 
+        storage = Mock()
+        storage.get_contents_to_string.return_value = "foo", {"key": "value"}
+        self._inject_prefix("site_specific_prefix")
+        self.transfer_agent.get_object_storage = lambda x: storage
+        self.transfer_agent.fetch_manager.transfer_provider = lambda x: storage
+        self.transfer_queue.put(
+            DownloadEvent(
+                callback_queue=callback_queue,
+                file_type=FileType.Wal,
+                destination_path=self.temp_dir,
+                file_path=Path("nonexistent/file"),
+                opaque=42,
+                backup_site_key=self.test_site
+            )
+        )
+        event = callback_queue.get(timeout=1.0)
+        expected_key = "site_specific_prefix/nonexistent/file"
+        storage.get_contents_to_string.assert_called_with(expected_key)
+
     def test_handle_upload_xlog(self):
         callback_queue = Queue()
-        storage = MockStorage()
-        self.transfer_agent.get_object_storage = storage
+        storage = Mock()
+        self.transfer_agent.get_object_storage = lambda x: storage
         assert os.path.exists(self.foo_path) is True
         self.transfer_queue.put(
             UploadEvent(
@@ -111,16 +133,47 @@ class TestTransferAgent(PGHoardTestCase):
                 file_path=Path("xlog/00000001000000000000000C"),
                 file_size=3,
                 source_data=Path(self.foo_path),
+                remove_after_upload=False,
                 metadata={"start-wal-segment": "00000001000000000000000C"},
                 backup_site_key=self.test_site
             )
         )
         assert callback_queue.get(timeout=1.0) == CallbackEvent(success=True, payload={"file_size": 3})
+        assert os.path.exists(self.foo_path) is True
+        expected_key = os.path.join(self.test_site, "xlog/00000001000000000000000C")
+        storage.store_file_object.assert_called_with(
+            expected_key, ANY, metadata={
+                "Content-Length": 3,
+                "start-wal-segment": "00000001000000000000000C"
+            }
+        )
+        # Now check that the prefix is used.
+        self._inject_prefix("site_specific_prefix")
+        self.transfer_queue.put(
+            UploadEvent(
+                callback_queue=callback_queue,
+                file_type=FileType.Wal,
+                file_path=Path("xlog/00000001000000000000000C"),
+                file_size=3,
+                remove_after_upload=True,
+                source_data=Path(self.foo_path),
+                metadata={"start-wal-segment": "00000001000000000000000C"},
+                backup_site_key=self.test_site
+            )
+        )
+        assert callback_queue.get(timeout=1.0) == CallbackEvent(success=True, payload={"file_size": 3})
+        expected_key = "site_specific_prefix/xlog/00000001000000000000000C"
+        storage.store_file_object.assert_called_with(
+            expected_key, ANY, metadata={
+                "Content-Length": 3,
+                "start-wal-segment": "00000001000000000000000C"
+            }
+        )
         assert os.path.exists(self.foo_path) is False
 
     def test_handle_upload_basebackup(self):
         callback_queue = Queue()
-        storage = MockStorage()
+        storage = Mock()
         self.transfer_agent.get_object_storage = storage
         assert os.path.exists(self.foo_path) is True
         self.transfer_queue.put(
