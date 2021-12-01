@@ -87,7 +87,7 @@ class WALReceiver(Thread):
                 source_data=BytesIO(history_data),
                 file_path=FileTypePrefixes[FileType.Timeline] / history_filename,
                 file_type=FileType.Timeline,
-                backup_site_key=self.site,
+                backup_site_name=self.site,
                 metadata={}
             )
             self.compression_queue.put(compression_event)
@@ -140,7 +140,7 @@ class WALReceiver(Thread):
             source_data=wal_data,
             file_type=FileType.Wal,
             file_path=FileTypePrefixes[FileType.Wal] / self.latest_wal,
-            backup_site_key=self.site,
+            backup_site_name=self.site,
             metadata={}
         )
         self.latest_wal = None

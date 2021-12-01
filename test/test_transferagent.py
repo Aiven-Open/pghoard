@@ -94,7 +94,7 @@ class TestTransferAgent(PGHoardTestCase):
                 destination_path=self.temp_dir,
                 file_path=Path("nonexistent/file"),
                 opaque=42,
-                backup_site_key=self.test_site
+                backup_site_name=self.test_site
             )
         )
         event = callback_queue.get(timeout=1.0)
@@ -114,7 +114,7 @@ class TestTransferAgent(PGHoardTestCase):
                 destination_path=self.temp_dir,
                 file_path=Path("nonexistent/file"),
                 opaque=42,
-                backup_site_key=self.test_site
+                backup_site_name=self.test_site
             )
         )
         event = callback_queue.get(timeout=1.0)
@@ -135,7 +135,7 @@ class TestTransferAgent(PGHoardTestCase):
                 source_data=Path(self.foo_path),
                 remove_after_upload=False,
                 metadata={"start-wal-segment": "00000001000000000000000C"},
-                backup_site_key=self.test_site
+                backup_site_name=self.test_site
             )
         )
         assert callback_queue.get(timeout=1.0) == CallbackEvent(success=True, payload={"file_size": 3})
@@ -158,7 +158,7 @@ class TestTransferAgent(PGHoardTestCase):
                 remove_after_upload=True,
                 source_data=Path(self.foo_path),
                 metadata={"start-wal-segment": "00000001000000000000000C"},
-                backup_site_key=self.test_site
+                backup_site_name=self.test_site
             )
         )
         assert callback_queue.get(timeout=1.0) == CallbackEvent(success=True, payload={"file_size": 3})
@@ -184,7 +184,7 @@ class TestTransferAgent(PGHoardTestCase):
                 file_size=3,
                 source_data=Path(self.foo_basebackup_path),
                 metadata={"start-wal-segment": "00000001000000000000000C"},
-                backup_site_key=self.test_site
+                backup_site_name=self.test_site
             )
         )
         assert callback_queue.get(timeout=1.0) == CallbackEvent(success=True, payload={"file_size": 3})
@@ -210,7 +210,7 @@ class TestTransferAgent(PGHoardTestCase):
                 file_path=Path("xlog/00000001000000000000000C"),
                 file_size=3,
                 source_data=Path(self.foo_path),
-                backup_site_key=self.test_site,
+                backup_site_name=self.test_site,
                 metadata={}
             )
         )

@@ -38,7 +38,7 @@ class CompressionOperation(StrEnum):
 class BaseCompressorEvent:
     file_type: FileType
     file_path: Path
-    backup_site_key: str
+    backup_site_name: str
     source_data: Union[BinaryIO, Path]
     callback_queue: CallbackQueue
     metadata: Dict[str, str]
@@ -71,7 +71,7 @@ CompressionQueue = Queue
 
 @dataclass(frozen=True)
 class WalFileDeletionEvent:
-    backup_site_key: str
+    backup_site_name: str
     file_path: Path
     file_type: Optional[FileType] = None
 
@@ -168,7 +168,7 @@ class CompressorThread(Thread):
                 input_obj=event.source_data,
                 output_obj=output_obj,
                 metadata=event.metadata,
-                key_lookup=pgh_config.key_lookup_for_site(self.config, event.backup_site_key),
+                key_lookup=pgh_config.key_lookup_for_site(self.config, event.backup_site_name),
                 log_func=self.log.debug
             )
 
@@ -179,7 +179,7 @@ class CompressorThread(Thread):
         # pylint: disable=redefined-variable-type
         file_type = event.file_type
         rsa_public_key = None
-        site = event.backup_site_key
+        site = event.backup_site_name
         encryption_key_id = self.config["backup_sites"][site]["encryption_key_id"]
         if encryption_key_id:
             rsa_public_key = self.config["backup_sites"][site]["encryption_keys"][encryption_key_id]["public"]
@@ -264,14 +264,14 @@ class CompressorThread(Thread):
             file_size=compressed_file_size,
             file_type=event.file_type,
             metadata=metadata,
-            backup_site_key=site,
+            backup_site_name=site,
             file_path=event.file_path,
             source_data=output_data,
             remove_after_upload=remove_after_upload
         )
         if event.delete_file_after_compression:
             if file_type == FileType.Wal:
-                delete_request = WalFileDeletionEvent(backup_site_key=site, file_path=event.source_data)
+                delete_request = WalFileDeletionEvent(backup_site_name=site, file_path=event.source_data)
                 self.log.info("Adding to Uncompressed WAL file to deletion queue: %s", event.source_data)
                 self.wal_file_deletion_queue.put(delete_request)
             else:
@@ -347,12 +347,12 @@ class WALFileDeleterThread(Thread):
             try:
                 if event is QuitEvent:
                     break
-                site = event.backup_site_key
+                site = event.backup_site_name
                 local_path = event.file_path
                 if not local_path:
                     raise ValueError("file_path must not be None")
                 if not site:
-                    raise ValueError("backup_site_key must not be None")
+                    raise ValueError("backup_site_name must not be None")
                 self.to_be_deleted_files[site].add(local_path)
                 self.deleted_unneeded_files()
             except Exception as ex:  # pylint: disable=broad-except

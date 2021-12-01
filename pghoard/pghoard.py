@@ -60,7 +60,7 @@ class InotifyAdapter:
 
     def adapt_event(self, inotify_event):
         full_path = Path(inotify_event["full_path"])
-        backup_site_key = self.path_to_site[inotify_event["watched_path"]]
+        backup_site_name = self.path_to_site[inotify_event["watched_path"]]
         # Ignore .partial files
         if full_path.suffix == ".partial":
             return None
@@ -72,7 +72,7 @@ class InotifyAdapter:
             file_type=filetype,
             file_path=FileTypePrefixes[filetype] / full_path.name,
             delete_file_after_compression=True,
-            backup_site_key=backup_site_key,
+            backup_site_name=backup_site_name,
             source_data=full_path,
             callback_queue=None,
             metadata={}
@@ -575,7 +575,7 @@ class PGHoard:
                     file_type=FileType.Wal,
                     file_path=FileTypePrefixes[FileType.Wal] / filename,
                     delete_file_after_compression=True,
-                    backup_site_key=site,
+                    backup_site_name=site,
                     source_data=Path(full_path),
                     callback_queue=None,
                     metadata={}
@@ -599,7 +599,7 @@ class PGHoard:
 
                 transfer_event = UploadEvent(
                     file_type=FileType.Wal,
-                    backup_site_key=site,
+                    backup_site_name=site,
                     file_size=os.path.getsize(full_path),
                     file_path=FileTypePrefixes[FileType.Wal] / filename,
                     source_data=Path(full_path),

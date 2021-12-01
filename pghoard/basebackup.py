@@ -362,7 +362,7 @@ class PGBaseBackup(Thread):
         self.transfer_queue.put(
             UploadEvent(
                 file_type=FileType.Basebackup,
-                backup_site_key=self.site,
+                backup_site_name=self.site,
                 file_path=basebackup_path,
                 callback_queue=self.callback_queue,
                 file_size=compressed_file_size,
@@ -422,7 +422,7 @@ class PGBaseBackup(Thread):
                 file_type=FileType.Basebackup,
                 file_path=basebackup_path,
                 source_data=basebackup_tar_file,
-                backup_site_key=self.site,
+                backup_site_name=self.site,
                 metadata={
                     **self.metadata,
                     "start-time": start_time,
@@ -651,7 +651,7 @@ class PGBaseBackup(Thread):
                 file_path=middle_path / chunk_name,
                 source_data=chunk_path,
                 metadata=metadata,
-                backup_site_key=self.site,
+                backup_site_name=self.site,
             )
         )
 

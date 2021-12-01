@@ -38,7 +38,7 @@ def fixture_wal_file_deleter(mocker):
 
 
 def make_event(path: str, site: str = "a"):
-    return WalFileDeletionEvent(backup_site_key=site, file_path=Path(path))
+    return WalFileDeletionEvent(backup_site_name=site, file_path=Path(path))
 
 
 TEST_WAIT_TIME = 0.1

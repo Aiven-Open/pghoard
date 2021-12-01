@@ -180,7 +180,7 @@ class DeltaBaseBackup:
                 callback_queue=callback_queue,
                 file_size=result_size,
                 file_type=FileType.Basebackup_delta,
-                backup_site_key=self.site,
+                backup_site_name=self.site,
                 metadata=metadata,
                 file_path=dest_path,
                 source_data=chunk_path

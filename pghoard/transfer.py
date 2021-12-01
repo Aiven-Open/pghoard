@@ -39,7 +39,7 @@ class TransferOperation(StrEnum):
 
 @dataclass(frozen=True)
 class BaseTransferEvent:
-    backup_site_key: str
+    backup_site_name: str
     file_type: FileType
     file_path: Path
     callback_queue: CallbackQueue
@@ -181,11 +181,11 @@ class TransferAgent(Thread):
             if file_to_transfer is QuitEvent:
                 break
 
-            site = file_to_transfer.backup_site_key
+            site = file_to_transfer.backup_site_name
             filetype = file_to_transfer.file_type
             self.log.info("Processing TransferEvent %r", file_to_transfer)
             start_time = time.monotonic()
-            site_prefix = self.config["backup_sites"][file_to_transfer.backup_site_key]["prefix"]
+            site_prefix = self.config["backup_sites"][file_to_transfer.backup_site_name]["prefix"]
             key = str(Path(site_prefix) / file_to_transfer.file_path)
             oper = str(file_to_transfer.operation)
             if file_to_transfer.operation == TransferOperation.Download:
