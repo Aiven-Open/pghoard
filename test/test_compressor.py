@@ -151,7 +151,7 @@ class CompressionCase(PGHoardTestCase):
                 file_path=dest_file_path,
                 source_data=file_path,
                 file_type=FileType(filetype),
-                backup_site_key=self.test_site,
+                backup_site_name=self.test_site,
                 callback_queue=None,
                 metadata={}
             )
@@ -168,7 +168,7 @@ class CompressionCase(PGHoardTestCase):
                 "original-file-size": file_size,
                 "pg-version": 90500,
             },
-            "backup_site_key": self.test_site,
+            "backup_site_name": self.test_site,
         }
         for key, value in expected.items():
             if key == "metadata" and filetype == "xlog":
@@ -187,7 +187,7 @@ class CompressionCase(PGHoardTestCase):
                 file_path=dest_file_path,
                 source_data=file_path,
                 file_type=FileType.Wal,
-                backup_site_key=self.test_site,
+                backup_site_name=self.test_site,
                 callback_queue=None,
                 metadata={}
             )
@@ -203,7 +203,7 @@ class CompressionCase(PGHoardTestCase):
                 "original-file-size": ifile.size,
                 "pg-version": 90500,
             },
-            "backup_site_key": self.test_site,
+            "backup_site_name": self.test_site,
         }
         transfer_event = self.transfer_queue.get(timeout=3.0)
         for key, value in expected.items():
@@ -248,7 +248,7 @@ class CompressionCase(PGHoardTestCase):
                 compress_to_memory=True,
                 file_path=FileTypePrefixes[FileType.Wal] / file_path.name,
                 source_data=file_path,
-                backup_site_key=self.test_site,
+                backup_site_name=self.test_site,
                 file_type=FileType.Wal,
                 callback_queue=None,
                 metadata={}
@@ -277,7 +277,7 @@ class CompressionCase(PGHoardTestCase):
             compress_to_memory=True,
             file_path=dest_file_path,
             source_data=file_path,
-            backup_site_key=self.test_site,
+            backup_site_name=self.test_site,
             file_type=FileType.Wal,
             callback_queue=None,
             metadata={}
@@ -295,7 +295,7 @@ class CompressionCase(PGHoardTestCase):
                 "original-file-size": ifile.size,
                 "pg-version": 90500,
             },
-            "backup_site_key": self.test_site,
+            "backup_site_name": self.test_site,
         }
         transfer_event = self.transfer_queue.get(timeout=5.0)
         for key, value in expected.items():
@@ -314,7 +314,7 @@ class CompressionCase(PGHoardTestCase):
             compress_to_memory=True,
             file_path=dest_file_path,
             source_data=file_path,
-            backup_site_key=self.test_site,
+            backup_site_name=self.test_site,
             file_type=FileType.Wal,
             metadata={}
         )
@@ -331,7 +331,7 @@ class CompressionCase(PGHoardTestCase):
                 "original-file-size": zero.size,
                 "pg-version": 90500,
             },
-            "backup_site_key": self.test_site,
+            "backup_site_name": self.test_site,
         }
         for key, value in expected.items():
             if key == "metadata":
@@ -362,7 +362,7 @@ class CompressionCase(PGHoardTestCase):
                     "original-file-size": ifile.size,
                     "pg-version": 90500,
                 },
-                backup_site_key=self.test_site,
+                backup_site_name=self.test_site,
             )
         )
         callback_queue.get(timeout=5.0)
@@ -401,7 +401,7 @@ class CompressionCase(PGHoardTestCase):
                     "original-file-size": ifile.size,
                     "pg-version": 90500,
                 },
-                backup_site_key=self.test_site,
+                backup_site_name=self.test_site,
             )
         )
         callback_queue.get(timeout=5.0)

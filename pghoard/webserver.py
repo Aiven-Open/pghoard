@@ -228,7 +228,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         filepath = Path(FileTypePrefixes[filetype]) / filename
         callback_queue = Queue()
         cls = OperationEvents[method]
-        ev = cls(callback_queue=callback_queue, file_type=filetype, file_path=filepath, backup_site_key=site)
+        ev = cls(callback_queue=callback_queue, file_type=filetype, file_path=filepath, backup_site_name=site)
         self.server.transfer_queue.put(ev)
 
         try:
@@ -334,7 +334,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                 callback_queue=self.server.download_results,
                 file_type=filetype,
                 file_path=FileTypePrefixes[filetype] / obname,
-                backup_site_key=site,
+                backup_site_name=site,
                 destination_path=Path(tmp_target_path),
                 opaque=key
             )
@@ -530,7 +530,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             file_path=FileTypePrefixes[filetype] / filename,
             source_data=Path(xlog_path),
             file_type=filetype,
-            backup_site_key=site,
+            backup_site_name=site,
             metadata={}
         )
         self.server.compression_queue.put(compression_event)
