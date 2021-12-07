@@ -61,7 +61,7 @@ class PGReceiveXLog(Thread):
         self.pid = proc.pid
         self.log.info("Started: %r, running as PID: %r", command, self.pid)
         while self.running:
-            rlist, _, _ = select.select([proc.stdout, proc.stderr], [], [], 1.0)
+            rlist, _, _ = select.select([proc.stdout, proc.stderr], [], [], min(1.0, self.disk_space_check_interval))
             for fd in rlist:
                 content = fd.read()
                 if content:
