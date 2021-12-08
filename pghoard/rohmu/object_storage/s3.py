@@ -63,8 +63,8 @@ class S3Transfer(BaseTransfer):
                     auth = ""
                 host = proxy_info["host"]
                 port = proxy_info["port"]
-                if proxy_info.get("type") == "socks5":
-                    schema = "socks5"
+                if proxy_info.get("type") in {"socks5", "socks5h"}:
+                    schema = proxy_info.get("type")
                 else:
                     schema = "http"
                 proxy_url = f"{schema}://{auth}{host}:{port}"
