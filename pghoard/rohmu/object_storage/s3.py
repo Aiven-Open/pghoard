@@ -23,6 +23,23 @@ def calculate_chunk_size():
     return max(min(int(total_mem_mib / 600), 524), 5) * 1024 * 1024
 
 
+def get_proxy_url(proxy_info):
+    username = proxy_info.get("user")
+    password = proxy_info.get("pass")
+    if username and password:
+        auth = f"{username}:{password}@"
+    else:
+        auth = ""
+    host = proxy_info["host"]
+    port = proxy_info["port"]
+    if proxy_info.get("type") in {"socks5", "socks5h"}:
+        schema = proxy_info.get("type")
+    else:
+        schema = "http"
+    proxy_url = f"{schema}://{auth}{host}:{port}"
+    return proxy_url
+
+
 # Set chunk size based on host memory. S3 supports up to 10k chunks and up to 5 TiB individual
 # files. Minimum chunk size is 5 MiB, which means max ~50 GB files can be uploaded. In order to get
 # to that 5 TiB increase the block size based on host memory; we don't want to use the max for all
@@ -55,19 +72,7 @@ class S3Transfer(BaseTransfer):
         if not host or not port:
             custom_config = {}
             if proxy_info:
-                username = proxy_info.get("user")
-                password = proxy_info.get("pass")
-                if username and password:
-                    auth = f"{username}:{password}@"
-                else:
-                    auth = ""
-                host = proxy_info["host"]
-                port = proxy_info["port"]
-                if proxy_info.get("type") in {"socks5", "socks5h"}:
-                    schema = proxy_info.get("type")
-                else:
-                    schema = "http"
-                proxy_url = f"{schema}://{auth}{host}:{port}"
+                proxy_url = get_proxy_url(proxy_info)
                 custom_config["proxies"] = {"https": proxy_url}
             self.s3_client = botocore_session.create_client(
                 "s3",
@@ -86,9 +91,14 @@ class S3Transfer(BaseTransfer):
                 self.location = self.region
             else:
                 signature_version = "s3"
+            proxies = {}
+            if proxy_info:
+                proxy_url = get_proxy_url(proxy_info)
+                proxies["proxies"] = {"https": proxy_url}
             custom_config = botocore.client.Config(
                 s3={"addressing_style": "path"},
                 signature_version=signature_version,
+                **proxies,
             )
             self.s3_client = botocore_session.create_client(
                 "s3",
