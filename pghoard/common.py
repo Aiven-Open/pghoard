@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 from distutils.version import LooseVersion
 from pathlib import Path
 from queue import Queue
+from threading import Thread
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from pghoard import pgutil
@@ -351,6 +352,30 @@ def increase_pipe_capacity(*pipes):
                 break
             except PermissionError:
                 pass
+
+
+class UnhandledThreadException(Exception):
+    pass
+
+
+class PGHoardThread(Thread):
+    def __init__(self):
+        super().__init__()
+        self.exception: Optional[Exception] = None
+
+    def run_safe(self):
+        raise NotImplementedError()
+
+    def run(self):
+        try:
+            self.run_safe()
+        except Exception as ex:  # pylint: disable=broad-except
+            self.exception = ex
+
+    def join(self, timeout=None):
+        super().join(timeout)
+        if self.exception:
+            raise UnhandledThreadException from self.exception
 
 
 class BackupFailure(Exception):

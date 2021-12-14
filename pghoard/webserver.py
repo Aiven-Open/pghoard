@@ -16,10 +16,10 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from queue import Empty, Queue
 from socketserver import ThreadingMixIn
-from threading import RLock, Thread
+from threading import RLock
 
 from pghoard import wal
-from pghoard.common import (FileType, FileTypePrefixes, get_pg_wal_directory, json_encode)
+from pghoard.common import (FileType, FileTypePrefixes, PGHoardThread, get_pg_wal_directory, json_encode)
 from pghoard.compressor import CompressionEvent
 from pghoard.rohmu.errors import Error, FileNotFoundFromStorageError
 from pghoard.transfer import DownloadEvent, OperationEvents, TransferOperation
@@ -49,7 +49,7 @@ class HttpResponse(Exception):
             super().__init__("{} {}".format(self.__class__.__name__, status))
 
 
-class WebServer(Thread):
+class WebServer(PGHoardThread):
     def __init__(self, config, requested_basebackup_sites, compression_queue, transfer_queue, metrics):
         super().__init__()
         self.log = logging.getLogger("WebServer")
@@ -67,7 +67,7 @@ class WebServer(Thread):
         self._running = False
         self.log.debug("WebServer initialized with address: %r port: %r", self.address, self.port)
 
-    def run(self):
+    def run_safe(self):
         # We bind the port only when we start running
         self._running = True
         self.server = OwnHTTPServer((self.address, self.port), RequestHandler)

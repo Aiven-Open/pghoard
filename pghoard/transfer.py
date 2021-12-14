@@ -14,11 +14,12 @@ from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
 from queue import Empty
-from threading import Lock, Thread
+from threading import Lock
 from typing import Any, BinaryIO, Dict, Optional, Union
 
 from pghoard.common import (
-    CallbackEvent, CallbackQueue, FileType, Queue, QuitEvent, StrEnum, create_alert_file, get_object_storage_config
+    CallbackEvent, CallbackQueue, FileType, PGHoardThread, Queue, QuitEvent, StrEnum, create_alert_file,
+    get_object_storage_config
 )
 from pghoard.fetcher import FileFetchManager
 from pghoard.rohmu import get_transfer
@@ -96,7 +97,7 @@ OperationEvents = {
 TransferQueue = Queue
 
 
-class TransferAgent(Thread):
+class TransferAgent(PGHoardThread):
     def __init__(self, config, mp_manager, transfer_queue: TransferQueue, metrics, shared_state_dict):
         super().__init__()
         self.log = logging.getLogger("TransferAgent")
@@ -170,7 +171,7 @@ class TransferAgent(Thread):
                         )
             _last_stats_transmit_time = time.monotonic()
 
-    def run(self):
+    def run_safe(self):
         while self.running:
             self.transmit_metrics()
             self.fetch_manager.check_state()

@@ -10,7 +10,6 @@ import os
 import select
 from io import BytesIO
 from queue import Empty, Queue
-from threading import Thread
 
 import psycopg2
 import psycopg2.errors
@@ -18,14 +17,14 @@ from psycopg2.extras import (  # pylint: disable=no-name-in-module
     REPLICATION_PHYSICAL, PhysicalReplicationConnection
 )
 
-from pghoard.common import FileType, FileTypePrefixes, suppress
+from pghoard.common import FileType, FileTypePrefixes, PGHoardThread, suppress
 from pghoard.compressor import CompressionEvent
 from pghoard.wal import LSN, WAL_SEG_SIZE, lsn_from_sysinfo
 
 KEEPALIVE_INTERVAL = 10.0
 
 
-class WALReceiver(Thread):
+class WALReceiver(PGHoardThread):
     def __init__(
         self,
         config,
@@ -151,7 +150,7 @@ class WALReceiver(Thread):
         self.buffer = BytesIO(rest_of_data)
         self.buffer.seek(0, os.SEEK_END)
 
-    def run(self):
+    def run_safe(self):
         self._init_cursor()
         if self.replication_slot:
             self.create_replication_slot()

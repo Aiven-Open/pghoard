@@ -21,7 +21,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from queue import Empty
 from tempfile import NamedTemporaryFile
-from threading import Thread
 from typing import Dict, List, Optional, Tuple
 
 import psycopg2
@@ -33,9 +32,9 @@ from pghoard.rohmu import dates, errors, rohmufile
 from . import common, version, wal
 from .basebackup_delta import DeltaBaseBackup
 from .common import (
-    BackupFailure, BaseBackupFormat, BaseBackupMode, CallbackEvent, CallbackQueue, FileType, connection_string_using_pgpass,
-    extract_pghoard_bb_v2_metadata, replication_connection_string_and_slot_using_pgpass, set_stream_nonblocking,
-    set_subprocess_stdout_and_stderr_nonblocking, terminate_subprocess
+    BackupFailure, BaseBackupFormat, BaseBackupMode, CallbackEvent, CallbackQueue, FileType, PGHoardThread,
+    connection_string_using_pgpass, extract_pghoard_bb_v2_metadata, replication_connection_string_and_slot_using_pgpass,
+    set_stream_nonblocking, set_subprocess_stdout_and_stderr_nonblocking, terminate_subprocess
 )
 from .rohmu.delta.common import EMBEDDED_FILE_SIZE
 from .transfer import UploadEvent
@@ -107,7 +106,7 @@ class HashFile:
         return getattr(self._file, attr)
 
 
-class PGBaseBackup(Thread):
+class PGBaseBackup(PGHoardThread):
     def __init__(
         self,
         config,
@@ -142,7 +141,7 @@ class PGBaseBackup(Thread):
         self.storage = storage
         self.get_remote_basebackups_info = get_remote_basebackups_info
 
-    def run(self):
+    def run_safe(self):
         try:
             basebackup_mode = self.site_config["basebackup_mode"]
             start_time = time.monotonic()
@@ -159,23 +158,20 @@ class PGBaseBackup(Thread):
             else:
                 raise errors.InvalidConfigurationError("Unsupported basebackup_mode {!r}".format(basebackup_mode))
 
-        except Exception as ex:  # pylint: disable=broad-except
+        except (BackupFailure, errors.InvalidConfigurationError) as ex:  # pylint: disable=broad-except
             self.metrics.increase("pghoard.basebackup_failed")
-            if isinstance(ex, (BackupFailure, errors.InvalidConfigurationError)):
-                self.log.error(str(ex))
-            else:
-                self.log.exception("Backup unexpectedly failed")
-                self.metrics.unexpected_exception(ex, where="PGBaseBackup")
-
+            self.log.error(str(ex))
             if self.callback_queue:
                 # post a failure event
                 self.callback_queue.put(CallbackEvent(success=False, exception=ex))
-
+        except Exception as ex:
+            self.log.exception("Backup unexpectedly failed")
+            self.metrics.unexpected_exception(ex, where="PGBaseBackup")
+            raise ex
         else:
             backup_time = time.monotonic() - start_time
             self.metrics.gauge("pghoard.backup_time", backup_time, tags={"basebackup_mode": basebackup_mode})
             self.metrics.increase("pghoard.basebackup_completed")
-
         finally:
             self.running = False
 
