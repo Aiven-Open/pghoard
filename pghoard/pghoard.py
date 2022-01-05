@@ -614,11 +614,6 @@ class PGHoard:
                     last_flushed_lsn=walreceiver_state.get("last_flushed_lsn")
                 )
 
-        last_check_time = self.time_of_last_backup_check.get(site)
-        if not last_check_time or (time.monotonic() - self.time_of_last_backup_check[site]) > 300:
-            self.refresh_backup_list_and_delete_old(site)
-            self.time_of_last_backup_check[site] = time.monotonic()
-
         # check if a basebackup is running, or if a basebackup has just completed
         if site in self.basebackups:
             try:
@@ -645,6 +640,13 @@ class PGHoard:
             self.log.debug("Basebackup has finished for %r: %r", site, result)
             self.refresh_backup_list_and_delete_old(site)
             self.time_of_last_backup_check[site] = time.monotonic()
+        else:
+            # Run the cleanup only in case there is no backup in progress, otherwise it might corrupt the ongoing
+            # backup (e.g. when a new delta backup refers to the old hash file which can be deleted by the cleanup job)
+            last_check_time = self.time_of_last_backup_check.get(site)
+            if not last_check_time or (time.monotonic() - self.time_of_last_backup_check[site]) > 300:
+                self.refresh_backup_list_and_delete_old(site)
+                self.time_of_last_backup_check[site] = time.monotonic()
 
         metadata = self.get_new_backup_details(site=site, site_config=site_config)
         if metadata and not os.path.exists(self.config["maintenance_mode_file"]):
