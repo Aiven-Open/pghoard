@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Aiven Security Bug Bounty
+    url: https://hackerone.com/aiven_ltd
+    about: Our bug bounty program.
