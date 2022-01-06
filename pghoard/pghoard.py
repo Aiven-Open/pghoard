@@ -305,7 +305,8 @@ class PGHoard:
         keep_hexdigests = set()
 
         basebackup_data_files = list()
-        for backup_name in [basebackup_name_to_delete] + [back["name"] for back in backups_to_keep]:
+        delta_backups_to_keep = filter(lambda x: x["metadata"]["format"] == BaseBackupFormat.delta_v1, backups_to_keep)
+        for backup_name in [basebackup_name_to_delete] + [back["name"] for back in delta_backups_to_keep]:
             delta_backup_key = os.path.join(self._get_site_prefix(site), "basebackup", backup_name)
             bmeta_compressed = storage.get_contents_to_string(delta_backup_key)[0]
             with rohmufile.file_reader(
