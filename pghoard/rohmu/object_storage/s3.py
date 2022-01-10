@@ -76,10 +76,10 @@ class S3Transfer(BaseTransfer):
             custom_config["connect_timeout"] = connect_timeout
         if read_timeout:
             custom_config["read_timeout"] = read_timeout
+        if proxy_info:
+            proxy_url = get_proxy_url(proxy_info)
+            custom_config["proxies"] = {"https": proxy_url}
         if not host or not port:
-            if proxy_info:
-                proxy_url = get_proxy_url(proxy_info)
-                custom_config["proxies"] = {"https": proxy_url}
             self.s3_client = botocore_session.create_client(
                 "s3",
                 config=botocore.config.Config(**custom_config),
@@ -97,21 +97,16 @@ class S3Transfer(BaseTransfer):
                 self.location = self.region
             else:
                 signature_version = "s3"
-            proxies = {}
-            if proxy_info:
-                proxy_url = get_proxy_url(proxy_info)
-                proxies["proxies"] = {"https": proxy_url}
-            custom_config = botocore.client.Config(
+            config = botocore.client.Config(
                 s3={"addressing_style": "path"},
                 signature_version=signature_version,
                 **custom_config,
-                **proxies,
             )
             self.s3_client = botocore_session.create_client(
                 "s3",
                 aws_access_key_id=aws_access_key_id,
                 aws_secret_access_key=aws_secret_access_key,
-                config=custom_config,
+                config=config,
                 endpoint_url=custom_url,
                 region_name=region,
                 verify=is_verify_tls,
