@@ -61,8 +61,8 @@ class InotifyAdapter:
     def adapt_event(self, inotify_event):
         full_path = Path(inotify_event["full_path"])
         backup_site_name = self.path_to_site[inotify_event["watched_path"]]
-        # Ignore .partial files
-        if full_path.suffix == ".partial":
+        # Ignore .partial and .tmp files
+        if full_path.suffix in {".partial", ".tmp"}:
             return None
         if full_path.suffix == ".history":
             filetype = FileType.Timeline
