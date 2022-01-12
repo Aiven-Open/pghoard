@@ -572,9 +572,12 @@ class PGHoard:
                 if not wal.WAL_RE.match(filename) and not wal.TIMELINE_RE.match(filename):
                     self.log.warning("Found invalid file %r from incoming xlog directory", full_path)
                     continue
+
+                filetype = FileType.Timeline if wal.TIMELINE_RE.match(filename) else FileType.Wal
+
                 compression_event = CompressionEvent(
-                    file_type=FileType.Wal,
-                    file_path=FileTypePrefixes[FileType.Wal] / filename,
+                    file_type=filetype,
+                    file_path=FileTypePrefixes[filetype] / filename,
                     delete_file_after_compression=True,
                     backup_site_name=site,
                     source_data=Path(full_path),
