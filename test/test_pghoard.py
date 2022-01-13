@@ -14,7 +14,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from pghoard import common
-from pghoard.common import (BaseBackupFormat, create_alert_file, delete_alert_file, write_json_file)
+from pghoard.common import (BaseBackupFormat, FileType, create_alert_file, delete_alert_file, write_json_file)
 from pghoard.pghoard import PGHoard
 from pghoard.pgutil import create_connection_string
 # pylint: disable=attribute-defined-outside-init
@@ -524,6 +524,28 @@ dbname|"""
         self.pghoard.startup_walk_for_missed_files()
         assert self.pghoard.compression_queue.qsize() == 2
         assert self.pghoard.transfer_queue.qsize() == 0
+
+    def test_startup_walk_for_missed_uncompressed_files_timeline(self):
+        compressed_wal_path, _ = self.pghoard.create_backup_site_paths(self.test_site)
+        uncompressed_wal_path = compressed_wal_path + "_incoming"
+        with open(os.path.join(uncompressed_wal_path, "00000002.history"), "wb") as fp:
+            fp.write(b"foo")
+        self.pghoard.startup_walk_for_missed_files()
+        assert self.pghoard.compression_queue.qsize() == 1
+        assert self.pghoard.transfer_queue.qsize() == 0
+        compress_event = self.pghoard.compression_queue.get(timeout=1.0)
+        assert compress_event.file_type == FileType.Timeline
+
+    def test_startup_walk_for_missed_uncompressed_files_wal(self):
+        compressed_wal_path, _ = self.pghoard.create_backup_site_paths(self.test_site)
+        uncompressed_wal_path = compressed_wal_path + "_incoming"
+        with open(os.path.join(uncompressed_wal_path, "000000010000000000000004"), "wb") as fp:
+            fp.write(b"foo")
+        self.pghoard.startup_walk_for_missed_files()
+        assert self.pghoard.compression_queue.qsize() == 1
+        assert self.pghoard.transfer_queue.qsize() == 0
+        compress_event = self.pghoard.compression_queue.get(timeout=1.0)
+        assert compress_event.file_type == FileType.Wal
 
 
 class TestPGHoardWithPG:
