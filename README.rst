@@ -4,7 +4,7 @@ PGHoard |BuildStatus|_
 .. |BuildStatus| image:: https://github.com/aiven/pghoard/actions/workflows/build.yml/badge.svg?branch=master
 .. _BuildStatus: https://github.com/aiven/pghoard/actions
 
-``pghoard`` is a PostgreSQL backup daemon and restore tooling that stores backup data in cloud object stores.
+``pghoard`` is a PostgreSQL® backup daemon and restore tooling that stores backup data in cloud object stores.
 
 Features:
 
@@ -927,6 +927,14 @@ Bug reports and patches are very welcome, please post them as GitHub issues
 and pull requests at https://github.com/aiven/pghoard .  Any possible
 vulnerabilities or other serious issues should be reported directly to the
 maintainers <opensource@aiven.io>.
+
+
+Trademarks
+==========
+
+Postgres, PostgreSQL and the Slonik Logo are trademarks or registered trademarks of the PostgreSQL Community Association of Canada, and used with their permission.
+
+Telegraf, Vagrant and Datadog are trademarks and property of their respective owners. All product and service names used in this website are for identification purposes only and do not imply endorsement.
 
 
 Copyright
