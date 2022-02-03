@@ -51,6 +51,7 @@ class UploadEvent(BaseTransferEvent):
     source_data: Union[BinaryIO, Path]
     metadata: Dict[str, str]
     file_size: Optional[int]
+    chunks_total: Optional[int]
     remove_after_upload: bool = True
     retry_number: int = 0
 
@@ -172,6 +173,7 @@ class TransferAgent(PGHoardThread):
             _last_stats_transmit_time = time.monotonic()
 
     def run_safe(self):
+        chunks_uploaded = 0
         while self.running:
             self.transmit_metrics()
             self.fetch_manager.check_state()
@@ -214,6 +216,12 @@ class TransferAgent(PGHoardThread):
                     elif filetype in {FileType.Basebackup, FileType.Basebackup_chunk}:
                         # reset corresponding xlog stats at basebackup
                         self.state[site][oper]["xlog"]["xlogs_since_basebackup"] = 0
+                        chunks_uploaded += 1
+                        chunks_total = file_to_transfer.get("chunk_total", 0)
+                        if chunks_total > 0:
+                            self.metrics.gauge("pghoard.basebackup_estimated_progress",
+                                               int((chunks_uploaded/chunks_total) * 100),
+                                               tags={"site": site})
                     self.metrics.gauge(
                         "pghoard.xlogs_since_basebackup",
                         self.state[site][oper]["xlog"]["xlogs_since_basebackup"],

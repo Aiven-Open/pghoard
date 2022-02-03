@@ -578,7 +578,8 @@ class PGBaseBackup(PGHoardThread):
         callback_queue,
         file_type=FileType.Basebackup_chunk,
         extra_metadata=None,
-        delta_stats=None
+        delta_stats=None,
+        chunks_total=0
     ):
         start_time = time.monotonic()
 
@@ -650,6 +651,7 @@ class PGBaseBackup(PGHoardThread):
                 source_data=chunk_path,
                 metadata=metadata,
                 backup_site_name=self.site,
+                chunks_total=chunks_total
             )
         )
 
@@ -676,7 +678,8 @@ class PGBaseBackup(PGHoardThread):
             temp_dir=temp_dir,
             files_to_backup=one_chunk_files,
             delta_stats=delta_stats,
-            file_type=FileType.Basebackup_chunk
+            file_type=FileType.Basebackup_chunk,
+            chunks_total=len(chunks)
         )
         self.log.info(
             "Queued backup chunk %r for transfer, chunks on disk (including partial): %r, current: %r, total chunks: %r",
