@@ -12,6 +12,7 @@ Conflicts:      pgespresso92 < 1.2, pgespresso93 < 1.2, pgespresso94 < 1.2, pges
 BuildRequires:  python3-flake8, python3-pytest, python3-pylint, python3-devel, golang
 
 %undefine _missing_build_ids_terminate_build
+%define debug_package %{nil}
 
 %description
 PGHoard is a PostgreSQL streaming backup service.  Backups are stored in
@@ -52,7 +53,7 @@ make test
 
 
 %changelog
-* Wed Feb 11 2020 Tapio Oikarinen <tapio@aiven.io> - 2.1.1
+* Tue Feb 11 2020 Tapio Oikarinen <tapio@aiven.io> - 2.1.1
 - Security fix for gnutaremu
 
 * Tue Sep 5 2017 Oskari Saarenmaa <os@aiven.io> - 1.4.0
