@@ -10,7 +10,7 @@ PYTEST_ARG ?= -v
 
 .PHONY: unittest
 unittest: version
-	$(PYTHON) -m pytest -vv test/
+	$(PYTHON) -m pytest --cov=pghoard -vv test/
 
 .PHONY: lint
 lint: version

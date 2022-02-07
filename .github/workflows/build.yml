@@ -82,3 +82,8 @@ jobs:
 
       - id: unittest
         run: make unittest
+
+      - name: Coveralls
+        uses: coverallsapp/github-action@master
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
