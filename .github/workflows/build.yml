@@ -81,7 +81,7 @@ jobs:
           pip install -e .
 
       - id: unittest
-        run: make unittest
+        run: make coverage
 
       - name: Coveralls
         uses: coverallsapp/github-action@master

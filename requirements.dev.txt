@@ -4,6 +4,7 @@ mypy
 pylint>=2.4.3,<=2.7.2
 pylint-quotes
 pytest
+pytest-cov
 pytest-mock
 pytest-timeout
 pytest-xdist
