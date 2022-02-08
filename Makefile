@@ -41,7 +41,7 @@ codecov: version
 
 .PHONY: clean
 clean:
-	$(RM) -r *.egg-info/ build/ dist/ rpm/
+	$(RM) -r *.egg-info/ build/ dist/ rpm/ codecov
 	$(RM) ../pghoard_* test-*.xml $(generated)
 
 pghoard/version.py: version.py

@@ -55,6 +55,7 @@ jobs:
       matrix:
         python-version: [3.6, 3.7, 3.8, 3.9]
         pg-version: [9.6, 10, 11, 12, 13, 14]
+      fail-fast: false
 
     steps:
       - id: checkout-code
