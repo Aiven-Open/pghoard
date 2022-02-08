@@ -28,6 +28,7 @@ fmt: version
 
 .PHONY: coverage
 coverage: version
+	rm -f coverage.xml
 	$(PYTHON) -m pytest $(PYTEST_ARG) --cov-report term-missing --cov-report xml:coverage.xml --cov pghoard test/
 
 .PHONY: clean

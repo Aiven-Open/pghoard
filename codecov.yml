@@ -6,13 +6,9 @@ coverage:
         target: auto
         threshold: 0%
         base: auto 
-        flags: 
-          - unit
-        paths: 
-          - "src"
        # advanced settings
         branches: 
           - master
         if_ci_failed: error #success, failure, error, ignore
-        informational: false
+        informational: true
         only_pulls: false
