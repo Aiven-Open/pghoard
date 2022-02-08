@@ -81,9 +81,5 @@ jobs:
           pip install -e .
 
       - id: unittest
-        run: make coverage
+        run: make codecov
 
-      - name: Coveralls
-        uses: coverallsapp/github-action@master
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}

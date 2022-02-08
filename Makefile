@@ -30,6 +30,15 @@ fmt: version
 coverage: version
 	$(PYTHON) -m pytest $(PYTEST_ARG) --cov-report term-missing --cov pghoard test/
 
+# TODO: add integrity checking to codecov download
+.PHONY: codecov
+codecov: version
+	$(PYTHON) -m pytest $(PYTEST_ARG) --cov-report xml --cov pghoard test/
+	curl -Os https://uploader.codecov.io/latest/linux/codecov
+	chmod +x codecov
+	./codecov
+
+
 .PHONY: clean
 clean:
 	$(RM) -r *.egg-info/ build/ dist/ rpm/
