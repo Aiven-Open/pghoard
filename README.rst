@@ -3,6 +3,9 @@ PGHoard |BuildStatus|_
 
 .. |BuildStatus| image:: https://github.com/aiven/pghoard/actions/workflows/build.yml/badge.svg?branch=master
 .. _BuildStatus: https://github.com/aiven/pghoard/actions
+.. image:: https://codecov.io/gh/verify-throwaway/pghoard/branch/master/graph/badge.svg?token=6B70T19671
+:target: https://codecov.io/gh/verify-throwaway/pghoard
+    
 
 ``pghoard`` is a PostgreSQL® backup daemon and restore tooling that stores backup data in cloud object stores.
 
