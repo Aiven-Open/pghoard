@@ -10,6 +10,7 @@ python-dateutil
 python-snappy
 python-systemd 
 requests
+azure-identity
 azure-storage-blob==2.1.0
 paramiko
 zstandard

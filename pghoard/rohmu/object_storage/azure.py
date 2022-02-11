@@ -10,7 +10,8 @@ from io import BytesIO
 
 # pylint: disable=import-error, no-name-in-module
 import azure.common
-from azure.core.exceptions import ResourceExistsError
+from azure.core.exceptions import HttpResponseError, ResourceExistsError
+from azure.identity import ClientSecretCredential
 from azure.storage.blob import BlobServiceClient, ContentSettings
 
 try:
@@ -47,12 +48,26 @@ logging.getLogger("azure.core.pipeline.policies.http_logging_policy").setLevel(l
 
 
 class AzureTransfer(BaseTransfer):
-    def __init__(self, account_name, account_key, bucket_name, prefix=None, azure_cloud=None, proxy_info=None):
+    def __init__(
+        self,
+        bucket_name,
+        account_name,
+        account_key=None,
+        client_config=None,
+        prefix=None,
+        azure_cloud=None,
+        proxy_info=None
+    ):
         prefix = "{}".format(prefix.lstrip("/") if prefix else "")
         super().__init__(prefix=prefix)
+        if not account_key and not client_config:
+            raise InvalidConfigurationError("One of account_key or client_config must be specified to authenticate")
+
         self.account_name = account_name
         self.account_key = account_key
         self.container_name = bucket_name
+        self.client_config = client_config
+        self.token_credential = None
         try:
             endpoint_suffix = ENDPOINT_SUFFIXES[azure_cloud]
         except KeyError:
@@ -80,8 +95,17 @@ class AzureTransfer(BaseTransfer):
                 schema = "http"
             config["proxies"] = {"https": f"{schema}://{auth}{host}:{port}"}
 
+        if self.client_config:
+            credentials = self.client_config.get("client_credentials")
+            self.token_credential = ClientSecretCredential(
+                tenant_id=self.client_config.get("tenant_id"),
+                client_id=credentials.get("client_id"),
+                client_secret=credentials.get("secret"),
+            )
+
         self.conn = BlobServiceClient.from_connection_string(
             conn_str=conn_str,
+            credential=self.token_credential,
             **config,
         )
         self.conn.socket_timeout = 120  # Default Azure socket timeout 20s is a bit short
@@ -352,6 +376,10 @@ class AzureTransfer(BaseTransfer):
         try:
             self.conn.create_container(container_name)
         except ResourceExistsError:
+            pass
+        except HttpResponseError:
+            # Container creation not authorized for authenticated service principal. This method call must still exist
+            # for backwards compatibility in cases where pghoard is authenticated using service account credentials
             pass
         self.log.debug("Got/Created container: %r successfully, took: %.3fs", container_name, time.monotonic() - start_time)
         return container_name
