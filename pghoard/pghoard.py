@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from queue import Empty, Queue
 from threading import Event
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 
 import psycopg2
 
@@ -98,7 +98,7 @@ class PGHoard:
         self.basebackups = {}
         self.basebackups_callbacks = {}
         self.receivexlogs = {}
-        self.compressors = []
+        self.compressors: List[CompressorThread] = []
         self.walreceivers = {}
         self.transfer_agents = []
         self.config = {}
@@ -787,6 +787,7 @@ class PGHoard:
                 for site, site_config in self.config["backup_sites"].items():
                     self.handle_site(site, site_config)
                 self.write_backup_state_to_json_file()
+                self.send_periodic_metrics()
             except subprocess.CalledProcessError as ex:
                 self.log.error("main loop: %s: %s, retrying...", ex.__class__.__name__, ex)
             except Exception as ex:  # pylint: disable=broad-except
@@ -795,6 +796,10 @@ class PGHoard:
             if self.thread_critical_failure_event.wait(timeout=5.0):
                 self.log.error("Unexpected critical failure in PGHoard thread. Quitting main loop.")
                 self.quit()
+
+    def send_periodic_metrics(self) -> None:
+        running_compression_threads_pc = sum([int(compressor.running) for compressor in self.compressors]) / len(self.compressors) * 100
+        self.metrics.gauge("pghoard.running_compression_threads_pc", running_compression_threads_pc)
 
     def write_backup_state_to_json_file(self):
         """Periodically write a JSON state file to disk"""
