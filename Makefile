@@ -8,6 +8,12 @@ PYTHON ?= python3
 PYTHON_SOURCE_DIRS = pghoard/ test/
 PYTEST_ARG ?= -v
 
+ifeq ($(shell cat /etc/fedora-release | grep "35"),)
+		AZURE_PKGS=python3-azure-sdk
+else
+		AZURE_PKGS=python3-azure-common python3-azure-core
+endif
+
 .PHONY: unittest
 unittest: version
 	$(PYTHON) -m pytest -vv test/
@@ -67,5 +73,5 @@ build-dep-fed:
 		python3-botocore python3-cryptography python3-paramiko python3-dateutil python3-devel \
 		python3-flake8 python3-psycopg2 python3-pylint python3-pytest python3-execnet python3-pytest-mock \
 		python3-pytest-cov python3-requests python3-snappy \
-		python3-azure-sdk \
+		$(AZURE_PKGS) \
 		rpm-build
