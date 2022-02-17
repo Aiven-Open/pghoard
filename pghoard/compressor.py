@@ -11,6 +11,8 @@ import math
 import os
 import socket
 import time
+import typing
+from abc import abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass
 from io import BytesIO
@@ -45,6 +47,11 @@ class BaseCompressorEvent:
     callback_queue: CallbackQueue
     metadata: Dict[str, str]
 
+    @property
+    @abstractmethod
+    def operation(self):
+        raise NotImplementedError
+
 
 @dataclass(frozen=True)
 class CompressionEvent(BaseCompressorEvent):
@@ -66,7 +73,7 @@ class DecompressionEvent(BaseCompressorEvent):
         return CompressionOperation.Decompress
 
 
-# Should be changed to Queue[Union[CompressionEvent, Literal[QuitEvent]] once
+# Should be changed to Queue[Union[BaseCompressorEvent, Literal[QuitEvent]] once
 # we drop older python versions
 CompressionQueue = Queue
 
@@ -90,7 +97,7 @@ class CompressorThread(PGHoardThread):
     def __init__(
         self,
         config_dict: Dict,
-        compression_queue: CompressionQueue,
+        compression_queue: CompressionQueue[BaseCompressorEvent],
         transfer_queue: TransferQueue,
         metrics: Metrics,
         critical_failure_event: Event,
@@ -120,7 +127,7 @@ class CompressorThread(PGHoardThread):
         return self.config["compression"]["algorithm"]
 
     def run_safe(self):
-        event: Optional[CompressionEvent] = None
+        event: Optional[BaseCompressorEvent] = None
         while self.running:
             if event is None:
                 attempt = 1
@@ -132,11 +139,11 @@ class CompressorThread(PGHoardThread):
                 if event is QuitEvent:
                     break
                 if event.operation == CompressionOperation.Decompress:
-                    self.handle_decompression_event(event)
+                    self.handle_decompression_event(typing.cast(DecompressionEvent, event))
                 elif event.operation == CompressionOperation.Compress:
                     file_type = event.file_type
                     if file_type:
-                        self.handle_event(event)
+                        self.handle_event(typing.cast(CompressionEvent, event))
                     elif event.callback_queue:
                         self.log.debug("Returning success for unrecognized and ignored event: %r", event)
                         event.callback_queue.put(CallbackEvent(success=True))

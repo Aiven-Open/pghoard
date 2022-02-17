@@ -27,7 +27,6 @@ import psycopg2
 
 from pghoard.compressor import CompressionEvent
 from pghoard.rohmu import dates, errors, rohmufile
-
 # pylint: disable=superfluous-parens
 from . import common, version, wal
 from .basebackup_delta import DeltaBaseBackup
