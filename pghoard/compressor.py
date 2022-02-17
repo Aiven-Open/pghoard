@@ -162,7 +162,7 @@ class CompressorThread(PGHoardThread):
                     raise
         self.log.debug("Quitting Compressor")
 
-    def handle_decompression_event(self, event):
+    def handle_decompression_event(self, event: DecompressionEvent) -> None:
         with open(event.destination_path, "wb") as output_obj:
             rohmufile.read_file(
                 input_obj=event.source_data,
@@ -175,7 +175,7 @@ class CompressorThread(PGHoardThread):
         if event.callback_queue:
             event.callback_queue.put(CallbackEvent(success=True))
 
-    def handle_event(self, event):
+    def handle_event(self, event: CompressionEvent) -> bool:
         # pylint: disable=redefined-variable-type
         file_type = event.file_type
         rsa_public_key = None

@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from queue import Empty
 from tempfile import NamedTemporaryFile
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 
 import psycopg2
 
@@ -370,7 +370,7 @@ class PGBaseBackup(PGHoardThread):
             )
         )
 
-    def parse_backup_label(self, backup_label_data):
+    def parse_backup_label(self, backup_label_data: Union[str, bytes]) -> Tuple[str, str]:
         if isinstance(backup_label_data, str):
             backup_label_data = backup_label_data.encode("utf-8")
         for line in backup_label_data.split(b"\n"):
