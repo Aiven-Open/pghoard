@@ -19,8 +19,8 @@ from .base import (KEY_TYPE_OBJECT, KEY_TYPE_PREFIX, BaseTransfer, IterKeyItem, 
 
 def calculate_chunk_size():
     total_mem_mib = get_total_memory() or 0
-    # At least 5 MiB, at most 524 MiB. Max block size used for hosts with ~300+ GB of memory
-    return max(min(int(total_mem_mib / 600), 524), 5) * 1024 * 1024
+    # At least 5 MiB, at most 524 MiB. Max block size used for hosts with ~210+ GB of memory
+    return max(min(int(total_mem_mib / 400), 524), 5) * 1024 * 1024
 
 
 def get_proxy_url(proxy_info):
