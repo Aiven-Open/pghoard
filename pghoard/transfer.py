@@ -96,9 +96,15 @@ OperationEvents = {
 # we drop older python versions
 TransferQueue = Queue
 
+class NullNotifier:
+    def notify_seen(self, start_wal_segment: str, start_time_iso: str) -> None:
+        pass
+
+    def notify_uploaded(self, start_wal_segment: str, start_time_iso: str) -> None:
+        pass
 
 class TransferAgent(PGHoardThread):
-    def __init__(self, config, mp_manager, transfer_queue: TransferQueue, metrics, shared_state_dict):
+    def __init__(self, config, mp_manager, transfer_queue: TransferQueue, metrics, shared_state_dict, backup_label_notifier = NullNotifier()):
         super().__init__()
         self.log = logging.getLogger("TransferAgent")
         self.config = config
@@ -110,6 +116,7 @@ class TransferAgent(PGHoardThread):
         self.sleep = time.sleep
         self.state = shared_state_dict
         self.site_transfers: Dict[str, BaseTransfer] = {}
+        self._backup_label_notifier = NullNotifier()
         self.log.debug("TransferAgent initialized")
 
     def set_state_defaults_for_site(self, site):
@@ -304,7 +311,7 @@ class TransferAgent(PGHoardThread):
             self.metrics.unexpected_exception(ex, where="handle_download")
             return CallbackEvent(success=False, exception=ex, opaque=file_to_transfer.opaque)
 
-    def handle_upload(self, site, key, file_to_transfer):
+    def handle_upload(self, site, key, file_to_transfer: UploadEvent):
         payload = {"file_size": file_to_transfer.file_size}
         try:
             storage = self.get_object_storage(site)
@@ -319,6 +326,7 @@ class TransferAgent(PGHoardThread):
                 if file_to_transfer.file_size:
                     metadata["Content-Length"] = file_to_transfer.file_size
                 storage.store_file_object(key, f, metadata=metadata)
+            self._backup_label_notifier.notify_uploaded(file_to_transfer.metadata["start-wal-segment"], file_to_transfer.metadata["start-time"])
             if unlink_local:
                 try:
                     self.log.info("Deleting file: %r since it has been uploaded", file_to_transfer.source_data)

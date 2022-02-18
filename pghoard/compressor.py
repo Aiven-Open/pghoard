@@ -4,6 +4,7 @@ pghoard - compressor threads
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
+import datetime
 import enum
 import hashlib
 import logging
@@ -19,8 +20,10 @@ from io import BytesIO
 from pathlib import Path
 from queue import Empty, Queue
 from tempfile import NamedTemporaryFile
-from threading import Event
+from threading import Event, Lock
 from typing import BinaryIO, Dict, Optional, Set, Union
+
+import dateutil.parser
 
 from pghoard import config as pgh_config
 from pghoard import wal
@@ -89,6 +92,47 @@ class WalFileDeletionEvent:
 # we drop older python versions
 WalFileDeletionQueue = Queue
 
+@dataclass(frozen=True)
+class BackupLabel:
+    start_wal_segment: str
+    start_time: datetime.datetime
+
+
+class ThreadSafeCompressorMetadataNotifier:
+    """Methods of these instances are threadsafe"""
+    def __init__(
+        self,
+        metrics: Metrics) -> None:
+        self._metrics = metrics
+        self._seen: set[BackupLabel] = set()
+        self._seen_access_lock = Lock()
+
+    def notify_seen(self, start_wal_segment: str, start_time_iso: str) -> None:
+        start_time = dateutil.parser.isoparse(start_time_iso)
+        backup_label = BackupLabel(start_wal_segment=start_wal_segment, start_time=start_time)
+        with self._seen_access_lock:
+            self._seen.add(backup_label)
+            oldest_label = sorted(self._seen, key=lambda label: label.start_time)[0]
+        # FIXME: I don't like this being outside the with block, but I wouldn't like to hold the lock without
+        # a reason
+        self._metrics.gauge("pghoard.oldest_backup_label_to_be_uploaded", oldest_label.start_time.isoformat())
+
+    def notify_uploaded(self, start_wal_segment: str, start_time_iso: str) -> None:
+        start_time = dateutil.parser.isoparse(start_time_iso)
+        backup_label = BackupLabel(start_wal_segment=start_wal_segment, start_time=start_time)
+        with self._seen_access_lock:
+            self._seen.remove(backup_label)
+            oldest_label = sorted(self._seen, key=lambda label: label.start_time)[0]
+        # FIXME: I don't like this being outside the with block, but I wouldn't like to hold the lock without
+        # a reason
+        self._metrics.gauge("pghoard.oldest_backup_label_to_be_uploaded", oldest_label.start_time.isoformat())
+
+class NullNotifier:
+    def notify_seen(self, start_wal_segment: str, start_time_iso: str) -> None:
+        pass
+
+    def notify_uploaded(self, start_wal_segment: str, start_time_iso: str) -> None:
+        pass
 
 class CompressorThread(PGHoardThread):
     MAX_FAILED_RETRY_ATTEMPTS = 3
@@ -102,6 +146,7 @@ class CompressorThread(PGHoardThread):
         metrics: Metrics,
         critical_failure_event: Event,
         wal_file_deletion_queue: Queue,
+        backup_label_notifier = NullNotifier(),
     ):
         super().__init__()
         self.log = logging.getLogger("Compressor")
@@ -114,6 +159,7 @@ class CompressorThread(PGHoardThread):
         self.running = True
         self.critical_failure_event = critical_failure_event
         self.log.debug("Compressor initialized")
+        self._backup_label_notifier = backup_label_notifier
 
     def get_compressed_file_dir(self, site):
         # FIXME: this is shared with pghoard.py and convoluted
@@ -183,6 +229,7 @@ class CompressorThread(PGHoardThread):
             event.callback_queue.put(CallbackEvent(success=True))
 
     def handle_event(self, event: CompressionEvent) -> bool:
+        self._backup_label_notifier.notify_seen(event.metadata["start-wal-segment"], event.metadata["start-time"])
         # pylint: disable=redefined-variable-type
         file_type = event.file_type
         rsa_public_key = None
@@ -206,6 +253,7 @@ class CompressorThread(PGHoardThread):
                 suffix=".tmp-compress"
             )
             output_data = compressed_filepath
+
         if not isinstance(event.source_data, BytesIO):
             input_obj = open(event.source_data, "rb")
         else:
