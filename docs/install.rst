@@ -42,7 +42,7 @@ FIXME: version of pghoard on pypi isn't up to date.
 PostgreSQL Configuration
 ========================
 
-PosgreSQL should be configured to allow replication connections, and have a
+PostgreSQL should be configured to allow replication connections, and have a
 high enough ``wal_level``.
 
 wal_level

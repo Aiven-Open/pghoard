@@ -14,7 +14,7 @@ pghoard 2.0.0 (2018-11-08)
 ==========================
 
 * Support for PostgreSQL 11
-* Drop support for PosgreSQL 9.2
+* Drop support for PostgreSQL 9.2
 * Multiprocess parallel basebackup restore
 * Performance improvements
 * Bug fixes
