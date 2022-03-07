@@ -10,7 +10,7 @@ from io import BytesIO
 
 # pylint: disable=import-error, no-name-in-module
 import azure.common
-from azure.core.exceptions import ResourceExistsError
+from azure.core.exceptions import HttpResponseError, ResourceExistsError
 from azure.storage.blob import BlobServiceClient, ContentSettings
 
 try:
@@ -47,12 +47,18 @@ logging.getLogger("azure.core.pipeline.policies.http_logging_policy").setLevel(l
 
 
 class AzureTransfer(BaseTransfer):
-    def __init__(self, account_name, account_key, bucket_name, prefix=None, azure_cloud=None, proxy_info=None):
+    def __init__(
+        self, bucket_name, account_name, account_key=None, sas_token=None, prefix=None, azure_cloud=None, proxy_info=None
+    ):
         prefix = "{}".format(prefix.lstrip("/") if prefix else "")
         super().__init__(prefix=prefix)
+        if not account_key and not sas_token:
+            raise InvalidConfigurationError("One of account_key or sas_token must be specified to authenticate")
+
         self.account_name = account_name
         self.account_key = account_key
         self.container_name = bucket_name
+        self.sas_token = sas_token
         try:
             endpoint_suffix = ENDPOINT_SUFFIXES[azure_cloud]
         except KeyError:
@@ -82,6 +88,7 @@ class AzureTransfer(BaseTransfer):
 
         self.conn = BlobServiceClient.from_connection_string(
             conn_str=conn_str,
+            credential=self.sas_token,
             **config,
         )
         self.conn.socket_timeout = 120  # Default Azure socket timeout 20s is a bit short
@@ -353,5 +360,11 @@ class AzureTransfer(BaseTransfer):
             self.conn.create_container(container_name)
         except ResourceExistsError:
             pass
+        except HttpResponseError as e:
+            if "request is not authorized" in e.exc_msg:
+                self.log.debug("Container creation unauthorized. Assuming container %r already exists", container_name)
+                return container_name
+            else:
+                raise e
         self.log.debug("Got/Created container: %r successfully, took: %.3fs", container_name, time.monotonic() - start_time)
         return container_name

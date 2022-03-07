@@ -401,6 +401,22 @@ def test_storage_azure_with_prefix(tmpdir):
     _test_storage_init("azure", True, tmpdir)
 
 
+def test_storage_azure_no_prefix_dynamic(tmpdir):
+    try:
+        config_overrides = getattr(test_storage_configs, "config_azure_dynamic")
+        _test_storage_init("azure", False, tmpdir, config_overrides=config_overrides())
+    except AttributeError:
+        pytest.skip("config_azure_dynamic config isn't available")
+
+
+def test_storage_azure_with_prefix_dynamic(tmpdir):
+    try:
+        config_overrides = getattr(test_storage_configs, "config_azure_dynamic")
+        _test_storage_init("azure", True, tmpdir, config_overrides=config_overrides())
+    except AttributeError:
+        pytest.skip("config_azure_dynamic config isn't available")
+
+
 def test_storage_ceph_s3_no_prefix(tmpdir):
     _test_storage_init("ceph_s3", False, tmpdir)
 

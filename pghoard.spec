@@ -5,6 +5,9 @@ Url:            http://github.com/aiven/pghoard
 Summary:        PostgreSQL streaming backup service
 License:        ASL 2.0
 Source0:        pghoard-rpm-src.tar
+Requires:       python3-azure-common
+Requires:       python3-azure-core
+Requires:       python3-azure-storage-blob
 Requires:       python3-botocore
 Requires:       python3-cryptography >= 0.8
 Requires:       python3-dateutil

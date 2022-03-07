@@ -808,7 +808,10 @@ Optional keys for Amazon Web Services S3:
 * ``azure`` for Microsoft Azure Storage, required configuration keys:
 
  * ``account_name`` for the name of the Azure Storage account
- * ``account_key`` for the secret key of the Azure Storage account
+ * One of:
+  * ``account_key`` to authenticate using an Azure Storage account key
+  * ``sas_token`` to authenticate using a SAS token.
+
  * ``bucket_name`` for the name of Azure Storage container used to store
    objects
  * ``azure_cloud`` Azure cloud selector, ``"public"`` (default) or ``"germany"``
