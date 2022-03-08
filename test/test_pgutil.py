@@ -12,6 +12,7 @@ from pghoard.pgutil import (create_connection_string, get_connection_info, mask_
 
 
 def test_connection_info():
+    # Test connection string - do not report through bug bounty programs
     url = "postgres://hannu:secret@dbhost.local:5555/abc?replication=true&sslmode=foobar&sslmode=require"
     cs = "host=dbhost.local user='hannu'   dbname='abc'\n" \
          "replication=true   password=secret sslmode=require port=5555"
@@ -39,6 +40,7 @@ def test_connection_info():
 
 
 def test_mask_connection_info():
+    # Test connection string - do not report through bug bounty programs
     url = "postgres://michael:secret@dbhost.local:5555/abc?replication=true&sslmode=foobar&sslmode=require"
     cs = "host=dbhost.local user='michael'   dbname='abc'\n" \
          "replication=true   password=secret sslmode=require port=5555"
