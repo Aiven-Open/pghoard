@@ -5,11 +5,21 @@ Url:            http://github.com/aiven/pghoard
 Summary:        PostgreSQL streaming backup service
 License:        ASL 2.0
 Source0:        pghoard-rpm-src.tar
+Requires:       python3-botocore
+Requires:       python3-cryptography >= 0.8
+Requires:       python3-dateutil
+Requires:       python3-psycopg2
+Requires:       python3-pydantic
+Requires:       python3-requests
+Requires:       python3-snappy
+Requires:       python3-zstandard
 Requires:       systemd
-Requires:       python3-botocore, python3-cryptography >= 0.8, python3-dateutil
-Requires:       python3-psycopg2, python3-requests, python3-snappy, python3-zstandard, python3-pydantic,
-Conflicts:      pgespresso92 < 1.2, pgespresso93 < 1.2, pgespresso94 < 1.2, pgespresso95 < 1.2
-BuildRequires:  python3-flake8, python3-pytest, python3-pylint, python3-devel, golang
+Conflicts:      pgespresso93 < 1.2, pgespresso94 < 1.2, pgespresso95 < 1.2
+BuildRequires:  golang
+BuildRequires:  python3-devel
+BuildRequires:  python3-flake8
+BuildRequires:  python3-pylint
+BuildRequires:  python3-pytest
 
 %undefine _missing_build_ids_terminate_build
 %define debug_package %{nil}
