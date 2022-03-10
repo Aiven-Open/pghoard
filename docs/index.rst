@@ -1,4 +1,4 @@
-.. PGHoard documentation master file, created by
+.. PGHoard documentation index file, created by
    sphinx-quickstart on Tue Jul 27 13:52:50 2021.
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
@@ -6,7 +6,7 @@
 PGHoard
 =======
 
-.. |BuildStatus| image:: https://github.com/aiven/pghoard/actions/workflows/build.yml/badge.svg?branch=master
+.. |BuildStatus| image:: https://github.com/aiven/pghoard/actions/workflows/build.yml/badge.svg?branch=main
 .. _BuildStatus: https://github.com/aiven/pghoard/actions
 
 
