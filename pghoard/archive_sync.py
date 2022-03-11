@@ -26,7 +26,7 @@ class ArchiveSync:
     """Iterate over WAL directory in reverse alphanumeric order and upload
     files to object storage until we find a file that already exists there.
     This can be used after a failover has happened to make sure the archive
-    has no gaps in case the previous master failed before archiving its
+    has no gaps in case the previous primary failed before archiving its
     final segment."""
     def __init__(self):
         self.log = logging.getLogger(self.__class__.__name__)
@@ -114,9 +114,9 @@ class ArchiveSync:
                         archive_type == "WAL" and (hash_checks_done < max_hash_checks or max_hash_checks < 0) and remote_hash
                     )
                     if archive_type == "WAL" and not remote_hash:
-                        # If we don't have hashes available (old pghoard was running on previous master), re-upload first
+                        # If we don't have hashes available (old pghoard was running on previous primary), re-upload first
                         # file that already exists in remote storage and doesn't have a checksum since it might be the last
-                        # WAL file of previous timeline uploaded by old master and invalid because it doesn't have the
+                        # WAL file of previous timeline uploaded by old primary and invalid because it doesn't have the
                         # timeline switch event and have some writes that are not valid for our timeline
                         existing_wal_without_checksum_count += 1
                         if existing_wal_without_checksum_count == 1:

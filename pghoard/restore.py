@@ -105,7 +105,7 @@ def create_recovery_conf(
     recovery_target_name=None,
     recovery_target_time=None,
     recovery_target_xid=None,
-    restore_to_master=None
+    restore_to_primary=None
 ):
     restore_command = [
         "pghoard_postgres_command",
@@ -136,7 +136,7 @@ def create_recovery_conf(
     ]
 
     use_recovery_conf = (pg_version < "12")  # no more recovery.conf in PG >= 12
-    if not restore_to_master:
+    if not restore_to_primary:
         if use_recovery_conf:
             lines.append("standby_mode = 'on'")
         else:
@@ -270,7 +270,12 @@ class Restore:
             cmd.add_argument("--recovery-target-name", help="PostgreSQL recovery_target_name", metavar="RESTOREPOINT")
             cmd.add_argument("--recovery-target-time", help="PostgreSQL recovery_target_time", metavar="ISO_TIMESTAMP")
             cmd.add_argument("--recovery-target-xid", help="PostgreSQL recovery_target_xid", metavar="XID")
-            cmd.add_argument("--restore-to-master", help="Restore the database to a PG master", action="store_true")
+            cmd.add_argument(
+                "--restore-to-primary",
+                "--restore-to-master",
+                help="Restore the database to a PG primary",
+                action="store_true"
+            )
 
         cmd = add_cmd(self.list_basebackups_http)
         host_port_args()
@@ -331,7 +336,7 @@ class Restore:
                 recovery_target_name=arg.recovery_target_name,
                 recovery_target_time=arg.recovery_target_time,
                 recovery_target_xid=arg.recovery_target_xid,
-                restore_to_master=arg.restore_to_master,
+                restore_to_primary=arg.restore_to_primary,
                 overwrite=arg.overwrite,
                 tablespace_mapping=tablespace_mapping,
                 tablespace_base_dir=arg.tablespace_base_dir,
@@ -441,7 +446,7 @@ class Restore:
         recovery_target_name=None,
         recovery_target_time=None,
         recovery_target_xid=None,
-        restore_to_master=None,
+        restore_to_primary=None,
         overwrite=False,
         tablespace_mapping=None,
         tablespace_base_dir=None
@@ -603,7 +608,7 @@ class Restore:
             recovery_target_name=recovery_target_name,
             recovery_target_time=recovery_target_time,
             recovery_target_xid=recovery_target_xid,
-            restore_to_master=restore_to_master,
+            restore_to_primary=restore_to_primary,
         )
 
         print("Basebackup restoration complete.")

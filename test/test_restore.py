@@ -120,7 +120,7 @@ class TestRecoveryConf(PGHoardTestCase):
         assert "primary_conninfo" in getdata()  # make sure it's there
         assert "''test''" in getdata()  # make sure it's quoted
         assert "standby_mode = 'on'" in getdata()
-        content = create_recovery_conf(td, "dummysite", primary_conninfo="dbname='test'", restore_to_master=True)
+        content = create_recovery_conf(td, "dummysite", primary_conninfo="dbname='test'", restore_to_primary=True)
         assert "primary_conninfo" in content
         assert "standby_mode = 'on'" not in content
         content = create_recovery_conf(
