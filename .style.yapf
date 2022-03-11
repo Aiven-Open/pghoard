@@ -1,5 +1,5 @@
 [style]
-# For docs, see https://github.com/google/yapf/blob/master/README.rst
+# For docs, see https://github.com/google/yapf/blob/main/README.rst
 
 based_on_style = pep8
 # Disallow splitting between dict key and dict value in multiline {"key": "value"} lines

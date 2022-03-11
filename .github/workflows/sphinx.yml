@@ -3,7 +3,7 @@ name: Sphinx Pages
 on:
   push:
     branches:
-      - master
+      - main
 
 jobs:
   build:
