@@ -1,0 +1,20 @@
+name: "Sync master from main"
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  sync_master_from_main:
+    runs-on: ubuntu-latest
+    name: Sync master from main
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v3
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Push to master
+        run: git push origin main:master
