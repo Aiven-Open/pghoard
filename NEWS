@@ -1,3 +1,20 @@
+pghoard DEV
+===========
+
+* Support for PostgreSQL version 14
+* Major improvements for delta backup support
+* Improve robustness of the Swift backend
+* Testing and CI improvements
+
+pghoard 2.2.0 (2021-04-12)
+==========================
+
+* Support for PostgreSQL versions 12 and 13
+* Support for more flexible basebackup scheduling
+* Testing and CI improvements
+* Initial support for delta basebackups
+* Security fixes for tar extraction
+
 pghoard 2.1.0 (2019-05-27)
 ==========================
 
