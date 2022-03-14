@@ -4,8 +4,12 @@ Development
 Requirements
 ------------
 
-PGHoard can backup and restore PostgreSQL versions 9.3 and above.  The
-daemon is implemented in Python and works with CPython version 3.5 or newer.
+PGHoard can backup and restore PostgreSQL versions 9.3 and above, but is
+only tested and actively developed with version 10 and above.
+
+The daemon is implemented in Python and is tested and developed with version
+3.6 and above. The following Python modules are required:
+
 The following Python modules are required:
 
 * psycopg2_ to look up transaction log metadata
@@ -50,24 +54,16 @@ Vagrant
 =======
 
 The Vagrantfile can be used to setup a vagrant development environment.   The vagrant environment has
-python 3.6, 3.7, 3.8 and 3.9 virtual environments and installations of postgresql 9.6, 10, 11 and 12.
+python 3.6, 3.7, 3.8 and 3.9 virtual environments and installations of postgresql 10 and newer.
 
 By default vagrant up will start a Virtualbox environment.   The Vagrantfile will also work for libvirt, just prefix
 VAGRANT_DEFAULT_PROVIDER=libvirt to the vagrant up command.
-
-Any combination of Python (3.6, 3.7 and 3.8) and Postgresql (9.6, 10, 11 and 12)
 
 Bring up vagrant instance and connect via ssh::
 
 vagrant up
 vagrant ssh
 vagrant@ubuntu2004:~$ cd /vagrant
-
-Test with Python 3.6 and Postgresql 9.6
-
-vagrant@ubuntu2004:~$ source ~/venv3.6/bin/activate
-vagrant@ubuntu2004:~$ PG_VERSION=9.6 make unittest
-vagrant@ubuntu2004:~$ deactivate
 
 Test with Python 3.7 and Postgresql 10
 

@@ -4,7 +4,7 @@
   <meta charset="utf-8" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Development &mdash; PGHoard 2.2.1-125-g2a3b04d documentation</title>
+  <title>Development &mdash; PGHoard 2.2.1-128-ga96e67e documentation</title>
       <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
       <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
   <!--[if lt IE 9]>
@@ -85,9 +85,11 @@
 <h1>Development<a class="headerlink" href="#development" title="Permalink to this headline"></a></h1>
 <section id="requirements">
 <h2>Requirements<a class="headerlink" href="#requirements" title="Permalink to this headline"></a></h2>
-<p>PGHoard can backup and restore PostgreSQL versions 9.3 and above.  The
-daemon is implemented in Python and works with CPython version 3.5 or newer.
-The following Python modules are required:</p>
+<p>PGHoard can backup and restore PostgreSQL versions 9.3 and above, but is
+only tested and actively developed with version 10 and above.</p>
+<p>The daemon is implemented in Python and is tested and developed with version
+3.6 and above. The following Python modules are required:</p>
+<p>The following Python modules are required:</p>
 <ul class="simple">
 <li><p><a class="reference external" href="http://initd.org/psycopg/">psycopg2</a> to look up transaction log metadata</p></li>
 <li><p><a class="reference external" href="http://www.python-requests.org/en/latest/">requests</a> for the internal client-server architecture</p></li>
@@ -113,18 +115,13 @@ should work on other platforms that provide the required modules.</p>
 <section id="vagrant">
 <h1>Vagrant<a class="headerlink" href="#vagrant" title="Permalink to this headline"></a></h1>
 <p>The Vagrantfile can be used to setup a vagrant development environment.   The vagrant environment has
-python 3.6, 3.7, 3.8 and 3.9 virtual environments and installations of postgresql 9.6, 10, 11 and 12.</p>
+python 3.6, 3.7, 3.8 and 3.9 virtual environments and installations of postgresql 10 and newer.</p>
 <p>By default vagrant up will start a Virtualbox environment.   The Vagrantfile will also work for libvirt, just prefix
 VAGRANT_DEFAULT_PROVIDER=libvirt to the vagrant up command.</p>
-<p>Any combination of Python (3.6, 3.7 and 3.8) and Postgresql (9.6, 10, 11 and 12)</p>
 <p>Bring up vagrant instance and connect via ssh:</p>
 <p>vagrant up
 vagrant ssh
 <a class="reference external" href="mailto:vagrant&#37;&#52;&#48;ubuntu2004">vagrant<span>&#64;</span>ubuntu2004</a>:~$ cd /vagrant</p>
-<p>Test with Python 3.6 and Postgresql 9.6</p>
-<p><a class="reference external" href="mailto:vagrant&#37;&#52;&#48;ubuntu2004">vagrant<span>&#64;</span>ubuntu2004</a>:~$ source ~/venv3.6/bin/activate
-<a class="reference external" href="mailto:vagrant&#37;&#52;&#48;ubuntu2004">vagrant<span>&#64;</span>ubuntu2004</a>:~$ PG_VERSION=9.6 make unittest
-<a class="reference external" href="mailto:vagrant&#37;&#52;&#48;ubuntu2004">vagrant<span>&#64;</span>ubuntu2004</a>:~$ deactivate</p>
 <p>Test with Python 3.7 and Postgresql 10</p>
 <p><a class="reference external" href="mailto:vagrant&#37;&#52;&#48;ubuntu2004">vagrant<span>&#64;</span>ubuntu2004</a>:~$ source ~/venv3.7/bin/activate
 <a class="reference external" href="mailto:vagrant&#37;&#52;&#48;ubuntu2004">vagrant<span>&#64;</span>ubuntu2004</a>:~$ PG_VERSION=10 make unittest
