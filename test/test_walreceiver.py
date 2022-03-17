@@ -3,6 +3,9 @@ from pghoard.wal import get_current_lsn
 from .conftest import PGHoardForTest
 from .util import switch_wal, wait_for_xlog
 
+import logging
+import pytest
+
 
 def get_transfer_agent_upload_xlog_state(pghoard: PGHoardForTest):
     transfer_agent_state = pghoard.transfer_agent_state.get(pghoard.test_site)
@@ -19,15 +22,22 @@ def stop_walreceiver(pghoard: PGHoardForTest):
 
 
 class TestWalReceiver:
-    def test_walreceiver(self, db, pghoard_walreceiver):
+    @pytest.mark.parametrize("replication_slot", [None, "foobar"])
+    def test_walreceiver(self, db, pghoard_walreceiver, replication_slot):
         """
         Test the happy-path of the wal receiver.
         """
+        log = logging.getLogger(__class__.__name__)
         conn = db.connect()
         conn.autocommit = True
 
         pghoard = pghoard_walreceiver
         node = pghoard.config["backup_sites"][pghoard.test_site]["nodes"][0]
+        if "slot" in node:
+            log.warning("using slot %s from config", node["slot"])
+        else:
+            node["slot"] = replication_slot
+
         # The transfer agent state will be used to check what
         # was uploaded
         # Before starting the walreceiver, get the current wal name.
