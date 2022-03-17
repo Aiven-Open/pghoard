@@ -125,3 +125,11 @@ def test_verify_wal_starts_moves_fp_back():
         tmp_file.seek(10)
         wal.verify_wal(wal_name="0000002F000000110000009C", fileobj=tmp_file)
         assert tmp_file.tell() == 10
+
+
+def test_invalid_lsn():
+    with pytest.raises(
+        ValueError,
+        match="LSN constructor accepts either an int, or a %X/%X formatted string",
+    ):
+        wal.LSN("foo", 42)

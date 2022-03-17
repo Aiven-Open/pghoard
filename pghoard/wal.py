@@ -61,11 +61,11 @@ class LSN:
         self.server_version = server_version
         if isinstance(value, int):
             self.lsn = value
-        elif isinstance(value, str):
+        elif isinstance(value, str) and "/" in value:
             log_hex, seg_hex = value.split("/", 1)
             self.lsn = ((int(log_hex, 16) << 32) + int(seg_hex, 16))
         else:
-            raise ValueError("LSN constructor accepts either an int, " "or a %X/%X formatted string")
+            raise ValueError("LSN constructor accepts either an int, or a %X/%X formatted string")
 
     @property
     def _segments_per_xlogid(self) -> int:
