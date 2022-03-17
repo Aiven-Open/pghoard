@@ -133,3 +133,51 @@ def test_invalid_lsn():
         match="LSN constructor accepts either an int, or a %X/%X formatted string",
     ):
         wal.LSN("foo", 42)
+
+
+@pytest.mark.parametrize(
+    ["value1", "value2", "result"],
+    [
+        (
+            wal.LSN(1234, 42),
+            wal.LSN(1233, 42),
+            False,
+        ),
+        (
+            wal.LSN(1234, 42),
+            wal.LSN(1234, 42),
+            True,
+        ),
+        (
+            wal.LSN(1234, 42),
+            wal.LSN(1235, 42),
+            True,
+        ),
+    ],
+)
+def test_lsn_compare_le(value1, value2, result):
+    assert (value1 <= value2) is result
+
+
+@pytest.mark.parametrize(
+    ["value1", "value2", "result"],
+    [
+        (
+            wal.LSN(1234, 42),
+            wal.LSN(1233, 42),
+            True,
+        ),
+        (
+            wal.LSN(1234, 42),
+            wal.LSN(1234, 42),
+            True,
+        ),
+        (
+            wal.LSN(1234, 42),
+            wal.LSN(1235, 42),
+            False,
+        ),
+    ],
+)
+def test_lsn_compare_ge(value1, value2, result):
+    assert (value1 >= value2) is result

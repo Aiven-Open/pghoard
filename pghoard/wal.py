@@ -132,7 +132,7 @@ class LSN:
         self._assert_sane_for_comparison(other)
         return self.lsn < other.lsn
 
-    def __lte__(self, other) -> bool:
+    def __le__(self, other) -> bool:
         self._assert_sane_for_comparison(other)
         return self.lsn <= other.lsn
 
@@ -140,7 +140,7 @@ class LSN:
         self._assert_sane_for_comparison(other)
         return self.lsn > other.lsn
 
-    def __gte__(self, other) -> bool:
+    def __ge__(self, other) -> bool:
         self._assert_sane_for_comparison(other)
         return self.lsn >= other.lsn
 
