@@ -81,4 +81,9 @@ jobs:
           pip install -e .
 
       - id: unittest
-        run: make unittest
+        run: make coverage
+
+      - id: upload-codecov
+        uses: codecov/codecov-action@v2
+        with:
+          verbose: true

@@ -28,12 +28,13 @@ fmt: version
 
 .PHONY: coverage
 coverage: version
-	$(PYTHON) -m pytest $(PYTEST_ARG) --cov-report term-missing --cov pghoard test/
+	$(PYTHON) -m pytest $(PYTEST_ARG) --cov-report term-missing --cov-report xml:coverage.xml \
+		--cov pghoard test/
 
 .PHONY: clean
 clean:
 	$(RM) -r *.egg-info/ build/ dist/ rpm/
-	$(RM) ../pghoard_* test-*.xml $(generated)
+	$(RM) ../pghoard_* test-*.xml coverage.xml $(generated)
 
 pghoard/version.py: version.py
 	$(PYTHON) $^ $@
