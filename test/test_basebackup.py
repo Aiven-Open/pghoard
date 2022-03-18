@@ -531,7 +531,7 @@ LABEL: pg_basebackup base backup
                 pghoard.config_path,
                 "--site",
                 pghoard.test_site,
-                "--restore-to-master",
+                "--restore-to-primary",
                 "--target-dir",
                 backup_out,
                 "--tablespace-dir",

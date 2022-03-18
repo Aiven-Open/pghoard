@@ -248,7 +248,7 @@ installation.
      CREATE USER pghoard PASSWORD 'putyourpasswordhere' REPLICATION;
 
 2. Edit the local ``pg_hba.conf`` to allow access for the newly created
-   account to the ``replication`` database from the master and standby
+   account to the ``replication`` database from the primary and standby
    nodes. For example::
 
      # TYPE  DATABASE     USER     ADDRESS       METHOD
@@ -260,7 +260,7 @@ installation.
 
    or by sending directly a ``SIGHUP`` to the PostgreSQL ``postmaster`` process.
 
-3. Fill in the created user account and master/standby addresses into the
+3. Fill in the created user account and primary/standby addresses into the
    configuration file ``pghoard.json`` to the section ``backup_sites``.
 
 4. Fill in the possible object storage user credentials into the
@@ -369,7 +369,7 @@ If we'd want to restore to the latest point in time we could fetch the
 required basebackup by running::
 
   pghoard_restore get-basebackup --config /var/lib/pghoard/pghoard.json \
-      --target-dir /var/lib/pgsql/9.5/data --restore-to-master
+      --target-dir /var/lib/pgsql/9.5/data --restore-to-primary
 
   Basebackup complete.
   You can start PostgreSQL by running pg_ctl -D foo start
