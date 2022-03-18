@@ -100,6 +100,18 @@ class TestRecoveryConf(PGHoardTestCase):
         recovery_time = recovery_time.replace(tzinfo=datetime.timezone.utc)
         assert r._find_nearest_basebackup(recovery_time)["name"] == "2015-02-12_0"  # pylint: disable=protected-access
 
+    def test_compatible_cli_args(self):
+        parser = Restore().create_parser()
+
+        args_with_no_flag = ["get-basebackup", "--target-dir", "TARGET_DIR", "--config", "CONFIG"]
+        assert not parser.parse_args(args_with_no_flag).restore_to_primary
+
+        args_with_flag = parser.parse_args(args_with_no_flag + ["--restore-to-primary"])
+        assert args_with_flag.restore_to_primary
+
+        args_with_old_flag = parser.parse_args(args_with_no_flag + ["--restore-to-master"])
+        assert args_with_flag == args_with_old_flag
+
     def test_create_recovery_conf(self):
         td = self.temp_dir
         fn = os.path.join(td, "recovery.conf")
