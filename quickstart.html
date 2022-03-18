@@ -4,7 +4,7 @@
   <meta charset="utf-8" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>QuickStart &mdash; PGHoard 2.2.1-134-g22b95aa documentation</title>
+  <title>QuickStart &mdash; PGHoard 2.2.1-137-g67e1aad documentation</title>
       <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
       <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
   <!--[if lt IE 9]>
@@ -193,7 +193,7 @@ my_test_cluster/basebackup/2021-07-30_13-56_0         6 MB        31 MB  2021-07
 <p>If we’d want to restore to the latest point in time we could fetch the
 required basebackup by running:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">pghoard_restore</span> <span class="n">get</span><span class="o">-</span><span class="n">basebackup</span> <span class="o">--</span><span class="n">config</span> <span class="n">pghoard</span><span class="o">.</span><span class="n">json</span> \
-    <span class="o">--</span><span class="n">target</span><span class="o">-</span><span class="nb">dir</span> <span class="o">&lt;</span><span class="n">destination</span><span class="o">&gt;</span> <span class="o">--</span><span class="n">restore</span><span class="o">-</span><span class="n">to</span><span class="o">-</span><span class="n">master</span>
+    <span class="o">--</span><span class="n">target</span><span class="o">-</span><span class="nb">dir</span> <span class="o">&lt;</span><span class="n">destination</span><span class="o">&gt;</span> <span class="o">--</span><span class="n">restore</span><span class="o">-</span><span class="n">to</span><span class="o">-</span><span class="n">primary</span>
 
 <span class="n">Basebackup</span> <span class="n">complete</span><span class="o">.</span>
 <span class="n">You</span> <span class="n">can</span> <span class="n">start</span> <span class="n">PostgreSQL</span> <span class="n">by</span> <span class="n">running</span> <span class="n">pg_ctl</span> <span class="o">-</span><span class="n">D</span> <span class="n">foo</span> <span class="n">start</span>

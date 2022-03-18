@@ -113,7 +113,7 @@ If we'd want to restore to the latest point in time we could fetch the
 required basebackup by running::
 
   pghoard_restore get-basebackup --config pghoard.json \
-      --target-dir <destination> --restore-to-master
+      --target-dir <destination> --restore-to-primary
 
   Basebackup complete.
   You can start PostgreSQL by running pg_ctl -D foo start
