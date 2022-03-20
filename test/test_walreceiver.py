@@ -1,10 +1,14 @@
+import logging
+import time
+from unittest import mock
+
+import psycopg2
+import pytest
+
 from pghoard.wal import get_current_lsn
 
 from .conftest import PGHoardForTest
 from .util import switch_wal, wait_for_xlog
-
-import logging
-import pytest
 
 
 def get_transfer_agent_upload_xlog_state(pghoard: PGHoardForTest):
@@ -69,3 +73,40 @@ class TestWalReceiver:
         state = get_transfer_agent_upload_xlog_state(pghoard)
         assert state.get("xlogs_since_basebackup") == 4
         assert state.get("latest_filename") == previous_wal_name
+
+    @pytest.mark.timeout(60)
+    def test_walreceiver_database_error(self, db, pghoard_walreceiver):
+        """Verify that we can recover from a DatabaseError exception
+        """
+
+        # Used for monkeypatching a psycopg2 Cursor object
+        class FakeCursor:
+            _raised = False
+
+            @classmethod
+            @property
+            def raised(cls):
+                return cls._raised
+
+            @classmethod
+            def read_message(cls):
+                cls._raised = True
+                raise psycopg2.DatabaseError
+
+        conn = db.connect()
+        conn.autocommit = True
+        pghoard = pghoard_walreceiver
+        node = pghoard.config["backup_sites"][pghoard.test_site]["nodes"][0]
+        pghoard.start_walreceiver(pghoard.test_site, node, None)
+        # Wait for a Cursor object to be created/assigned
+        while pghoard.walreceivers[pghoard.test_site].c is None:
+            time.sleep(0.5)
+
+        # Monkeypatch method in order to raise an exception
+        with mock.patch.object(pghoard.walreceivers[pghoard.test_site].c, "read_message", FakeCursor.read_message):
+            while FakeCursor.raised is False:
+                time.sleep(0.5)
+
+        switch_wal(conn)
+        wait_for_xlog(pghoard, 1)
+        conn.close()
