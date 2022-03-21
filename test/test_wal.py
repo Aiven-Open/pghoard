@@ -125,3 +125,209 @@ def test_verify_wal_starts_moves_fp_back():
         tmp_file.seek(10)
         wal.verify_wal(wal_name="0000002F000000110000009C", fileobj=tmp_file)
         assert tmp_file.tell() == 10
+
+
+def test_invalid_lsn():
+    with pytest.raises(
+        ValueError,
+        match="LSN constructor accepts either an int, or a %X/%X formatted string",
+    ):
+        wal.LSN("foo", 42)
+
+
+def test_wal_filename_no_timeline():
+    with pytest.raises(ValueError, match="LSN is not associated to a timeline"):
+        _ = wal.LSN(1234, 42).walfile_name
+
+
+def test_lsn_repr():
+    assert repr(wal.LSN(1234, 42)) == "LSN(0/4D2, server_version=42, timeline_id=None)"
+
+
+@pytest.mark.parametrize(
+    ["lsn1", "lsn2", "exc_message"],
+    [
+        (
+            wal.LSN(1234, 42),
+            type("", (object, ), {"lsn": 42})(),
+            "Cannot compare LSN to ",
+        ),
+        (
+            wal.LSN(1234, 42, timeline_id=1),
+            wal.LSN(1234, 42, timeline_id=2),
+            "Cannot compare LSN on different timelines",
+        ),
+        (
+            wal.LSN(1234, 42, timeline_id=1),
+            wal.LSN(1234, 43, timeline_id=1),
+            "Cannot compare LSN on different server versions",
+        ),
+    ],
+)
+def test_lsn_invalid_comparison(lsn1, lsn2, exc_message):
+    with pytest.raises(ValueError, match=exc_message):
+        assert lsn1 < lsn2
+
+
+@pytest.mark.parametrize(
+    ["value1", "value2", "result"],
+    [
+        (
+            wal.LSN(1234, 42),
+            wal.LSN(1234, 42),
+            True,
+        ),
+        (
+            wal.LSN(1234, 42),
+            wal.LSN(1235, 42),
+            False,
+        ),
+    ],
+)
+def test_lsn_compare_eq(value1, value2, result):
+    assert (value1 == value2) is result
+
+
+@pytest.mark.parametrize(
+    ["value1", "value2", "result"],
+    [
+        (
+            wal.LSN(1234, 42),
+            wal.LSN(1233, 42),
+            False,
+        ),
+        (
+            wal.LSN(1234, 42),
+            wal.LSN(1234, 42),
+            False,
+        ),
+        (
+            wal.LSN(1234, 42),
+            wal.LSN(1235, 42),
+            True,
+        ),
+    ],
+)
+def test_lsn_compare_lt(value1, value2, result):
+    assert (value1 < value2) is result
+
+
+@pytest.mark.parametrize(
+    ["value1", "value2", "result"],
+    [
+        (
+            wal.LSN(1234, 42),
+            wal.LSN(1233, 42),
+            False,
+        ),
+        (
+            wal.LSN(1234, 42),
+            wal.LSN(1234, 42),
+            True,
+        ),
+        (
+            wal.LSN(1234, 42),
+            wal.LSN(1235, 42),
+            True,
+        ),
+    ],
+)
+def test_lsn_compare_le(value1, value2, result):
+    assert (value1 <= value2) is result
+
+
+@pytest.mark.parametrize(
+    ["value1", "value2", "result"],
+    [
+        (
+            wal.LSN(1234, 42),
+            wal.LSN(1233, 42),
+            True,
+        ),
+        (
+            wal.LSN(1234, 42),
+            wal.LSN(1234, 42),
+            False,
+        ),
+        (
+            wal.LSN(1234, 42),
+            wal.LSN(1235, 42),
+            False,
+        ),
+    ],
+)
+def test_lsn_compare_gt(value1, value2, result):
+    assert (value1 > value2) is result
+
+
+@pytest.mark.parametrize(
+    ["value1", "value2", "result"],
+    [
+        (
+            wal.LSN(1234, 42),
+            wal.LSN(1233, 42),
+            True,
+        ),
+        (
+            wal.LSN(1234, 42),
+            wal.LSN(1234, 42),
+            True,
+        ),
+        (
+            wal.LSN(1234, 42),
+            wal.LSN(1235, 42),
+            False,
+        ),
+    ],
+)
+def test_lsn_compare_ge(value1, value2, result):
+    assert (value1 >= value2) is result
+
+
+@pytest.mark.parametrize(
+    ["value1", "value2", "result"],
+    [
+        (
+            wal.LSN(1234, 42),
+            wal.LSN(1233, 42),
+            1,
+        ),
+        (
+            wal.LSN(1234, 42),
+            wal.LSN(23, 42),
+            1211,
+        ),
+        (
+            wal.LSN(1234, 42),
+            234,
+            1000,
+        ),
+    ],
+)
+def test_lsn_sub(value1, value2, result):
+    assert (value1 - value2) == result
+
+
+def test_no_previous_wal():
+    assert wal.LSN(wal.WAL_SEG_SIZE - 23, 42).previous_walfile_start_lsn is None
+
+
+def test_lsn_at_timeline():
+    assert wal.LSN(1234, 42).at_timeline(23) == wal.LSN("0/4D2", 42, 23)
+
+
+@pytest.mark.parametrize(
+    ["server_version", "segments"],
+    [
+        (
+            90200,
+            255,
+        ),
+        (90300, 256),
+        (90301, 256),
+        (100000, 256),
+        (150000, 256),
+    ],
+)
+def test_segments_per_xlogid(server_version, segments):
+    assert wal.segments_per_xlogid(server_version) == segments

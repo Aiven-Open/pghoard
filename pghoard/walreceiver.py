@@ -8,6 +8,7 @@ import datetime
 import logging
 import os
 import select
+import time
 from io import BytesIO
 from queue import Empty, Queue
 
@@ -162,6 +163,7 @@ class WALReceiver(PGHoardThread):
             except psycopg2.DatabaseError as ex:
                 self.log.exception("Unexpected exception in reading walreceiver msg")
                 self.metrics.unexpected_exception(ex, where="walreceiver_run")
+                time.sleep(1)
                 continue
             self.log.debug("replication_msg: %r, buffer: %r/%r", msg, self.buffer.tell(), WAL_SEG_SIZE)
             if msg:

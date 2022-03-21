@@ -61,11 +61,11 @@ class LSN:
         self.server_version = server_version
         if isinstance(value, int):
             self.lsn = value
-        elif isinstance(value, str):
+        elif isinstance(value, str) and "/" in value:
             log_hex, seg_hex = value.split("/", 1)
             self.lsn = ((int(log_hex, 16) << 32) + int(seg_hex, 16))
         else:
-            raise ValueError("LSN constructor accepts either an int, " "or a %X/%X formatted string")
+            raise ValueError("LSN constructor accepts either an int, or a %X/%X formatted string")
 
     @property
     def _segments_per_xlogid(self) -> int:
@@ -132,7 +132,7 @@ class LSN:
         self._assert_sane_for_comparison(other)
         return self.lsn < other.lsn
 
-    def __lte__(self, other) -> bool:
+    def __le__(self, other) -> bool:
         self._assert_sane_for_comparison(other)
         return self.lsn <= other.lsn
 
@@ -140,7 +140,7 @@ class LSN:
         self._assert_sane_for_comparison(other)
         return self.lsn > other.lsn
 
-    def __gte__(self, other) -> bool:
+    def __ge__(self, other) -> bool:
         self._assert_sane_for_comparison(other)
         return self.lsn >= other.lsn
 
