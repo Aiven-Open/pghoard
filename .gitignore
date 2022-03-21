@@ -20,3 +20,4 @@ __pycache__/
 /.venv/
 *.orig
 /pghoard-rpm-src/
+coverage.xml
