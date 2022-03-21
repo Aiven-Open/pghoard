@@ -5,11 +5,8 @@ coverage:
         # basic
         target: auto
         threshold: 0%
-        base: auto
        # advanced settings
-        branches:
-          - main
         if_ci_failed: error #success, failure, error, ignore
-        informational: true
         only_pulls: false
+        if_not_found: failure
 
