@@ -701,3 +701,12 @@ class TestWebServer:
         status = conn.getresponse().status
         assert status == 201
         assert pghoard.requested_basebackup_sites == {"test_requesting_basebackup"}
+
+    def test_running_setter(self, pghoard):
+        assert pghoard.webserver.running is True
+        pghoard.webserver.running = True
+        assert pghoard.webserver.running is True
+        pghoard.webserver.running = False
+        assert pghoard.webserver.running is False
+        pghoard.webserver.running = True
+        assert pghoard.webserver.running is True
