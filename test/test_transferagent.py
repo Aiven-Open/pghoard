@@ -8,7 +8,7 @@ import os
 import time
 from pathlib import Path
 from queue import Empty, Queue
-from unittest.mock import ANY, Mock
+from unittest.mock import ANY, Mock, patch
 
 import pytest
 
@@ -239,3 +239,20 @@ class TestTransferAgent(PGHoardTestCase):
         self.transfer_agent.exception = None
         with pytest.raises(TypeError, match="Invalid transfer operation noop"):
             raise exc
+
+    @pytest.mark.parametrize("exception", [FileNotFoundFromStorageError, Exception])
+    def test_handle_list_error(self, exception):
+        """Check that handle_list returns the correct CallbackEvent upon error.
+        """
+        with patch.object(self.transfer_agent, "get_object_storage", side_effect=exception):
+            evt = self.transfer_agent.handle_list(self.test_site, "foo", "bar")
+            assert evt.success is False
+            assert isinstance(evt.exception, exception)
+
+    def test_handle_metadata_error(self):
+        """Check that handle_metadata returns the correct CallbackEvent upon error.
+        """
+        with patch.object(self.transfer_agent, "get_object_storage", side_effect=Exception):
+            evt = self.transfer_agent.handle_metadata(self.test_site, "foo", "bar")
+            assert evt.success is False
+            assert isinstance(evt.exception, Exception)
