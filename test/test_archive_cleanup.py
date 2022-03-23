@@ -49,10 +49,10 @@ def test_archive_cleanup_missing_file(archive_cleaner):
     # make sure we don't err out if a file could not be found
     with mock.patch.object(archive_cleaner.archive_cleanup.storage, "list_iter") as list_iter:
         list_iter.return_value = [{
-            'name': 'example-site/xlog/000000010000000000000001',
-            'size': 0,
-            'last_modified': datetime.datetime(2022, 3, 23, 18, 32, 38, 810545, tzinfo=datetime.timezone.utc),
-            'metadata': {
+            "name": "example-site/xlog/000000010000000000000001",
+            "size": 0,
+            "last_modified": datetime.datetime(2022, 3, 23, 18, 32, 38, 810545, tzinfo=datetime.timezone.utc),
+            "metadata": {
                 "start-wal-segment": "example-site/xlog/000000010000000000000002"
             }
         }]
