@@ -7,6 +7,8 @@ See LICENSE for details
 import json
 import os
 import shutil
+import sys
+from unittest import mock
 
 import pytest
 
@@ -40,3 +42,24 @@ def test_write_keys_in_old_config(tmpdir):
     with pytest.raises(InvalidConfigurationError) as excinfo:
         create_keys.save_keys(config_file, "nosite", "testkey", private, public)
     assert "not defined" in str(excinfo.value)
+
+
+def test_show_key_config_no_site():
+    with pytest.raises(create_keys.CommandError, match="Site must be defined if configuration file is not provided"):
+        create_keys.show_key_config(None, "foo", "bar", "baz")
+
+
+def test_create_keys_main(tmp_path):
+    config = {"backup_sites": {"default": {}}}
+    config_file = (tmp_path / "test.json")
+    config_file.write_text(json.dumps(config, indent=4))
+
+    args = ["create_keys", "--key-id", "foo", "--config", (tmp_path / "test.json").as_posix()]
+    with mock.patch.object(sys, "argv", args):
+        create_keys.main()
+
+    with open(config_file.as_posix(), "r") as f:
+        result = json.load(f)
+
+    assert result["backup_sites"]["default"]["encryption_key_id"] == "foo"
+    assert result["backup_sites"]["default"]["encryption_keys"]["foo"].keys() == {"private", "public"}
