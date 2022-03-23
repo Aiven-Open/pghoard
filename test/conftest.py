@@ -15,6 +15,7 @@ import subprocess
 import tempfile
 import time
 from contextlib import suppress
+from dataclasses import dataclass
 from distutils.version import LooseVersion
 from pathlib import Path
 from typing import Optional
@@ -26,6 +27,7 @@ from py import path as py_path  # pylint: disable=no-name-in-module
 
 from pghoard import config as pghconfig
 from pghoard import logutil, pgutil
+from pghoard.archive_cleanup import ArchiveCleanup
 from pghoard.pghoard import PGHoard
 from pghoard.rohmu.delta.common import EMBEDDED_FILE_SIZE, Progress
 from pghoard.rohmu.delta.snapshot import Snapshotter
@@ -394,3 +396,64 @@ def fixture_snapshotter(tmpdir):
     dst = Path(tmpdir) / "dst"
     dst.mkdir()
     yield SnapshotterWithDefaults(src=src, dst=dst, globs=["*"], parallel=1)
+
+
+@dataclass(frozen=True)
+class ArchiveCleaner:
+    archive_cleanup: ArchiveCleanup
+    config_path: Path
+    xlog_path: Path
+
+
+@pytest.fixture(name="archive_cleaner")
+def fixture_archive_cleaner(tmp_path):
+    """Populates a pghoard backup directory with files that resemble a
+       basebackup and WALs and creates an instance of ArchiveCleanup.
+    """
+    with open("pghoard-local-minimal.json", "r") as f:
+        config = json.load(f)
+    config["backup_sites"]["example-site"]["object_storage"]["directory"] = (tmp_path / "backups").as_posix()
+    config["json_state_file_path"] = (tmp_path / "pghoard_state.json").as_posix()
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps(config, indent=4))
+
+    archive_cleanup = ArchiveCleanup()
+    archive_cleanup.set_config(config_path, "example-site")
+
+    bb_metadata = {
+        "backup-decision-time": "2022-03-23T14:57:55.883514+00:00",
+        "backup-reason": "scheduled",
+        "start-time": "2022-03-23T15:57:55+01:00",
+        "start-wal-segment": "000000010000000000000002",
+        "active-backup-mode": "basic",
+        "pg-version": "130006",
+        "compression-algorithm": "snappy",
+        "compression-level": "0",
+        "original-file-size": "25933312",
+        "host": "toolbox"
+    }
+    bb_path = tmp_path / "backups" / "example-site" / "basebackup"
+    bb_path.mkdir(parents=True)
+    (bb_path / "2022-03-23_14-57_0").touch()
+    (bb_path / "2022-03-23_14-57_0.metadata").write_text(json.dumps(bb_metadata, indent=4))
+
+    xlog_metadata = {
+        "pg-version": "130006",
+        "compression-algorithm": "snappy",
+        "compression-level": "0",
+        "original-file-size": "16777216",
+        "host": "toolbox",
+        "hash": "d6398f89d3dbf9ce8f68bbe5c07cc0208415a8ff",
+        "hash-algorithm": "sha1"
+    }
+
+    xlog_path = tmp_path / "backups" / "example-site" / "xlog"
+    xlog_path.mkdir()
+    (xlog_path / "000000010000000000000005").touch()
+    (xlog_path / "000000010000000000000005.metadata").write_text(json.dumps(xlog_metadata, indent=4))
+
+    # This one is orphaned
+    (xlog_path / "000000010000000000000001").touch()
+    (xlog_path / "000000010000000000000001.metadata").write_text(json.dumps(xlog_metadata, indent=4))
+
+    yield ArchiveCleaner(archive_cleanup=archive_cleanup, config_path=config_path, xlog_path=xlog_path)
