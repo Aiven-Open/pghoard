@@ -8,11 +8,15 @@ import datetime
 import io
 import json
 import os
+import sys
 import tarfile
 import time
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+import pytest
+
+import pghoard.pghoard as pghoard_module
 from pghoard import common
 from pghoard.common import (BaseBackupFormat, FileType, create_alert_file, delete_alert_file, write_json_file)
 from pghoard.pghoard import PGHoard
@@ -635,3 +639,26 @@ class TestPGHoardWithPG:
 
         # We should now process all created segments, not only the ones which were created after pg_receivewal was restarted
         wait_for_xlog(pghoard, n_xlogs + 10)
+
+
+def test_pghoard_main_config_does_not_exist():
+    args = ["pghoard", "--config", "pghoard-config-does-not-exist.json"]
+    with patch.object(sys, "argv", args):
+        assert pghoard_module.main() == 1
+
+
+def test_pghoard_main_invalid_config():
+    args = ["pghoard", "--config", "/etc/os-release"]
+    with patch.object(sys, "argv", args):
+        with patch.object(pghoard_module.multiprocessing, "set_start_method", Mock()):
+            assert pghoard_module.main() == 1
+
+
+def test_pghoard_invalid_config():
+    with pytest.raises(pghoard_module.InvalidConfigurationError):
+        PGHoard("pghoard-config-does-not-exist.json")
+
+
+def test_pghoard_no_pgdata_dir():
+    with pytest.raises(FileNotFoundError, match="/path/where/my/pgdata/resides/PG_VERSION"):
+        PGHoard("pghoard.json").run()

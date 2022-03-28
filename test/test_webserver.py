@@ -12,6 +12,7 @@ import time
 from distutils.version import LooseVersion
 from http.client import HTTPConnection
 from queue import Queue
+from unittest import mock
 
 import psycopg2
 import pytest
@@ -701,3 +702,37 @@ class TestWebServer:
         status = conn.getresponse().status
         assert status == 201
         assert pghoard.requested_basebackup_sites == {"test_requesting_basebackup"}
+
+    def test_running_setter(self, pghoard):
+        assert pghoard.webserver.running is True
+        pghoard.webserver.running = True
+        assert pghoard.webserver.running is True
+        pghoard.webserver.running = False
+        assert pghoard.webserver.running is False
+        pghoard.webserver.running = True
+        assert pghoard.webserver.running is True
+
+    def test_response_handler_exception(self, pghoard):
+        conn = HTTPConnection(host="127.0.0.1", port=pghoard.config["http_port"])
+        with mock.patch.object(
+            pghoard.webserver.server.RequestHandlerClass, "_parse_request", side_effect=Exception("just a test")
+        ):
+            conn.request("PUT", "/{}/archive/basebackup".format(pghoard.test_site))
+            resp = conn.getresponse()
+            assert resp.status == 503
+            assert resp.read() == b"server failure: Exception: just a test"
+
+    def test_parse_request_path_too_short(self, pghoard):
+        conn = HTTPConnection(host="127.0.0.1", port=pghoard.config["http_port"])
+        conn.request("GET", "/foo")
+        resp = conn.getresponse()
+        assert resp.status == 400
+        assert resp.read() == b"Invalid path ['foo']"
+
+    def test_parse_request_invalid_path(self, pghoard):
+        "/{}/archive/xlog".format(pghoard.test_site)
+        conn = HTTPConnection(host="127.0.0.1", port=pghoard.config["http_port"])
+        conn.request("PUT", "/{}/archive/000000000000000000000000/foo".format(pghoard.test_site))
+        resp = conn.getresponse()
+        assert resp.status == 400
+        assert resp.read() == b"Invalid 'archive' request, only single file retrieval is supported for now"

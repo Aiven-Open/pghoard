@@ -8,7 +8,9 @@ See LICENSE for details
 
 from pytest import raises
 
-from pghoard.pgutil import (create_connection_string, get_connection_info, mask_connection_info)
+from pghoard.pgutil import (
+    create_connection_string, get_connection_info, get_connection_info_from_config_line, mask_connection_info
+)
 
 
 def test_connection_info():
@@ -62,3 +64,8 @@ def test_mask_connection_info():
     masked_masked = mask_connection_info(masked_str)
     _, masked_password_info = masked_masked.split("; ", 1)
     assert masked_password_info == "no password"
+
+
+def test_connection_info_from_config_line():
+    conn_info = get_connection_info_from_config_line("db1='localhost port=5432 dbname=mydb connect_timeout=10'")
+    assert conn_info == {"localhost port": "5432", "dbname": "mydb", "connect_timeout": "10"}

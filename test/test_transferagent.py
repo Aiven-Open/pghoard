@@ -8,14 +8,14 @@ import os
 import time
 from pathlib import Path
 from queue import Empty, Queue
-from unittest.mock import ANY, Mock
+from unittest.mock import ANY, Mock, patch
 
 import pytest
 
 from pghoard import metrics
 from pghoard.common import CallbackEvent, FileType, QuitEvent
 from pghoard.rohmu.errors import FileNotFoundFromStorageError, StorageError
-from pghoard.transfer import DownloadEvent, TransferAgent, UploadEvent
+from pghoard.transfer import (BaseTransferEvent, DownloadEvent, TransferAgent, UploadEvent)
 
 # pylint: disable=attribute-defined-outside-init
 from .base import PGHoardTestCase
@@ -222,3 +222,37 @@ class TestTransferAgent(PGHoardTestCase):
         os.unlink(alert_file_path)
         expected_sleeps = [0.5, 1, 2, 4, 8, 16, 20, 20]
         assert sleeps[:8] == expected_sleeps
+
+    @pytest.mark.timeout(30)
+    def test_unknown_operation_raises_exception(self):
+        class DummyEvent(BaseTransferEvent):
+            backup_site_name = self.test_site
+            file_type = "bar"
+            file_path = "baz"
+            operation = "noop"
+
+        self.transfer_queue.put(DummyEvent)
+        while self.transfer_agent.exception is None:
+            time.sleep(0.5)
+
+        exc = self.transfer_agent.exception
+        self.transfer_agent.exception = None
+        with pytest.raises(TypeError, match="Invalid transfer operation noop"):
+            raise exc
+
+    @pytest.mark.parametrize("exception", [FileNotFoundFromStorageError, Exception])
+    def test_handle_list_error(self, exception):
+        """Check that handle_list returns the correct CallbackEvent upon error.
+        """
+        with patch.object(self.transfer_agent, "get_object_storage", side_effect=exception):
+            evt = self.transfer_agent.handle_list(self.test_site, "foo", "bar")
+            assert evt.success is False
+            assert isinstance(evt.exception, exception)
+
+    def test_handle_metadata_error(self):
+        """Check that handle_metadata returns the correct CallbackEvent upon error.
+        """
+        with patch.object(self.transfer_agent, "get_object_storage", side_effect=Exception):
+            evt = self.transfer_agent.handle_metadata(self.test_site, "foo", "bar")
+            assert evt.success is False
+            assert isinstance(evt.exception, Exception)
