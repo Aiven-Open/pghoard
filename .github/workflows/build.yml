@@ -1,5 +1,8 @@
 name: Build pghoard
 
+# Default to read-only access to all APIs.
+permissions: read-all
+
 on:
   push:
     branches:
@@ -21,6 +24,9 @@ jobs:
 
       - id: checkout-code
         uses: actions/checkout@v2
+        with:
+          # Do not persist the token during execution of this job.
+          persist-credentials: false
 
       - id: prepare-python
         uses: actions/setup-python@v2
@@ -84,6 +90,7 @@ jobs:
         run: make coverage
 
       - id: upload-codecov
-        uses: codecov/codecov-action@v2
+        # Third-party action pinned to v2.1.0
+        uses: codecov/codecov-action@f32b3a3741e1053eb607407145bc9619351dc93b
         with:
           verbose: true
