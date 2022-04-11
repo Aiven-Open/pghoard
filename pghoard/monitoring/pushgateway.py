@@ -45,8 +45,7 @@ class PushgatewayClient:
         for k, v in sorted(tags.items()):
             tag_list.append("{}=\"{}\"".format(k, v))
 
-        encoded_tags = "{{{}}}".format(", ".join(tag_list))
-        return """
-        # TYPE {0} {1}
-        {0}{2} {3}
-        """.format(metric, metric_type, encoded_tags, value)
+        encoded_tags = "{{{}}}".format(",".join(tag_list))
+        return """# TYPE {0} {1}
+{0}{2} {3}
+""".format(metric, metric_type, encoded_tags, value)
