@@ -79,7 +79,12 @@ class WALReceiver(PGHoardThread):
             self.c.execute("TIMELINE_HISTORY {}".format(max_timeline))
             timeline_history = self.c.fetchone()
             history_filename = timeline_history[0]
-            history_data = timeline_history[1].tobytes()
+            # Type changed from BYTEA to TEXT with PG14, see
+            # https://git.postgresql.org/gitweb/?p=postgresql.git;a=commit;h=66a8f090485e3e897a4804121fdbe856cba72d70
+            if isinstance(timeline_history[1], memoryview):
+                history_data = timeline_history[1].tobytes()
+            else:
+                history_data = timeline_history[1].encode()
             self.log.debug("Received timeline history: %s for timeline %r", history_filename, max_timeline)
 
             compression_event = CompressionEvent(
