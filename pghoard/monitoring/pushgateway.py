@@ -34,8 +34,7 @@ class PushgatewayClient:
         if len(self._endpoint) == 0:
             return
 
-        if not self._instance:
-            instance = tags.get("site", socket.gethostname())
+        instance = self._instance if self._instance else tags.get("site", socket.gethostname())
 
         data = self._build_data(metric, metric_type, value, tags)
         requests.post("{}/metrics/job/{}/instance/{}".format(self._endpoint, self._job, instance), data=data)
