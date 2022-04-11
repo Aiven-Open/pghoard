@@ -88,6 +88,7 @@ class WALReceiver(PGHoardThread):
             self.log.debug("Received timeline history: %s for timeline %r", history_filename, max_timeline)
 
             compression_event = CompressionEvent(
+                callback_queue=Queue(),  # added so the event can be created, but the result is currently ignored
                 compress_to_memory=True,
                 source_data=BytesIO(history_data),
                 file_path=FileTypePrefixes[FileType.Timeline] / history_filename,
