@@ -1,4 +1,5 @@
 import logging
+import os.path
 import time
 from unittest import mock
 
@@ -110,3 +111,19 @@ class TestWalReceiver:
         switch_wal(conn)
         wait_for_xlog(pghoard, 1)
         conn.close()
+
+    def test_walreceiver_multiple_timelines(self, recovery_db, pghoard_walreceiver_recovery):
+        """As we want to fetch all timeline history files when starting up, promote a PG instance
+           to bump the timeline and create a history file.
+        """
+        recovery_db.run_cmd("pg_ctl", "-D", recovery_db.pgdata, "promote")
+        pghoard = pghoard_walreceiver_recovery
+        node = pghoard.config["backup_sites"][pghoard.test_site]["nodes"][0]
+        pghoard.start_walreceiver(pghoard.test_site, node, None)
+        with recovery_db.connect() as conn:
+            switch_wal(conn)
+            wait_for_xlog(pghoard, 1)
+            storage = pghoard.get_or_create_site_storage(site=pghoard.test_site)
+            files = storage.list_path(os.path.join("test_walreceiver_multiple_timelines", "timeline"))
+            assert len(files) == 1
+            assert files[0]["name"] == "test_walreceiver_multiple_timelines/timeline/00000002.history"
