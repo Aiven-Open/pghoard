@@ -42,7 +42,7 @@ class PushgatewayClient:
     def _build_data(self, metric, metric_type, value, tags):
         metric = metric.replace(".", "_").replace("-", "_")
         tag_list = []
-        for k, v in tags.items():
+        for k, v in sorted(tags.items()):
             tag_list.append("{}=\"{}\"".format(k, v))
 
         encoded_tags = "{{{}}}".format(", ".join(tag_list))
