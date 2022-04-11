@@ -40,7 +40,7 @@ class PushgatewayClient:
         requests.post("{}/metrics/job/{}/instance/{}".format(self._endpoint, self._job, instance), data=data)
 
     def _build_data(self, metric, metric_type, value, tags):
-        metric = metric.replace(".", "_")
+        metric = metric.replace(".", "_").replace("-", "_")
         tag_list = []
         for k, v in tags.items():
             tag_list.append("{}=\"{}\"".format(k, v))
