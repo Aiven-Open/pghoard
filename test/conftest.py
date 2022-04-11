@@ -165,14 +165,14 @@ def setup_pg():
             tmpdir_obj.remove(rec=1)
 
 
-@pytest.yield_fixture(scope="session", name="db")
+@pytest.fixture(scope="session", name="db")
 def fixture_db():
     with setup_pg() as pg:
         yield pg
 
 
-@pytest.yield_fixture(scope="session")
-def recovery_db():
+@pytest.fixture(scope="session", name="recovery_db")
+def fixture_recovery_db():
     with setup_pg() as pg:
         # Make sure pgespresso extension is installed before we turn this into a standby
         conn_str = pgutil.create_connection_string(pg.user)
@@ -207,20 +207,20 @@ def recovery_db():
         yield pg
 
 
-@pytest.yield_fixture  # pylint: disable=redefined-outer-name
-def pghoard(db, tmpdir, request):  # pylint: disable=redefined-outer-name
+@pytest.fixture(name="pghoard")
+def fixture_pghoard(db, tmpdir, request):
     yield from pghoard_base(db, tmpdir, request)
 
 
-@pytest.yield_fixture
-def pghoard_walreceiver(db, tmpdir, request):
+@pytest.fixture(name="pghoard_walreceiver")
+def fixture_pghoard_walreceiver(db, tmpdir, request):
     # Initialize with only one transfer agent, as we want a reliable
     # last transfered state.
     yield from pghoard_base(db, tmpdir, request, active_backup_mode="walreceiver", transfer_count=1, compression_count=1)
 
 
-@pytest.yield_fixture  # pylint: disable=redefined-outer-name
-def pghoard_separate_volume(db, tmpdir, request):
+@pytest.fixture(name="pghoard_separate_volume")
+def fixture_pghoard_separate_volume(db, tmpdir, request):
     tmpfs_volume = os.path.join(str(tmpdir), "tmpfs")
     os.makedirs(tmpfs_volume, exist_ok=True)
     # Tests that require separate volume with restricted space can only be run in
@@ -351,18 +351,18 @@ def pghoard_base(
     pgh.quit()
 
 
-@pytest.yield_fixture  # pylint: disable=redefined-outer-name
-def pghoard_lzma(db, tmpdir, request):  # pylint: disable=redefined-outer-name
+@pytest.fixture(name="pghoard_lzma")
+def fixture_pghoard_lzma(db, tmpdir, request):
     yield from pghoard_base(db, tmpdir, request, compression="lzma")
 
 
-@pytest.yield_fixture  # pylint: disable=redefined-outer-name
-def pghoard_no_mp(db, tmpdir, request):  # pylint: disable=redefined-outer-name
+@pytest.fixture(name="pghoard_no_mp")
+def fixture_pghoard_no_mp(db, tmpdir, request):
     yield from pghoard_base(db, tmpdir, request, transfer_count=1)
 
 
-@pytest.yield_fixture  # pylint: disable=redefined-outer-name
-def pghoard_metrics(db, tmpdir, request):  # pylint: disable=redefined-outer-name
+@pytest.fixture(name="pghoard_metrics")
+def fixture_pghoard_metrics(db, tmpdir, request):
     metrics_cfg = {
         "prometheus": {
             "tags": {
