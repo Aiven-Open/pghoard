@@ -20,9 +20,6 @@ class PushgatewayClient:
     def increase(self, metric, inc_value=1, tags=None):
         self._send(metric, "counter", inc_value, tags)
 
-    def timing(self, metric, value, tags=None):
-        self._send(metric, "gauge", value, tags)
-
     def unexpected_exception(self, ex, where, tags=None):
         pass
 

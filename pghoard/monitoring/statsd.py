@@ -22,9 +22,6 @@ class StatsClient:
     def increase(self, metric, inc_value=1, tags=None):
         self._send(metric, b"c", inc_value, tags)
 
-    def timing(self, metric, value, tags=None):
-        self._send(metric, b"ms", value, tags)
-
     def unexpected_exception(self, ex, where, tags=None):
         all_tags = {
             "exception": ex.__class__.__name__,
