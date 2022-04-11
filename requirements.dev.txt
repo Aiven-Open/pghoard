@@ -12,6 +12,7 @@ yapf==0.30.0
 isort==5.7.0
 coverage
 coveralls
+freezegun>=1.2
 responses
 unify
 types-botocore
