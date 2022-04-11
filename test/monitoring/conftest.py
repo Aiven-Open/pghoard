@@ -1,8 +1,11 @@
 import dataclasses
 import http
 import http.server
+import selectors
+import socket
 from concurrent.futures import ThreadPoolExecutor
-from typing import Iterator
+from types import TracebackType
+from typing import Iterator, Type
 
 import pytest
 
@@ -48,3 +51,27 @@ def fixture_logging_server(shared_logging_server: LoggingServer) -> Iterator[Log
         yield shared_logging_server
     finally:
         shared_logging_server.requests.clear()
+
+
+class UdpServer:
+    def __init__(self, port: int) -> None:
+        self.port = port
+        self.socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
+
+    def __enter__(self) -> "UdpServer":
+        self.socket.bind(("localhost", self.port))
+        return self
+
+    def __exit__(self, exc_type: Type, exc_val: BaseException, exc_tb: TracebackType) -> None:
+        self.socket.close()
+
+    def has_message(self) -> bool:
+        selector = selectors.DefaultSelector()
+        selector.register(self.socket, selectors.EVENT_READ)
+        try:
+            return len(selector.select(timeout=-1)) > 0
+        finally:
+            selector.unregister(self.socket)
+
+    def get_message(self) -> str:
+        return self.socket.recv(2048).decode()
