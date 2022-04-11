@@ -1,5 +1,5 @@
 from test.monitoring.conftest import UdpServer
-from typing import Iterator
+from typing import Callable, Iterator
 
 import pytest
 
@@ -7,8 +7,8 @@ from pghoard.monitoring.statsd import StatsClient
 
 
 @pytest.fixture(name="udp_server")
-def fixture_udp_server() -> Iterator[UdpServer]:
-    with UdpServer(port=8125) as udp_server:
+def fixture_udp_server(get_available_port: Callable[[], int]) -> Iterator[UdpServer]:
+    with UdpServer(port=get_available_port()) as udp_server:
         yield udp_server
 
 

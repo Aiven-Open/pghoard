@@ -5,7 +5,7 @@ import selectors
 import socket
 from concurrent.futures import ThreadPoolExecutor
 from types import TracebackType
-from typing import Iterator, Type
+from typing import Callable, Iterator, Type
 
 import pytest
 
@@ -34,8 +34,8 @@ class LoggingRequestHandler(http.server.BaseHTTPRequestHandler):
 
 
 @pytest.fixture(scope="module", name="shared_logging_server")
-def fixture_shared_logging_server() -> Iterator[LoggingServer]:
-    server_address = ("localhost", 50000)
+def fixture_shared_logging_server(get_available_port: Callable[[], int]) -> Iterator[LoggingServer]:
+    server_address = ("localhost", get_available_port())
     server = LoggingServer(server_address, RequestHandlerClass=LoggingRequestHandler, bind_and_activate=True)
     with ThreadPoolExecutor(max_workers=1) as executor:
         executor.submit(server.serve_forever)

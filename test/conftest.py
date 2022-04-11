@@ -11,6 +11,7 @@ import os
 import random
 import re
 import signal
+import socket
 import subprocess
 import tempfile
 import time
@@ -18,7 +19,7 @@ from contextlib import suppress
 from dataclasses import dataclass
 from distutils.version import LooseVersion
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 from unittest import SkipTest
 
 import psycopg2
@@ -34,6 +35,32 @@ from pghoard.rohmu.delta.snapshot import Snapshotter
 from pghoard.rohmu.snappyfile import snappy
 
 logutil.configure_logging()
+
+
+def port_is_listening(hostname: str, port: int, timeout: float = 0.5) -> bool:
+    try:
+        connection = socket.create_connection((hostname, port), timeout)
+        connection.close()
+        return True
+    except socket.error:
+        return False
+
+
+@pytest.fixture(scope="session", name="get_available_port")
+def fixture_get_available_port() -> Callable[[], int]:
+    first_free_port = 30000
+
+    def get_available_port():
+        nonlocal first_free_port
+        port = first_free_port
+        while port < 40000:
+            if not port_is_listening("localhost", port):
+                first_free_port = port + 1
+                return port
+            port += 1
+        raise RuntimeError("No available port")
+
+    return get_available_port
 
 
 class PGTester:
