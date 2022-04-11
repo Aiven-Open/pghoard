@@ -21,7 +21,12 @@ class PushgatewayClient:
         self._send(metric, "counter", inc_value, tags)
 
     def unexpected_exception(self, ex, where, tags=None):
-        pass
+        all_tags = {
+            "exception": ex.__class__.__name__,
+            "where": where,
+        }
+        all_tags.update(tags or {})
+        self.increase("pghoard.exception", tags=all_tags)
 
     def _send(self, metric, metric_type, value, tags):
         if len(self._endpoint) == 0:
