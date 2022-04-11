@@ -29,6 +29,8 @@ class PushgatewayClient:
         self.increase("pghoard.exception", tags=all_tags)
 
     def _send(self, metric, metric_type, value, tags):
+        tags = {**self._tags, **tags} if tags else {**self._tags}
+
         if len(self._endpoint) == 0:
             return
 
