@@ -631,8 +631,7 @@ class PGBaseBackup(PGHoardThread):
             metadata.update(extra_metadata)
         # FIXME: handle the key computation before here
         chunk_path = Path(chunk_path)
-        base_repo = chunk_path.parent.parent.parent
-        chunk_name = chunk_path.relative_to(base_repo)
+        chunk_name = chunk_path.relative_to(chunk_path.parent.parent)
         if file_type == FileType.Basebackup_chunk:
             middle_path = Path("basebackup_chunk")
         elif file_type == FileType.Basebackup:
@@ -641,6 +640,9 @@ class PGBaseBackup(PGHoardThread):
         elif file_type == FileType.Basebackup_delta:
             middle_path = Path("basebackup_delta")
             chunk_name = chunk_name.name
+        else:
+            raise NotImplementedError(f"Unrecognizable file type: {file_type}")
+
         self.transfer_queue.put(
             UploadEvent(
                 callback_queue=callback_queue,
