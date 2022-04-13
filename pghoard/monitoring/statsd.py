@@ -22,9 +22,6 @@ class StatsClient:
     def increase(self, metric, inc_value=1, tags=None):
         self._send(metric, b"c", inc_value, tags)
 
-    def timing(self, metric, value, tags=None):
-        self._send(metric, b"ms", value, tags)
-
     def unexpected_exception(self, ex, where, tags=None):
         all_tags = {
             "exception": ex.__class__.__name__,
@@ -46,7 +43,7 @@ class StatsClient:
         send_tags = self._tags.copy()
         send_tags.update(tags or {})
         if self._message_format == "datadog":
-            for index, (tag, val) in enumerate(send_tags.items()):
+            for index, (tag, val) in enumerate(sorted(send_tags.items())):
                 if index == 0:
                     separator = "|#"
                 else:
@@ -57,7 +54,7 @@ class StatsClient:
                     pattern = "{}{}:{}"
                 parts.append(pattern.format(separator, tag, val).encode("utf-8"))
         else:
-            for tag, val in send_tags.items():
+            for tag, val in reversed(sorted(send_tags.items())):
                 parts.insert(1, ",{}={}".format(tag, val).encode("utf-8"))
 
         self._socket.sendto(b"".join(parts), self._dest_addr)

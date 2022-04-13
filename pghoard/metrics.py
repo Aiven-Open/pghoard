@@ -33,10 +33,6 @@ class Metrics:
         for client in self.clients.values():
             client.increase(metric, inc_value, tags)
 
-    def timing(self, metric, value, tags=None):
-        for client in self.clients.values():
-            client.timing(metric, value, tags)
-
     def unexpected_exception(self, ex, where, tags=None):
         for client in self.clients.values():
             client.unexpected_exception(ex, where, tags)

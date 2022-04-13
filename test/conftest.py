@@ -11,6 +11,7 @@ import os
 import random
 import re
 import signal
+import socket
 import subprocess
 import tempfile
 import time
@@ -18,7 +19,7 @@ from contextlib import suppress
 from dataclasses import dataclass
 from distutils.version import LooseVersion
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 from unittest import SkipTest
 
 import psycopg2
@@ -34,6 +35,32 @@ from pghoard.rohmu.delta.snapshot import Snapshotter
 from pghoard.rohmu.snappyfile import snappy
 
 logutil.configure_logging()
+
+
+def port_is_listening(hostname: str, port: int, timeout: float = 0.5) -> bool:
+    try:
+        connection = socket.create_connection((hostname, port), timeout)
+        connection.close()
+        return True
+    except socket.error:
+        return False
+
+
+@pytest.fixture(scope="session", name="get_available_port")
+def fixture_get_available_port() -> Callable[[], int]:
+    first_free_port = 30000
+
+    def get_available_port():
+        nonlocal first_free_port
+        port = first_free_port
+        while port < 40000:
+            if not port_is_listening("localhost", port):
+                first_free_port = port + 1
+                return port
+            port += 1
+        raise RuntimeError("No available port")
+
+    return get_available_port
 
 
 class PGTester:
@@ -165,14 +192,14 @@ def setup_pg():
             tmpdir_obj.remove(rec=1)
 
 
-@pytest.yield_fixture(scope="session", name="db")
+@pytest.fixture(scope="session", name="db")
 def fixture_db():
     with setup_pg() as pg:
         yield pg
 
 
-@pytest.yield_fixture(scope="session")
-def recovery_db():
+@pytest.fixture(scope="session", name="recovery_db")
+def fixture_recovery_db():
     with setup_pg() as pg:
         # Make sure pgespresso extension is installed before we turn this into a standby
         conn_str = pgutil.create_connection_string(pg.user)
@@ -207,20 +234,20 @@ def recovery_db():
         yield pg
 
 
-@pytest.yield_fixture  # pylint: disable=redefined-outer-name
-def pghoard(db, tmpdir, request):  # pylint: disable=redefined-outer-name
+@pytest.fixture(name="pghoard")
+def fixture_pghoard(db, tmpdir, request):
     yield from pghoard_base(db, tmpdir, request)
 
 
-@pytest.yield_fixture
-def pghoard_walreceiver(db, tmpdir, request):
+@pytest.fixture(name="pghoard_walreceiver")
+def fixture_pghoard_walreceiver(db, tmpdir, request):
     # Initialize with only one transfer agent, as we want a reliable
     # last transfered state.
     yield from pghoard_base(db, tmpdir, request, active_backup_mode="walreceiver", transfer_count=1, compression_count=1)
 
 
-@pytest.yield_fixture  # pylint: disable=redefined-outer-name
-def pghoard_separate_volume(db, tmpdir, request):
+@pytest.fixture(name="pghoard_separate_volume")
+def fixture_pghoard_separate_volume(db, tmpdir, request):
     tmpfs_volume = os.path.join(str(tmpdir), "tmpfs")
     os.makedirs(tmpfs_volume, exist_ok=True)
     # Tests that require separate volume with restricted space can only be run in
@@ -351,18 +378,18 @@ def pghoard_base(
     pgh.quit()
 
 
-@pytest.yield_fixture  # pylint: disable=redefined-outer-name
-def pghoard_lzma(db, tmpdir, request):  # pylint: disable=redefined-outer-name
+@pytest.fixture(name="pghoard_lzma")
+def fixture_pghoard_lzma(db, tmpdir, request):
     yield from pghoard_base(db, tmpdir, request, compression="lzma")
 
 
-@pytest.yield_fixture  # pylint: disable=redefined-outer-name
-def pghoard_no_mp(db, tmpdir, request):  # pylint: disable=redefined-outer-name
+@pytest.fixture(name="pghoard_no_mp")
+def fixture_pghoard_no_mp(db, tmpdir, request):
     yield from pghoard_base(db, tmpdir, request, transfer_count=1)
 
 
-@pytest.yield_fixture  # pylint: disable=redefined-outer-name
-def pghoard_metrics(db, tmpdir, request):  # pylint: disable=redefined-outer-name
+@pytest.fixture(name="pghoard_metrics")
+def fixture_pghoard_metrics(db, tmpdir, request):
     metrics_cfg = {
         "prometheus": {
             "tags": {
