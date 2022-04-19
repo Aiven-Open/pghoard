@@ -569,6 +569,23 @@ class PGBaseBackup(PGHoardThread):
     def compression_data(self) -> CompressionData:
         return CompressionData.from_config(self.config)
 
+    @staticmethod
+    def chunk_path_to_middle_path_name(chunk_path: Path, file_type: FileType) -> Tuple[Path, str]:
+        chunk_rel_path = chunk_path.relative_to(chunk_path.parent.parent)
+        if file_type == FileType.Basebackup_chunk:
+            middle_path = Path("basebackup_chunk")
+            chunk_name = str(chunk_rel_path)
+        elif file_type == FileType.Basebackup:
+            middle_path = Path("basebackup")
+            chunk_name = chunk_rel_path.name
+        elif file_type == FileType.Basebackup_delta:
+            middle_path = Path("basebackup_delta")
+            chunk_name = chunk_rel_path.name
+        else:
+            raise NotImplementedError(f"Unsupported file type: {file_type}")
+
+        return middle_path, chunk_name
+
     def tar_one_file(
         self,
         *,
@@ -629,19 +646,8 @@ class PGBaseBackup(PGHoardThread):
         }
         if extra_metadata:
             metadata.update(extra_metadata)
-        # FIXME: handle the key computation before here
-        chunk_path = Path(chunk_path)
-        chunk_name = chunk_path.relative_to(chunk_path.parent.parent)
-        if file_type == FileType.Basebackup_chunk:
-            middle_path = Path("basebackup_chunk")
-        elif file_type == FileType.Basebackup:
-            middle_path = Path("basebackup")
-            chunk_name = chunk_name.name
-        elif file_type == FileType.Basebackup_delta:
-            middle_path = Path("basebackup_delta")
-            chunk_name = chunk_name.name
-        else:
-            raise NotImplementedError(f"Unrecognizable file type: {file_type}")
+
+        middle_path, chunk_name = PGBaseBackup.chunk_path_to_middle_path_name(Path(chunk_path), file_type)
 
         self.transfer_queue.put(
             UploadEvent(
@@ -656,7 +662,7 @@ class PGBaseBackup(PGHoardThread):
         )
 
         # Get the name of the chunk and the name of the parent directory (ie backup "name")
-        return str(chunk_name), input_size, result_size
+        return chunk_name, input_size, result_size
 
     def wait_for_chunk_transfer_to_complete(self, chunk_count, upload_results, chunk_callback_queue, start_time):
         try:

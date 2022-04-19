@@ -11,6 +11,7 @@ import time
 from copy import deepcopy
 from distutils.version import LooseVersion
 from os import makedirs
+from pathlib import Path
 from queue import Queue
 from subprocess import check_call
 
@@ -20,7 +21,7 @@ import pytest
 
 from pghoard import common, metrics
 from pghoard.basebackup import PGBaseBackup
-from pghoard.common import BaseBackupMode
+from pghoard.common import BaseBackupMode, FileType
 from pghoard.restore import Restore, RestoreError
 from pghoard.rohmu import get_transfer
 
@@ -807,3 +808,20 @@ LABEL: pg_basebackup base backup
         assert entry["metadata"]["backup-reason"] == "requested"
         assert entry["metadata"]["backup-decision-time"] == now - datetime.timedelta(seconds=30)
         assert entry["metadata"]["normalized-backup-time"] is None
+
+    def test_chunk_path_to_middle_path_name(self):
+        assert PGBaseBackup.chunk_path_to_middle_path_name(
+            Path("/a/b/2022-04-19_09-27_0.00000000.pghoard"), FileType.Basebackup
+        ) == (Path("basebackup"), "2022-04-19_09-27_0.00000000.pghoard")
+
+        assert PGBaseBackup.chunk_path_to_middle_path_name(
+            Path("/a/b/2022-04-19_09-27_0/2022-04-19_09-27_0.00000001.pghoard"), FileType.Basebackup_chunk
+        ) == (Path("basebackup_chunk"), "2022-04-19_09-27_0/2022-04-19_09-27_0.00000001.pghoard")
+
+        assert PGBaseBackup.chunk_path_to_middle_path_name(
+            Path("/a/b/0fdc9365aea5447f9a16da8104dc9fcc.delta"), FileType.Basebackup_delta
+        ) == (Path("basebackup_delta"), "0fdc9365aea5447f9a16da8104dc9fcc.delta")
+
+        for file_type in {FileType.Wal, FileType.Metadata, FileType.Timeline}:
+            with pytest.raises(NotImplementedError):
+                assert PGBaseBackup.chunk_path_to_middle_path_name(Path("/a/b/000000010000000000000002"), file_type)
