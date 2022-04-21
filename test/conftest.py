@@ -19,7 +19,7 @@ from contextlib import suppress
 from dataclasses import dataclass
 from distutils.version import LooseVersion
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable, Dict, Iterator, Optional, Sequence, Union
 from unittest import SkipTest
 
 import psycopg2
@@ -35,6 +35,8 @@ from pghoard.rohmu.delta.snapshot import Snapshotter
 from pghoard.rohmu.snappyfile import snappy
 
 logutil.configure_logging()
+
+DEFAULT_PG_VERSIONS = ["14", "13", "12", "11", "10"]
 
 
 def port_is_listening(hostname: str, port: int, timeout: float = 0.5) -> bool:
@@ -64,18 +66,17 @@ def fixture_get_available_port() -> Callable[[], int]:
 
 
 class PGTester:
-    def __init__(self, pgdata):
-        pgver = os.getenv("PG_VERSION")
+    def __init__(self, pgdata: str, pg_version: str) -> None:
         bindir = os.environ.get("PG_BINDIR")
         postgresbin, ver = pghconfig.find_pg_binary(
-            "postgres", versions=[pgver] if pgver else None, check_commands=False, pg_bin_directory=bindir
+            "postgres", versions=[pg_version] if pg_version else None, check_commands=False, pg_bin_directory=bindir
         )
         if postgresbin is not None:
             self.pgbin = os.path.dirname(postgresbin)
         self.ver = ver
         self.pgdata = pgdata
         self.pg = None
-        self.user = None
+        self.user: Optional[Dict[str, str]] = None
         self._connection = None
 
     @property
@@ -125,12 +126,12 @@ class PGTester:
 
 
 @contextlib.contextmanager
-def setup_pg():
+def setup_pg(pg_version: str) -> Iterator[PGTester]:
     tmpdir_obj = py_path.local(tempfile.mkdtemp(prefix="pghoard_dbtest_"))
     tmpdir = str(tmpdir_obj)
     # try to find the binaries for these versions in some path
     pgdata = os.path.join(tmpdir, "pgdata")
-    db = PGTester(pgdata)  # pylint: disable=redefined-outer-name
+    db = PGTester(pgdata, pg_version)  # pylint: disable=redefined-outer-name
     db.run_cmd("initdb", "-D", pgdata, "--encoding", "utf-8", "--lc-messages=C")
     # NOTE: does not use TCP ports, no port conflicts
     db.user = dict(host=pgdata, user="pghoard", password="pghoard", dbname="postgres", port="5432")
@@ -154,7 +155,7 @@ def setup_pg():
         lines = fp.read().splitlines()
         fp.seek(0)
         fp.truncate()
-        config = {}
+        config: Dict[str, Union[str, int]] = {}
         for line in lines:
             line = line.strip()
             if not line or line.startswith("#"):
@@ -192,15 +193,25 @@ def setup_pg():
             tmpdir_obj.remove(rec=1)
 
 
+def get_versions() -> Sequence[str]:
+    env_version = os.getenv("PG_VERSION")
+    return env_version.split(",") if env_version else DEFAULT_PG_VERSIONS
+
+
+@pytest.fixture(scope="session", name="pg_version", params=get_versions())
+def fixture_pg_version(request) -> str:
+    return request.param
+
+
 @pytest.fixture(scope="session", name="db")
-def fixture_db():
-    with setup_pg() as pg:
+def fixture_db(pg_version: str) -> Iterator[PGTester]:
+    with setup_pg(pg_version=pg_version) as pg:
         yield pg
 
 
 @pytest.fixture(scope="session", name="recovery_db")
-def fixture_recovery_db():
-    with setup_pg() as pg:
+def fixture_recovery_db(pg_version: str) -> Iterator[PGTester]:
+    with setup_pg(pg_version=pg_version) as pg:
         # Make sure pgespresso extension is installed before we turn this into a standby
         conn_str = pgutil.create_connection_string(pg.user)
         conn = psycopg2.connect(conn_str)

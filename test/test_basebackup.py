@@ -428,7 +428,7 @@ LABEL: pg_basebackup base backup
     def test_basebackups_pipe(self, capsys, db, pghoard, tmpdir):
         self._test_basebackups(capsys, db, pghoard, tmpdir, BaseBackupMode.pipe)
 
-    def test_basebackups_tablespaces(self, capsys, db, pghoard, tmpdir):
+    def test_basebackups_tablespaces(self, capsys, db, pghoard, tmpdir, pg_version: str):
         # Create a test tablespace for this instance, but make sure we drop it at the end of the test as the
         # database we use is shared by all test cases, and tablespaces are a global concept so the test
         # tablespace could interfere with other tests
@@ -561,7 +561,7 @@ LABEL: pg_basebackup base backup
                 fp.seek(0)
                 fp.write(rconf)
 
-            r_db = PGTester(backup_out)
+            r_db = PGTester(pgdata=backup_out, pg_version=pg_version)
             r_db.user = dict(db.user, host=backup_out)
             r_db.run_pg()
 

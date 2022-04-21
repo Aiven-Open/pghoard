@@ -59,8 +59,7 @@ jobs:
     strategy:
       max-parallel: 4
       matrix:
-        python-version: [3.6, 3.7, 3.8, 3.9]
-        pg-version: [10, 11, 12, 13, 14]
+        python-version: [3.9, 3.8, 3.7, 3.6]
 
     steps:
       - id: checkout-code
@@ -78,8 +77,7 @@ jobs:
           wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
           sudo apt-get update
           # Setup build deps
-          sudo apt-get install -y libsnappy-dev
-          sudo apt-get install -y postgresql-${{ matrix.pg-version }}
+          sudo apt-get install -y libsnappy-dev postgresql-10 postgresql-11 postgresql-12 postgresql-13 postgresql-14
           # Setup common python dependencies
           python -m pip install --upgrade pip
           pip install -r requirements.txt
