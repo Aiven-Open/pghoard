@@ -257,6 +257,14 @@ def fixture_pghoard_walreceiver(db, tmpdir, request):
     yield from pghoard_base(db, tmpdir, request, active_backup_mode="walreceiver", transfer_count=1, compression_count=1)
 
 
+@pytest.fixture(name="pghoard_walreceiver_recovery")
+def fixture_pghoard_walreceiver_recovery(recovery_db, tmpdir, request):
+    # The same as above, but with a "recovery_db" instance.
+    yield from pghoard_base(
+        recovery_db, tmpdir, request, active_backup_mode="walreceiver", transfer_count=1, compression_count=1
+    )
+
+
 @pytest.fixture(name="pghoard_separate_volume")
 def fixture_pghoard_separate_volume(db, tmpdir, request):
     tmpfs_volume = os.path.join(str(tmpdir), "tmpfs")

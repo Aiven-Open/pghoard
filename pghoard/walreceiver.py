@@ -79,10 +79,16 @@ class WALReceiver(PGHoardThread):
             self.c.execute("TIMELINE_HISTORY {}".format(max_timeline))
             timeline_history = self.c.fetchone()
             history_filename = timeline_history[0]
-            history_data = timeline_history[1].tobytes()
+            # Type changed from BYTEA to TEXT with PG14, see
+            # https://git.postgresql.org/gitweb/?p=postgresql.git;a=commit;h=66a8f090485e3e897a4804121fdbe856cba72d70
+            if isinstance(timeline_history[1], memoryview):
+                history_data = timeline_history[1].tobytes()
+            else:
+                history_data = timeline_history[1].encode()
             self.log.debug("Received timeline history: %s for timeline %r", history_filename, max_timeline)
 
             compression_event = CompressionEvent(
+                callback_queue=Queue(),  # added so the event can be created, but the result is currently ignored
                 compress_to_memory=True,
                 source_data=BytesIO(history_data),
                 file_path=FileTypePrefixes[FileType.Timeline] / history_filename,
@@ -207,15 +213,11 @@ class WALReceiver(PGHoardThread):
             lsn = LSN(completed_lsn, server_version=self.pg_version_server)
             next_wal_start_lsn = lsn.next_walfile_start_lsn.lsn
             self.callbacks.pop(completed_lsn)
-            if self.callbacks:
-                if completed_lsn > min(self.callbacks):
-                    pass  # Do nothing since a smaller lsn is still being transferred
-                else:  # Earlier lsn than earlist on-going transfer, just advance flush_lsn
-                    self.c.send_feedback(flush_lsn=next_wal_start_lsn)
-                    self.completed_wal_segments.discard(completed_lsn)
-                    self.last_flushed_lsn = next_wal_start_lsn
-                    self.log.debug("Sent flush_lsn feedback as: %r", self.last_flushed_lsn)
-            else:  # No on-going transfer, just advance flush_lsn
+            if self.callbacks and completed_lsn > min(self.callbacks):
+                # Do nothing since a smaller lsn is still being transferred
+                pass
+            #  Earlier lsn than earlist on-going transfer, or no on-going transfer, just advance flush_lsn
+            else:
                 self.c.send_feedback(flush_lsn=next_wal_start_lsn)
                 self.completed_wal_segments.discard(completed_lsn)
                 self.last_flushed_lsn = next_wal_start_lsn
