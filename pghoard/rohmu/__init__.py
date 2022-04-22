@@ -29,6 +29,9 @@ def get_class_for_transfer(obj_store) -> Type[BaseTransfer]:
     elif storage_type == "s3":
         from .object_storage.s3 import S3Transfer
         return S3Transfer
+    elif storage_type == "rclone":
+        from .object_storage.rclone import RCloneTransfer
+        return RCloneTransfer
     elif storage_type == "swift":
         from .object_storage.swift import SwiftTransfer
         return SwiftTransfer
