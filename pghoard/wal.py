@@ -214,6 +214,7 @@ def get_current_lsn_from_identify_system(conn_str: str) -> LSN:
     cur = conn.cursor()
     cur.execute("IDENTIFY_SYSTEM")
     sysinfo = cur.fetchone()
+    assert sysinfo
     conn.close()
     assert sysinfo is not None
     return lsn_from_sysinfo(sysinfo, pg_version)
