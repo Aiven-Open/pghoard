@@ -11,11 +11,11 @@ import os
 import sys
 
 import requests
+from rohmu.errors import InvalidConfigurationError
 
 from pghoard.common import get_pg_wal_directory
 
 from . import config, logutil, version, wal
-from .rohmu.errors import InvalidConfigurationError
 
 
 class SyncError(Exception):

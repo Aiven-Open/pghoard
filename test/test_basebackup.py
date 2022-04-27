@@ -18,12 +18,12 @@ from subprocess import check_call
 import dateutil.parser
 import psycopg2
 import pytest
+from rohmu import get_transfer
 
 from pghoard import common, metrics
 from pghoard.basebackup import PGBaseBackup
 from pghoard.common import BaseBackupMode, FileType
 from pghoard.restore import Restore, RestoreError
-from pghoard.rohmu import get_transfer
 
 from .conftest import PGTester
 from .util import switch_wal

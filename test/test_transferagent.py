@@ -11,10 +11,10 @@ from queue import Empty, Queue
 from unittest.mock import ANY, Mock, patch
 
 import pytest
+from rohmu.errors import FileNotFoundFromStorageError, StorageError
 
 from pghoard import metrics
 from pghoard.common import CallbackEvent, FileType, QuitEvent
-from pghoard.rohmu.errors import FileNotFoundFromStorageError, StorageError
 from pghoard.transfer import (BaseTransferEvent, DownloadEvent, TransferAgent, UploadEvent)
 
 # pylint: disable=attribute-defined-outside-init

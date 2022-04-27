@@ -31,10 +31,10 @@ from typing import Dict, List, Optional, Set
 
 from psycopg2.extensions import adapt
 from requests import Session
+from rohmu import dates, get_transfer, rohmufile
+from rohmu.errors import (Error, InvalidConfigurationError, MaybeRecoverableError)
 
 from pghoard.common import BaseBackupFormat, StrEnum
-from pghoard.rohmu import dates, get_transfer, rohmufile
-from pghoard.rohmu.errors import (Error, InvalidConfigurationError, MaybeRecoverableError)
 
 from . import common, config, logutil, version
 from .postgres_command import PGHOARD_HOST, PGHOARD_PORT

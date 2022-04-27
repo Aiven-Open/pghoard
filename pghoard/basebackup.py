@@ -24,9 +24,10 @@ from tempfile import NamedTemporaryFile
 from typing import Dict, List, Optional, Tuple
 
 import psycopg2
+from rohmu import dates, errors, rohmufile
+from rohmu.delta.common import EMBEDDED_FILE_SIZE
 
 from pghoard.compressor import CompressionEvent
-from pghoard.rohmu import dates, errors, rohmufile
 
 # pylint: disable=superfluous-parens
 from . import common, version, wal
@@ -36,7 +37,6 @@ from .common import (
     connection_string_using_pgpass, extract_pghoard_bb_v2_metadata, replication_connection_string_and_slot_using_pgpass,
     set_stream_nonblocking, set_subprocess_stdout_and_stderr_nonblocking, terminate_subprocess
 )
-from .rohmu.delta.common import EMBEDDED_FILE_SIZE
 from .transfer import UploadEvent
 
 BASEBACKUP_NAME = "pghoard_base_backup"

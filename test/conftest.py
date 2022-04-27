@@ -25,14 +25,14 @@ from unittest import SkipTest
 import psycopg2
 import pytest
 from py import path as py_path  # pylint: disable=no-name-in-module
+from rohmu.delta.common import EMBEDDED_FILE_SIZE, Progress
+from rohmu.delta.snapshot import Snapshotter
+from rohmu.snappyfile import snappy
 
 from pghoard import config as pghconfig
 from pghoard import logutil, pgutil
 from pghoard.archive_cleanup import ArchiveCleanup
 from pghoard.pghoard import PGHoard
-from pghoard.rohmu.delta.common import EMBEDDED_FILE_SIZE, Progress
-from pghoard.rohmu.delta.snapshot import Snapshotter
-from pghoard.rohmu.snappyfile import snappy
 
 logutil.configure_logging()
 

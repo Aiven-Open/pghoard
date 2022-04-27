@@ -9,9 +9,10 @@ import logging
 import os
 import sys
 
+from rohmu import get_transfer
+from rohmu.errors import (FileNotFoundFromStorageError, InvalidConfigurationError)
+
 from pghoard import common, config, logutil, version
-from pghoard.rohmu import get_transfer
-from pghoard.rohmu.errors import (FileNotFoundFromStorageError, InvalidConfigurationError)
 
 
 class ArchiveCleanup:

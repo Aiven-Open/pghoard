@@ -13,10 +13,10 @@ import sys
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
+from rohmu.errors import InvalidConfigurationError
 
 from . import config, logutil, version
 from .common import write_json_file
-from .rohmu.errors import InvalidConfigurationError
 
 
 class CommandError(Exception):

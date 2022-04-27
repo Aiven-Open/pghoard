@@ -17,13 +17,13 @@ from typing import Optional
 
 import mock
 import pytest
+from rohmu import IO_BLOCK_SIZE, compressor, rohmufile
+from rohmu.compressor import zstd
+from rohmu.snappyfile import SnappyFile, snappy
 
 from pghoard import metrics
 from pghoard.common import FileType, FileTypePrefixes, QuitEvent
 from pghoard.compressor import (CompressionEvent, CompressorThread, DecompressionEvent)
-from pghoard.rohmu import IO_BLOCK_SIZE, compressor, rohmufile
-from pghoard.rohmu.compressor import zstd
-from pghoard.rohmu.snappyfile import SnappyFile, snappy
 
 # pylint: disable=attribute-defined-outside-init
 from .base import (CONSTANT_TEST_RSA_PRIVATE_KEY, CONSTANT_TEST_RSA_PUBLIC_KEY, PGHoardTestCase)
