@@ -2,4 +2,4 @@ psycopg2
 pydantic
 python-systemd
 requests
--e git+https://github.com/aiven/rohmu.git@main#egg=rohmu
+rohmu >= 1.0.1
