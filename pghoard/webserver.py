@@ -18,10 +18,11 @@ from queue import Empty, Queue
 from socketserver import ThreadingMixIn
 from threading import RLock
 
+from rohmu.errors import Error, FileNotFoundFromStorageError
+
 from pghoard import wal
 from pghoard.common import (FileType, FileTypePrefixes, PGHoardThread, get_pg_wal_directory, json_encode)
 from pghoard.compressor import CompressionEvent
-from pghoard.rohmu.errors import Error, FileNotFoundFromStorageError
 from pghoard.transfer import DownloadEvent, OperationEvents, TransferOperation
 from pghoard.version import __version__
 

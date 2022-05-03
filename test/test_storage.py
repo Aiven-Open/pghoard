@@ -11,11 +11,11 @@ import uuid
 from io import BytesIO
 
 import pytest
+from rohmu import errors, get_transfer
+from rohmu.object_storage.base import KEY_TYPE_OBJECT
+from rohmu.object_storage.google import MediaStreamUpload
 
 from pghoard.common import get_object_storage_config
-from pghoard.rohmu import errors, get_transfer
-from pghoard.rohmu.object_storage.base import KEY_TYPE_OBJECT
-from pghoard.rohmu.object_storage.google import MediaStreamUpload
 
 try:
     from . import test_storage_configs  # type: ignore # noqa

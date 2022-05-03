@@ -17,14 +17,15 @@ from queue import Empty
 from threading import Lock
 from typing import Any, BinaryIO, Dict, Optional, Union
 
+from rohmu import get_transfer
+from rohmu.errors import FileNotFoundFromStorageError
+from rohmu.object_storage.base import BaseTransfer
+
 from pghoard.common import (
     CallbackEvent, CallbackQueue, FileType, PGHoardThread, Queue, QuitEvent, StrEnum, create_alert_file,
     get_object_storage_config
 )
 from pghoard.fetcher import FileFetchManager
-from pghoard.rohmu import get_transfer
-from pghoard.rohmu.errors import FileNotFoundFromStorageError
-from pghoard.rohmu.object_storage.base import BaseTransfer
 
 _STATS_LOCK = Lock()
 _last_stats_transmit_time = 0

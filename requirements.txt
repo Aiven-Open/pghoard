@@ -1,15 +1,5 @@
-astroid
-botocore
-cryptography
-google-api-python-client
-httplib2
-oauth2client
 psycopg2
 pydantic
-python-dateutil 
-python-snappy
-python-systemd 
+python-systemd
 requests
-azure-storage-blob==2.1.0
-paramiko
-zstandard
+rohmu >= 1.0.1

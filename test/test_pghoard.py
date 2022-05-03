@@ -15,14 +15,14 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
+# pylint: disable=attribute-defined-outside-init
+from rohmu import rohmufile
 
 import pghoard.pghoard as pghoard_module
 from pghoard import common
 from pghoard.common import (BaseBackupFormat, FileType, create_alert_file, delete_alert_file, write_json_file)
 from pghoard.pghoard import PGHoard
 from pghoard.pgutil import create_connection_string
-# pylint: disable=attribute-defined-outside-init
-from pghoard.rohmu import rohmufile
 
 from .base import PGHoardTestCase
 from .util import switch_wal, wait_for_xlog

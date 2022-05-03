@@ -23,9 +23,10 @@ from queue import Queue
 from threading import Thread
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
+from rohmu import IO_BLOCK_SIZE
+from rohmu.errors import Error, InvalidConfigurationError
+
 from pghoard import pgutil
-from pghoard.rohmu import IO_BLOCK_SIZE
-from pghoard.rohmu.errors import Error, InvalidConfigurationError
 
 LOG = logging.getLogger("pghoard.common")
 

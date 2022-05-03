@@ -20,13 +20,14 @@ from tempfile import NamedTemporaryFile
 from threading import Event
 from typing import BinaryIO, Dict, Optional, Set, Union
 
+from rohmu import rohmufile
+
 from pghoard import config as pgh_config
 from pghoard import wal
 from pghoard.common import (
     CallbackEvent, CallbackQueue, FileType, FileTypePrefixes, PGHoardThread, QuitEvent, StrEnum, write_json_file
 )
 from pghoard.metrics import Metrics
-from pghoard.rohmu import rohmufile
 from pghoard.transfer import TransferQueue, UploadEvent
 
 

@@ -11,9 +11,8 @@ import random
 import tarfile
 
 import pytest
-
-from pghoard.rohmu import IO_BLOCK_SIZE
-from pghoard.rohmu.encryptor import (Decryptor, DecryptorFile, Encryptor, EncryptorFile, EncryptorStream)
+from rohmu import IO_BLOCK_SIZE
+from rohmu.encryptor import (Decryptor, DecryptorFile, Encryptor, EncryptorFile, EncryptorStream)
 
 from .base import CONSTANT_TEST_RSA_PRIVATE_KEY, CONSTANT_TEST_RSA_PUBLIC_KEY
 

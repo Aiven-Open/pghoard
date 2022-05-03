@@ -10,11 +10,12 @@ import os
 import subprocess
 from typing import Optional
 
+from rohmu import get_class_for_transfer
+from rohmu.errors import InvalidConfigurationError
+from rohmu.snappyfile import snappy
+
 from pghoard.common import (extract_pg_command_version_string, pg_major_version, pg_version_string_to_number)
 from pghoard.postgres_command import PGHOARD_HOST, PGHOARD_PORT
-from pghoard.rohmu import get_class_for_transfer
-from pghoard.rohmu.errors import InvalidConfigurationError
-from pghoard.rohmu.snappyfile import snappy
 
 SUPPORTED_VERSIONS = ["14", "13", "12", "11", "10", "9.6", "9.5", "9.4", "9.3"]
 

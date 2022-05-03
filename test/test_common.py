@@ -9,12 +9,12 @@ import json
 import os
 
 import pytest
+from rohmu.errors import Error
 
 from pghoard.common import (
     create_pgpass_file, default_json_serialization, extract_pg_command_version_string, json_encode, pg_major_version,
     pg_version_string_to_number, write_json_file
 )
-from pghoard.rohmu.errors import Error
 
 from .base import PGHoardTestCase
 

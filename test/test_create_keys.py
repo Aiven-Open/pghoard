@@ -11,9 +11,9 @@ import sys
 from unittest import mock
 
 import pytest
+from rohmu.errors import InvalidConfigurationError
 
 from pghoard import create_keys
-from pghoard.rohmu.errors import InvalidConfigurationError
 
 
 def test_create_config_with_keys():

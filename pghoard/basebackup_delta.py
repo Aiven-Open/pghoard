@@ -15,12 +15,13 @@ from queue import Empty
 from tempfile import NamedTemporaryFile
 from typing import Callable, Dict
 
+from rohmu import rohmufile
+from rohmu.dates import now
+from rohmu.delta.common import (BackupManifest, SnapshotFile, SnapshotHash, SnapshotResult, SnapshotUploadResult)
+from rohmu.delta.snapshot import Snapshotter
+from rohmu.errors import FileNotFoundFromStorageError
+
 from pghoard.common import (BackupFailure, BaseBackupFormat, CallbackQueue, FileType, extract_pghoard_delta_v1_metadata)
-from pghoard.rohmu import rohmufile
-from pghoard.rohmu.dates import now
-from pghoard.rohmu.delta.common import (BackupManifest, SnapshotFile, SnapshotHash, SnapshotResult, SnapshotUploadResult)
-from pghoard.rohmu.delta.snapshot import Snapshotter
-from pghoard.rohmu.errors import FileNotFoundFromStorageError
 from pghoard.transfer import UploadEvent
 
 

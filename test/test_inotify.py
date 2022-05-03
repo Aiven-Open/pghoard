@@ -10,8 +10,7 @@ from queue import Queue
 from unittest import SkipTest
 
 import pytest
-
-from pghoard.rohmu.inotify import InotifyWatcher
+from rohmu.inotify import InotifyWatcher
 
 # pylint: disable=attribute-defined-outside-init
 from .base import PGHoardTestCase

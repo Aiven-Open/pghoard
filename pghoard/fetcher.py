@@ -5,10 +5,11 @@ import signal
 import threading
 import time
 
+from rohmu import get_transfer
+from rohmu.rohmufile import create_sink_pipeline
+
 from pghoard.common import get_object_storage_config
 from pghoard.config import key_lookup_for_site
-from pghoard.rohmu import get_transfer
-from pghoard.rohmu.rohmufile import create_sink_pipeline
 
 
 class FileFetchManager:

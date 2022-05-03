@@ -26,6 +26,10 @@ from threading import Event
 from typing import Dict, Optional
 
 import psycopg2
+from rohmu import dates, get_transfer, rohmufile
+from rohmu.dates import now as utc_now
+from rohmu.errors import (FileNotFoundFromStorageError, InvalidConfigurationError)
+from rohmu.inotify import InotifyWatcher
 
 from pghoard import config, logutil, metrics, version, wal
 from pghoard.basebackup import PGBaseBackup
@@ -38,10 +42,6 @@ from pghoard.compressor import (
     CompressionEvent, CompressionQueue, CompressorThread, WALFileDeleterThread, WalFileDeletionQueue
 )
 from pghoard.receivexlog import PGReceiveXLog
-from pghoard.rohmu import dates, get_transfer, rohmufile
-from pghoard.rohmu.dates import now as utc_now
-from pghoard.rohmu.errors import (FileNotFoundFromStorageError, InvalidConfigurationError)
-from pghoard.rohmu.inotify import InotifyWatcher
 from pghoard.transfer import TransferAgent, TransferQueue, UploadEvent
 from pghoard.walreceiver import WALReceiver
 from pghoard.webserver import WebServer
