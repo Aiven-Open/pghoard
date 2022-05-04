@@ -30,14 +30,15 @@ from rohmu.delta.common import EMBEDDED_FILE_SIZE
 from pghoard.compressor import CompressionEvent
 
 # pylint: disable=superfluous-parens
-from . import common, version, wal
-from .basebackup_delta import DeltaBaseBackup
-from .common import (
+from pghoard import common, version, wal
+from pghoard.basebackup.delta import DeltaBaseBackup
+from pghoard.common import (
     BackupFailure, BaseBackupFormat, BaseBackupMode, CallbackEvent, CallbackQueue, FileType, PGHoardThread,
     connection_string_using_pgpass, extract_pghoard_bb_v2_metadata, replication_connection_string_and_slot_using_pgpass,
     set_stream_nonblocking, set_subprocess_stdout_and_stderr_nonblocking, terminate_subprocess
 )
-from .transfer import UploadEvent
+from pghoard.transfer import UploadEvent
+
 
 BASEBACKUP_NAME = "pghoard_base_backup"
 EMPTY_DIRS = [
