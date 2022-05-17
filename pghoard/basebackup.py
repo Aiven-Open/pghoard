@@ -184,7 +184,6 @@ class PGBaseBackup(PGHoardThread):
         FIXME: this should look at the object storage, not the local incoming
         dir.
         """
-        i = 0
         # FIXME: self.basebackup_path should be a path relative to the
         # repo root, which we can then use to derive a path relative to the
         # local directory. For now, take care of it here.
@@ -192,6 +191,19 @@ class PGBaseBackup(PGHoardThread):
         incoming_basebackup_path = Path(self.basebackup_path + "_incoming")
         local_repo_root = basebackup_path.parent
         relative_basebackup_dir = basebackup_path.relative_to(local_repo_root)
+
+        if self.site_config.get("durable_basebackup_path"):
+            existing_paths = set(incoming_basebackup_path.glob("20??-??-??_??-??"))
+            if existing_paths:
+                assert len(existing_paths) == 1, "Multiple basebackup paths found."
+                (tsfilename, ) = existing_paths
+            else:
+                tsfilename = datetime.datetime.utcnow().strftime("%Y-%m-%d_%H-%M")
+            local_basebackup_path = incoming_basebackup_path / tsfilename
+            local_basebackup_path.mkdir(exist_ok=True)
+            return basebackup_path, local_basebackup_path
+
+        i = 0
         while True:
             tsfilename = "{}_{}".format(datetime.datetime.utcnow().strftime("%Y-%m-%d_%H-%M"), i)
             basebackup_path = relative_basebackup_dir / tsfilename
