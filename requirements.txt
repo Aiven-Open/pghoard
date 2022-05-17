@@ -2,4 +2,4 @@ psycopg2
 pydantic
 python-systemd
 requests
-rohmu >= 1.0.1
+rohmu >= 1.0.4
