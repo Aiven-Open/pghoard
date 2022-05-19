@@ -112,6 +112,7 @@ class PGHoardTestCase:
             assert ver is not None
             if version is None:
                 version = ver
-            assert version == ver
+            # Major version should match, some packages are shipped with different minor versions of binaries
+            assert version.split(".")[0] == ver.split(".")[0]
             assert os.path.dirname(command_path) == bindir
         return version
