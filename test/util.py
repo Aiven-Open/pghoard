@@ -3,7 +3,11 @@ import time
 from pghoard.pghoard import PGHoard
 
 
-def wait_for_xlog(pghoard: PGHoard, count: int):
+class Timeout(Exception):
+    pass
+
+
+def wait_for_xlog(pghoard: PGHoard, count: int, *, timeout_seconds: int = 15):
     start = time.monotonic()
     while True:
         xlogs = None
@@ -14,8 +18,8 @@ def wait_for_xlog(pghoard: PGHoard, count: int):
             if xlogs >= count:
                 break
 
-        if time.monotonic() - start > 15:
-            assert False, "Expected at least {} xlog uploads, got {}".format(count, xlogs)
+        if time.monotonic() - start > timeout_seconds:
+            raise Timeout("Expected at least {} xlog uploads, got {}".format(count, xlogs))
 
         time.sleep(0.1)
 

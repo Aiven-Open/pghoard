@@ -12,31 +12,46 @@ import select
 import signal
 import subprocess
 import time
+from queue import Empty, Queue
 from threading import Thread
 
 from .common import (set_subprocess_stdout_and_stderr_nonblocking, terminate_subprocess)
 
 
 class PGReceiveXLog(Thread):
+    receiver_paused = False
+
     def __init__(self, config, connection_string, wal_location, site, slot, pg_version_server):
         super().__init__()
-        pg_receivexlog_config = config["backup_sites"][site]["pg_receivexlog"]
         self.log = logging.getLogger("PGReceiveXLog")
+        self.new_config = Queue()
         self.config = config
         self.connection_string = connection_string
-        self.disk_space_check_interval = pg_receivexlog_config["disk_space_check_interval"]
         self.last_disk_space_check = time.monotonic()
-        self.min_disk_space = pg_receivexlog_config.get("min_disk_free_bytes")
-        self.resume_multiplier = pg_receivexlog_config["resume_multiplier"]
         self.wal_location = wal_location
         self.site = site
         self.slot = slot
         self.pg_version_server = pg_version_server
         self.pid = None
-        self.receiver_paused = False
         self.running = False
         self.latest_activity = datetime.datetime.utcnow()
         self.log.debug("Initialized PGReceiveXLog")
+
+    @property
+    def pg_receivexlog_config(self):
+        return self.config["backup_sites"][self.site]["pg_receivexlog"]
+
+    @property
+    def disk_space_check_interval(self):
+        return self.pg_receivexlog_config["disk_space_check_interval"]
+
+    @property
+    def min_disk_space(self):
+        return self.pg_receivexlog_config.get("min_disk_free_bytes")
+
+    @property
+    def resume_multiplier(self):
+        return self.pg_receivexlog_config["resume_multiplier"]
 
     def run(self):
         self.running = True
@@ -62,6 +77,14 @@ class PGReceiveXLog(Thread):
         self.log.info("Started: %r, running as PID: %r", command, self.pid)
         while self.running:
             rlist, _, _ = select.select([proc.stdout, proc.stderr], [], [], 1.0)
+            try:
+                self.config = self.new_config.get(block=False)
+                self.log.info("Loaded new configuration")
+                self.log.info(str(self.pg_receivexlog_config))
+                continue
+            except Empty:
+                pass
+
             for fd in rlist:
                 content = fd.read()
                 if content:

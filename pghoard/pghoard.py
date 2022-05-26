@@ -807,9 +807,17 @@ class PGHoard:
                 raise
             raise InvalidConfigurationError(self.config_path)
 
+        self.config = new_config
+        self.synchronize_new_config()
+
+    def synchronize_new_config(self) -> None:
+        """
+        Ensure that all sub-components' references to the config
+        are refreshed, so that any changes are visible.
+        """
+
         # clear this objects site transfer storage config
         self.site_transfers = {}
-        self.config = new_config
 
         if self.config.get("syslog") and not self.syslog_handler:
             self.syslog_handler = logutil.set_syslog_handler(
@@ -833,10 +841,13 @@ class PGHoard:
 
         # need to refresh the web server config too
         if hasattr(self, "webserver") and hasattr(self.webserver, "server"):
-            self.webserver.server.config = new_config
+            self.webserver.server.config = self.config
 
         for thread in self._get_all_threads():
-            thread.config = new_config
+            if hasattr(thread, "new_config"):
+                thread.new_config.put(self.config)
+            else:
+                thread.config = self.config
             thread.site_transfers = {}
 
         self.log.debug("Loaded config: %r from: %r", self.config, self.config_path)
