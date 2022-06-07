@@ -711,8 +711,8 @@ class PGHoard:
                     self.log.info("Giving up backup after exceeding max retries: %r", retries)
                     return
                 else:
-                    # Start from ~2 min with cap of one hour
-                    retry_interval = min(2 ** (retries + 7), 60 * 60)
+                    # Start from ~3 sec with cap of one hour
+                    retry_interval = min(3 ** (retries + 1), 60 * 60)
                     if utc_now(
                     ) >= self.delta_backup_failures[site].last_failed_time + datetime.timedelta(seconds=retry_interval):
                         self.log.info("Re-trying delta basebackup")
