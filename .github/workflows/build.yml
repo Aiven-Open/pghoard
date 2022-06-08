@@ -18,7 +18,7 @@ jobs:
     strategy:
       matrix:
         # only use one version for the lint step
-        python-version: [3.9]
+        python-version: ["3.10"]
 
     steps:
 
@@ -35,23 +35,12 @@ jobs:
 
       - id: dependencies
         run: |
-          pip install -r requirements.txt
-          pip install -r requirements.dev.txt
+          pip install pre-commit
+          python3 ./version.py pghoard/version.py
 
-      - id: pylint
-        run: make lint
 
-      - id: mypy
-        run: make mypy
-
-      - id: validate-style
-        run: |
-          make fmt
-          if [ $(git diff --name-only --diff-filter=ACMR | wc -l ) != 0 ]; then
-            echo "Reformatting failed! Please run make fmt on your commits and resubmit!" 1>&2;
-            git diff;
-            exit 1;
-          fi
+      - id: pre-commit
+        run: pre-commit run --all --verbose
 
   test:
     runs-on: ubuntu-latest
