@@ -102,9 +102,9 @@ Restoration
 You can list your database basebackups by running::
 
   ❯ pghoard_restore list-basebackups --config pghoard.json -v
-  Available 'my_test_cluster' basebackups: 
+  Available 'my_test_cluster' basebackups:
 
-  Basebackup                                Backup size    Orig size  Start time          
+  Basebackup                                Backup size    Orig size  Start time
   ----------------------------------------  -----------  -----------  --------------------
   my_test_cluster/basebackup/2021-07-30_13-56_0         6 MB        31 MB  2021-07-30T13:56:48Z
       metadata: {'backup-decision-time': '2021-07-30T13:56:48.673846+00:00', 'backup-reason': 'scheduled', 'start-wal-segment': '000000010000000000000081', 'pg-version': '130003', 'compression-algorithm': 'snappy', 'compression-level': '0', 'original-file-size': '33009152', 'host': 'myhost'}

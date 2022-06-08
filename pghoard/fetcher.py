@@ -17,6 +17,7 @@ class FileFetchManager:
     object storage. If a multiprocess.Manager instance is provided, the fetch is performed
     in a subprocess to avoid GIL related performance constraints, otherwise file is fetched
     in current process."""
+
     def __init__(self, app_config, mp_manager, transfer_provider):
         self.config = app_config
         self.last_activity = time.monotonic()
@@ -71,13 +72,15 @@ class FileFetchManager:
             self.result_queue = self.mp_manager.Queue()
             self.task_queue = self.mp_manager.Queue()
             self.process = multiprocessing.Process(
-                target=_remote_file_fetch_loop, args=(self.config, self.task_queue, self.result_queue)
+                target=_remote_file_fetch_loop,
+                args=(self.config, self.task_queue, self.result_queue),
             )
             self.process.start()
 
 
 class FileFetcher:
     """Fetches a file from object storage and strips possible encryption and/or compression away."""
+
     def __init__(self, app_config, transfer):
         self.config = app_config
         self.transfer = transfer
@@ -91,7 +94,11 @@ class FileFetcher:
             file_size = len(data)
             with open(target_path, "wb") as target_file:
                 output = create_sink_pipeline(
-                    output=target_file, file_size=file_size, metadata=metadata, key_lookup=lookup, throttle_time=0
+                    output=target_file,
+                    file_size=file_size,
+                    metadata=metadata,
+                    key_lookup=lookup,
+                    throttle_time=0,
                 )
                 output.write(data)
             return file_size, metadata
@@ -113,7 +120,9 @@ def _remote_file_fetch_loop(app_config, task_queue, result_queue):
             if not transfer:
                 transfer = get_transfer(get_object_storage_config(app_config, site))
                 transfers[site] = transfer
-            file_size, metadata = FileFetcher(app_config, transfer).fetch(site, key, target_path)
+            file_size, metadata = FileFetcher(app_config, transfer).fetch(
+                site, key, target_path
+            )
             result_queue.put((task, file_size, metadata))
         except Exception as e:  # pylint: disable=broad-except
             result_queue.put((task, e))

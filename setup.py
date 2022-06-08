@@ -1,7 +1,8 @@
-from setuptools import setup, find_packages
 import os
-import version
 
+from setuptools import find_packages, setup
+
+import version
 
 readme_path = os.path.join(os.path.dirname(__file__), "README.rst")
 with open(readme_path, "r") as fp:

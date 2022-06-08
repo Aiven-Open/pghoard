@@ -9,4 +9,3 @@ Resolves: #xxxxx
 # Why this way
 
 <!-- Provide a small explanation on why this is the approach you took for solving this problem. -->
-

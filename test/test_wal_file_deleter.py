@@ -129,7 +129,7 @@ def test_multiple_sites(wal_file_deleter: WALFileDeleterThreadPatched):
     wal_file_deleter.wal_file_deletion_queue.put(make_event("AA000003", site="b"))
     time.sleep(TEST_WAIT_TIME)
     assert wal_file_deleter.running
-    #assert wal_file_deleter.os_unlink_mock.call_count == 2
+    # assert wal_file_deleter.os_unlink_mock.call_count == 2
     assert len(wal_file_deleter.to_be_deleted_files) == 2
     assert wal_file_deleter.to_be_deleted_files["a"] == {Path("AA000002")}
     assert wal_file_deleter.to_be_deleted_files["b"] == {Path("AA000003")}

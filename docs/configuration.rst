@@ -550,4 +550,3 @@ encryption_key_id (no default)
   ``public`` and ``private`` to PEM encoded RSA public and private keys
   respectively. Public key needs to be specified for storing backups. Private
   key needs to be in place for restoring encrypted backups.
-

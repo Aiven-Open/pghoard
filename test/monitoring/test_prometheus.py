@@ -28,7 +28,9 @@ def test_custom_increase_value() -> None:
 def test_unexpected_exception() -> None:
     client = PrometheusClient(config={})
     client.unexpected_exception(ValueError("hello !"), where="tests")
-    assert client.get_metrics() == ["""pghoard_exception{exception="ValueError",where="tests"} 1 1641092645000"""]
+    assert client.get_metrics() == [
+        """pghoard_exception{exception="ValueError",where="tests"} 1 1641092645000"""
+    ]
 
 
 @freezegun.freeze_time("2022-01-02 03:04:05.678")
@@ -52,7 +54,10 @@ def test_metric_with_different_names_are_separated() -> None:
     client = PrometheusClient(config={})
     client.gauge("something", 123.456)
     client.gauge("else", 789.123)
-    assert client.get_metrics() == ["something{} 123.456 1641092645000", "else{} 789.123 1641092645000"]
+    assert client.get_metrics() == [
+        "something{} 123.456 1641092645000",
+        "else{} 789.123 1641092645000",
+    ]
 
 
 @freezegun.freeze_time("2022-01-02 03:04:05")
@@ -78,7 +83,9 @@ def test_metric_can_have_tags() -> None:
     client = PrometheusClient(config={})
     client.gauge("something", 123, tags={"foo": "bar", "baz": "tog"})
     # tags are sorted
-    assert client.get_metrics() == ["""something{baz="tog",foo="bar"} 123 1641092645000"""]
+    assert client.get_metrics() == [
+        """something{baz="tog",foo="bar"} 123 1641092645000"""
+    ]
 
 
 @freezegun.freeze_time("2022-01-02 03:04:05")
@@ -92,4 +99,6 @@ def test_metric_can_have_default_tags() -> None:
 def test_metric_custom_tags_override_defaults() -> None:
     client = PrometheusClient(config={"tags": {"foo": "bar", "baz": "tog"}})
     client.gauge("something", 123, tags={"foo": "notbar"})
-    assert client.get_metrics() == ["""something{baz="tog",foo="notbar"} 123 1641092645000"""]
+    assert client.get_metrics() == [
+        """something{baz="tog",foo="notbar"} 123 1641092645000"""
+    ]

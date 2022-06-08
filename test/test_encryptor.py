@@ -12,7 +12,13 @@ import tarfile
 
 import pytest
 from rohmu import IO_BLOCK_SIZE
-from rohmu.encryptor import (Decryptor, DecryptorFile, Encryptor, EncryptorFile, EncryptorStream)
+from rohmu.encryptor import (
+    Decryptor,
+    DecryptorFile,
+    Encryptor,
+    EncryptorFile,
+    EncryptorStream,
+)
 
 from .base import CONSTANT_TEST_RSA_PRIVATE_KEY, CONSTANT_TEST_RSA_PUBLIC_KEY
 
@@ -33,18 +39,26 @@ def test_encryptor_decryptor():
         assert plaintext not in encrypted
         offset = 0
         while decryptor.expected_header_bytes() > 0:
-            chunk = encrypted[offset:offset + decryptor.expected_header_bytes()]
+            chunk = encrypted[offset : offset + decryptor.expected_header_bytes()]
             decryptor.process_header(chunk)
             offset += len(chunk)
-        decrypted_size = len(encrypted) - decryptor.header_size() - decryptor.footer_size()
-        decrypted = decryptor.process_data(encrypted[decryptor.header_size():decryptor.header_size() + decrypted_size])
-        decrypted += decryptor.finalize(encrypted[-decryptor.footer_size():])
+        decrypted_size = (
+            len(encrypted) - decryptor.header_size() - decryptor.footer_size()
+        )
+        decrypted = decryptor.process_data(
+            encrypted[
+                decryptor.header_size() : decryptor.header_size() + decrypted_size
+            ]
+        )
+        decrypted += decryptor.finalize(encrypted[-decryptor.footer_size() :])
         assert plaintext == decrypted
 
 
 def test_encryptor_stream():
     plaintext = os.urandom(2 * 1024 * 1024)
-    encrypted_stream = EncryptorStream(io.BytesIO(plaintext), CONSTANT_TEST_RSA_PUBLIC_KEY)
+    encrypted_stream = EncryptorStream(
+        io.BytesIO(plaintext), CONSTANT_TEST_RSA_PUBLIC_KEY
+    )
     result_data = io.BytesIO()
     while True:
         bytes_requested = random.randrange(1, 12345)
@@ -63,7 +77,9 @@ def test_encryptor_stream():
     decrypted = DecryptorFile(result_data, CONSTANT_TEST_RSA_PRIVATE_KEY).read()
     assert plaintext == decrypted
 
-    encrypted_stream = EncryptorStream(io.BytesIO(plaintext), CONSTANT_TEST_RSA_PUBLIC_KEY)
+    encrypted_stream = EncryptorStream(
+        io.BytesIO(plaintext), CONSTANT_TEST_RSA_PUBLIC_KEY
+    )
     result_data = io.BytesIO()
     result_data.write(encrypted_stream.read())
     result_data.seek(0)
@@ -81,7 +97,9 @@ def test_decryptorfile(tmpdir):
     plain_fp = open(tmpdir.join("plain").strpath, mode="w+b")
     plain_fp.write(ciphertext)
     plain_fp.seek(0)
-    fp = DecryptorFile(plain_fp, CONSTANT_TEST_RSA_PRIVATE_KEY)  # pylint: disable=redefined-variable-type
+    fp = DecryptorFile(
+        plain_fp, CONSTANT_TEST_RSA_PRIVATE_KEY
+    )  # pylint: disable=redefined-variable-type
     assert fp.fileno() == plain_fp.fileno()
     assert fp.readable() is True
     assert fp.writable() is False
@@ -98,7 +116,7 @@ def test_decryptorfile(tmpdir):
     with pytest.raises(io.UnsupportedOperation):
         fp.seek(1, os.SEEK_END)
     with pytest.raises(ValueError):
-        fp.seek(1, 0xff)
+        fp.seek(1, 0xFF)
     assert fp.seek(0, os.SEEK_END) == len(plaintext)
     assert fp.seek(0, os.SEEK_CUR) == len(plaintext)
 
@@ -112,13 +130,13 @@ def test_decryptorfile(tmpdir):
     result = fp.read(8192)
     assert result == plaintext[:8192]
     result = fp.read(8192)
-    assert result == plaintext[8192:8192 * 2]
+    assert result == plaintext[8192 : 8192 * 2]
     result = fp.read(IO_BLOCK_SIZE * 2)
-    assert plaintext[8192 * 2:] == result
+    assert plaintext[8192 * 2 :] == result
     assert fp.seek(IO_BLOCK_SIZE // 2) == IO_BLOCK_SIZE // 2
     result = fp.read()
     assert len(result) == len(plaintext) - IO_BLOCK_SIZE // 2
-    assert plaintext[IO_BLOCK_SIZE // 2:] == result
+    assert plaintext[IO_BLOCK_SIZE // 2 :] == result
 
     fp.seek(2)
     result = fp.read(1)

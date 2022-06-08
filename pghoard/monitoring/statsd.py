@@ -39,7 +39,13 @@ class StatsClient:
         # datadog format: metric.name:value|type|@sample_rate|#tag1:value,tag2
         #                 http://docs.datadoghq.com/guides/dogstatsd/#datagram-format
 
-        parts = [metric.encode("utf-8"), b":", str(value).encode("utf-8"), b"|", metric_type]
+        parts = [
+            metric.encode("utf-8"),
+            b":",
+            str(value).encode("utf-8"),
+            b"|",
+            metric_type,
+        ]
         send_tags = self._tags.copy()
         send_tags.update(tags or {})
         if self._message_format == "datadog":

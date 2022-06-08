@@ -6,6 +6,7 @@ See LICENSE for details
 """
 import logging
 import os
+
 # pylint: disable=attribute-defined-outside-init
 from distutils.version import LooseVersion
 from shutil import rmtree
@@ -85,7 +86,9 @@ class PGHoardTestCase:
             "pg_basebackup_path": os.path.join(bindir, "pg_basebackup"),
         }
         if LooseVersion(ver) >= "10":
-            config["backup_sites"][self.test_site]["pg_receivexlog_path"] = os.path.join(bindir, "pg_receivewal")
+            config["backup_sites"][self.test_site][
+                "pg_receivexlog_path"
+            ] = os.path.join(bindir, "pg_receivewal")
         if override:
             all_site_overrides = override.pop("backup_sites", None)
             for site_name, site_override in (all_site_overrides or {}).items():

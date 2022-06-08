@@ -55,15 +55,30 @@ def http_request(host, port, method, path, headers=None):
 
 def archive_command(site, xlog, host=PGHOARD_HOST, port=PGHOARD_PORT):
     if xlog.endswith(".backup"):
-        print("Ignoring request to archive backup label {!r}: PGHoard does not use them".format(xlog))
+        print(
+            "Ignoring request to archive backup label {!r}: PGHoard does not use them".format(
+                xlog
+            )
+        )
         return
     status = http_request(host, port, "PUT", "/{}/archive/{}".format(site, xlog))
     if status == 201:
         return
-    raise PGCError("Archival failed with HTTP status {}".format(status), exit_code=EXIT_ARCHIVE_FAIL)
+    raise PGCError(
+        "Archival failed with HTTP status {}".format(status),
+        exit_code=EXIT_ARCHIVE_FAIL,
+    )
 
 
-def restore_command(site, xlog, output, host=PGHOARD_HOST, port=PGHOARD_PORT, retry_interval=5, retry_count=3):
+def restore_command(
+    site,
+    xlog,
+    output,
+    host=PGHOARD_HOST,
+    port=PGHOARD_PORT,
+    retry_interval=5,
+    retry_count=3,
+):
     if not output:
         headers = {}
         method = "HEAD"
@@ -81,10 +96,18 @@ def restore_command(site, xlog, output, host=PGHOARD_HOST, port=PGHOARD_PORT, re
             status = http_request(host, port, method, path, headers)
             break
         except (socket.error, BadStatusLine, IncompleteRead) as ex:
-            err = "HTTP connection to {0}:{1} failed: {2.__class__.__name__}: {2}".format(host, port, ex)
+            err = (
+                "HTTP connection to {0}:{1} failed: {2.__class__.__name__}: {2}".format(
+                    host, port, ex
+                )
+            )
             if not retries:
                 raise PGCError(err, exit_code=EXIT_ABORT)
-            print("{}; {} retries left, sleeping {} seconds and retrying".format(err, retries, retry_interval))
+            print(
+                "{}; {} retries left, sleeping {} seconds and retrying".format(
+                    err, retries, retry_interval
+                )
+            )
             time.sleep(retry_interval)
 
     if status == 201 and method == "GET":
@@ -95,19 +118,38 @@ def restore_command(site, xlog, output, host=PGHOARD_HOST, port=PGHOARD_PORT, re
     # such wal file from which PostgreSQL assumes that we've completed recovery so we never want to return
     # such an error code unless we actually got confirmation that the file isn't in the backend.
     if status == 404:
-        raise PGCError("{!r} not found from archive".format(xlog), exit_code=EXIT_NOT_FOUND)
-    raise PGCError("Restore failed with HTTP status {}".format(status), exit_code=EXIT_ABORT)
+        raise PGCError(
+            "{!r} not found from archive".format(xlog), exit_code=EXIT_NOT_FOUND
+        )
+    raise PGCError(
+        "Restore failed with HTTP status {}".format(status), exit_code=EXIT_ABORT
+    )
 
 
 def main(args=None):
     parser = argparse.ArgumentParser()
-    parser.add_argument("--version", action="version", help="show program version", version=version.__version__)
-    parser.add_argument("--host", type=str, default=PGHOARD_HOST, help="pghoard service host")
-    parser.add_argument("--port", type=int, default=PGHOARD_PORT, help="pghoard service port")
+    parser.add_argument(
+        "--version",
+        action="version",
+        help="show program version",
+        version=version.__version__,
+    )
+    parser.add_argument(
+        "--host", type=str, default=PGHOARD_HOST, help="pghoard service host"
+    )
+    parser.add_argument(
+        "--port", type=int, default=PGHOARD_PORT, help="pghoard service port"
+    )
     parser.add_argument("--site", type=str, required=True, help="pghoard backup site")
     parser.add_argument("--xlog", type=str, required=True, help="xlog file name")
     parser.add_argument("--output", type=str, help="output file")
-    parser.add_argument("--mode", type=str, required=True, choices=["archive", "restore"], help="operation mode")
+    parser.add_argument(
+        "--mode",
+        type=str,
+        required=True,
+        choices=["archive", "restore"],
+        help="operation mode",
+    )
 
     # Note that we try to catch as many exception as possible and to exit with return code 255 unless we get a
     # custom exception stating otherwise.  This is to avoid signalling "end of recovery" to PostgreSQL.
@@ -129,6 +171,7 @@ def main(args=None):
         return fail_exit_code
     except:  # pylint: disable=bare-except
         import traceback
+
         traceback.print_exc()
         return fail_exit_code
 

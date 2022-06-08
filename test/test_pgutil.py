@@ -9,15 +9,20 @@ See LICENSE for details
 from pytest import raises
 
 from pghoard.pgutil import (
-    create_connection_string, get_connection_info, get_connection_info_from_config_line, mask_connection_info
+    create_connection_string,
+    get_connection_info,
+    get_connection_info_from_config_line,
+    mask_connection_info,
 )
 
 
 def test_connection_info():
     # Test connection string - do not report through bug bounty programs
     url = "postgres://hannu:secret@dbhost.local:5555/abc?replication=true&sslmode=foobar&sslmode=require"
-    cs = "host=dbhost.local user='hannu'   dbname='abc'\n" \
-         "replication=true   password=secret sslmode=require port=5555"
+    cs = (
+        "host=dbhost.local user='hannu'   dbname='abc'\n"
+        "replication=true   password=secret sslmode=require port=5555"
+    )
     ci = {
         "host": "dbhost.local",
         "port": "5555",
@@ -31,7 +36,10 @@ def test_connection_info():
     assert get_connection_info(ci) == get_connection_info(url)
 
     basic_cstr = "host=localhost user=os"
-    assert create_connection_string(get_connection_info(basic_cstr)) == "host='localhost' user='os'"
+    assert (
+        create_connection_string(get_connection_info(basic_cstr))
+        == "host='localhost' user='os'"
+    )
 
     assert get_connection_info("foo=bar bar='\\'x'") == {"foo": "bar", "bar": "'x"}
 
@@ -44,8 +52,10 @@ def test_connection_info():
 def test_mask_connection_info():
     # Test connection string - do not report through bug bounty programs
     url = "postgres://michael:secret@dbhost.local:5555/abc?replication=true&sslmode=foobar&sslmode=require"
-    cs = "host=dbhost.local user='michael'   dbname='abc'\n" \
-         "replication=true   password=secret sslmode=require port=5555"
+    cs = (
+        "host=dbhost.local user='michael'   dbname='abc'\n"
+        "replication=true   password=secret sslmode=require port=5555"
+    )
     ci = get_connection_info(cs)
     masked_url = mask_connection_info(url)
     masked_cs = mask_connection_info(url)
@@ -67,5 +77,11 @@ def test_mask_connection_info():
 
 
 def test_connection_info_from_config_line():
-    conn_info = get_connection_info_from_config_line("db1='localhost port=5432 dbname=mydb connect_timeout=10'")
-    assert conn_info == {"localhost port": "5432", "dbname": "mydb", "connect_timeout": "10"}
+    conn_info = get_connection_info_from_config_line(
+        "db1='localhost port=5432 dbname=mydb connect_timeout=10'"
+    )
+    assert conn_info == {
+        "localhost port": "5432",
+        "dbname": "mydb",
+        "connect_timeout": "10",
+    }

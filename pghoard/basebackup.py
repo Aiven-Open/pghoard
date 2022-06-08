@@ -33,9 +33,19 @@ from pghoard.compressor import CompressionEvent
 from . import common, version, wal
 from .basebackup_delta import DeltaBaseBackup
 from .common import (
-    BackupFailure, BaseBackupFormat, BaseBackupMode, CallbackEvent, CallbackQueue, FileType, PGHoardThread,
-    connection_string_using_pgpass, extract_pghoard_bb_v2_metadata, replication_connection_string_and_slot_using_pgpass,
-    set_stream_nonblocking, set_subprocess_stdout_and_stderr_nonblocking, terminate_subprocess
+    BackupFailure,
+    BaseBackupFormat,
+    BaseBackupMode,
+    CallbackEvent,
+    CallbackQueue,
+    FileType,
+    PGHoardThread,
+    connection_string_using_pgpass,
+    extract_pghoard_bb_v2_metadata,
+    replication_connection_string_and_slot_using_pgpass,
+    set_stream_nonblocking,
+    set_subprocess_stdout_and_stderr_nonblocking,
+    terminate_subprocess,
 )
 from .transfer import UploadEvent
 
@@ -71,7 +81,9 @@ class EncryptionData:
         else:
             rsa_public_key = None
 
-        return EncryptionData(encryption_key_id=encryption_key_id, rsa_public_key=rsa_public_key)
+        return EncryptionData(
+            encryption_key_id=encryption_key_id, rsa_public_key=rsa_public_key
+        )
 
 
 @dataclass(frozen=True)
@@ -120,7 +132,7 @@ class PGBaseBackup(PGHoardThread):
         callback_queue=None,
         pg_version_server=None,
         metadata=None,
-        get_remote_basebackups_info=None
+        get_remote_basebackups_info=None,
     ):
         super().__init__()
         self.log = logging.getLogger("PGBaseBackup")
@@ -156,7 +168,9 @@ class PGBaseBackup(PGHoardThread):
             elif basebackup_mode == BaseBackupMode.pipe:
                 self.run_piped_basebackup()
             else:
-                raise errors.InvalidConfigurationError("Unsupported basebackup_mode {!r}".format(basebackup_mode))
+                raise errors.InvalidConfigurationError(
+                    "Unsupported basebackup_mode {!r}".format(basebackup_mode)
+                )
 
         except Exception as ex:  # pylint: disable=broad-except
             self.metrics.increase("pghoard.basebackup_failed")
@@ -172,7 +186,11 @@ class PGBaseBackup(PGHoardThread):
 
         else:
             backup_time = time.monotonic() - start_time
-            self.metrics.gauge("pghoard.backup_time", backup_time, tags={"basebackup_mode": basebackup_mode})
+            self.metrics.gauge(
+                "pghoard.backup_time",
+                backup_time,
+                tags={"basebackup_mode": basebackup_mode},
+            )
             self.metrics.increase("pghoard.basebackup_completed")
         finally:
             self.running = False
@@ -193,7 +211,9 @@ class PGBaseBackup(PGHoardThread):
         local_repo_root = basebackup_path.parent
         relative_basebackup_dir = basebackup_path.relative_to(local_repo_root)
         while True:
-            tsfilename = "{}_{}".format(datetime.datetime.utcnow().strftime("%Y-%m-%d_%H-%M"), i)
+            tsfilename = "{}_{}".format(
+                datetime.datetime.utcnow().strftime("%Y-%m-%d_%H-%M"), i
+            )
             basebackup_path = relative_basebackup_dir / tsfilename
             local_basebackup_path = incoming_basebackup_path / tsfilename
             if not local_basebackup_path.exists():
@@ -221,7 +241,9 @@ class PGBaseBackup(PGHoardThread):
         elif self.pg_version_server >= 100000:
             command.extend(["--wal-method=none"])
 
-        connection_string, _ = replication_connection_string_and_slot_using_pgpass(self.connection_info)
+        connection_string, _ = replication_connection_string_and_slot_using_pgpass(
+            self.connection_info
+        )
         command.extend(["--progress", "--dbname", connection_string])
 
         return command
@@ -229,8 +251,7 @@ class PGBaseBackup(PGHoardThread):
     def check_command_success(self, proc, output_file):
         rc = terminate_subprocess(proc, log=self.log)
         msg = "Ran: {!r}, took: {:.3f}s to run, returncode: {}".format(
-            proc.args,
-            time.monotonic() - proc.basebackup_start_time, rc
+            proc.args, time.monotonic() - proc.basebackup_start_time, rc
         )
         if rc == 0 and os.path.exists(output_file):
             self.log.info(msg)
@@ -245,7 +266,9 @@ class PGBaseBackup(PGHoardThread):
         rsa_public_key = None
         encryption_key_id = self.site_config["encryption_key_id"]
         if encryption_key_id:
-            rsa_public_key = self.site_config["encryption_keys"][encryption_key_id]["public"]
+            rsa_public_key = self.site_config["encryption_keys"][encryption_key_id][
+                "public"
+            ]
         compression_algorithm = self.config["compression"]["algorithm"]
         compression_level = self.config["compression"]["level"]
         self.log.debug("Compressing basebackup directly to file: %r", basebackup_path)
@@ -258,15 +281,24 @@ class PGBaseBackup(PGHoardThread):
         }
 
         # FIXME: more str operations on paths
-        with NamedTemporaryFile(prefix=str(basebackup_path), suffix=".tmp-compress") as output_obj:
+        with NamedTemporaryFile(
+            prefix=str(basebackup_path), suffix=".tmp-compress"
+        ) as output_obj:
 
             def extract_header_func(input_data):
                 # backup_label should always be first in the tar ball
                 if input_data[0:12].startswith(b"backup_label"):
                     # skip the 512 byte tar header to get to the actual backup label content
-                    start_wal_segment, start_time = self.parse_backup_label(input_data[512:1024])
+                    start_wal_segment, start_time = self.parse_backup_label(
+                        input_data[512:1024]
+                    )
 
-                    metadata.update({"start-wal-segment": start_wal_segment, "start-time": start_time})
+                    metadata.update(
+                        {
+                            "start-wal-segment": start_wal_segment,
+                            "start-time": start_time,
+                        }
+                    )
 
             def progress_callback():
                 stderr_data = proc.stderr.read()
@@ -282,7 +314,7 @@ class PGBaseBackup(PGHoardThread):
                 rsa_public_key=rsa_public_key,
                 progress_callback=progress_callback,
                 log_func=self.log.info,
-                header_func=extract_header_func
+                header_func=extract_header_func,
             )
             os.link(output_obj.name, basebackup_path)
 
@@ -295,7 +327,7 @@ class PGBaseBackup(PGHoardThread):
                     "algorithm": compression_algorithm,
                     "site": self.site,
                     "type": "basebackup",
-                }
+                },
             )
 
         return original_input_size, compressed_file_size, metadata
@@ -307,8 +339,12 @@ class PGBaseBackup(PGHoardThread):
         # an incorrect start-wal-time since the pg_basebackup from pghoard will not generate a new checkpoint.
         # This means that this WAL information would not be the oldest required to restore from this
         # basebackup.
-        connection_string, _ = replication_connection_string_and_slot_using_pgpass(self.connection_info)
-        start_wal_segment = wal.get_current_lsn_from_identify_system(connection_string).walfile_name
+        connection_string, _ = replication_connection_string_and_slot_using_pgpass(
+            self.connection_info
+        )
+        start_wal_segment = wal.get_current_lsn_from_identify_system(
+            connection_string
+        ).walfile_name
 
         basebackup_path, local_basebackup_path = self.get_backup_path()
         command = self.get_command_line("-")
@@ -317,7 +353,12 @@ class PGBaseBackup(PGHoardThread):
         setattr(proc, "basebackup_start_time", time.monotonic())
 
         self.pid = proc.pid
-        self.log.info("Started: %r, running as PID: %r, basebackup_location: %r", command, self.pid, basebackup_path)
+        self.log.info(
+            "Started: %r, running as PID: %r, basebackup_location: %r",
+            command,
+            self.pid,
+            basebackup_path,
+        )
 
         stream_target = local_basebackup_path / "data.tmp"
         stream_target.parent.mkdir(parents=True, exist_ok=True)
@@ -325,12 +366,18 @@ class PGBaseBackup(PGHoardThread):
         # catch any os level exceptions such out of disk space, so that the underlying
         # OS process gets properly cleaned up by check_command_success
         try:
-            original_input_size, compressed_file_size, metadata = \
-                self.basebackup_compression_pipe(proc, stream_target)
+            (
+                original_input_size,
+                compressed_file_size,
+                metadata,
+            ) = self.basebackup_compression_pipe(proc, stream_target)
         except OSError as e:
             self.log.error(
                 "basebackup_compression_pipe(%r, %r) failed with %r. "
-                "Ignoring; check_command_success will detect this.", proc, stream_target, e
+                "Ignoring; check_command_success will detect this.",
+                proc,
+                stream_target,
+                e,
             )
             self.metrics.unexpected_exception(e, where="PGBaseBackup")
 
@@ -348,13 +395,17 @@ class PGBaseBackup(PGHoardThread):
             metadata.update({"start-wal-segment": start_wal_segment})
 
         if "start-time" not in metadata:
-            metadata.update({"start-time": datetime.datetime.now(datetime.timezone.utc).isoformat()})
+            metadata.update(
+                {"start-time": datetime.datetime.now(datetime.timezone.utc).isoformat()}
+            )
 
-        metadata.update({
-            "original-file-size": original_input_size,
-            "pg-version": self.pg_version_server,
-            "active-backup-mode": self.site_config["active_backup_mode"],
-        })
+        metadata.update(
+            {
+                "original-file-size": original_input_size,
+                "pg-version": self.pg_version_server,
+                "active-backup-mode": self.site_config["active_backup_mode"],
+            }
+        )
         metadata.update(self.metadata)
 
         self.transfer_queue.put(
@@ -366,7 +417,7 @@ class PGBaseBackup(PGHoardThread):
                 file_size=compressed_file_size,
                 source_data=stream_target,
                 remove_after_upload=True,
-                metadata=metadata
+                metadata=metadata,
             )
         )
 
@@ -377,15 +428,23 @@ class PGBaseBackup(PGHoardThread):
             if line.startswith(b"START WAL LOCATION"):
                 start_wal_segment = line.split()[5].strip(b")").decode("utf8")
             elif line.startswith(b"START TIME: "):
-                start_time_text = line[len("START TIME: "):].decode("utf8")
-                start_time_dt = dates.parse_timestamp(start_time_text, assume_local=True)
+                start_time_text = line[len("START TIME: ") :].decode("utf8")
+                start_time_dt = dates.parse_timestamp(
+                    start_time_text, assume_local=True
+                )
                 start_time = start_time_dt.isoformat()
-        self.log.debug("Found: %r as starting wal segment, start_time: %r", start_wal_segment, start_time)
+        self.log.debug(
+            "Found: %r as starting wal segment, start_time: %r",
+            start_wal_segment,
+            start_time,
+        )
         return start_wal_segment, start_time
 
     def parse_backup_label_in_tar(self, basebackup_path):
         with tarfile.TarFile(name=basebackup_path, mode="r") as tar:
-            content = tar.extractfile("backup_label").read()  # pylint: disable=no-member
+            content = tar.extractfile(
+                "backup_label"
+            ).read()  # pylint: disable=no-member
         return self.parse_backup_label(content)
 
     def run_basic_basebackup(self):
@@ -400,7 +459,12 @@ class PGBaseBackup(PGHoardThread):
         setattr(proc, "basebackup_start_time", time.monotonic())
 
         self.pid = proc.pid
-        self.log.info("Started: %r, running as PID: %r, basebackup_location: %r", command, self.pid, basebackup_tar_file)
+        self.log.info(
+            "Started: %r, running as PID: %r, basebackup_location: %r",
+            command,
+            self.pid,
+            basebackup_tar_file,
+        )
 
         set_subprocess_stdout_and_stderr_nonblocking(proc)
         while self.running:
@@ -413,7 +477,9 @@ class PGBaseBackup(PGHoardThread):
             if proc.poll() is not None:
                 break
         self.check_command_success(proc, basebackup_tar_file)
-        start_wal_segment, start_time = self.parse_backup_label_in_tar(basebackup_tar_file)
+        start_wal_segment, start_time = self.parse_backup_label_in_tar(
+            basebackup_tar_file
+        )
         self.compression_queue.put(
             CompressionEvent(
                 callback_queue=self.callback_queue,
@@ -426,7 +492,7 @@ class PGBaseBackup(PGHoardThread):
                     "start-time": start_time,
                     "start-wal-segment": start_wal_segment,
                     "active-backup-mode": self.site_config["active_backup_mode"],
-                }
+                },
             )
         )
 
@@ -483,7 +549,9 @@ class PGBaseBackup(PGHoardThread):
                                 # Tiny files are not uploaded separately, they are embed into the manifest, so skip them
                                 delta_stats[fileobj.hash.hexdigest()] = ti.size
             except (FileNotFoundError if missing_ok else NoException):
-                self.log.warning("File %r went away while writing to tar, ignoring", local_path)
+                self.log.warning(
+                    "File %r went away while writing to tar, ignoring", local_path
+                )
 
     def find_files_to_backup(self, *, pgdata, tablespaces):
         def add_directory(archive_parent, local_parent, *, missing_ok):
@@ -491,7 +559,9 @@ class PGBaseBackup(PGHoardThread):
             try:
                 contents = os.listdir(local_parent)
             except (FileNotFoundError if missing_ok else NoException):
-                self.log.warning("Directory %r went away while scanning, ignoring", local_parent)
+                self.log.warning(
+                    "Directory %r went away while scanning, ignoring", local_parent
+                )
                 return
 
             for fn in sorted(contents):
@@ -509,7 +579,9 @@ class PGBaseBackup(PGHoardThread):
             try:
                 st_mode = os.stat(local_path).st_mode
             except (FileNotFoundError if missing_ok else NoException):
-                self.log.warning("File %r went away while scanning, ignoring", local_path)
+                self.log.warning(
+                    "File %r went away while scanning, ignoring", local_path
+                )
                 return
 
             if stat.S_ISREG(st_mode) or stat.S_ISLNK(st_mode):
@@ -520,7 +592,9 @@ class PGBaseBackup(PGHoardThread):
                 yield from add_directory(archive_path, local_path, missing_ok=True)
                 yield archive_path, local_path, missing_ok, "leave"
             else:
-                self.log.error("File %r is not a directory, file or symlink, ignoring", local_path)
+                self.log.error(
+                    "File %r is not a directory, file or symlink, ignoring", local_path
+                )
 
         # Iterate over top-level $PGDATA
         for fn in os.listdir(pgdata):
@@ -535,16 +609,18 @@ class PGBaseBackup(PGHoardThread):
             # reconstruct tablespace links in restore.py using our custom metadata and/or user supplied
             # options.
             # TODO: Use a top-level whitelist?
-            if fn in EMPTY_DIRS or \
-                    fn == "postmaster.opts" or \
-                    fn == "postmaster.pid" or \
-                    fn == "backup_label" or \
-                    fn == "tablespace_map" or \
-                    fn.endswith(".old") or \
-                    fn.endswith(".tmp") or \
-                    fn.endswith("~") or \
-                    fn.startswith(".s.") or \
-                    fn.startswith("pgsql_tmp"):
+            if (
+                fn in EMPTY_DIRS
+                or fn == "postmaster.opts"
+                or fn == "postmaster.pid"
+                or fn == "backup_label"
+                or fn == "tablespace_map"
+                or fn.endswith(".old")
+                or fn.endswith(".tmp")
+                or fn.endswith("~")
+                or fn.startswith(".s.")
+                or fn.startswith("pgsql_tmp")
+            ):
                 continue
 
             yield from add_entry(archive_path, local_path, missing_ok=False)
@@ -570,7 +646,9 @@ class PGBaseBackup(PGHoardThread):
         return CompressionData.from_config(self.config)
 
     @staticmethod
-    def chunk_path_to_middle_path_name(chunk_path: Path, file_type: FileType) -> Tuple[Path, str]:
+    def chunk_path_to_middle_path_name(
+        chunk_path: Path, file_type: FileType
+    ) -> Tuple[Path, str]:
         chunk_rel_path = chunk_path.relative_to(chunk_path.parent.parent)
         if file_type == FileType.Basebackup_chunk:
             middle_path = Path("basebackup_chunk")
@@ -595,21 +673,25 @@ class PGBaseBackup(PGHoardThread):
         callback_queue,
         file_type=FileType.Basebackup_chunk,
         extra_metadata=None,
-        delta_stats=None
+        delta_stats=None,
     ):
         start_time = time.monotonic()
 
-        with NamedTemporaryFile(dir=temp_dir, prefix=os.path.basename(chunk_path), suffix=".tmp") as raw_output_obj:
+        with NamedTemporaryFile(
+            dir=temp_dir, prefix=os.path.basename(chunk_path), suffix=".tmp"
+        ) as raw_output_obj:
             # pylint: disable=bad-continuation
             with rohmufile.file_writer(
                 compression_algorithm=self.compression_data.algorithm,
                 compression_level=self.compression_data.level,
                 compression_threads=self.site_config["basebackup_compression_threads"],
                 rsa_public_key=self.encryption_data.rsa_public_key,
-                fileobj=raw_output_obj
+                fileobj=raw_output_obj,
             ) as output_obj:
                 with tarfile.TarFile(fileobj=output_obj, mode="w") as output_tar:
-                    self.write_files_to_tar(files=files_to_backup, tar=output_tar, delta_stats=delta_stats)
+                    self.write_files_to_tar(
+                        files=files_to_backup, tar=output_tar, delta_stats=delta_stats
+                    )
 
                 input_size = output_obj.tell()
 
@@ -634,7 +716,7 @@ class PGBaseBackup(PGHoardThread):
                 "algorithm": self.compression_data.algorithm,
                 "site": self.site,
                 "type": "basebackup",
-            }
+            },
         )
 
         metadata = {
@@ -647,7 +729,9 @@ class PGBaseBackup(PGHoardThread):
         if extra_metadata:
             metadata.update(extra_metadata)
 
-        middle_path, chunk_name = PGBaseBackup.chunk_path_to_middle_path_name(Path(chunk_path), file_type)
+        middle_path, chunk_name = PGBaseBackup.chunk_path_to_middle_path_name(
+            Path(chunk_path), file_type
+        )
 
         self.transfer_queue.put(
             UploadEvent(
@@ -664,19 +748,34 @@ class PGBaseBackup(PGHoardThread):
         # Get the name of the chunk and the name of the parent directory (ie backup "name")
         return chunk_name, input_size, result_size
 
-    def wait_for_chunk_transfer_to_complete(self, chunk_count, upload_results, chunk_callback_queue, start_time):
+    def wait_for_chunk_transfer_to_complete(
+        self, chunk_count, upload_results, chunk_callback_queue, start_time
+    ):
         try:
             upload_results.append(chunk_callback_queue.get(timeout=3.0))
-            self.log.info("Completed a chunk transfer successfully: %r", upload_results[-1])
+            self.log.info(
+                "Completed a chunk transfer successfully: %r", upload_results[-1]
+            )
             return True
         except Empty:
             self.log.warning(
-                "Upload status: %r/%r handled, time taken: %r", len(upload_results), chunk_count,
-                time.monotonic() - start_time
+                "Upload status: %r/%r handled, time taken: %r",
+                len(upload_results),
+                chunk_count,
+                time.monotonic() - start_time,
             )
         return False
 
-    def handle_single_chunk(self, *, chunk_callback_queue, chunk_path, chunks, index, temp_dir, delta_stats=None):
+    def handle_single_chunk(
+        self,
+        *,
+        chunk_callback_queue,
+        chunk_path,
+        chunks,
+        index,
+        temp_dir,
+        delta_stats=None,
+    ):
         one_chunk_files = chunks[index]
         chunk_name, input_size, result_size = self.tar_one_file(
             callback_queue=chunk_callback_queue,
@@ -684,21 +783,28 @@ class PGBaseBackup(PGHoardThread):
             temp_dir=temp_dir,
             files_to_backup=one_chunk_files,
             delta_stats=delta_stats,
-            file_type=FileType.Basebackup_chunk
+            file_type=FileType.Basebackup_chunk,
         )
         self.log.info(
             "Queued backup chunk %r for transfer, chunks on disk (including partial): %r, current: %r, total chunks: %r",
-            chunk_name, self.chunks_on_disk + 1, index, len(chunks)
+            chunk_name,
+            self.chunks_on_disk + 1,
+            index,
+            len(chunks),
         )
         return {
             "chunk_filename": chunk_name,
             "input_size": input_size,
             "result_size": result_size,
-            "files": [chunk[0] for chunk in one_chunk_files]
+            "files": [chunk[0] for chunk in one_chunk_files],
         }
 
     def create_and_upload_chunks(
-        self, chunks, data_file_format, temp_base_dir, delta_stats: Optional[Dict[str, int]] = None
+        self,
+        chunks,
+        data_file_format,
+        temp_base_dir,
+        delta_stats: Optional[Dict[str, int]] = None,
     ):
         start_time = time.monotonic()
         chunk_files = []
@@ -721,7 +827,7 @@ class PGBaseBackup(PGHoardThread):
                     self.metrics.gauge(
                         "pghoard.basebackup_estimated_progress",
                         float(len(chunk_files) * 100 / len(chunks)),
-                        tags={"site": self.site}
+                        tags={"site": self.site},
                     )
                 if self.chunks_on_disk < max_chunks_on_disk:
                     chunk_id = i + 1
@@ -747,11 +853,13 @@ class PGBaseBackup(PGHoardThread):
                 self.metrics.gauge(
                     "pghoard.basebackup_estimated_progress",
                     float(len(chunk_files) * 100 / len(chunks)),
-                    tags={"site": self.site}
+                    tags={"site": self.site},
                 )
 
         while len(upload_results) < len(chunk_files):
-            self.wait_for_chunk_transfer_to_complete(len(chunks), upload_results, chunk_callback_queue, start_time)
+            self.wait_for_chunk_transfer_to_complete(
+                len(chunks), upload_results, chunk_callback_queue, start_time
+            )
 
         return chunk_files
 
@@ -768,7 +876,9 @@ class PGBaseBackup(PGHoardThread):
             with rohmufile.file_reader(
                 fileobj=io.BytesIO(bmeta_compressed),
                 metadata=backup["metadata"],
-                key_lookup=lambda key_id: self.site_config["encryption_keys"][key_id]["private"]
+                key_lookup=lambda key_id: self.site_config["encryption_keys"][key_id][
+                    "private"
+                ],
             ) as input_obj:
                 meta = extract_pghoard_bb_v2_metadata(input_obj)
 
@@ -783,10 +893,14 @@ class PGBaseBackup(PGHoardThread):
         control_files_metadata_extra = {}
         pgdata = self.site_config["pg_data_directory"]
         if not os.path.isdir(pgdata):
-            raise errors.InvalidConfigurationError("pg_data_directory {!r} does not exist".format(pgdata))
+            raise errors.InvalidConfigurationError(
+                "pg_data_directory {!r} does not exist".format(pgdata)
+            )
 
         _, compressed_base = self.get_backup_path()
-        data_file_format = "{}/{}.{{0:08d}}.pghoard".format(compressed_base, os.path.basename(compressed_base)).format
+        data_file_format = "{}/{}.{{0:08d}}.pghoard".format(
+            compressed_base, os.path.basename(compressed_base)
+        ).format
 
         # Default to 2GB chunks of uncompressed data
         target_chunk_size = self.site_config["basebackup_chunk_size"]
@@ -798,7 +912,9 @@ class PGBaseBackup(PGHoardThread):
 
             if self.pg_version_server >= 90600:
                 # We'll always use the the non-exclusive backup mode on 9.6 and newer
-                cursor.execute("SELECT pg_start_backup(%s, true, false)", [BASEBACKUP_NAME])
+                cursor.execute(
+                    "SELECT pg_start_backup(%s, true, false)", [BASEBACKUP_NAME]
+                )
                 backup_label = None
                 backup_mode = "non-exclusive"
             else:
@@ -811,27 +927,39 @@ class PGBaseBackup(PGHoardThread):
                     "       (SELECT extversion FROM pg_extension WHERE extname = 'pgespresso')"
                 )
                 in_recovery, pgespresso_version = cursor.fetchone()
-                if in_recovery and (not pgespresso_version or pgespresso_version < "1.2"):
+                if in_recovery and (
+                    not pgespresso_version or pgespresso_version < "1.2"
+                ):
                     raise errors.InvalidConfigurationError(
                         "pgespresso version 1.2 or higher must be installed "
                         "to take `local-tar` backups from a replica"
                     )
 
                 if pgespresso_version and pgespresso_version >= "1.2":
-                    cursor.execute("SELECT pgespresso_start_backup(%s, true)", [BASEBACKUP_NAME])
+                    cursor.execute(
+                        "SELECT pgespresso_start_backup(%s, true)", [BASEBACKUP_NAME]
+                    )
                     backup_label = cursor.fetchone()[0]
                     backup_mode = "pgespresso"
                 else:
                     try:
-                        cursor.execute("SELECT pg_start_backup(%s, true)", [BASEBACKUP_NAME])
+                        cursor.execute(
+                            "SELECT pg_start_backup(%s, true)", [BASEBACKUP_NAME]
+                        )
                     except psycopg2.OperationalError as ex:
-                        self.log.warning("Exclusive pg_start_backup() failed: %s: %s", ex.__class__.__name__, ex)
+                        self.log.warning(
+                            "Exclusive pg_start_backup() failed: %s: %s",
+                            ex.__class__.__name__,
+                            ex,
+                        )
                         db_conn.rollback()
                         if "a backup is already in progress" not in str(ex):
                             raise
                         self.log.info("Calling pg_stop_backup() and retrying")
                         cursor.execute("SELECT pg_stop_backup()")
-                        cursor.execute("SELECT pg_start_backup(%s, true)", [BASEBACKUP_NAME])
+                        cursor.execute(
+                            "SELECT pg_start_backup(%s, true)", [BASEBACKUP_NAME]
+                        )
 
                     with open(os.path.join(pgdata, "backup_label"), "r") as fp:
                         backup_label = fp.read()
@@ -840,17 +968,26 @@ class PGBaseBackup(PGHoardThread):
             backup_stopped = False
             try:
                 # Look up tablespaces and resolve their current filesystem locations
-                cursor.execute("SELECT oid, spcname FROM pg_tablespace WHERE spcname NOT IN ('pg_default', 'pg_global')")
+                cursor.execute(
+                    "SELECT oid, spcname FROM pg_tablespace WHERE spcname NOT IN ('pg_default', 'pg_global')"
+                )
                 tablespaces = {
                     spcname: {
-                        "path": os.readlink(os.path.join(pgdata, "pg_tblspc", str(oid))),
+                        "path": os.readlink(
+                            os.path.join(pgdata, "pg_tblspc", str(oid))
+                        ),
                         "oid": oid,
                     }
                     for oid, spcname in cursor.fetchall()
                 }
                 db_conn.commit()
 
-                self.log.info("Starting to backup %r and %r tablespaces to %r", pgdata, len(tablespaces), compressed_base)
+                self.log.info(
+                    "Starting to backup %r and %r tablespaces to %r",
+                    pgdata,
+                    len(tablespaces),
+                    compressed_base,
+                )
                 start_time = time.monotonic()
 
                 if delta:
@@ -865,14 +1002,23 @@ class PGBaseBackup(PGHoardThread):
                         get_remote_basebackups_info=self.get_remote_basebackups_info,
                         parallel=self.site_config["basebackup_threads"],
                         temp_base_dir=compressed_base,
-                        compressed_base=compressed_base
+                        compressed_base=compressed_base,
                     )
-                    total_size_plain, total_size_enc, manifest, total_file_count = delta_backup.run(
+                    (
+                        total_size_plain,
+                        total_size_enc,
+                        manifest,
+                        total_file_count,
+                    ) = delta_backup.run(
                         pgdata=pgdata,
                         src_iterate_func=lambda: (
                             item[1]
-                            for item in self.find_files_to_backup(pgdata=pgdata, tablespaces=tablespaces)
-                            if not item[1].endswith(".pem")  # Exclude such files like "dh1024.pem"
+                            for item in self.find_files_to_backup(
+                                pgdata=pgdata, tablespaces=tablespaces
+                            )
+                            if not item[1].endswith(
+                                ".pem"
+                            )  # Exclude such files like "dh1024.pem"
                         ),
                     )
 
@@ -881,7 +1027,9 @@ class PGBaseBackup(PGHoardThread):
                     self.metadata["format"] = BaseBackupFormat.delta_v1
                 else:
                     total_file_count, chunks = self.find_and_split_files_to_backup(
-                        pgdata=pgdata, tablespaces=tablespaces, target_chunk_size=target_chunk_size
+                        pgdata=pgdata,
+                        tablespaces=tablespaces,
+                        target_chunk_size=target_chunk_size,
                     )
                     chunks_count = len(chunks)
 
@@ -892,17 +1040,25 @@ class PGBaseBackup(PGHoardThread):
                     # Tar up the chunks and submit them for upload; note that we start from chunk 1 here; chunk 0
                     # is reserved for special files and metadata and will be generated last.
                     chunk_files = self.create_and_upload_chunks(
-                        chunks, data_file_format, compressed_base, delta_stats=delta_stats
+                        chunks,
+                        data_file_format,
+                        compressed_base,
+                        delta_stats=delta_stats,
                     )
 
                     total_size_plain = sum(item["input_size"] for item in chunk_files)
                     total_size_enc = sum(item["result_size"] for item in chunk_files)
 
                     if with_delta_stats:
-                        control_files_metadata_extra["delta_stats"] = {"hashes": delta_stats}
+                        control_files_metadata_extra["delta_stats"] = {
+                            "hashes": delta_stats
+                        }
 
                         existing_hashes = self.fetch_all_data_files_hashes()
-                        new_hashes = {k: delta_stats[k] for k in set(delta_stats).difference(set(existing_hashes))}
+                        new_hashes = {
+                            k: delta_stats[k]
+                            for k in set(delta_stats).difference(set(existing_hashes))
+                        }
 
                         planned_upload_size = sum(new_hashes.values())
                         planned_upload_count = len(new_hashes)
@@ -914,22 +1070,34 @@ class PGBaseBackup(PGHoardThread):
                             if planned_total_count:
                                 self.metrics.gauge(
                                     "pghoard.planned_delta_backup_changed_data_files_ratio",
-                                    planned_upload_count / planned_total_count
+                                    planned_upload_count / planned_total_count,
                                 )
                             if planned_total_size:
                                 self.metrics.gauge(
                                     "pghoard.planned_delta_backup_changed_data_size_ratio",
-                                    planned_upload_size / planned_total_size
+                                    planned_upload_size / planned_total_size,
                                 )
                             self.metrics.gauge(
                                 "pghoard.planned_delta_backup_remained_data_size_raw",
                                 planned_total_size - planned_upload_size,
                             )
 
-                        self.metrics.increase("pghoard.planned_delta_backup_total_size", inc_value=planned_upload_size)
-                        self.metrics.gauge("pghoard.planned_delta_backup_upload_size", planned_upload_size)
-                        self.metrics.increase("pghoard.planned_delta_backup_total_files", inc_value=planned_upload_count)
-                        self.metrics.gauge("pghoard.planned_delta_backup_upload_files", planned_upload_count)
+                        self.metrics.increase(
+                            "pghoard.planned_delta_backup_total_size",
+                            inc_value=planned_upload_size,
+                        )
+                        self.metrics.gauge(
+                            "pghoard.planned_delta_backup_upload_size",
+                            planned_upload_size,
+                        )
+                        self.metrics.increase(
+                            "pghoard.planned_delta_backup_total_files",
+                            inc_value=planned_upload_count,
+                        )
+                        self.metrics.gauge(
+                            "pghoard.planned_delta_backup_upload_files",
+                            planned_upload_count,
+                        )
 
                     control_files_metadata_extra["chunks"] = chunk_files
 
@@ -951,8 +1119,12 @@ class PGBaseBackup(PGHoardThread):
                 backup_time = time.monotonic() - start_time
                 self.log.info(
                     "Basebackup generation finished, %r files, %r chunks, "
-                    "%r byte input, %r byte output, took %r seconds, waiting to upload", total_file_count, chunks_count,
-                    total_size_plain, total_size_enc, backup_time
+                    "%r byte input, %r byte output, took %r seconds, waiting to upload",
+                    total_file_count,
+                    chunks_count,
+                    total_size_plain,
+                    total_size_enc,
+                    backup_time,
                 )
 
             finally:
@@ -961,14 +1133,21 @@ class PGBaseBackup(PGHoardThread):
                     if backup_mode == "non-exclusive":
                         cursor.execute("SELECT pg_stop_backup(false)")
                     elif backup_mode == "pgespresso":
-                        cursor.execute("SELECT pgespresso_stop_backup(%s)", [backup_label])
+                        cursor.execute(
+                            "SELECT pgespresso_stop_backup(%s)", [backup_label]
+                        )
                     else:
                         cursor.execute("SELECT pg_stop_backup()")
                 db_conn.commit()
 
             backup_label_data = backup_label.encode("utf-8")
-            backup_start_wal_segment, backup_start_time = self.parse_backup_label(backup_label_data)
-            backup_end_wal_segment, backup_end_time = self.get_backup_end_segment_and_time(db_conn, backup_mode)
+            backup_start_wal_segment, backup_start_time = self.parse_backup_label(
+                backup_label_data
+            )
+            (
+                backup_end_wal_segment,
+                backup_end_time,
+            ) = self.get_backup_end_segment_and_time(db_conn, backup_mode)
 
         # Generate and upload the metadata chunk
         metadata = {
@@ -992,7 +1171,7 @@ class PGBaseBackup(PGHoardThread):
         )
         self.tar_one_file(
             callback_queue=self.callback_queue,
-            chunk_path=data_file_format(0), # pylint: disable=too-many-format-args
+            chunk_path=data_file_format(0),  # pylint: disable=too-many-format-args
             temp_dir=compressed_base,
             files_to_backup=control_files,
             file_type=FileType.Basebackup,
@@ -1017,8 +1196,12 @@ class PGBaseBackup(PGHoardThread):
         entered_folders = []
 
         # Generate a list of chunks
-        for archive_path, local_path, missing_ok, operation in \
-                self.find_files_to_backup(pgdata=pgdata, tablespaces=tablespaces):
+        for (
+            archive_path,
+            local_path,
+            missing_ok,
+            operation,
+        ) in self.find_files_to_backup(pgdata=pgdata, tablespaces=tablespaces):
             if operation == "leave":
                 entered_folders.pop()
                 continue
@@ -1026,7 +1209,10 @@ class PGBaseBackup(PGHoardThread):
             file_size = os.path.getsize(local_path)
 
             # Switch chunks if the current chunk has at least 20% data and the new chunk would tip it over
-            if one_chunk_size > target_chunk_size / 5 and one_chunk_size + file_size > target_chunk_size:
+            if (
+                one_chunk_size > target_chunk_size / 5
+                and one_chunk_size + file_size > target_chunk_size
+            ):
                 chunks.append(one_chunk_files)
                 one_chunk_size = 0
                 one_chunk_files = entered_folders.copy()
@@ -1064,9 +1250,13 @@ class PGBaseBackup(PGHoardThread):
             return None, backup_end_time
 
         if self.pg_version_server >= 100000:
-            cursor.execute("SELECT pg_walfile_name(pg_current_wal_lsn()), txid_current()")
+            cursor.execute(
+                "SELECT pg_walfile_name(pg_current_wal_lsn()), txid_current()"
+            )
         else:
-            cursor.execute("SELECT pg_xlogfile_name(pg_current_xlog_location()), txid_current()")
+            cursor.execute(
+                "SELECT pg_xlogfile_name(pg_current_xlog_location()), txid_current()"
+            )
         backup_end_wal_segment, _ = cursor.fetchone()
         db_conn.commit()
 
@@ -1082,7 +1272,9 @@ class PGBaseBackup(PGHoardThread):
             cursor.execute("SELECT pg_start_backup(%s, true, false)", [backup_end_name])
             cursor.execute("SELECT pg_stop_backup(false)")
         elif backup_mode == "pgespresso":
-            cursor.execute("SELECT pgespresso_start_backup(%s, true)", [backup_end_name])
+            cursor.execute(
+                "SELECT pgespresso_start_backup(%s, true)", [backup_end_name]
+            )
             backup_label = cursor.fetchone()[0]
             cursor.execute("SELECT pgespresso_stop_backup(%s)", [backup_label])
         else:

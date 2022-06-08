@@ -20,10 +20,14 @@ def test_create_config_with_keys():
     site = "foosite"
     key_id = "fookeyid"
     private, public = create_keys.create_keys(bits=1024)
-    config = create_keys.create_config(site=site, key_id=key_id, rsa_private_key=private, rsa_public_key=public)
+    config = create_keys.create_config(
+        site=site, key_id=key_id, rsa_private_key=private, rsa_public_key=public
+    )
     assert config["backup_sites"][site]["encryption_key_id"] == key_id
     # Basically with this we just want to know we created something (912 or 916 in length)
-    assert len(config["backup_sites"][site]["encryption_keys"][key_id]["private"]) >= 912
+    assert (
+        len(config["backup_sites"][site]["encryption_keys"][key_id]["private"]) >= 912
+    )
 
 
 def test_write_keys_in_old_config(tmpdir):
@@ -45,16 +49,25 @@ def test_write_keys_in_old_config(tmpdir):
 
 
 def test_show_key_config_no_site():
-    with pytest.raises(create_keys.CommandError, match="Site must be defined if configuration file is not provided"):
+    with pytest.raises(
+        create_keys.CommandError,
+        match="Site must be defined if configuration file is not provided",
+    ):
         create_keys.show_key_config(None, "foo", "bar", "baz")
 
 
 def test_create_keys_main(tmp_path):
     config = {"backup_sites": {"default": {}}}
-    config_file = (tmp_path / "test.json")
+    config_file = tmp_path / "test.json"
     config_file.write_text(json.dumps(config, indent=4))
 
-    args = ["create_keys", "--key-id", "foo", "--config", (tmp_path / "test.json").as_posix()]
+    args = [
+        "create_keys",
+        "--key-id",
+        "foo",
+        "--config",
+        (tmp_path / "test.json").as_posix(),
+    ]
     with mock.patch.object(sys, "argv", args):
         create_keys.main()
 
@@ -62,4 +75,7 @@ def test_create_keys_main(tmp_path):
         result = json.load(f)
 
     assert result["backup_sites"]["default"]["encryption_key_id"] == "foo"
-    assert result["backup_sites"]["default"]["encryption_keys"]["foo"].keys() == {"private", "public"}
+    assert result["backup_sites"]["default"]["encryption_keys"]["foo"].keys() == {
+        "private",
+        "public",
+    }

@@ -29,7 +29,7 @@ WAL_MAGIC = {
     0xD098: 110000,
     0xD101: 120000,
     0xD106: 130000,
-    0xD10D: 140000
+    0xD10D: 140000,
 }
 WAL_MAGIC_BY_VERSION = {value: key for key, value in WAL_MAGIC.items()}
 
@@ -56,16 +56,23 @@ def segments_per_xlogid(server_version: Optional[int]) -> int:
 
 
 class LSN:
-    def __init__(self, value: Union[int, str], server_version: Optional[int], timeline_id: Optional[int] = None):
+    def __init__(
+        self,
+        value: Union[int, str],
+        server_version: Optional[int],
+        timeline_id: Optional[int] = None,
+    ):
         self.timeline_id = timeline_id
         self.server_version = server_version
         if isinstance(value, int):
             self.lsn = value
         elif isinstance(value, str) and "/" in value:
             log_hex, seg_hex = value.split("/", 1)
-            self.lsn = ((int(log_hex, 16) << 32) + int(seg_hex, 16))
+            self.lsn = (int(log_hex, 16) << 32) + int(seg_hex, 16)
         else:
-            raise ValueError("LSN constructor accepts either an int, or a %X/%X formatted string")
+            raise ValueError(
+                "LSN constructor accepts either an int, or a %X/%X formatted string"
+            )
 
     @property
     def _segments_per_xlogid(self) -> int:
@@ -106,7 +113,9 @@ class LSN:
         if self.timeline_id is None:
             raise ValueError("LSN is not associated to a timeline")
         return "{:08X}{:08X}{:08X}".format(
-            self.timeline_id, self._seg // self._segments_per_xlogid, self._seg % self._segments_per_xlogid
+            self.timeline_id,
+            self._seg // self._segments_per_xlogid,
+            self._seg % self._segments_per_xlogid,
         )
 
     def __str__(self):
@@ -125,7 +134,9 @@ class LSN:
 
     def __eq__(self, other) -> bool:
         return (
-            self.lsn == other.lsn and self.timeline_id == other.timeline_id and self.server_version == other.server_version
+            self.lsn == other.lsn
+            and self.timeline_id == other.timeline_id
+            and self.server_version == other.server_version
         )
 
     def __lt__(self, other) -> bool:
@@ -145,7 +156,11 @@ class LSN:
         return self.lsn >= other.lsn
 
     def __add__(self, other: int):
-        return LSN(self.lsn + other, timeline_id=self.timeline_id, server_version=self.server_version)
+        return LSN(
+            self.lsn + other,
+            timeline_id=self.timeline_id,
+            server_version=self.server_version,
+        )
 
     def __sub__(self, other) -> int:
         if isinstance(other, LSN):
@@ -161,7 +176,11 @@ class LSN:
         Returns the LSN corresponding to the start of the wal file that would
         contain this LSN.
         """
-        return LSN(self.lsn & 0xFFFFFFFF000000, timeline_id=self.timeline_id, server_version=self.server_version)
+        return LSN(
+            self.lsn & 0xFFFFFFFF000000,
+            timeline_id=self.timeline_id,
+            server_version=self.server_version,
+        )
 
     @property
     def next_walfile_start_lsn(self):
@@ -180,7 +199,9 @@ class LSN:
         if self.walfile_start_lsn.lsn == 0:
             return None
         return LSN(
-            self.walfile_start_lsn.lsn - WAL_SEG_SIZE, timeline_id=self.timeline_id, server_version=self.server_version
+            self.walfile_start_lsn.lsn - WAL_SEG_SIZE,
+            timeline_id=self.timeline_id,
+            server_version=self.server_version,
         )
 
     def at_timeline(self, timeline_id):
@@ -190,17 +211,20 @@ class LSN:
 def read_header(blob):
     if len(blob) < WAL_HEADER_LEN:
         raise WalBlobLengthError(
-            "Need at least {} bytes of input to read WAL header, got {}".format(WAL_HEADER_LEN, len(blob))
+            "Need at least {} bytes of input to read WAL header, got {}".format(
+                WAL_HEADER_LEN, len(blob)
+            )
         )
-    magic, info, timeline_id, pageaddr, rem_len = struct.unpack("=HHIQI", blob[:WAL_HEADER_LEN])  # pylint: disable=unused-variable
+    magic, info, timeline_id, pageaddr, rem_len = struct.unpack(
+        "=HHIQI", blob[:WAL_HEADER_LEN]
+    )  # pylint: disable=unused-variable
     version = WAL_MAGIC[magic]
     lsn = LSN(pageaddr, timeline_id=timeline_id, server_version=version)
     return WalHeader(version=version, lsn=lsn)
 
 
 def lsn_from_sysinfo(sysinfo: tuple, pg_version: Optional[int] = None) -> LSN:
-    """Get wal file name out of a IDENTIFY_SYSTEM tuple
-    """
+    """Get wal file name out of a IDENTIFY_SYSTEM tuple"""
     return LSN(sysinfo[2], timeline_id=int(sysinfo[1]), server_version=pg_version)
 
 
@@ -247,4 +271,6 @@ def verify_wal(*, wal_name, fileobj=None, filepath=None):
     # Only compare the LSN value, do not pay attention to timelines here.
     if hdr.lsn.lsn != expected_lsn.lsn:
         fmt = "Expected LSN {lsn!r} in WAL file {name!r}; found {found!r}"
-        raise LsnMismatchError(fmt.format(lsn=str(expected_lsn), name=str(source_name), found=str(hdr.lsn)))
+        raise LsnMismatchError(
+            fmt.format(lsn=str(expected_lsn), name=str(source_name), found=str(hdr.lsn))
+        )

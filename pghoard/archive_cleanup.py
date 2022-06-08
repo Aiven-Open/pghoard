@@ -10,7 +10,7 @@ import os
 import sys
 
 from rohmu import get_transfer
-from rohmu.errors import (FileNotFoundFromStorageError, InvalidConfigurationError)
+from rohmu.errors import FileNotFoundFromStorageError, InvalidConfigurationError
 
 from pghoard import common, config, logutil, version
 
@@ -24,7 +24,9 @@ class ArchiveCleanup:
         self.storage = None
 
     def set_config(self, config_file, site):
-        self.config = config.read_json_config_file(config_file, check_commands=False, check_pgdata=False)
+        self.config = config.read_json_config_file(
+            config_file, check_commands=False, check_pgdata=False
+        )
         self.site = config.get_site_from_config(self.config, site)
         self.backup_site = self.config["backup_sites"][self.site]
         storage_config = common.get_object_storage_config(self.config, self.site)
@@ -34,7 +36,9 @@ class ArchiveCleanup:
         basebackup_path = os.path.join(self.backup_site["prefix"], "basebackup")
         xlog_path = os.path.join(self.backup_site["prefix"], "xlog")
         basebackups = self.storage.list_path(basebackup_path)
-        first_required_wal = min(bb["metadata"]["start-wal-segment"] for bb in basebackups)
+        first_required_wal = min(
+            bb["metadata"]["start-wal-segment"] for bb in basebackups
+        )
         self.log.info("First required WAL segment is %r", first_required_wal)
         total_bytes = 0
         for object_info in self.storage.list_iter(xlog_path, with_metadata=False):
@@ -48,25 +52,38 @@ class ArchiveCleanup:
                     try:
                         self.storage.delete_key(object_name)
                     except FileNotFoundFromStorageError:
-                        self.log.error("Storage report segment %r is not available", segment)
+                        self.log.error(
+                            "Storage report segment %r is not available", segment
+                        )
         self.log.info("Total orphan WAL segments size is %s bytes", total_bytes)
 
     def run(self, args=None):
         parser = argparse.ArgumentParser()
-        parser.add_argument("--version", action="version", help="show program version", version=version.__version__)
+        parser.add_argument(
+            "--version",
+            action="version",
+            help="show program version",
+            version=version.__version__,
+        )
         parser.add_argument("--site", help="pghoard site", required=False)
-        parser.add_argument("--config", help="pghoard config file", default=os.environ.get("PGHOARD_CONFIG"))
+        parser.add_argument(
+            "--config",
+            help="pghoard config file",
+            default=os.environ.get("PGHOARD_CONFIG"),
+        )
         parser.add_argument(
             "--dry-run",
             help="only list redundant segments and calculate total file size but do not delete",
             required=False,
             default=False,
-            action="store_true"
+            action="store_true",
         )
         args = parser.parse_args(args)
 
         if not args.config:
-            print("pghoard: config file path must be given with --config or via env PGHOARD_CONFIG")
+            print(
+                "pghoard: config file path must be given with --config or via env PGHOARD_CONFIG"
+            )
             return 1
 
         self.set_config(args.config, args.site)

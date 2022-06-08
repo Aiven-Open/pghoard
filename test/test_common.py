@@ -12,8 +12,13 @@ import pytest
 from rohmu.errors import Error
 
 from pghoard.common import (
-    create_pgpass_file, default_json_serialization, extract_pg_command_version_string, json_encode, pg_major_version,
-    pg_version_string_to_number, write_json_file
+    create_pgpass_file,
+    default_json_serialization,
+    extract_pg_command_version_string,
+    json_encode,
+    pg_major_version,
+    pg_version_string_to_number,
+    write_json_file,
 )
 
 from .base import PGHoardTestCase
@@ -29,11 +34,15 @@ class TestCommon(PGHoardTestCase):
 
         os.environ["HOME"] = self.temp_dir
         # make sure our pgpass entry ends up in the file and the call returns a connection string without password
-        pwl = create_pgpass_file("host=localhost port='5432' user=foo password='bar' dbname=replication")
+        pwl = create_pgpass_file(
+            "host=localhost port='5432' user=foo password='bar' dbname=replication"
+        )
         assert pwl == "dbname='replication' host='localhost' port='5432' user='foo'"
         assert get_pgpass_contents() == b"localhost:5432:replication:foo:bar\n"
         # See that it does not add a new row when repeated
-        pwl = create_pgpass_file("host=localhost port='5432' user=foo password='bar' dbname=replication")
+        pwl = create_pgpass_file(
+            "host=localhost port='5432' user=foo password='bar' dbname=replication"
+        )
         assert pwl == "dbname='replication' host='localhost' port='5432' user='foo'"
         assert get_pgpass_contents() == b"localhost:5432:replication:foo:bar\n"
         # See that it does not add a new row when repeated as url
@@ -43,10 +52,16 @@ class TestCommon(PGHoardTestCase):
         assert get_pgpass_contents() == b"localhost:5432:replication:foo:bar\n"
         # See that it add a new row for a different user
         create_pgpass_file("postgres://another:bar@localhost/replication")
-        assert get_pgpass_contents() == b"localhost:5432:replication:foo:bar\nlocalhost:5432:replication:another:bar\n"
+        assert (
+            get_pgpass_contents()
+            == b"localhost:5432:replication:foo:bar\nlocalhost:5432:replication:another:bar\n"
+        )
         # See that it replaces the previous row when we change password
         pwl = create_pgpass_file("postgres://foo:xyz@localhost/replication")
-        assert get_pgpass_contents() == b"localhost:5432:replication:another:bar\nlocalhost:5432:replication:foo:xyz\n"
+        assert (
+            get_pgpass_contents()
+            == b"localhost:5432:replication:another:bar\nlocalhost:5432:replication:foo:xyz\n"
+        )
         os.environ["HOME"] = original_home
 
     def test_json_serialization(self, tmpdir):
@@ -59,7 +74,12 @@ class TestCommon(PGHoardTestCase):
             "t": datetime.datetime(2015, 9, 1, 4, 0, 0),
             "f": 0.42,
         }
-        res = json.dumps(ob, default=default_json_serialization, separators=(",", ":"), sort_keys=True)
+        res = json.dumps(
+            ob,
+            default=default_json_serialization,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
         assert res == '{"f":0.42,"foo":["bar","baz",42],"t":"2015-09-01T04:00:00Z"}'
 
         assert isinstance(json_encode(ob), str)
@@ -97,23 +117,48 @@ def test_pg_version_string_to_number():
 
 
 def test_extract_pg_command_version_string():
-    assert extract_pg_command_version_string("pg_basebackup (PostgreSQL) 9.3.20") == "9.3.20"
-    assert extract_pg_command_version_string("pg_basebackup (PostgreSQL) 10devel") == "10"
+    assert (
+        extract_pg_command_version_string("pg_basebackup (PostgreSQL) 9.3.20")
+        == "9.3.20"
+    )
+    assert (
+        extract_pg_command_version_string("pg_basebackup (PostgreSQL) 10devel") == "10"
+    )
 
 
 def test_command_version_to_number():
     # Test the whole round trip
     def convert_pg_command_version_to_number(command_version_string):
-        return pg_version_string_to_number(extract_pg_command_version_string(command_version_string))
+        return pg_version_string_to_number(
+            extract_pg_command_version_string(command_version_string)
+        )
 
-    assert convert_pg_command_version_to_number("pg_basebackup (PostgreSQL) 9.3.20") == 90320
+    assert (
+        convert_pg_command_version_to_number("pg_basebackup (PostgreSQL) 9.3.20")
+        == 90320
+    )
     assert convert_pg_command_version_to_number("foobar (PostgreSQL) 9.4.1") == 90401
-    assert convert_pg_command_version_to_number("pg_basebackup (PostgreSQL) 9.5.8") == 90508
+    assert (
+        convert_pg_command_version_to_number("pg_basebackup (PostgreSQL) 9.5.8")
+        == 90508
+    )
     assert convert_pg_command_version_to_number("asdf (PostgreSQL) 9.5alpha1") == 90500
-    assert convert_pg_command_version_to_number("pg_dummyutil (PostgreSQL) 9.6devel") == 90600
-    assert convert_pg_command_version_to_number("pg_basebackup (PostgreSQL) 9.6.6") == 90606
-    assert convert_pg_command_version_to_number("pg_basebackup (PostgreSQL) 10.0") == 100000
-    assert convert_pg_command_version_to_number("pg_basebackup (PostgreSQL) 10.1") == 100001
+    assert (
+        convert_pg_command_version_to_number("pg_dummyutil (PostgreSQL) 9.6devel")
+        == 90600
+    )
+    assert (
+        convert_pg_command_version_to_number("pg_basebackup (PostgreSQL) 9.6.6")
+        == 90606
+    )
+    assert (
+        convert_pg_command_version_to_number("pg_basebackup (PostgreSQL) 10.0")
+        == 100000
+    )
+    assert (
+        convert_pg_command_version_to_number("pg_basebackup (PostgreSQL) 10.1")
+        == 100001
+    )
     with pytest.raises(Error):
         convert_pg_command_version_to_number("PostgreSQL) 9.6devel")
     assert convert_pg_command_version_to_number("test (PostgreSQL) 15devel") == 150000

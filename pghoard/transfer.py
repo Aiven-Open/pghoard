@@ -22,8 +22,15 @@ from rohmu.errors import FileNotFoundFromStorageError
 from rohmu.object_storage.base import BaseTransfer
 
 from pghoard.common import (
-    CallbackEvent, CallbackQueue, FileType, PGHoardThread, Queue, QuitEvent, StrEnum, create_alert_file,
-    get_object_storage_config
+    CallbackEvent,
+    CallbackQueue,
+    FileType,
+    PGHoardThread,
+    Queue,
+    QuitEvent,
+    StrEnum,
+    create_alert_file,
+    get_object_storage_config,
 )
 from pghoard.fetcher import FileFetchManager
 
@@ -90,7 +97,7 @@ OperationEvents = {
     TransferOperation.Download: DownloadEvent,
     TransferOperation.Upload: UploadEvent,
     TransferOperation.List: ListEvent,
-    TransferOperation.Metadata: MetadataEvent
+    TransferOperation.Metadata: MetadataEvent,
 }
 
 # Should be changed to Queue[Union[CompressionEvent, Literal[QuitEvent]] once
@@ -99,13 +106,22 @@ TransferQueue = Queue
 
 
 class TransferAgent(PGHoardThread):
-    def __init__(self, config, mp_manager, transfer_queue: TransferQueue, metrics, shared_state_dict):
+    def __init__(
+        self,
+        config,
+        mp_manager,
+        transfer_queue: TransferQueue,
+        metrics,
+        shared_state_dict,
+    ):
         super().__init__()
         self.log = logging.getLogger("TransferAgent")
         self.config = config
         self.metrics = metrics
         self.mp_manager = mp_manager
-        self.fetch_manager = FileFetchManager(self.config, self.mp_manager, self.get_object_storage)
+        self.fetch_manager = FileFetchManager(
+            self.config, self.mp_manager, self.get_object_storage
+        )
         self.transfer_queue = transfer_queue
         self.running = True
         self.sleep = time.sleep
@@ -121,7 +137,7 @@ class TransferAgent(PGHoardThread):
                 "time_taken": 0.0,
                 "failures": 0,
                 "xlogs_since_basebackup": 0,
-                "last_success": None
+                "last_success": None,
             }
 
             def defaults():
@@ -168,7 +184,7 @@ class TransferAgent(PGHoardThread):
                             tags={
                                 "site": site,
                                 "type": filetype,
-                            }
+                            },
                         )
             _last_stats_transmit_time = time.monotonic()
 
@@ -187,7 +203,9 @@ class TransferAgent(PGHoardThread):
             filetype = file_to_transfer.file_type
             self.log.info("Processing TransferEvent %r", file_to_transfer)
             start_time = time.monotonic()
-            site_prefix = self.config["backup_sites"][file_to_transfer.backup_site_name]["prefix"]
+            site_prefix = self.config["backup_sites"][
+                file_to_transfer.backup_site_name
+            ]["prefix"]
             key = str(Path(site_prefix) / file_to_transfer.file_path)
             oper = str(file_to_transfer.operation)
             if file_to_transfer.operation == TransferOperation.Download:
@@ -199,7 +217,9 @@ class TransferAgent(PGHoardThread):
             elif file_to_transfer.operation == TransferOperation.Metadata:
                 result = self.handle_metadata(site, key, file_to_transfer)
             else:
-                raise TypeError(f"Invalid transfer operation {file_to_transfer.operation}")
+                raise TypeError(
+                    f"Invalid transfer operation {file_to_transfer.operation}"
+                )
 
             # increment statistics counters
             self.set_state_defaults_for_site(site)
@@ -218,7 +238,7 @@ class TransferAgent(PGHoardThread):
                     self.metrics.gauge(
                         "pghoard.xlogs_since_basebackup",
                         self.state[site][oper]["xlog"]["xlogs_since_basebackup"],
-                        tags={"site": site}
+                        tags={"site": site},
                     )
 
                 self.state[site][oper][filetype]["last_success"] = time.monotonic()
@@ -231,14 +251,19 @@ class TransferAgent(PGHoardThread):
                     tags={
                         "type": filetype,
                         "site": site,
-                    }
+                    },
                 )
-                self.state[site][oper][filetype]["time_taken"] += time.monotonic() - start_time
+                self.state[site][oper][filetype]["time_taken"] += (
+                    time.monotonic() - start_time
+                )
                 self.state[site][oper][filetype]["latest_filename"] = filename
             else:
                 self.state[site][oper][filetype]["failures"] += 1
 
-            if file_to_transfer.operation in {TransferOperation.Download, TransferOperation.Upload}:
+            if file_to_transfer.operation in {
+                TransferOperation.Download,
+                TransferOperation.Upload,
+            }:
                 self.metrics.increase(
                     "pghoard.{}_size".format(oper),
                     inc_value=oper_size,
@@ -246,7 +271,7 @@ class TransferAgent(PGHoardThread):
                         "result": "ok" if result.success else "failed",
                         "type": filetype,
                         "site": site,
-                    }
+                    },
                 )
 
             # push result to callback_queue if provided
@@ -254,9 +279,12 @@ class TransferAgent(PGHoardThread):
                 file_to_transfer.callback_queue.put(result)
 
             self.log.info(
-                "%r %stransfer of key: %r, size: %r, took %.3fs", oper, "FAILED " if not result.success else "", key,
+                "%r %stransfer of key: %r, size: %r, took %.3fs",
+                oper,
+                "FAILED " if not result.success else "",
+                key,
                 oper_size,
-                time.monotonic() - start_time
+                time.monotonic() - start_time,
             )
 
         self.fetch_manager.stop()
@@ -272,7 +300,11 @@ class TransferAgent(PGHoardThread):
             self.log.warning("%r not found from storage", key)
             return CallbackEvent(success=False, exception=ex)
         except Exception as ex:  # pylint: disable=broad-except
-            self.log.exception("Problem happened when retrieving metadata: %r, %r", key, file_to_transfer)
+            self.log.exception(
+                "Problem happened when retrieving metadata: %r, %r",
+                key,
+                file_to_transfer,
+            )
             self.metrics.unexpected_exception(ex, where="handle_list")
             return CallbackEvent(success=False, exception=ex)
 
@@ -286,7 +318,11 @@ class TransferAgent(PGHoardThread):
             self.log.warning("%r not found from storage", key)
             return CallbackEvent(success=False, exception=ex)
         except Exception as ex:  # pylint: disable=broad-except
-            self.log.exception("Problem happened when retrieving metadata: %r, %r", key, file_to_transfer)
+            self.log.exception(
+                "Problem happened when retrieving metadata: %r, %r",
+                key,
+                file_to_transfer,
+            )
             self.metrics.unexpected_exception(ex, where="handle_metadata")
             return CallbackEvent(success=False, exception=ex)
 
@@ -295,22 +331,38 @@ class TransferAgent(PGHoardThread):
             path = file_to_transfer.destination_path
             self.log.info("Requesting download of object key: src=%r dst=%r", key, path)
             file_size, metadata = self.fetch_manager.fetch_file(site, key, path)
-            payload = {"file_size": file_size, "metadata": metadata, "target_path": path}
-            return CallbackEvent(success=True, opaque=file_to_transfer.opaque, payload=payload)
+            payload = {
+                "file_size": file_size,
+                "metadata": metadata,
+                "target_path": path,
+            }
+            return CallbackEvent(
+                success=True, opaque=file_to_transfer.opaque, payload=payload
+            )
         except FileNotFoundFromStorageError as ex:
             self.log.warning("%r not found from storage", key)
-            return CallbackEvent(success=False, exception=ex, opaque=file_to_transfer.opaque)
+            return CallbackEvent(
+                success=False, exception=ex, opaque=file_to_transfer.opaque
+            )
         except Exception as ex:  # pylint: disable=broad-except
-            self.log.exception("Problem happened when downloading: %r, %r", key, file_to_transfer)
+            self.log.exception(
+                "Problem happened when downloading: %r, %r", key, file_to_transfer
+            )
             self.metrics.unexpected_exception(ex, where="handle_download")
-            return CallbackEvent(success=False, exception=ex, opaque=file_to_transfer.opaque)
+            return CallbackEvent(
+                success=False, exception=ex, opaque=file_to_transfer.opaque
+            )
 
     def handle_upload(self, site, key, file_to_transfer):
         payload = {"file_size": file_to_transfer.file_size}
         try:
             storage = self.get_object_storage(site)
             unlink_local = file_to_transfer.remove_after_upload
-            self.log.info("Uploading file to object store: src=%r dst=%r", file_to_transfer.source_data, key)
+            self.log.info(
+                "Uploading file to object store: src=%r dst=%r",
+                file_to_transfer.source_data,
+                key,
+            )
             if not isinstance(file_to_transfer.source_data, BytesIO):
                 f = open(file_to_transfer.source_data, "rb")
             else:
@@ -322,7 +374,10 @@ class TransferAgent(PGHoardThread):
                 storage.store_file_object(key, f, metadata=metadata)
             if unlink_local:
                 try:
-                    self.log.info("Deleting file: %r since it has been uploaded", file_to_transfer.source_data)
+                    self.log.info(
+                        "Deleting file: %r since it has been uploaded",
+                        file_to_transfer.source_data,
+                    )
                     os.unlink(file_to_transfer.source_data)
                     # If we're working from pathes, then compute the .metadata
                     # path.
@@ -334,22 +389,34 @@ class TransferAgent(PGHoardThread):
                         with suppress(FileNotFoundError):
                             os.unlink(metadata_path)
                 except Exception as ex:  # pylint: disable=broad-except
-                    self.log.exception("Problem in deleting file: %r", file_to_transfer.source_data)
+                    self.log.exception(
+                        "Problem in deleting file: %r", file_to_transfer.source_data
+                    )
                     self.metrics.unexpected_exception(ex, where="handle_upload_unlink")
             return CallbackEvent(success=True, payload=payload)
         except Exception as ex:  # pylint: disable=broad-except
             if file_to_transfer.retry_number > 0:
-                self.log.exception("Problem in moving file: %r, need to retry", file_to_transfer.source_data)
+                self.log.exception(
+                    "Problem in moving file: %r, need to retry",
+                    file_to_transfer.source_data,
+                )
                 # Ignore the exception the first time round as some object stores have frequent Internal Errors
                 # and the upload usually goes through without any issues the second time round
                 self.metrics.unexpected_exception(ex, where="handle_upload")
             else:
                 self.log.warning(
-                    "Problem in moving file: %r, need to retry (%s: %s)", file_to_transfer.source_data,
-                    ex.__class__.__name__, ex
+                    "Problem in moving file: %r, need to retry (%s: %s)",
+                    file_to_transfer.source_data,
+                    ex.__class__.__name__,
+                    ex,
                 )
-            file_to_transfer = dataclasses.replace(file_to_transfer, retry_number=file_to_transfer.retry_number + 1)
-            if file_to_transfer.retry_number > self.config["upload_retries_warning_limit"]:
+            file_to_transfer = dataclasses.replace(
+                file_to_transfer, retry_number=file_to_transfer.retry_number + 1
+            )
+            if (
+                file_to_transfer.retry_number
+                > self.config["upload_retries_warning_limit"]
+            ):
                 create_alert_file(self.config, "upload_retries_warning")
 
             # Sleep for a bit to avoid busy looping. Increase sleep time if the op fails multiple times

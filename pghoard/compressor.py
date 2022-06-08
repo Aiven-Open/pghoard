@@ -25,7 +25,14 @@ from rohmu import rohmufile
 from pghoard import config as pgh_config
 from pghoard import wal
 from pghoard.common import (
-    CallbackEvent, CallbackQueue, FileType, FileTypePrefixes, PGHoardThread, QuitEvent, StrEnum, write_json_file
+    CallbackEvent,
+    CallbackQueue,
+    FileType,
+    FileTypePrefixes,
+    PGHoardThread,
+    QuitEvent,
+    StrEnum,
+    write_json_file,
 )
 from pghoard.metrics import Metrics
 from pghoard.transfer import TransferQueue, UploadEvent
@@ -139,22 +146,37 @@ class CompressorThread(PGHoardThread):
                     if file_type:
                         self.handle_event(event)
                     elif event.callback_queue:
-                        self.log.debug("Returning success for unrecognized and ignored event: %r", event)
+                        self.log.debug(
+                            "Returning success for unrecognized and ignored event: %r",
+                            event,
+                        )
                         event.callback_queue.put(CallbackEvent(success=True))
                 event = None
             except Exception as ex:  # pylint: disable=broad-except
                 attempt_message = ""
                 if attempt < self.MAX_FAILED_RETRY_ATTEMPTS:
-                    attempt_message = f" (attempt {attempt} of {self.MAX_FAILED_RETRY_ATTEMPTS})"
+                    attempt_message = (
+                        f" (attempt {attempt} of {self.MAX_FAILED_RETRY_ATTEMPTS})"
+                    )
 
-                self.log.exception("Problem handling%s: %r: %s: %s", attempt_message, event, ex.__class__.__name__, ex)
+                self.log.exception(
+                    "Problem handling%s: %r: %s: %s",
+                    attempt_message,
+                    event,
+                    ex.__class__.__name__,
+                    ex,
+                )
                 self.metrics.unexpected_exception(ex, where="compressor_run")
                 if attempt >= self.MAX_FAILED_RETRY_ATTEMPTS:
                     # When this happens, execution must be stopped in order to prevent data corruption
                     if event.callback_queue:
-                        event.callback_queue.put(CallbackEvent(success=False, exception=ex))
+                        event.callback_queue.put(
+                            CallbackEvent(success=False, exception=ex)
+                        )
                     self.running = False
-                    self.metrics.unexpected_exception(ex, where="compressor_run_critical")
+                    self.metrics.unexpected_exception(
+                        ex, where="compressor_run_critical"
+                    )
                     self.critical_failure_event.set()
                     raise
                 attempt = attempt + 1
@@ -169,8 +191,10 @@ class CompressorThread(PGHoardThread):
                 input_obj=event.source_data,
                 output_obj=output_obj,
                 metadata=event.metadata,
-                key_lookup=pgh_config.key_lookup_for_site(self.config, event.backup_site_name),
-                log_func=self.log.debug
+                key_lookup=pgh_config.key_lookup_for_site(
+                    self.config, event.backup_site_name
+                ),
+                log_func=self.log.debug,
             )
 
         if event.callback_queue:
@@ -183,7 +207,9 @@ class CompressorThread(PGHoardThread):
         site = event.backup_site_name
         encryption_key_id = self.config["backup_sites"][site]["encryption_key_id"]
         if encryption_key_id:
-            rsa_public_key = self.config["backup_sites"][site]["encryption_keys"][encryption_key_id]["public"]
+            rsa_public_key = self.config["backup_sites"][site]["encryption_keys"][
+                encryption_key_id
+            ]["public"]
         remove_after_upload = False
         if event.compress_to_memory:
             output_obj = BytesIO()
@@ -192,12 +218,14 @@ class CompressorThread(PGHoardThread):
         else:
             remove_after_upload = True
             type_prefix = FileTypePrefixes[event.file_type]
-            compressed_filepath = self.get_compressed_file_dir(site) / type_prefix / event.file_path.name
+            compressed_filepath = (
+                self.get_compressed_file_dir(site) / type_prefix / event.file_path.name
+            )
             compressed_filepath.parent.mkdir(exist_ok=True)
             output_obj = NamedTemporaryFile(
                 dir=os.path.dirname(compressed_filepath),
                 prefix=os.path.basename(compressed_filepath),
-                suffix=".tmp-compress"
+                suffix=".tmp-compress",
             )
             output_data = compressed_filepath
         if not isinstance(event.source_data, BytesIO):
@@ -227,13 +255,15 @@ class CompressorThread(PGHoardThread):
                 output_data = BytesIO(output_obj.getvalue())
 
         metadata = event.metadata
-        metadata.update({
-            "pg-version": self.config["backup_sites"][site].get("pg_version"),
-            "compression-algorithm": self.config["compression"]["algorithm"],
-            "compression-level": self.config["compression"]["level"],
-            "original-file-size": original_file_size,
-            "host": socket.gethostname(),
-        })
+        metadata.update(
+            {
+                "pg-version": self.config["backup_sites"][site].get("pg_version"),
+                "compression-algorithm": self.config["compression"]["algorithm"],
+                "compression-level": self.config["compression"]["level"],
+                "original-file-size": original_file_size,
+                "host": socket.gethostname(),
+            }
+        )
         if hasher:
             metadata["hash"] = hasher.hexdigest()
             metadata["hash-algorithm"] = hash_algorithm
@@ -242,7 +272,9 @@ class CompressorThread(PGHoardThread):
         # FIXME: why do we dump this ? Intermediate state stored on disk cannot
         # be relied on.
         if compressed_filepath:
-            metadata_path = compressed_filepath.with_name(compressed_filepath.name + ".metadata")
+            metadata_path = compressed_filepath.with_name(
+                compressed_filepath.name + ".metadata"
+            )
             write_json_file(metadata_path, metadata)
 
         self.set_state_defaults_for_site(site)
@@ -258,7 +290,7 @@ class CompressorThread(PGHoardThread):
                     "algorithm": self.config["compression"]["algorithm"],
                     "site": site,
                     "type": file_type,
-                }
+                },
             )
         transfer_object = UploadEvent(
             callback_queue=event.callback_queue,
@@ -268,12 +300,17 @@ class CompressorThread(PGHoardThread):
             backup_site_name=site,
             file_path=event.file_path,
             source_data=output_data,
-            remove_after_upload=remove_after_upload
+            remove_after_upload=remove_after_upload,
         )
         if event.delete_file_after_compression:
             if file_type == FileType.Wal:
-                delete_request = WalFileDeletionEvent(backup_site_name=site, file_path=event.source_data)
-                self.log.info("Adding to Uncompressed WAL file to deletion queue: %s", event.source_data)
+                delete_request = WalFileDeletionEvent(
+                    backup_site_name=site, file_path=event.source_data
+                )
+                self.log.info(
+                    "Adding to Uncompressed WAL file to deletion queue: %s",
+                    event.source_data,
+                )
                 self.wal_file_deletion_queue.put(delete_request)
             else:
                 os.unlink(event.source_data)
@@ -283,21 +320,9 @@ class CompressorThread(PGHoardThread):
     def set_state_defaults_for_site(self, site):
         if site not in self.state:
             self.state[site] = {
-                "basebackup": {
-                    "original_data": 0,
-                    "compressed_data": 0,
-                    "count": 0
-                },
-                "xlog": {
-                    "original_data": 0,
-                    "compressed_data": 0,
-                    "count": 0
-                },
-                "timeline": {
-                    "original_data": 0,
-                    "compressed_data": 0,
-                    "count": 0
-                },
+                "basebackup": {"original_data": 0, "compressed_data": 0, "count": 0},
+                "xlog": {"original_data": 0, "compressed_data": 0, "count": 0},
+                "timeline": {"original_data": 0, "compressed_data": 0, "count": 0},
             }
 
 
@@ -311,6 +336,7 @@ class WALFileDeleterThread(PGHoardThread):
 
     So the idea is to only unlink all files but the latest one.
     """
+
     def __init__(
         self,
         config: Dict,
@@ -330,14 +356,20 @@ class WALFileDeleterThread(PGHoardThread):
         while self.running:
             wait_timeout = 1.0
             # config can be changed in another thread, so we have to lookup this within the loop
-            config_wait_timeout = self.config.get("deleter_event_get_timeout", wait_timeout)
-            if isinstance(config_wait_timeout,
-                          (float, int)) and math.isfinite(config_wait_timeout) and config_wait_timeout > 0:
+            config_wait_timeout = self.config.get(
+                "deleter_event_get_timeout", wait_timeout
+            )
+            if (
+                isinstance(config_wait_timeout, (float, int))
+                and math.isfinite(config_wait_timeout)
+                and config_wait_timeout > 0
+            ):
                 wait_timeout = config_wait_timeout
             else:
                 self.log.warning(
-                    "Bad value for deleter_event_get_timeout: %r, using default value instead: %r", config_wait_timeout,
-                    wait_timeout
+                    "Bad value for deleter_event_get_timeout: %r, using default value instead: %r",
+                    config_wait_timeout,
+                    wait_timeout,
                 )
 
             try:
@@ -357,7 +389,12 @@ class WALFileDeleterThread(PGHoardThread):
                 self.to_be_deleted_files[site].add(local_path)
                 self.deleted_unneeded_files()
             except Exception as ex:  # pylint: disable=broad-except
-                self.log.exception("Problem handling event %r: %s: %s", event, ex.__class__.__name__, ex)
+                self.log.exception(
+                    "Problem handling event %r: %s: %s",
+                    event,
+                    ex.__class__.__name__,
+                    ex,
+                )
                 self.metrics.unexpected_exception(ex, where="wal_file_deleter_run")
                 # Don't block the whole CPU in case something is persistently crashing
                 time.sleep(0.1)
@@ -376,6 +413,10 @@ class WALFileDeleterThread(PGHoardThread):
                     os.unlink(file)
                     self.log.info("Deleted uncompressed WAL file: %s", file)
                 except FileNotFoundError as ex:
-                    self.log.exception("WAL file does not exist: site %s, file %s", site, file)
-                    self.metrics.unexpected_exception(ex, where="wal_file_deleter_delete_unneeded_files")
+                    self.log.exception(
+                        "WAL file does not exist: site %s, file %s", site, file
+                    )
+                    self.metrics.unexpected_exception(
+                        ex, where="wal_file_deleter_delete_unneeded_files"
+                    )
                 to_be_deleted_files_per_site.remove(file)

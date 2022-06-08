@@ -17,18 +17,41 @@ from typing import Callable, Dict
 
 from rohmu import rohmufile
 from rohmu.dates import now
-from rohmu.delta.common import (BackupManifest, SnapshotFile, SnapshotHash, SnapshotResult, SnapshotUploadResult)
+from rohmu.delta.common import (
+    BackupManifest,
+    SnapshotFile,
+    SnapshotHash,
+    SnapshotResult,
+    SnapshotUploadResult,
+)
 from rohmu.delta.snapshot import Snapshotter
 from rohmu.errors import FileNotFoundFromStorageError
 
-from pghoard.common import (BackupFailure, BaseBackupFormat, CallbackQueue, FileType, extract_pghoard_delta_v1_metadata)
+from pghoard.common import (
+    BackupFailure,
+    BaseBackupFormat,
+    CallbackQueue,
+    FileType,
+    extract_pghoard_delta_v1_metadata,
+)
 from pghoard.transfer import UploadEvent
 
 
 class DeltaBaseBackup:
     def __init__(
-        self, *, storage, site, site_config, transfer_queue, metrics, encryption_data, compression_data,
-        get_remote_basebackups_info, parallel, temp_base_dir, compressed_base
+        self,
+        *,
+        storage,
+        site,
+        site_config,
+        transfer_queue,
+        metrics,
+        encryption_data,
+        compression_data,
+        get_remote_basebackups_info,
+        parallel,
+        temp_base_dir,
+        compressed_base,
     ):
         self.log = logging.getLogger("DeltaBaseBackup")
         self.storage = storage
@@ -44,7 +67,9 @@ class DeltaBaseBackup:
         self.compressed_base = compressed_base
         self.submitted_hashes_lock = threading.Lock()
         self.submitted_hashes = set()
-        self.tracked_snapshot_files: Dict[str, SnapshotFile] = self._list_existing_files()
+        self.tracked_snapshot_files: Dict[
+            str, SnapshotFile
+        ] = self._list_existing_files()
 
     def _snapshot(self, snapshotter) -> SnapshotResult:
         snapshotter.snapshot(reuse_old_snapshotfiles=False)
@@ -58,7 +83,9 @@ class DeltaBaseBackup:
             if ssfile.hexdigest
         ]
         snapshot_result.files = len(snapshot_result.state.files)
-        snapshot_result.total_size = sum(ssfile.file_size for ssfile in snapshot_result.state.files)
+        snapshot_result.total_size = sum(
+            ssfile.file_size for ssfile in snapshot_result.state.files
+        )
         snapshot_result.end = now()
 
         self.log.debug("snapshot result: %r", snapshot_result.json())
@@ -74,7 +101,7 @@ class DeltaBaseBackup:
             chunk_path=f"{self.compressed_base}/{temp_object_name}",
             temp_dir=self.temp_base_dir,
             file_obj=file_obj,
-            relative_path=relative_path
+            relative_path=relative_path,
         )
 
     def _list_existing_files(self):
@@ -90,7 +117,9 @@ class DeltaBaseBackup:
             with rohmufile.file_reader(
                 fileobj=io.BytesIO(bmeta_compressed),
                 metadata=backup["metadata"],
-                key_lookup=lambda key_id: self.site_config["encryption_keys"][key_id]["private"]
+                key_lookup=lambda key_id: self.site_config["encryption_keys"][key_id][
+                    "private"
+                ],
             ) as input_obj:
                 meta = extract_pghoard_delta_v1_metadata(input_obj)
 
@@ -105,7 +134,9 @@ class DeltaBaseBackup:
 
         return all_snapshot_files
 
-    def _delta_upload_hexdigest(self, *, temp_dir, chunk_path, file_obj, callback_queue, relative_path):
+    def _delta_upload_hexdigest(
+        self, *, temp_dir, chunk_path, file_obj, callback_queue, relative_path
+    ):
         skip_upload = False
         start_time = time.monotonic()
 
@@ -117,7 +148,9 @@ class DeltaBaseBackup:
         def update_hash(data):
             result_hash.update(data)
 
-        with NamedTemporaryFile(dir=temp_dir, prefix=os.path.basename(chunk_path), suffix=".tmp") as raw_output_obj:
+        with NamedTemporaryFile(
+            dir=temp_dir, prefix=os.path.basename(chunk_path), suffix=".tmp"
+        ) as raw_output_obj:
             rohmufile.write_file(
                 input_obj=file_obj,
                 output_obj=raw_output_obj,
@@ -125,7 +158,7 @@ class DeltaBaseBackup:
                 compression_level=self.compression_data.level,
                 rsa_public_key=self.encryption_data.rsa_public_key,
                 log_func=self.log.info,
-                data_callback=update_hash
+                data_callback=update_hash,
             )
             result_size = raw_output_obj.tell()
             raw_output_obj.seek(0)
@@ -136,7 +169,8 @@ class DeltaBaseBackup:
                 if result_digest in self.submitted_hashes:
                     # file with the same hash was already submitted
                     self.log.debug(
-                        "Skip uploading file %r, file with the same was hash already submitted for uploading", relative_path
+                        "Skip uploading file %r, file with the same was hash already submitted for uploading",
+                        relative_path,
                     )
                     skip_upload = True
                     return input_size, result_size, result_digest, skip_upload
@@ -163,7 +197,7 @@ class DeltaBaseBackup:
                     "algorithm": self.compression_data.algorithm,
                     "site": self.site,
                     "type": "basebackup_delta",
-                }
+                },
             )
 
         metadata = {
@@ -184,7 +218,7 @@ class DeltaBaseBackup:
                 backup_site_name=self.site,
                 metadata=metadata,
                 file_path=dest_path,
-                source_data=chunk_path
+                source_data=chunk_path,
             )
         )
 
@@ -205,8 +239,15 @@ class DeltaBaseBackup:
                     return False
                 try:
                     with snapshotfile.open_for_reading(snapshotter.dst) as f:
-                        size, stored_size, new_hash, skip_upload = self._upload_hexdigest_from_file(
-                            file_obj=f, relative_path=snapshotfile.relative_path, callback_queue=callback_queue
+                        (
+                            size,
+                            stored_size,
+                            new_hash,
+                            skip_upload,
+                        ) = self._upload_hexdigest_from_file(
+                            file_obj=f,
+                            relative_path=snapshotfile.relative_path,
+                            callback_queue=callback_queue,
                         )
                         if new_hash not in self.tracked_snapshot_files:
                             new_submitted_hashes[new_hash] = stored_size
@@ -214,7 +255,7 @@ class DeltaBaseBackup:
                             relative_path=snapshotfile.relative_path,
                             hexdigest=new_hash,
                             file_size=size,
-                            stored_file_size=stored_size
+                            stored_file_size=stored_size,
                         )
                         if not skip_upload:
                             # Every thread is waiting for the transfer to finish, so we don't load disk too much,
@@ -233,14 +274,20 @@ class DeltaBaseBackup:
             return True
 
         sorted_todo_hexdigests = sorted(
-            todo_hexdigests, key=lambda hexdigest: -snapshotter.hexdigest_to_snapshotfiles[hexdigest][0].file_size
+            todo_hexdigests,
+            key=lambda hexdigest: -snapshotter.hexdigest_to_snapshotfiles[hexdigest][
+                0
+            ].file_size,
         )
         iterable_as_list = list(sorted_todo_hexdigests)
         with Pool(self.parallel) as p:
-            for hexdigest, res in zip(iterable_as_list, p.imap(_submit_files_in_thread, iterable_as_list)):
+            for hexdigest, res in zip(
+                iterable_as_list, p.imap(_submit_files_in_thread, iterable_as_list)
+            ):
                 if not res:
                     self.log.error(
-                        "Error while processing digest for upload %r, waiting for workers pool to shutdown", hexdigest
+                        "Error while processing digest for upload %r, waiting for workers pool to shutdown",
+                        hexdigest,
                     )
 
                     p.terminate()
@@ -249,28 +296,38 @@ class DeltaBaseBackup:
                     self.log.info("Cleaning up already uploaded new backup files")
 
                     for new_hash in new_submitted_hashes:
-                        key = os.path.join(self.site_config["prefix"], "basebackup_delta", new_hash)
+                        key = os.path.join(
+                            self.site_config["prefix"], "basebackup_delta", new_hash
+                        )
                         self.log.info("Removing object from the storage: %r", key)
                         try:
                             self.storage.delete_key(key)
                         except FileNotFoundFromStorageError:
-                            self.log.warning("Object with key %r does not exist, skipping")
+                            self.log.warning(
+                                "Object with key %r does not exist, skipping"
+                            )
 
                     raise BackupFailure("Error while uploading backup files")
 
         uploaded_size = sum(new_submitted_hashes.values())
         uploaded_count = len(new_submitted_hashes)
 
-        self.metrics.increase("pghoard.delta_backup_total_size", inc_value=uploaded_size)
+        self.metrics.increase(
+            "pghoard.delta_backup_total_size", inc_value=uploaded_size
+        )
         self.metrics.gauge("pghoard.delta_backup_upload_size", uploaded_size)
-        self.metrics.increase("pghoard.delta_backup_total_files", inc_value=uploaded_count)
+        self.metrics.increase(
+            "pghoard.delta_backup_total_files", inc_value=uploaded_count
+        )
         self.metrics.gauge("pghoard.delta_backup_upload_files", uploaded_count)
 
         self.log.info("All basebackup files were uploaded successfully")
 
         return uploaded_count, uploaded_size
 
-    def _delta_upload(self, snapshot_result: SnapshotResult, snapshotter: Snapshotter, start_time_utc):
+    def _delta_upload(
+        self, snapshot_result: SnapshotResult, snapshotter: Snapshotter, start_time_utc
+    ):
         callback_queue = CallbackQueue()
 
         # Determine which digests already exist and which need to be uploaded, also restore the backup size of re-used
@@ -281,19 +338,28 @@ class DeltaBaseBackup:
             raise ValueError("snapshot_result state must not be None")
         for snapshot_file in snapshot_result.state.files:
             if snapshot_file.hexdigest in self.tracked_snapshot_files:
-                snapshot_file_from_manifest = self.tracked_snapshot_files[snapshot_file.hexdigest]
+                snapshot_file_from_manifest = self.tracked_snapshot_files[
+                    snapshot_file.hexdigest
+                ]
                 already_uploaded_hashes.add(
                     SnapshotHash(
-                        hexdigest=snapshot_file_from_manifest.hexdigest, size=snapshot_file_from_manifest.file_size
+                        hexdigest=snapshot_file_from_manifest.hexdigest,
+                        size=snapshot_file_from_manifest.file_size,
                     )
                 )
 
         todo = snapshot_hashes.difference(already_uploaded_hashes)
         todo_count = len(todo)
 
-        self.log.info("Submitting hashes for upload: %r, total hashes in the snapshot: %r", todo_count, len(snapshot_hashes))
+        self.log.info(
+            "Submitting hashes for upload: %r, total hashes in the snapshot: %r",
+            todo_count,
+            len(snapshot_hashes),
+        )
 
-        uploaded_count, uploaded_size = self._upload_files(callback_queue=callback_queue, todo=todo, snapshotter=snapshotter)
+        uploaded_count, uploaded_size = self._upload_files(
+            callback_queue=callback_queue, todo=todo, snapshotter=snapshotter
+        )
 
         total_stored_size = 0
         total_size = 0
@@ -309,7 +375,9 @@ class DeltaBaseBackup:
                 total_digests_count += 1
                 if not snapshot_file.stored_file_size:
                     # Patch existing files with stored_file_size from existing manifest files (we can not have it otherwise)
-                    snapshot_file.stored_file_size = self.tracked_snapshot_files[snapshot_file.hexdigest].stored_file_size
+                    snapshot_file.stored_file_size = self.tracked_snapshot_files[
+                        snapshot_file.hexdigest
+                    ].stored_file_size
                 total_stored_size += snapshot_file.stored_file_size
                 total_digests_stored_size += snapshot_file.stored_file_size
             elif snapshot_file.content_b64:
@@ -320,7 +388,10 @@ class DeltaBaseBackup:
             # Collect these metrics for all delta backups, except the first one
             # The lower the number of those metrics, the more efficient delta backups are
             if total_digests_count:
-                self.metrics.gauge("pghoard.delta_backup_changed_data_files_ratio", uploaded_count / total_digests_count)
+                self.metrics.gauge(
+                    "pghoard.delta_backup_changed_data_files_ratio",
+                    uploaded_count / total_digests_count,
+                )
             if total_digests_stored_size:
                 self.metrics.gauge(
                     "pghoard.delta_backup_changed_data_size_ratio",
@@ -334,7 +405,9 @@ class DeltaBaseBackup:
         manifest = BackupManifest(
             start=start_time_utc,
             snapshot_result=snapshot_result,
-            upload_result=SnapshotUploadResult(total_size=total_size, total_stored_size=total_stored_size)
+            upload_result=SnapshotUploadResult(
+                total_size=total_size, total_stored_size=total_stored_size
+            ),
         )
 
         return manifest, total_size, total_stored_size
@@ -346,7 +419,11 @@ class DeltaBaseBackup:
             os.makedirs(delta_dir)
 
         snapshotter = Snapshotter(
-            src=pgdata, dst=delta_dir, globs=["**/*"], parallel=self.parallel, src_iterate_func=src_iterate_func
+            src=pgdata,
+            dst=delta_dir,
+            globs=["**/*"],
+            parallel=self.parallel,
+            src_iterate_func=src_iterate_func,
         )
 
         with snapshotter.lock:
@@ -355,7 +432,9 @@ class DeltaBaseBackup:
             snapshot_result = self._snapshot(snapshotter)
 
             manifest, total_size, total_stored_size = self._delta_upload(
-                snapshot_result=snapshot_result, snapshotter=snapshotter, start_time_utc=start_time_utc
+                snapshot_result=snapshot_result,
+                snapshotter=snapshotter,
+                start_time_utc=start_time_utc,
             )
             self.log.debug("manifest %r", manifest)
 

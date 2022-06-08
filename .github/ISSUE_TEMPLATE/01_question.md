@@ -10,4 +10,3 @@ about: Got stuck or missing something from the docs? Ask away!
 # Where would you expect to find this information?
 
 <!-- Feel free to point us where with links or even proposing new sections or pages in the documentation. -->
-

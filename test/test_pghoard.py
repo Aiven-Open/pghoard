@@ -15,12 +15,19 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
+
 # pylint: disable=attribute-defined-outside-init
 from rohmu import rohmufile
 
 import pghoard.pghoard as pghoard_module
 from pghoard import common
-from pghoard.common import (BaseBackupFormat, FileType, create_alert_file, delete_alert_file, write_json_file)
+from pghoard.common import (
+    BaseBackupFormat,
+    FileType,
+    create_alert_file,
+    delete_alert_file,
+    write_json_file,
+)
 from pghoard.pghoard import PGHoard
 from pghoard.pgutil import create_connection_string
 
@@ -31,26 +38,29 @@ from .util import switch_wal, wait_for_xlog
 class TestPGHoard(PGHoardTestCase):
     def setup_method(self, method):
         super().setup_method(method)
-        self.config = self.config_template({
-            "backup_sites": {
-                self.test_site: {
-                    "basebackup_count": 1,
-                    "basebackup_interval_hours": 1,
-                    "nodes": [
-                        {
-                            "host": "127.0.0.4",
-                        },
-                    ],
+        self.config = self.config_template(
+            {
+                "backup_sites": {
+                    self.test_site: {
+                        "basebackup_count": 1,
+                        "basebackup_interval_hours": 1,
+                        "nodes": [
+                            {
+                                "host": "127.0.0.4",
+                            },
+                        ],
+                    },
                 },
-            },
-        })
+            }
+        )
         config_path = os.path.join(self.temp_dir, "pghoard.json")
         write_json_file(config_path, self.config)
 
         self.pghoard = PGHoard(config_path)
         # This is the "final storage location" when using "local" storage type
         self.local_storage_dir = os.path.join(
-            self.config["backup_sites"][self.test_site]["object_storage"]["directory"], self.test_site
+            self.config["backup_sites"][self.test_site]["object_storage"]["directory"],
+            self.test_site,
         )
 
         self.real_check_pg_server_version = self.pghoard.check_pg_server_version
@@ -71,8 +81,12 @@ systemid|6222667313856416063
 timeline|1
 xlogpos|0/B003760
 dbname|"""
-        self.pghoard.handle_site(self.test_site, self.config["backup_sites"][self.test_site])
-        assert len(self.pghoard.receivexlogs) == 1 or len(self.pghoard.walreceivers) == 1
+        self.pghoard.handle_site(
+            self.test_site, self.config["backup_sites"][self.test_site]
+        )
+        assert (
+            len(self.pghoard.receivexlogs) == 1 or len(self.pghoard.walreceivers) == 1
+        )
         assert len(self.pghoard.time_of_last_backup_check) == 1
 
     def test_get_local_basebackups_info(self):
@@ -122,81 +136,55 @@ dbname|"""
         bbs = [
             {
                 "name": "bb1",
-                "metadata": {
-                    "start-time": now - datetime.timedelta(days=10, hours=4)
-                }
+                "metadata": {"start-time": now - datetime.timedelta(days=10, hours=4)},
             },
             {
                 "name": "bb1",
-                "metadata": {
-                    "start-time": now - datetime.timedelta(days=9, hours=4)
-                }
+                "metadata": {"start-time": now - datetime.timedelta(days=9, hours=4)},
             },
             {
                 "name": "bb1",
-                "metadata": {
-                    "start-time": now - datetime.timedelta(days=9, hours=1)
-                }
+                "metadata": {"start-time": now - datetime.timedelta(days=9, hours=1)},
             },
             {
                 "name": "bb1",
-                "metadata": {
-                    "start-time": now - datetime.timedelta(days=8, hours=4)
-                }
+                "metadata": {"start-time": now - datetime.timedelta(days=8, hours=4)},
             },
             {
                 "name": "bb1",
-                "metadata": {
-                    "start-time": now - datetime.timedelta(days=7, hours=4)
-                }
+                "metadata": {"start-time": now - datetime.timedelta(days=7, hours=4)},
             },
             {
                 "name": "bb1",
-                "metadata": {
-                    "start-time": now - datetime.timedelta(days=6, hours=4)
-                }
+                "metadata": {"start-time": now - datetime.timedelta(days=6, hours=4)},
             },
             {
                 "name": "bb1",
-                "metadata": {
-                    "start-time": now - datetime.timedelta(days=6, hours=20)
-                }
+                "metadata": {"start-time": now - datetime.timedelta(days=6, hours=20)},
             },
             {
                 "name": "bb1",
-                "metadata": {
-                    "start-time": now - datetime.timedelta(days=5, hours=4)
-                }
+                "metadata": {"start-time": now - datetime.timedelta(days=5, hours=4)},
             },
             {
                 "name": "bb1",
-                "metadata": {
-                    "start-time": now - datetime.timedelta(days=4, hours=4)
-                }
+                "metadata": {"start-time": now - datetime.timedelta(days=4, hours=4)},
             },
             {
                 "name": "bb1",
-                "metadata": {
-                    "start-time": now - datetime.timedelta(days=3, hours=4)
-                }
+                "metadata": {"start-time": now - datetime.timedelta(days=3, hours=4)},
             },
             {
                 "name": "bb1",
-                "metadata": {
-                    "start-time": now - datetime.timedelta(days=2, hours=4)
-                }
+                "metadata": {"start-time": now - datetime.timedelta(days=2, hours=4)},
             },
             {
                 "name": "bb1",
-                "metadata": {
-                    "start-time": now - datetime.timedelta(days=1, hours=4)
-                }
+                "metadata": {"start-time": now - datetime.timedelta(days=1, hours=4)},
             },
             {
                 "name": "bb1",
-                "metadata": {
-                    "start-time": now - datetime.timedelta(hours=4)
-                }
+                "metadata": {"start-time": now - datetime.timedelta(hours=4)},
             },
         ]
 
@@ -206,60 +194,76 @@ dbname|"""
             "basebackup_interval_hours": 24,
         }
         bbs_copy = list(bbs)
-        to_delete = self.pghoard.determine_backups_to_delete(basebackups=bbs_copy, site_config=site_config)
+        to_delete = self.pghoard.determine_backups_to_delete(
+            basebackups=bbs_copy, site_config=site_config
+        )
         assert len(bbs_copy) == 4
         assert len(to_delete) == len(bbs) - len(bbs_copy)
-        assert to_delete == bbs[:len(to_delete)]
-        assert bbs_copy == bbs[len(to_delete):]
+        assert to_delete == bbs[: len(to_delete)]
+        assert bbs_copy == bbs[len(to_delete) :]
 
         site_config["basebackup_count"] = 16
         site_config["basebackup_age_days_max"] = 8
         bbs_copy = list(bbs)
-        to_delete = self.pghoard.determine_backups_to_delete(basebackups=bbs_copy, site_config=site_config)
+        to_delete = self.pghoard.determine_backups_to_delete(
+            basebackups=bbs_copy, site_config=site_config
+        )
         # 3 of the backups are too old (start time + interval is over 8 days in the past)
         assert len(bbs_copy) == 10
         assert len(to_delete) == len(bbs) - len(bbs_copy)
-        assert to_delete == bbs[:len(to_delete)]
-        assert bbs_copy == bbs[len(to_delete):]
+        assert to_delete == bbs[: len(to_delete)]
+        assert bbs_copy == bbs[len(to_delete) :]
 
         site_config["basebackup_count"] = 9
         bbs_copy = list(bbs)
-        to_delete = self.pghoard.determine_backups_to_delete(basebackups=bbs_copy, site_config=site_config)
+        to_delete = self.pghoard.determine_backups_to_delete(
+            basebackups=bbs_copy, site_config=site_config
+        )
         # basebackup_count trumps backup age and backups are removed even though they're not too old
         assert len(bbs_copy) == 9
         assert len(to_delete) == len(bbs) - len(bbs_copy)
-        assert to_delete == bbs[:len(to_delete)]
-        assert bbs_copy == bbs[len(to_delete):]
+        assert to_delete == bbs[: len(to_delete)]
+        assert bbs_copy == bbs[len(to_delete) :]
 
         site_config["basebackup_count"] = 16
         site_config["basebackup_age_days_max"] = 2
         site_config["basebackup_count_min"] = 6
         bbs_copy = list(bbs)
-        to_delete = self.pghoard.determine_backups_to_delete(basebackups=bbs_copy, site_config=site_config)
+        to_delete = self.pghoard.determine_backups_to_delete(
+            basebackups=bbs_copy, site_config=site_config
+        )
         # basebackup_count_min ensures not that many backups are removed even though they're too old
         assert len(bbs_copy) == 6
         assert len(to_delete) == len(bbs) - len(bbs_copy)
-        assert to_delete == bbs[:len(to_delete)]
-        assert bbs_copy == bbs[len(to_delete):]
+        assert to_delete == bbs[: len(to_delete)]
+        assert bbs_copy == bbs[len(to_delete) :]
 
         site_config["basebackup_count_min"] = 2
         bbs_copy = list(bbs)
-        to_delete = self.pghoard.determine_backups_to_delete(basebackups=bbs_copy, site_config=site_config)
+        to_delete = self.pghoard.determine_backups_to_delete(
+            basebackups=bbs_copy, site_config=site_config
+        )
         # 3 of the backups are new enough (start time less than 3 days in the past)
         assert len(bbs_copy) == 3
         assert len(to_delete) == len(bbs) - len(bbs_copy)
-        assert to_delete == bbs[:len(to_delete)]
-        assert bbs_copy == bbs[len(to_delete):]
+        assert to_delete == bbs[: len(to_delete)]
+        assert bbs_copy == bbs[len(to_delete) :]
 
         # Basebackups are disabled for this site (basebackup_interval_hours=None)
         # verify that determine_backups_to_delete still executes correctly
-        site_config = {"basebackup_count": 4, "basebackup_count_min": 2, "basebackup_interval_hours": None}
+        site_config = {
+            "basebackup_count": 4,
+            "basebackup_count_min": 2,
+            "basebackup_interval_hours": None,
+        }
         bbs_copy = list(bbs)
-        to_delete = self.pghoard.determine_backups_to_delete(basebackups=bbs_copy, site_config=site_config)
+        to_delete = self.pghoard.determine_backups_to_delete(
+            basebackups=bbs_copy, site_config=site_config
+        )
         assert len(bbs_copy) == 4
         assert len(to_delete) == len(bbs) - len(bbs_copy)
-        assert to_delete == bbs[:len(to_delete)]
-        assert bbs_copy == bbs[len(to_delete):]
+        assert to_delete == bbs[: len(to_delete)]
+        assert bbs_copy == bbs[len(to_delete) :]
 
     def test_local_refresh_backup_list_and_delete_old(self):
         basebackup_storage_path = os.path.join(self.local_storage_dir, "basebackup")
@@ -275,14 +279,19 @@ dbname|"""
                 if bb:
                     bb_path = os.path.join(basebackup_storage_path, bb)
                     date_parts = [int(part) for part in bb.replace("_", "-").split("-")]
-                    start_time = datetime.datetime(*date_parts, tzinfo=datetime.timezone.utc)
+                    start_time = datetime.datetime(
+                        *date_parts, tzinfo=datetime.timezone.utc
+                    )
                     with open(bb_path, "wb") as fp:
                         fp.write(b"something")
                     with open(bb_path + ".metadata", "w") as fp:
-                        json.dump({
-                            "start-wal-segment": wals[0],
-                            "start-time": start_time.isoformat(),
-                        }, fp)
+                        json.dump(
+                            {
+                                "start-wal-segment": wals[0],
+                                "start-time": start_time.isoformat(),
+                            },
+                            fp,
+                        )
                 for wal in wals:
                     with open(os.path.join(wal_storage_path, wal), "wb") as fp:
                         fp.write(b"something")
@@ -374,16 +383,18 @@ dbname|"""
                 if bb:
                     bb_path = os.path.join(basebackup_storage_path, bb)
                     date_parts = [int(part) for part in bb.replace("_", "-").split("-")]
-                    start_time = datetime.datetime(*date_parts, tzinfo=datetime.timezone.utc)
+                    start_time = datetime.datetime(
+                        *date_parts, tzinfo=datetime.timezone.utc
+                    )
 
                     metadata = {
                         "manifest": {
                             "snapshot_result": {
                                 "state": {
-                                    "files": [{
-                                        "relative_path": h,
-                                        "hexdigest": h
-                                    } for h in hexdigests]
+                                    "files": [
+                                        {"relative_path": h, "hexdigest": h}
+                                        for h in hexdigests
+                                    ]
                                 }
                             }
                         }
@@ -396,46 +407,57 @@ dbname|"""
 
                     with open(bb_path, "wb") as fp:
                         with rohmufile.file_writer(
-                            compression_algorithm="snappy", compression_level=0, fileobj=fp
+                            compression_algorithm="snappy",
+                            compression_level=0,
+                            fileobj=fp,
                         ) as output_obj:
                             with tarfile.TarFile(fileobj=output_obj, mode="w") as tar:
                                 tar.addfile(ti, blob)
                             input_size = output_obj.tell()
 
                     for h in hexdigests:
-                        with open(Path(basebackup_delta_path) / h, "w") as digest_file, \
-                                open((Path(basebackup_delta_path) / (h + ".metadata")), "w") as digest_meta_file:
+                        with open(
+                            Path(basebackup_delta_path) / h, "w"
+                        ) as digest_file, open(
+                            (Path(basebackup_delta_path) / (h + ".metadata")), "w"
+                        ) as digest_meta_file:
                             json.dump({}, digest_file)
                             json.dump({}, digest_meta_file)
 
                     with open(bb_path + ".metadata", "w") as fp:
-                        json.dump({
-                            "start-wal-segment": wal_start,
-                            "start-time": start_time.isoformat(),
-                            "format": BaseBackupFormat.delta_v1,
-                            "compression-algorithm": "snappy",
-                            "original-file-size": input_size
-                        }, fp)
+                        json.dump(
+                            {
+                                "start-wal-segment": wal_start,
+                                "start-time": start_time.isoformat(),
+                                "format": BaseBackupFormat.delta_v1,
+                                "compression-algorithm": "snappy",
+                                "original-file-size": input_size,
+                            },
+                            fp,
+                        )
 
         backups_and_delta = {
             "2015-08-25_0": (
-                "000000010000000A000000AA", [
+                "000000010000000A000000AA",
+                [
                     "214967296374cae6f099e19910b33a0893f0abc62f50601baa2875ab055cd27b",
-                    "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-                ]
+                    "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                ],
             ),
             "2015-08-25_1": [
-                "000000020000000A000000AB", ["214967296374cae6f099e19910b33a0893f0abc62f50601baa2875ab055cd27b"]
+                "000000020000000A000000AB",
+                ["214967296374cae6f099e19910b33a0893f0abc62f50601baa2875ab055cd27b"],
             ],
             "2015-08-25_2": [
-                "000000030000000A000000AC", ["214967296374cae6f099e19910b33a0893f0abc62f50601baa2875ab055cd27b"]
+                "000000030000000A000000AC",
+                ["214967296374cae6f099e19910b33a0893f0abc62f50601baa2875ab055cd27b"],
             ],
             "2015-08-25_3": [
                 "000000040000000B00000003",
                 [
                     "214967296374cae6f099e19910b33a0893f0abc62f50601baa2875ab055cd27b",
-                    "4b65df4d0857bbbcb22aa086e02bd8414a9f3a484869f2b96ed7c62f3c4eb088"
-                ]
+                    "4b65df4d0857bbbcb22aa086e02bd8414a9f3a484869f2b96ed7c62f3c4eb088",
+                ],
             ],
         }
         write_backup_files(backups_and_delta)
@@ -445,17 +467,20 @@ dbname|"""
         basebackups = self.pghoard.get_remote_basebackups_info(self.test_site)
         assert len(basebackups) == 1
 
-        left_delta_files = [p for p in os.listdir(basebackup_delta_path) if not p.endswith(".metadata")]
+        left_delta_files = [
+            p for p in os.listdir(basebackup_delta_path) if not p.endswith(".metadata")
+        ]
         assert sorted(left_delta_files) == [
             "214967296374cae6f099e19910b33a0893f0abc62f50601baa2875ab055cd27b",
-            "4b65df4d0857bbbcb22aa086e02bd8414a9f3a484869f2b96ed7c62f3c4eb088"
+            "4b65df4d0857bbbcb22aa086e02bd8414a9f3a484869f2b96ed7c62f3c4eb088",
         ]
 
         new_delta_data = {
             "2015-08-25_4": (
-                "000000040000000B00000004", [
+                "000000040000000B00000004",
+                [
                     "fc61c91430dcb345001306ad513f103380c16896093a17868fc909aeda393559",
-                ]
+                ],
             )
         }
         write_backup_files(new_delta_data)
@@ -465,7 +490,9 @@ dbname|"""
         basebackups = self.pghoard.get_remote_basebackups_info(self.test_site)
         assert len(basebackups) == 1
 
-        left_delta_files = [p for p in os.listdir(basebackup_delta_path) if not p.endswith(".metadata")]
+        left_delta_files = [
+            p for p in os.listdir(basebackup_delta_path) if not p.endswith(".metadata")
+        ]
         assert sorted(left_delta_files) == [
             "fc61c91430dcb345001306ad513f103380c16896093a17868fc909aeda393559",
         ]
@@ -500,17 +527,28 @@ dbname|"""
 
     def test_startup_walk_for_missed_compressed_files(self):
         compressed_wal_path, _ = self.pghoard.create_backup_site_paths(self.test_site)
-        with open(os.path.join(compressed_wal_path, "000000010000000000000004"), "wb") as fp:
+        with open(
+            os.path.join(compressed_wal_path, "000000010000000000000004"), "wb"
+        ) as fp:
             fp.write(b"foo")
-        with open(os.path.join(compressed_wal_path, "000000010000000000000004.metadata"), "wb") as fp:
+        with open(
+            os.path.join(compressed_wal_path, "000000010000000000000004.metadata"), "wb"
+        ) as fp:
             fp.write(b"{}")
         with open(os.path.join(compressed_wal_path, "0000000F.history"), "wb") as fp:
             fp.write(b"foo")
-        with open(os.path.join(compressed_wal_path, "0000000F.history.metadata"), "wb") as fp:
+        with open(
+            os.path.join(compressed_wal_path, "0000000F.history.metadata"), "wb"
+        ) as fp:
             fp.write(b"{}")
-        with open(os.path.join(compressed_wal_path, "000000010000000000000004xyz"), "wb") as fp:
+        with open(
+            os.path.join(compressed_wal_path, "000000010000000000000004xyz"), "wb"
+        ) as fp:
             fp.write(b"foo")
-        with open(os.path.join(compressed_wal_path, "000000010000000000000004xyz.metadata"), "wb") as fp:
+        with open(
+            os.path.join(compressed_wal_path, "000000010000000000000004xyz.metadata"),
+            "wb",
+        ) as fp:
             fp.write(b"{}")
         self.pghoard.startup_walk_for_missed_files()
         assert self.pghoard.compression_queue.qsize() == 0
@@ -519,11 +557,15 @@ dbname|"""
     def test_startup_walk_for_missed_uncompressed_files(self):
         compressed_wal_path, _ = self.pghoard.create_backup_site_paths(self.test_site)
         uncompressed_wal_path = compressed_wal_path + "_incoming"
-        with open(os.path.join(uncompressed_wal_path, "000000010000000000000004"), "wb") as fp:
+        with open(
+            os.path.join(uncompressed_wal_path, "000000010000000000000004"), "wb"
+        ) as fp:
             fp.write(b"foo")
         with open(os.path.join(uncompressed_wal_path, "00000002.history"), "wb") as fp:
             fp.write(b"foo")
-        with open(os.path.join(uncompressed_wal_path, "000000010000000000000004xyz"), "wb") as fp:
+        with open(
+            os.path.join(uncompressed_wal_path, "000000010000000000000004xyz"), "wb"
+        ) as fp:
             fp.write(b"foo")
         self.pghoard.startup_walk_for_missed_files()
         assert self.pghoard.compression_queue.qsize() == 2
@@ -543,7 +585,9 @@ dbname|"""
     def test_startup_walk_for_missed_uncompressed_files_wal(self):
         compressed_wal_path, _ = self.pghoard.create_backup_site_paths(self.test_site)
         uncompressed_wal_path = compressed_wal_path + "_incoming"
-        with open(os.path.join(uncompressed_wal_path, "000000010000000000000004"), "wb") as fp:
+        with open(
+            os.path.join(uncompressed_wal_path, "000000010000000000000004"), "wb"
+        ) as fp:
             fp.write(b"foo")
         self.pghoard.startup_walk_for_missed_files()
         assert self.pghoard.compression_queue.qsize() == 1
@@ -589,7 +633,9 @@ class TestPGHoardWithPG:
         conn = db.connect()
         conn.autocommit = True
 
-        wal_directory = os.path.join(pghoard.config["backup_location"], pghoard.test_site, "xlog_incoming")
+        wal_directory = os.path.join(
+            pghoard.config["backup_location"], pghoard.test_site, "xlog_incoming"
+        )
         os.makedirs(wal_directory, exist_ok=True)
 
         pghoard.receivexlog_listener(pghoard.test_site, db.user, wal_directory)
@@ -606,7 +652,9 @@ class TestPGHoardWithPG:
         assert "pausing pg_receive(wal|xlog)" in caplog.text
 
     def test_surviving_pg_receivewal_hickup(self, db, pghoard):
-        wal_directory = os.path.join(pghoard.config["backup_location"], pghoard.test_site, "xlog_incoming")
+        wal_directory = os.path.join(
+            pghoard.config["backup_location"], pghoard.test_site, "xlog_incoming"
+        )
         os.makedirs(wal_directory, exist_ok=True)
 
         pghoard.receivexlog_listener(pghoard.test_site, db.user, wal_directory)
@@ -626,7 +674,9 @@ class TestPGHoardWithPG:
             pghoard.receivexlogs[pghoard.test_site].join()
         del pghoard.receivexlogs[pghoard.test_site]
 
-        n_xlogs = pghoard.transfer_agent_state[pghoard.test_site]["upload"]["xlog"]["xlogs_since_basebackup"]
+        n_xlogs = pghoard.transfer_agent_state[pghoard.test_site]["upload"]["xlog"][
+            "xlogs_since_basebackup"
+        ]
 
         # add more WAL segments
         for _ in range(10):
@@ -660,5 +710,7 @@ def test_pghoard_invalid_config():
 
 
 def test_pghoard_no_pgdata_dir():
-    with pytest.raises(FileNotFoundError, match="/path/where/my/pgdata/resides/PG_VERSION"):
+    with pytest.raises(
+        FileNotFoundError, match="/path/where/my/pgdata/resides/PG_VERSION"
+    ):
         PGHoard("pghoard.json").run()

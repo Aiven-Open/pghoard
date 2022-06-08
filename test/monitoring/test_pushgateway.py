@@ -7,19 +7,28 @@ from pghoard.monitoring.pushgateway import PushgatewayClient
 
 
 def get_lines(logged_requests: Sequence[LoggedRequest]) -> List[str]:
-    return [line for logged_request in logged_requests for line in logged_request.body.decode().split("\n") if line != ""]
+    return [
+        line
+        for logged_request in logged_requests
+        for line in logged_request.body.decode().split("\n")
+        if line != ""
+    ]
 
 
 @pytest.fixture(name="gateway_client")
 def fixture_gateway_client(logging_server: LoggingServer) -> PushgatewayClient:
-    return PushgatewayClient({
-        "endpoint": f"http://{logging_server.server_name}:{logging_server.server_port}",
-        "job": "test_job",
-        "instance": "test_server",
-    })
+    return PushgatewayClient(
+        {
+            "endpoint": f"http://{logging_server.server_name}:{logging_server.server_port}",
+            "job": "test_job",
+            "instance": "test_server",
+        }
+    )
 
 
-def test_gauge(gateway_client: PushgatewayClient, logging_server: LoggingServer) -> None:
+def test_gauge(
+    gateway_client: PushgatewayClient, logging_server: LoggingServer
+) -> None:
     gateway_client.gauge("something", 123456)
     assert get_lines(logging_server.requests) == [
         "# TYPE something gauge",
@@ -27,7 +36,9 @@ def test_gauge(gateway_client: PushgatewayClient, logging_server: LoggingServer)
     ]
 
 
-def test_increase(gateway_client: PushgatewayClient, logging_server: LoggingServer) -> None:
+def test_increase(
+    gateway_client: PushgatewayClient, logging_server: LoggingServer
+) -> None:
     gateway_client.increase("something")
     assert get_lines(logging_server.requests) == [
         "# TYPE something counter",
@@ -35,7 +46,9 @@ def test_increase(gateway_client: PushgatewayClient, logging_server: LoggingServ
     ]
 
 
-def test_custom_increase_value(gateway_client: PushgatewayClient, logging_server: LoggingServer) -> None:
+def test_custom_increase_value(
+    gateway_client: PushgatewayClient, logging_server: LoggingServer
+) -> None:
     gateway_client.increase("something", 10)
     assert get_lines(logging_server.requests) == [
         "# TYPE something counter",
@@ -43,7 +56,9 @@ def test_custom_increase_value(gateway_client: PushgatewayClient, logging_server
     ]
 
 
-def test_unexpected_exception(gateway_client: PushgatewayClient, logging_server: LoggingServer) -> None:
+def test_unexpected_exception(
+    gateway_client: PushgatewayClient, logging_server: LoggingServer
+) -> None:
     gateway_client.unexpected_exception(ValueError("hello !"), where="tests")
     assert get_lines(logging_server.requests) == [
         "# TYPE pghoard_exception counter",
@@ -51,7 +66,9 @@ def test_unexpected_exception(gateway_client: PushgatewayClient, logging_server:
     ]
 
 
-def test_identical_metric_follows_previous_value(gateway_client: PushgatewayClient, logging_server: LoggingServer) -> None:
+def test_identical_metric_follows_previous_value(
+    gateway_client: PushgatewayClient, logging_server: LoggingServer
+) -> None:
     gateway_client.gauge("something", 123.456)
     gateway_client.gauge("something", 789.123)
     assert get_lines(logging_server.requests) == [
@@ -62,7 +79,9 @@ def test_identical_metric_follows_previous_value(gateway_client: PushgatewayClie
     ]
 
 
-def test_metric_with_different_names_are_separated(gateway_client: PushgatewayClient, logging_server: LoggingServer) -> None:
+def test_metric_with_different_names_are_separated(
+    gateway_client: PushgatewayClient, logging_server: LoggingServer
+) -> None:
     gateway_client.gauge("something", 123.456)
     gateway_client.gauge("else", 789.123)
     assert get_lines(logging_server.requests) == [
@@ -73,7 +92,9 @@ def test_metric_with_different_names_are_separated(gateway_client: PushgatewayCl
     ]
 
 
-def test_metric_with_different_tags_are_separated(gateway_client: PushgatewayClient, logging_server: LoggingServer) -> None:
+def test_metric_with_different_tags_are_separated(
+    gateway_client: PushgatewayClient, logging_server: LoggingServer
+) -> None:
     gateway_client.gauge("something", 123.456, tags={"mark": "one"})
     gateway_client.gauge("something", 789.123, tags={"mark": "two"})
     assert get_lines(logging_server.requests) == [
@@ -84,12 +105,19 @@ def test_metric_with_different_tags_are_separated(gateway_client: PushgatewayCli
     ]
 
 
-def test_metric_names_replaces_dots_and_dashes(gateway_client: PushgatewayClient, logging_server: LoggingServer) -> None:
+def test_metric_names_replaces_dots_and_dashes(
+    gateway_client: PushgatewayClient, logging_server: LoggingServer
+) -> None:
     gateway_client.gauge("a-metric.value", 123)
-    assert get_lines(logging_server.requests) == ["# TYPE a_metric_value gauge", "a_metric_value{} 123"]
+    assert get_lines(logging_server.requests) == [
+        "# TYPE a_metric_value gauge",
+        "a_metric_value{} 123",
+    ]
 
 
-def test_metric_can_have_tags(gateway_client: PushgatewayClient, logging_server: LoggingServer) -> None:
+def test_metric_can_have_tags(
+    gateway_client: PushgatewayClient, logging_server: LoggingServer
+) -> None:
     gateway_client.gauge("something", 123, tags={"foo": "bar", "baz": "tog"})
     # tags are sorted
     assert get_lines(logging_server.requests) == [
@@ -104,13 +132,14 @@ def test_metric_can_have_default_tags(logging_server: LoggingServer) -> None:
             "endpoint": f"http://{logging_server.server_name}:{logging_server.server_port}",
             "job": "test_job",
             "instance": "test_server",
-            "tags": {
-                "foo": "bar"
-            }
+            "tags": {"foo": "bar"},
         }
     )
     client.gauge("something", 123)
-    assert get_lines(logging_server.requests) == ["# TYPE something gauge", """something{foo="bar"} 123"""]
+    assert get_lines(logging_server.requests) == [
+        "# TYPE something gauge",
+        """something{foo="bar"} 123""",
+    ]
 
 
 def test_metric_custom_tags_override_defaults(logging_server: LoggingServer) -> None:
@@ -119,10 +148,7 @@ def test_metric_custom_tags_override_defaults(logging_server: LoggingServer) -> 
             "endpoint": f"http://{logging_server.server_name}:{logging_server.server_port}",
             "job": "test_job",
             "instance": "test_server",
-            "tags": {
-                "foo": "bar",
-                "baz": "tog"
-            }
+            "tags": {"foo": "bar", "baz": "tog"},
         }
     )
     client.gauge("something", 123, tags={"foo": "notbar"})

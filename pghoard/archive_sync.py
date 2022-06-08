@@ -28,6 +28,7 @@ class ArchiveSync:
     This can be used after a failover has happened to make sure the archive
     has no gaps in case the previous primary failed before archiving its
     final segment."""
+
     def __init__(self):
         self.log = logging.getLogger(self.__class__.__name__)
         self.config = None
@@ -39,7 +40,9 @@ class ArchiveSync:
         self.config = config.read_json_config_file(config_file, check_commands=False)
         self.site = config.get_site_from_config(self.config, site)
         self.backup_site = self.config["backup_sites"][self.site]
-        self.base_url = "http://127.0.0.1:{}/{}".format(self.config["http_port"], self.site)
+        self.base_url = "http://127.0.0.1:{}/{}".format(
+            self.config["http_port"], self.site
+        )
 
     def get_current_wal_file(self):
         # identify the (must be) local database
@@ -98,20 +101,29 @@ class ArchiveSync:
                 self.log.info("Skipping currently open WAL file %r", wal_file)
             elif wal_file > current_wal_file:
                 self.log.debug("Skipping recycled WAL file %r", wal_file)
-            elif first_required_wal_file is not None and wal_file < first_required_wal_file:
-                self.log.info("WAL file %r is not needed for the latest basebackup", wal_file)
+            elif (
+                first_required_wal_file is not None
+                and wal_file < first_required_wal_file
+            ):
+                self.log.info(
+                    "WAL file %r is not needed for the latest basebackup", wal_file
+                )
                 break
             else:
                 # WAL file in range first_required_wal_file .. current_wal_file
                 archive_type = "WAL"
 
             if archive_type:
-                resp = requests.head("{base}/archive/{file}".format(base=self.base_url, file=wal_file))
+                resp = requests.head(
+                    "{base}/archive/{file}".format(base=self.base_url, file=wal_file)
+                )
                 if resp.status_code == 200:
                     remote_hash = resp.headers.get("metadata-hash")
                     hash_algorithm = resp.headers.get("metadata-hash-algorithm")
                     check_hash = bool(
-                        archive_type == "WAL" and (hash_checks_done < max_hash_checks or max_hash_checks < 0) and remote_hash
+                        archive_type == "WAL"
+                        and (hash_checks_done < max_hash_checks or max_hash_checks < 0)
+                        and remote_hash
                     )
                     if archive_type == "WAL" and not remote_hash:
                         # If we don't have hashes available (old pghoard was running on previous primary), re-upload first
@@ -121,36 +133,58 @@ class ArchiveSync:
                         existing_wal_without_checksum_count += 1
                         if existing_wal_without_checksum_count == 1:
                             self.log.info(
-                                "%s file %r already archived but no hash is available, reuploading", archive_type, wal_file
+                                "%s file %r already archived but no hash is available, reuploading",
+                                archive_type,
+                                wal_file,
                             )
                             need_archival.append(wal_file)
                             continue
                     if check_hash:
                         hash_checks_done += 1
-                        our_hash = self.calculate_hash(os.path.join(wal_dir, wal_file), hash_algorithm)
+                        our_hash = self.calculate_hash(
+                            os.path.join(wal_dir, wal_file), hash_algorithm
+                        )
                         if not our_hash:
                             self.log.info(
-                                "%s file %r already archived (file deleted before getting hash)", archive_type, wal_file
+                                "%s file %r already archived (file deleted before getting hash)",
+                                archive_type,
+                                wal_file,
                             )
                         elif remote_hash.lower().strip() != our_hash.lower().strip():
                             self.log.warning(
                                 "%s file %r already archived but existing hash %r differs from our hash %r, reuploading",
-                                archive_type, wal_file, remote_hash, our_hash
+                                archive_type,
+                                wal_file,
+                                remote_hash,
+                                our_hash,
                             )
                             need_archival.append(wal_file)
                         else:
-                            self.log.info("%s file %r already archived and has valid hash", archive_type, wal_file)
+                            self.log.info(
+                                "%s file %r already archived and has valid hash",
+                                archive_type,
+                                wal_file,
+                            )
                     else:
-                        self.log.info("%s file %r already archived", archive_type, wal_file)
+                        self.log.info(
+                            "%s file %r already archived", archive_type, wal_file
+                        )
                     continue
                 self.log.info("%s file %r needs to be archived", archive_type, wal_file)
                 need_archival.append(wal_file)
 
         for wal_file in sorted(need_archival):  # sort oldest to newest
-            resp = requests.put("{base}/archive/{file}".format(base=self.base_url, file=wal_file))
+            resp = requests.put(
+                "{base}/archive/{file}".format(base=self.base_url, file=wal_file)
+            )
             archive_type = "TIMELINE" if ".history" in wal_file else "WAL"
             if resp.status_code != 201:
-                self.log.error("%s file %r archival failed with status code %r", archive_type, wal_file, resp.status_code)
+                self.log.error(
+                    "%s file %r archival failed with status code %r",
+                    archive_type,
+                    wal_file,
+                    resp.status_code,
+                )
             else:
                 self.log.info("%s file %r archived", archive_type, wal_file)
 
@@ -161,10 +195,16 @@ class ArchiveSync:
             raise SyncError("Could not figure out current WAL segment")
         if not first_required_wal_file:
             raise SyncError("No basebackups found")
-        self.log.info("Verifying archive integrity from %r to %r", current_wal_file, first_required_wal_file)
+        self.log.info(
+            "Verifying archive integrity from %r to %r",
+            current_wal_file,
+            first_required_wal_file,
+        )
 
         current_lsn = wal.LSN.from_walfile_name(current_wal_file, pg_version)
-        first_required_lsn = wal.LSN.from_walfile_name(first_required_wal_file, pg_version)
+        first_required_lsn = wal.LSN.from_walfile_name(
+            first_required_wal_file, pg_version
+        )
 
         # TODO: Need to check .history files as well
         archive_type = "xlog"
@@ -175,7 +215,9 @@ class ArchiveSync:
                 # Decrement one segment if we're on a valid timeline
                 current_lsn = current_lsn.previous_walfile_start_lsn
             wal_file = current_lsn.walfile_name
-            resp = requests.head("{base}/archive/{file}".format(base=self.base_url, file=wal_file))
+            resp = requests.head(
+                "{base}/archive/{file}".format(base=self.base_url, file=wal_file)
+            )
             if resp.status_code == 200:
                 self.log.info("%s file %r correctly archived", archive_type, wal_file)
                 file_count += 1
@@ -223,32 +265,49 @@ class ArchiveSync:
 
     def run(self, args=None):
         parser = argparse.ArgumentParser()
-        parser.add_argument("-D", "--debug", help="Enable debug logging", action="store_true")
-        parser.add_argument("--version", action="version", help="show program version", version=version.__version__)
+        parser.add_argument(
+            "-D", "--debug", help="Enable debug logging", action="store_true"
+        )
+        parser.add_argument(
+            "--version",
+            action="version",
+            help="show program version",
+            version=version.__version__,
+        )
         parser.add_argument("--site", help="pghoard site", required=False)
-        parser.add_argument("--config", help="pghoard config file", default=os.environ.get("PGHOARD_CONFIG"))
+        parser.add_argument(
+            "--config",
+            help="pghoard config file",
+            default=os.environ.get("PGHOARD_CONFIG"),
+        )
         # Only check hashes of files up to some threshold (unless negative value is explicitly given to indicate no
         # limits). If there are files with invalid hashes those are typically around promotion and archive sync is
         # usually run right after promotion so only checking some of the first files that are encountered should be
         # enough. Checking all files could be heavy since in some cases the number of WALs could be very high.
         hash_check_help = "Maximum number of files for which to validate hash in addition to basic existence check"
         parser.add_argument("--max-hash-checks", help=hash_check_help, default=100)
-        parser.add_argument("--no-verify", help="do not verify archive integrity", action="store_false")
+        parser.add_argument(
+            "--no-verify", help="do not verify archive integrity", action="store_false"
+        )
         parser.add_argument(
             "--create-new-backup-on-failure",
             help="request a new basebackup if verification fails",
             action="store_true",
-            default=False
+            default=False,
         )
         args = parser.parse_args(args)
 
         if not args.config:
-            print("pghoard: config file path must be given with --config or via env PGHOARD_CONFIG")
+            print(
+                "pghoard: config file path must be given with --config or via env PGHOARD_CONFIG"
+            )
             return 1
 
         logutil.configure_logging(level=logging.DEBUG if args.debug else logging.INFO)
         self.set_config(args.config, args.site)
-        return self.archive_sync(args.no_verify, args.create_new_backup_on_failure, args.max_hash_checks)
+        return self.archive_sync(
+            args.no_verify, args.create_new_backup_on_failure, args.max_hash_checks
+        )
 
 
 def main():

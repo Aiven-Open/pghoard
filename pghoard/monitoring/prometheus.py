@@ -39,7 +39,7 @@ class PrometheusClient:
         tags = {**self._tags, **tags} if tags else {**self._tags}
         tag_list = []
         for k in sorted(tags.keys()):
-            tag_list.append("{}=\"{}\"".format(k, tags[k]))
+            tag_list.append('{}="{}"'.format(k, tags[k]))
         encoded_tags = "{{{}}}".format(",".join(tag_list))
         formatted_metric = "{}{}".format(metric, encoded_tags)
         self.metrics[formatted_metric] = {"value": value, "ts": ts}

@@ -77,8 +77,7 @@ class TestWalReceiver:
 
     @pytest.mark.timeout(60)
     def test_walreceiver_database_error(self, db, pghoard_walreceiver):
-        """Verify that we can recover from a DatabaseError exception
-        """
+        """Verify that we can recover from a DatabaseError exception"""
 
         # Used for monkeypatching a psycopg2 Cursor object
         class FakeCursor:
@@ -104,7 +103,11 @@ class TestWalReceiver:
             time.sleep(0.5)
 
         # Monkeypatch method in order to raise an exception
-        with mock.patch.object(pghoard.walreceivers[pghoard.test_site].c, "read_message", FakeCursor.read_message):
+        with mock.patch.object(
+            pghoard.walreceivers[pghoard.test_site].c,
+            "read_message",
+            FakeCursor.read_message,
+        ):
             while FakeCursor.raised is False:
                 time.sleep(0.5)
 
@@ -112,9 +115,11 @@ class TestWalReceiver:
         wait_for_xlog(pghoard, 1)
         conn.close()
 
-    def test_walreceiver_multiple_timelines(self, recovery_db, pghoard_walreceiver_recovery):
+    def test_walreceiver_multiple_timelines(
+        self, recovery_db, pghoard_walreceiver_recovery
+    ):
         """As we want to fetch all timeline history files when starting up, promote a PG instance
-           to bump the timeline and create a history file.
+        to bump the timeline and create a history file.
         """
         recovery_db.run_cmd("pg_ctl", "-D", recovery_db.pgdata, "promote")
         pghoard = pghoard_walreceiver_recovery
@@ -124,6 +129,11 @@ class TestWalReceiver:
             switch_wal(conn)
             wait_for_xlog(pghoard, 1)
             storage = pghoard.get_or_create_site_storage(site=pghoard.test_site)
-            files = storage.list_path(os.path.join("test_walreceiver_multiple_timelines", "timeline"))
+            files = storage.list_path(
+                os.path.join("test_walreceiver_multiple_timelines", "timeline")
+            )
             assert len(files) == 1
-            assert files[0]["name"] == "test_walreceiver_multiple_timelines/timeline/00000002.history"
+            assert (
+                files[0]["name"]
+                == "test_walreceiver_multiple_timelines/timeline/00000002.history"
+            )

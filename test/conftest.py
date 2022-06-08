@@ -69,7 +69,10 @@ class PGTester:
     def __init__(self, pgdata: str, pg_version: str) -> None:
         bindir = os.environ.get("PG_BINDIR")
         postgresbin, ver = pghconfig.find_pg_binary(
-            "postgres", versions=[pg_version] if pg_version else None, check_commands=False, pg_bin_directory=bindir
+            "postgres",
+            versions=[pg_version] if pg_version else None,
+            check_commands=False,
+            pg_bin_directory=bindir,
         )
         if postgresbin is not None:
             self.pgbin = os.path.dirname(postgresbin)
@@ -134,7 +137,9 @@ def setup_pg(pg_version: str) -> Iterator[PGTester]:
     db = PGTester(pgdata, pg_version)  # pylint: disable=redefined-outer-name
     db.run_cmd("initdb", "-D", pgdata, "--encoding", "utf-8", "--lc-messages=C")
     # NOTE: does not use TCP ports, no port conflicts
-    db.user = dict(host=pgdata, user="pghoard", password="pghoard", dbname="postgres", port="5432")
+    db.user = dict(
+        host=pgdata, user="pghoard", password="pghoard", dbname="postgres", port="5432"
+    )
     # NOTE: point $HOME to tmpdir - $HOME shouldn't affect most tests, but
     # psql triest to find .pgpass file from there as do our functions that
     # manipulate pgpass.  By pointing $HOME there we make sure we're not
@@ -162,30 +167,56 @@ def setup_pg(pg_version: str) -> Iterator[PGTester]:
                 continue
             key, val = re.split(r"\s*=\s*", line, 1)
             config[key] = re.sub(r"\s*(#.*)?$", "", val)
-        config.update({
-            "hot_standby": "on",
-            "logging_collector": "off",
-            "max_wal_senders": 2,
-            "wal_keep_segments": 100,
-            "wal_level": "hot_standby",
-            # disable fsync and synchronous_commit to speed up the tests a bit
-            "fsync": "off",
-            "synchronous_commit": "off",
-            # don't need to wait for autovacuum workers when shutting down
-            "autovacuum": "off",
-        })
+        config.update(
+            {
+                "hot_standby": "on",
+                "logging_collector": "off",
+                "max_wal_senders": 2,
+                "wal_keep_segments": 100,
+                "wal_level": "hot_standby",
+                # disable fsync and synchronous_commit to speed up the tests a bit
+                "fsync": "off",
+                "synchronous_commit": "off",
+                # don't need to wait for autovacuum workers when shutting down
+                "autovacuum": "off",
+            }
+        )
         # Setting name has changed in PG 13, set comparison needed because 9.6 is somehow larger than 13 for the comparison
         if db.pgver >= "13" and db.pgver not in {"9.5", "9.6"}:
             del config["wal_keep_segments"]
             config["wal_keep_size"] = 16 * 100
-        lines = ["{} = {}\n".format(key, val) for key, val in sorted(config.items())]  # noqa
+        lines = [
+            "{} = {}\n".format(key, val) for key, val in sorted(config.items())
+        ]  # noqa
         fp.write("".join(lines))
     # now start pg and create test users
     db.run_pg()
     try:
-        db.run_cmd(os.path.join(db.pgbin, "createuser"), "-h", db.user["host"], "-p", db.user["port"], "disabled")
-        db.run_cmd(os.path.join(db.pgbin, "createuser"), "-h", db.user["host"], "-p", db.user["port"], "passwordy")
-        db.run_cmd(os.path.join(db.pgbin, "createuser"), "-h", db.user["host"], "-p", db.user["port"], "-s", db.user["user"])
+        db.run_cmd(
+            os.path.join(db.pgbin, "createuser"),
+            "-h",
+            db.user["host"],
+            "-p",
+            db.user["port"],
+            "disabled",
+        )
+        db.run_cmd(
+            os.path.join(db.pgbin, "createuser"),
+            "-h",
+            db.user["host"],
+            "-p",
+            db.user["port"],
+            "passwordy",
+        )
+        db.run_cmd(
+            os.path.join(db.pgbin, "createuser"),
+            "-h",
+            db.user["host"],
+            "-p",
+            db.user["port"],
+            "-s",
+            db.user["user"],
+        )
         yield db
     finally:
         db.kill()
@@ -216,7 +247,9 @@ def fixture_recovery_db(pg_version: str) -> Iterator[PGTester]:
         conn_str = pgutil.create_connection_string(pg.user)
         conn = psycopg2.connect(conn_str)
         cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM pg_available_extensions WHERE name = 'pgespresso' AND default_version >= '1.2'")
+        cursor.execute(
+            "SELECT 1 FROM pg_available_extensions WHERE name = 'pgespresso' AND default_version >= '1.2'"
+        )
         if cursor.fetchone():
             cursor.execute("CREATE EXTENSION pgespresso")
         conn.commit()
@@ -254,14 +287,26 @@ def fixture_pghoard(db, tmpdir, request):
 def fixture_pghoard_walreceiver(db, tmpdir, request):
     # Initialize with only one transfer agent, as we want a reliable
     # last transfered state.
-    yield from pghoard_base(db, tmpdir, request, active_backup_mode="walreceiver", transfer_count=1, compression_count=1)
+    yield from pghoard_base(
+        db,
+        tmpdir,
+        request,
+        active_backup_mode="walreceiver",
+        transfer_count=1,
+        compression_count=1,
+    )
 
 
 @pytest.fixture(name="pghoard_walreceiver_recovery")
 def fixture_pghoard_walreceiver_recovery(recovery_db, tmpdir, request):
     # The same as above, but with a "recovery_db" instance.
     yield from pghoard_base(
-        recovery_db, tmpdir, request, active_backup_mode="walreceiver", transfer_count=1, compression_count=1
+        recovery_db,
+        tmpdir,
+        request,
+        active_backup_mode="walreceiver",
+        transfer_count=1,
+        compression_count=1,
     )
 
 
@@ -274,7 +319,17 @@ def fixture_pghoard_separate_volume(db, tmpdir, request):
     try:
         subprocess.check_call(
             # We need 150MB because we keep at least one wal file around, 100MB is too small
-            ["sudo", "-S", "mount", "-t", "tmpfs", "-o", "size=150m", "tmpfs", tmpfs_volume],
+            [
+                "sudo",
+                "-S",
+                "mount",
+                "-t",
+                "tmpfs",
+                "-o",
+                "size=150m",
+                "tmpfs",
+                tmpfs_volume,
+            ],
             stdin=subprocess.DEVNULL,
         )
     except subprocess.CalledProcessError as ex:
@@ -390,7 +445,9 @@ def pghoard_base(
     if compression == "snappy":
         pgh.Compressor = snappy.StreamCompressor
     else:
-        pgh.Compressor = lambda: lzma.LZMACompressor(preset=0)  # pylint: disable=redefined-variable-type
+        pgh.Compressor = lambda: lzma.LZMACompressor(
+            preset=0
+        )  # pylint: disable=redefined-variable-type
 
     time.sleep(0.05)  # Hack to give the server time to start up
     yield pgh
@@ -454,11 +511,13 @@ class ArchiveCleaner:
 @pytest.fixture(name="archive_cleaner")
 def fixture_archive_cleaner(tmp_path):
     """Populates a pghoard backup directory with files that resemble a
-       basebackup and WALs and creates an instance of ArchiveCleanup.
+    basebackup and WALs and creates an instance of ArchiveCleanup.
     """
     with open("pghoard-local-minimal.json", "r") as f:
         config = json.load(f)
-    config["backup_sites"]["example-site"]["object_storage"]["directory"] = (tmp_path / "backups").as_posix()
+    config["backup_sites"]["example-site"]["object_storage"]["directory"] = (
+        tmp_path / "backups"
+    ).as_posix()
     config["json_state_file_path"] = (tmp_path / "pghoard_state.json").as_posix()
     config_path = tmp_path / "config.json"
     config_path.write_text(json.dumps(config, indent=4))
@@ -476,12 +535,14 @@ def fixture_archive_cleaner(tmp_path):
         "compression-algorithm": "snappy",
         "compression-level": "0",
         "original-file-size": "25933312",
-        "host": "toolbox"
+        "host": "toolbox",
     }
     bb_path = tmp_path / "backups" / "example-site" / "basebackup"
     bb_path.mkdir(parents=True)
     (bb_path / "2022-03-23_14-57_0").touch()
-    (bb_path / "2022-03-23_14-57_0.metadata").write_text(json.dumps(bb_metadata, indent=4))
+    (bb_path / "2022-03-23_14-57_0.metadata").write_text(
+        json.dumps(bb_metadata, indent=4)
+    )
 
     xlog_metadata = {
         "pg-version": "130006",
@@ -490,16 +551,22 @@ def fixture_archive_cleaner(tmp_path):
         "original-file-size": "16777216",
         "host": "toolbox",
         "hash": "d6398f89d3dbf9ce8f68bbe5c07cc0208415a8ff",
-        "hash-algorithm": "sha1"
+        "hash-algorithm": "sha1",
     }
 
     xlog_path = tmp_path / "backups" / "example-site" / "xlog"
     xlog_path.mkdir()
     (xlog_path / "000000010000000000000005").touch()
-    (xlog_path / "000000010000000000000005.metadata").write_text(json.dumps(xlog_metadata, indent=4))
+    (xlog_path / "000000010000000000000005.metadata").write_text(
+        json.dumps(xlog_metadata, indent=4)
+    )
 
     # This one is orphaned
     (xlog_path / "000000010000000000000001").touch()
-    (xlog_path / "000000010000000000000001.metadata").write_text(json.dumps(xlog_metadata, indent=4))
+    (xlog_path / "000000010000000000000001.metadata").write_text(
+        json.dumps(xlog_metadata, indent=4)
+    )
 
-    yield ArchiveCleaner(archive_cleanup=archive_cleanup, config_path=config_path, xlog_path=xlog_path)
+    yield ArchiveCleaner(
+        archive_cleanup=archive_cleanup, config_path=config_path, xlog_path=xlog_path
+    )

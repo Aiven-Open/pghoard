@@ -9,4 +9,3 @@ coverage:
         if_ci_failed: error #success, failure, error, ignore
         only_pulls: false
         if_not_found: failure
-

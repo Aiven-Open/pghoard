@@ -10,13 +10,18 @@ from urllib.parse import parse_qs, urlparse
 
 
 def create_connection_string(connection_info):
-    return " ".join("{}='{}'".format(k, str(v).replace("'", "\\'")) for k, v in sorted(connection_info.items()))
+    return " ".join(
+        "{}='{}'".format(k, str(v).replace("'", "\\'"))
+        for k, v in sorted(connection_info.items())
+    )
 
 
 def mask_connection_info(info):
     masked_info = get_connection_info(info)
     password = masked_info.pop("password", None)
-    return "{0}; {1} password".format(create_connection_string(masked_info), "no" if password is None else "hidden")
+    return "{0}; {1} password".format(
+        create_connection_string(masked_info), "no" if password is None else "hidden"
+    )
 
 
 def get_connection_info_from_config_line(line):
@@ -67,7 +72,11 @@ def parse_connection_string_libpq(connection_string):
         if not connection_string:
             break
         if "=" not in connection_string:
-            raise ValueError("expecting key=value format in connection_string fragment {!r}".format(connection_string))
+            raise ValueError(
+                "expecting key=value format in connection_string fragment {!r}".format(
+                    connection_string
+                )
+            )
         key, rem = connection_string.split("=", 1)
         if rem.startswith("'"):
             asis, value = False, ""
@@ -83,7 +92,7 @@ def parse_connection_string_libpq(connection_string):
                     value += rem[i]
             else:
                 raise ValueError("invalid connection_string fragment {!r}".format(rem))
-            connection_string = rem[i + 1:]  # pylint: disable=undefined-loop-variable
+            connection_string = rem[i + 1 :]  # pylint: disable=undefined-loop-variable
         else:
             res = rem.split(None, 1)
             if len(res) > 1:

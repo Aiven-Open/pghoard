@@ -23,16 +23,18 @@ import sys
 import tempfile
 import time
 import uuid
+
 # ignore pylint/distutils issue, https://github.com/PyCQA/pylint/issues/73
-from distutils.version import \
-    LooseVersion  # pylint: disable=no-name-in-module,import-error
+from distutils.version import (  # pylint: disable=no-name-in-module,import-error
+    LooseVersion,
+)
 from threading import RLock
 from typing import Dict, List, Optional, Set
 
 from psycopg2.extensions import adapt
 from requests import Session
 from rohmu import dates, get_transfer, rohmufile
-from rohmu.errors import (Error, InvalidConfigurationError, MaybeRecoverableError)
+from rohmu.errors import Error, InvalidConfigurationError, MaybeRecoverableError
 
 from pghoard.common import BaseBackupFormat, StrEnum
 
@@ -66,10 +68,12 @@ class FilePathInfo(FileInfo):
         size: int,
         new_name: Optional[str] = None,
         metadata: Optional[Dict] = None,
-        file_type: Optional[FileInfoType] = FileInfoType.regular
+        file_type: Optional[FileInfoType] = FileInfoType.regular,
     ):
         self.name: str = name
-        super().__init__(size=size, new_name=new_name, metadata=metadata, file_type=file_type)
+        super().__init__(
+            size=size, new_name=new_name, metadata=metadata, file_type=file_type
+        )
 
     def __repr__(self):
         return f"{self.name} (size={self.size}, file_type={self.file_type})"
@@ -82,10 +86,12 @@ class FileDataInfo(FileInfo):
         size: int,
         new_name: Optional[str] = None,
         metadata: Optional[Dict] = None,
-        file_type: Optional[FileInfoType] = FileInfoType.regular
+        file_type: Optional[FileInfoType] = FileInfoType.regular,
     ):
         self.data: bytes = data
-        super().__init__(size=size, new_name=new_name, metadata=metadata, file_type=file_type)
+        super().__init__(
+            size=size, new_name=new_name, metadata=metadata, file_type=file_type
+        )
 
 
 def create_signal_file(file_path):
@@ -105,7 +111,7 @@ def create_recovery_conf(
     recovery_target_name=None,
     recovery_target_time=None,
     recovery_target_xid=None,
-    restore_to_primary=None
+    restore_to_primary=None,
 ):
     restore_command = [
         "pghoard_postgres_command",
@@ -131,11 +137,13 @@ def create_recovery_conf(
     lines = [
         "# pghoard created recovery.conf",
         "recovery_target_timeline = 'latest'",
-        "{} = {}".format(trigger_file_setting, adapt(os.path.join(dirpath, "trigger_file"))),
+        "{} = {}".format(
+            trigger_file_setting, adapt(os.path.join(dirpath, "trigger_file"))
+        ),
         "restore_command = '{}'".format(" ".join(restore_command)),
     ]
 
-    use_recovery_conf = (pg_version < "12")  # no more recovery.conf in PG >= 12
+    use_recovery_conf = pg_version < "12"  # no more recovery.conf in PG >= 12
     if not restore_to_primary:
         if use_recovery_conf:
             lines.append("standby_mode = 'on'")
@@ -186,10 +194,19 @@ def create_recovery_conf(
     return content
 
 
-def print_basebackup_list(basebackups, *, caption="Available basebackups", verbose=True):
+def print_basebackup_list(
+    basebackups, *, caption="Available basebackups", verbose=True
+):
     print(caption, "\n")
     fmt = "{name:40}  {size:>11}  {orig_size:>11}  {time:20}".format
-    print(fmt(name="Basebackup", size="Backup size", time="Start time", orig_size="Orig size"))
+    print(
+        fmt(
+            name="Basebackup",
+            size="Backup size",
+            time="Start time",
+            orig_size="Orig size",
+        )
+    )
     print(fmt(name="-" * 40, size="-" * 11, time="-" * 20, orig_size="-" * 11))
     for b in sorted(basebackups, key=lambda b: b["name"]):
         meta = b["metadata"].copy()
@@ -199,10 +216,14 @@ def print_basebackup_list(basebackups, *, caption="Available basebackups", verbo
         if lm.tzinfo:
             lm = lm.astimezone(datetime.timezone.utc).replace(tzinfo=None)
         lm_str = lm.isoformat()[:19] + "Z"  # # pylint: disable=no-member
-        size_str = "{} MB".format(int(meta.get("total-size-enc", b["size"])) // (1024 ** 2))
-        orig_size = int(meta.get("total-size-plain", meta.get("original-file-size")) or 0)
+        size_str = "{} MB".format(
+            int(meta.get("total-size-enc", b["size"])) // (1024**2)
+        )
+        orig_size = int(
+            meta.get("total-size-plain", meta.get("original-file-size")) or 0
+        )
         if orig_size:
-            orig_size_str = "{} MB".format(orig_size // (1024 ** 2))
+            orig_size_str = "{} MB".format(orig_size // (1024**2))
         else:
             orig_size_str = "n/a"
         print(fmt(name=b["name"], size=size_str, time=lm_str, orig_size=orig_size_str))
@@ -220,9 +241,18 @@ class Restore:
 
     def create_parser(self):
         parser = argparse.ArgumentParser()
-        parser.add_argument("-D", "--debug", help="Enable debug logging", action="store_true")
-        parser.add_argument("--status-output-file", help="Filename for status output JSON")
-        parser.add_argument("--version", action="version", help="show program version", version=version.__version__)
+        parser.add_argument(
+            "-D", "--debug", help="Enable debug logging", action="store_true"
+        )
+        parser.add_argument(
+            "--status-output-file", help="Filename for status output JSON"
+        )
+        parser.add_argument(
+            "--version",
+            action="version",
+            help="show program version",
+            version=version.__version__,
+        )
         sub = parser.add_subparsers(help="sub-command help")
 
         def add_cmd(method):
@@ -232,49 +262,90 @@ class Restore:
 
         def generic_args(require_config=True, require_site=False):
             config_path = os.environ.get("PGHOARD_CONFIG")
-            cmd.add_argument("-v", "--verbose", help="verbose output", action="store_true")
+            cmd.add_argument(
+                "-v", "--verbose", help="verbose output", action="store_true"
+            )
             if config_path:
-                cmd.add_argument("--config", help="pghoard config file", default=config_path)
+                cmd.add_argument(
+                    "--config", help="pghoard config file", default=config_path
+                )
             else:
-                cmd.add_argument("--config", help="pghoard config file", required=require_config)
+                cmd.add_argument(
+                    "--config", help="pghoard config file", required=require_config
+                )
 
             cmd.add_argument("--site", help="pghoard site", required=require_site)
 
         def host_port_args():
-            cmd.add_argument("--host", help="pghoard repository host", default=PGHOARD_HOST)
-            cmd.add_argument("--port", help="pghoard repository port", default=PGHOARD_PORT)
+            cmd.add_argument(
+                "--host", help="pghoard repository host", default=PGHOARD_HOST
+            )
+            cmd.add_argument(
+                "--port", help="pghoard repository port", default=PGHOARD_PORT
+            )
 
         def target_args():
-            cmd.add_argument("--basebackup", help="pghoard basebackup", default="latest")
-            cmd.add_argument("--primary-conninfo", help="replication.conf primary_conninfo", default="")
-            cmd.add_argument("--target-dir", help="pghoard restore target 'pgdata' dir", required=True)
-            cmd.add_argument("--overwrite", help="overwrite existing target directory", default=False, action="store_true")
+            cmd.add_argument(
+                "--basebackup", help="pghoard basebackup", default="latest"
+            )
+            cmd.add_argument(
+                "--primary-conninfo",
+                help="replication.conf primary_conninfo",
+                default="",
+            )
+            cmd.add_argument(
+                "--target-dir",
+                help="pghoard restore target 'pgdata' dir",
+                required=True,
+            )
+            cmd.add_argument(
+                "--overwrite",
+                help="overwrite existing target directory",
+                default=False,
+                action="store_true",
+            )
             cmd.add_argument(
                 "--tablespace-dir",
                 metavar="NAME=DIRECTORY",
                 action="append",
                 help="map the given tablespace to an existing empty directory; "
-                "this option can be used multiple times to map multiple tablespaces"
+                "this option can be used multiple times to map multiple tablespaces",
             )
             cmd.add_argument(
                 "--tablespace-base-dir",
                 required=False,
-                help="map all tablespaces in the backup against an existing empty base directory "
+                help="map all tablespaces in the backup against an existing empty base directory ",
             )
-            cmd.add_argument("--recovery-end-command", help="PostgreSQL recovery_end_command", metavar="COMMAND")
+            cmd.add_argument(
+                "--recovery-end-command",
+                help="PostgreSQL recovery_end_command",
+                metavar="COMMAND",
+            )
             cmd.add_argument(
                 "--recovery-target-action",
                 help="PostgreSQL recovery_target_action",
-                choices=["pause", "promote", "shutdown"]
+                choices=["pause", "promote", "shutdown"],
             )
-            cmd.add_argument("--recovery-target-name", help="PostgreSQL recovery_target_name", metavar="RESTOREPOINT")
-            cmd.add_argument("--recovery-target-time", help="PostgreSQL recovery_target_time", metavar="ISO_TIMESTAMP")
-            cmd.add_argument("--recovery-target-xid", help="PostgreSQL recovery_target_xid", metavar="XID")
+            cmd.add_argument(
+                "--recovery-target-name",
+                help="PostgreSQL recovery_target_name",
+                metavar="RESTOREPOINT",
+            )
+            cmd.add_argument(
+                "--recovery-target-time",
+                help="PostgreSQL recovery_target_time",
+                metavar="ISO_TIMESTAMP",
+            )
+            cmd.add_argument(
+                "--recovery-target-xid",
+                help="PostgreSQL recovery_target_xid",
+                metavar="XID",
+            )
             cmd.add_argument(
                 "--restore-to-primary",
                 "--restore-to-master",
                 help="Restore the database to a PG primary",
-                action="store_true"
+                action="store_true",
             )
 
         cmd = add_cmd(self.list_basebackups_http)
@@ -305,7 +376,9 @@ class Restore:
 
     def list_basebackups(self, arg):
         """List basebackups from an object store"""
-        self.config = config.read_json_config_file(arg.config, check_commands=False, check_pgdata=False)
+        self.config = config.read_json_config_file(
+            arg.config, check_commands=False, check_pgdata=False
+        )
         site = config.get_site_from_config(self.config, arg.site)
         self.storage = self._get_object_storage(site, pgdata=None)
         self.storage.show_basebackup_list(verbose=arg.verbose)
@@ -318,9 +391,13 @@ class Restore:
             try:
                 tablespace_mapping = dict(v.split("=", 1) for v in arg.tablespace_dir)
             except ValueError:
-                raise RestoreError("Invalid tablespace mapping {!r}".format(arg.tablespace_dir))
+                raise RestoreError(
+                    "Invalid tablespace mapping {!r}".format(arg.tablespace_dir)
+                )
 
-        self.config = config.read_json_config_file(arg.config, check_commands=False, check_pgdata=False)
+        self.config = config.read_json_config_file(
+            arg.config, check_commands=False, check_pgdata=False
+        )
         site = config.get_site_from_config(self.config, arg.site)
         try:
             self.storage = self._get_object_storage(site, arg.target_dir)
@@ -367,9 +444,13 @@ class Restore:
                 # We really need the backup end time here, but pg_basebackup based backup methods don't provide
                 # it for us currently, so fall back to using start-time.
                 if "end-time" in basebackup["metadata"]:
-                    backup_ts = dates.parse_timestamp(basebackup["metadata"]["end-time"])
+                    backup_ts = dates.parse_timestamp(
+                        basebackup["metadata"]["end-time"]
+                    )
                 else:
-                    backup_ts = dates.parse_timestamp(basebackup["metadata"]["start-time"])
+                    backup_ts = dates.parse_timestamp(
+                        basebackup["metadata"]["start-time"]
+                    )
                 if backup_ts >= recovery_target_time:
                     continue
             applicable_basebackups.append(basebackup)
@@ -378,7 +459,9 @@ class Restore:
             raise RestoreError("No applicable basebackups found, exiting")
 
         # NOTE: as above, we may not have end-time so just sort by start-time, the order should be the same
-        applicable_basebackups.sort(key=lambda basebackup: basebackup["metadata"]["start-time"])
+        applicable_basebackups.sort(
+            key=lambda basebackup: basebackup["metadata"]["start-time"]
+        )
         caption = "Found {} applicable basebackup{}".format(
             len(applicable_basebackups), "" if len(applicable_basebackups) == 1 else "s"
         )
@@ -394,12 +477,14 @@ class Restore:
         with rohmufile.file_reader(
             fileobj=io.BytesIO(bmeta_compressed),
             metadata=metadata,
-            key_lookup=config.key_lookup_for_site(self.config, site)
+            key_lookup=config.key_lookup_for_site(self.config, site),
         ) as input_obj:
             bmeta = common.extract_pghoard_delta_v1_metadata(input_obj)
         self.log.debug("Delta backup metadata: %r", bmeta)
 
-        delta_objects_path = os.path.join(self._get_site_prefix(site), "basebackup_delta")
+        delta_objects_path = os.path.join(
+            self._get_site_prefix(site), "basebackup_delta"
+        )
 
         manifest = bmeta["manifest"]
         snapshot_result = manifest["snapshot_result"]
@@ -414,7 +499,7 @@ class Restore:
                         name=os.path.join(delta_objects_path, delta_file["hexdigest"]),
                         size=delta_file["stored_file_size"],
                         new_name=delta_file["relative_path"],
-                        file_type=FileInfoType.delta
+                        file_type=FileInfoType.delta,
                     )
                 )
             elif delta_file["content_b64"] is not None:
@@ -425,11 +510,13 @@ class Restore:
                         metadata=metadata,
                         size=delta_file["file_size"],
                         new_name=delta_file["relative_path"],
-                        file_type=FileInfoType.delta
+                        file_type=FileInfoType.delta,
                     )
                 )
 
-        basebackup_data_files.append(FileDataInfo(data=bmeta_compressed, metadata=metadata, size=0))
+        basebackup_data_files.append(
+            FileDataInfo(data=bmeta_compressed, metadata=metadata, size=0)
+        )
 
         return tablespaces, basebackup_data_files, empty_dirs
 
@@ -449,18 +536,23 @@ class Restore:
         restore_to_primary=None,
         overwrite=False,
         tablespace_mapping=None,
-        tablespace_base_dir=None
+        tablespace_base_dir=None,
     ):
         targets = [recovery_target_name, recovery_target_time, recovery_target_xid]
         if sum(0 if flag is None else 1 for flag in targets) > 1:
-            raise RestoreError("Specify at most one of recovery_target_name, " "recovery_target_time or recovery_target_xid")
+            raise RestoreError(
+                "Specify at most one of recovery_target_name, "
+                "recovery_target_time or recovery_target_xid"
+            )
 
         # If basebackup that we want it set as latest, figure out which one it is
         if recovery_target_time:
             try:
                 recovery_target_time = dates.parse_timestamp(recovery_target_time)
             except (TypeError, ValueError) as ex:
-                raise RestoreError("recovery_target_time {!r}: {}".format(recovery_target_time, ex))
+                raise RestoreError(
+                    "recovery_target_time {!r}: {}".format(recovery_target_time, ex)
+                )
             basebackup = self._find_nearest_basebackup(recovery_target_time)
         elif basebackup == "latest":
             basebackup = self._find_nearest_basebackup()
@@ -486,7 +578,9 @@ class Restore:
             dirs_to_recheck.append(["$PGDATA", pgdata])
         else:
             raise RestoreError(
-                "$PGDATA target directory {!r} exists, is not empty and --overwrite not specified, aborting.".format(pgdata)
+                "$PGDATA target directory {!r} exists, is not empty and --overwrite not specified, aborting.".format(
+                    pgdata
+                )
             )
 
         empty_dirs = None
@@ -497,7 +591,7 @@ class Restore:
             with rohmufile.file_reader(
                 fileobj=io.BytesIO(bmeta_compressed),
                 metadata=metadata,
-                key_lookup=config.key_lookup_for_site(self.config, site)
+                key_lookup=config.key_lookup_for_site(self.config, site),
             ) as input_obj:
                 bmeta = common.extract_pghoard_bb_v2_metadata(input_obj)
             self.log.debug("Backup metadata: %r", bmeta)
@@ -505,12 +599,19 @@ class Restore:
             tablespaces = bmeta["tablespaces"]
             basebackup_data_files = [
                 FilePathInfo(
-                    name=os.path.join(self._get_site_prefix(site), "basebackup_chunk", chunk["chunk_filename"]),
-                    size=chunk["result_size"]
-                ) for chunk in bmeta["chunks"]
+                    name=os.path.join(
+                        self._get_site_prefix(site),
+                        "basebackup_chunk",
+                        chunk["chunk_filename"],
+                    ),
+                    size=chunk["result_size"],
+                )
+                for chunk in bmeta["chunks"]
             ]
             # We need the files from the main basebackup file too
-            basebackup_data_files.append(FileDataInfo(data=bmeta_compressed, metadata=metadata, size=0))
+            basebackup_data_files.append(
+                FileDataInfo(data=bmeta_compressed, metadata=metadata, size=0)
+            )
 
         elif metadata.get("format") == BaseBackupFormat.v1:
             # Tablespace information stored in object store metadata, look it up
@@ -527,19 +628,33 @@ class Restore:
                     "path": tspath,
                 }
 
-            basebackup_data_files = [FilePathInfo(name=basebackup["name"], size=basebackup["size"])]
+            basebackup_data_files = [
+                FilePathInfo(name=basebackup["name"], size=basebackup["size"])
+            ]
 
         elif metadata.get("format") == BaseBackupFormat.delta_v1:
-            tablespaces, basebackup_data_files, empty_dirs = self._get_delta_basebackup_data(
-                site, metadata, basebackup["name"]
-            )
+            (
+                tablespaces,
+                basebackup_data_files,
+                empty_dirs,
+            ) = self._get_delta_basebackup_data(site, metadata, basebackup["name"])
         else:
             # Object is a raw (encrypted, compressed) basebackup
-            basebackup_data_files = [FilePathInfo(name=basebackup["name"], size=basebackup["size"])]
+            basebackup_data_files = [
+                FilePathInfo(name=basebackup["name"], size=basebackup["size"])
+            ]
 
-        if tablespace_base_dir and not os.path.exists(tablespace_base_dir) and not overwrite:
+        if (
+            tablespace_base_dir
+            and not os.path.exists(tablespace_base_dir)
+            and not overwrite
+        ):
             # we just care that the dir exists, but we're OK if there are other objects there
-            raise RestoreError("Tablespace base directory {!r} does not exist, aborting.".format(tablespace_base_dir))
+            raise RestoreError(
+                "Tablespace base directory {!r} does not exist, aborting.".format(
+                    tablespace_base_dir
+                )
+            )
 
         # Map tablespaces as requested and make sure the directories exist
         for tsname, tsinfo in tablespaces.items():
@@ -548,15 +663,25 @@ class Restore:
                 tspath = os.path.join(tablespace_base_dir, str(tsinfo["oid"]))
                 os.makedirs(tspath, exist_ok=True)
             if not os.path.exists(tspath):
-                raise RestoreError("Tablespace {!r} target directory {!r} does not exist, aborting.".format(tsname, tspath))
+                raise RestoreError(
+                    "Tablespace {!r} target directory {!r} does not exist, aborting.".format(
+                        tsname, tspath
+                    )
+                )
             if os.listdir(tspath) not in ([], ["lost+found"]):
                 # Allow empty directories as well as ext3/4 mount points to be used, but check that we can write to them
                 raise RestoreError(
-                    "Tablespace {!r} target directory {!r} exists but is not empty, aborting.".format(tsname, tspath)
+                    "Tablespace {!r} target directory {!r} exists but is not empty, aborting.".format(
+                        tsname, tspath
+                    )
                 )
 
             tsinfo["path"] = tspath
-            print("Using existing empty directory {!r} for tablespace {!r}".format(tspath, tsname))
+            print(
+                "Using existing empty directory {!r} for tablespace {!r}".format(
+                    tspath, tsname
+                )
+            )
             dirs_to_recheck.append(["Tablespace {!r}".format(tsname), tspath])
 
         # We .pop() the elements of tablespace_mapping above - if mappings are given they must all exist or the
@@ -574,7 +699,11 @@ class Restore:
             try:
                 tempfile.TemporaryFile(dir=dirname).close()
             except PermissionError:
-                raise RestoreError("{} target directory {!r} is empty, but not writable, aborting.".format(diruse, dirname))
+                raise RestoreError(
+                    "{} target directory {!r} is empty, but not writable, aborting.".format(
+                        diruse, dirname
+                    )
+                )
 
         for dirname in dirs_to_wipe:
             shutil.rmtree(dirname)
@@ -632,7 +761,17 @@ class Restore:
 
 
 class BasebackupFetcher:
-    def __init__(self, *, app_config, debug, site, pgdata, tablespaces, data_files: List[FileInfo], status_output_file=None):
+    def __init__(
+        self,
+        *,
+        app_config,
+        debug,
+        site,
+        pgdata,
+        tablespaces,
+        data_files: List[FileInfo],
+        status_output_file=None,
+    ):
         self.log = logging.getLogger(self.__class__.__name__)
         self.completed_jobs: Set[str] = set()
         self.config = app_config
@@ -643,13 +782,19 @@ class BasebackupFetcher:
         self.last_progress_ts = time.monotonic()
         self.last_total_downloaded = 0
         self.lock = RLock()
-        self.manager_class = multiprocessing.Manager if self._process_count() > 1 else ThreadingManager
+        self.manager_class = (
+            multiprocessing.Manager if self._process_count() > 1 else ThreadingManager
+        )
         self.max_stale_seconds = 120
         self.pending_jobs: Set[str] = set()
         self.jobs_to_retry: Set[str] = set()
         self.pgdata = pgdata
         # There's no point in spawning child processes if process count is 1
-        self.pool_class = multiprocessing.Pool if self._process_count() > 1 else multiprocessing.pool.ThreadPool
+        self.pool_class = (
+            multiprocessing.Pool
+            if self._process_count() > 1
+            else multiprocessing.pool.ThreadPool
+        )
         self.site = site
         self.status_output_file = status_output_file
         self.sleep_fn = time.sleep
@@ -682,7 +827,9 @@ class BasebackupFetcher:
                     break
 
         if self.errors:
-            raise RestoreError("Backup download/extraction failed with {} errors".format(self.errors))
+            raise RestoreError(
+                "Backup download/extraction failed with {} errors".format(self.errors)
+            )
         self._create_tablespace_symlinks()
         with contextlib.suppress(OSError):
             os.rmdir(os.path.join(self.pgdata, "pgdata"))
@@ -702,7 +849,9 @@ class BasebackupFetcher:
                         raise
         # Remove empty directories that could not be excluded when extracting tar due to
         # tar's limitations in exclude parameter behavior
-        tsnames = [os.path.join("tablespaces", tsname) for tsname in self.tablespaces.keys()]
+        tsnames = [
+            os.path.join("tablespaces", tsname) for tsname in self.tablespaces.keys()
+        ]
         for exclude in tsnames + ["tablespaces"]:
             with contextlib.suppress(OSError):
                 os.rmdir(os.path.join(self.pgdata, exclude))
@@ -712,9 +861,11 @@ class BasebackupFetcher:
 
     def _setup_progress_tracking(self, manager):
         self.total_download_size = sum(item.size for item in self.data_files)
-        initial_progress = [[item.name, item.size if item.id in self.completed_jobs else 0]
-                            for item in self.data_files
-                            if isinstance(item, FilePathInfo)]
+        initial_progress = [
+            [item.name, item.size if item.id in self.completed_jobs else 0]
+            for item in self.data_files
+            if isinstance(item, FilePathInfo)
+        ]
         self.download_progress_per_file = manager.dict(initial_progress)
 
     def current_progress(self):
@@ -733,10 +884,10 @@ class BasebackupFetcher:
         print(
             "\rDownload progress: {progress:.2%} ({dl_mib:.0f} / {total_mib:.0f} MiB)\r".format(
                 progress=progress,
-                dl_mib=total_downloaded / (1024 ** 2),
-                total_mib=self.total_download_size / (1024 ** 2),
+                dl_mib=total_downloaded / (1024**2),
+                total_mib=self.total_download_size / (1024**2),
             ),
-            end=end
+            end=end,
         )
         sys.stdout.flush()
 
@@ -750,7 +901,9 @@ class BasebackupFetcher:
 
     def job_failed(self, key, exception):
         if isinstance(exception, MaybeRecoverableError):
-            self.log.warning("Got error which can be recoverable from chunk download %s", exception)
+            self.log.warning(
+                "Got error which can be recoverable from chunk download %s", exception
+            )
             with self.lock:
                 if key in self.pending_jobs:
                     retries = self.retry_per_file.get(key, 0) + 1
@@ -807,11 +960,12 @@ class BasebackupFetcher:
     def _write_status_output_to_file(self, output_file):
         total_downloaded, progress = self.current_progress()
         common.write_json_file(
-            output_file, {
+            output_file,
+            {
                 "progress_percent": progress,
                 "downloaded_bytes": total_downloaded,
                 "total_bytes": self.total_download_size,
-            }
+            },
         )
 
     def _wait_for_jobs_to_complete(self, pool):
@@ -832,7 +986,10 @@ class BasebackupFetcher:
             self.sleep_fn(1)
             stall_duration = time.monotonic() - self.last_progress_ts
             if stall_duration > self.max_stale_seconds:
-                self.log.error("Download stalled for %r seconds, aborting downloaders", stall_duration)
+                self.log.error(
+                    "Download stalled for %r seconds, aborting downloaders",
+                    stall_duration,
+                )
                 raise TimeoutError()
 
         self._print_download_progress(end="\n")
@@ -851,15 +1008,32 @@ class ThreadingManager:
 
 
 def _fetch_and_process_chunk(
-    *, app_config, debug, file_info: FileInfo, download_progress_per_file, site, pgdata, tablespaces
+    *,
+    app_config,
+    debug,
+    file_info: FileInfo,
+    download_progress_per_file,
+    site,
+    pgdata,
+    tablespaces,
 ):
     logutil.configure_logging(level=logging.DEBUG if debug else logging.INFO)
-    fetcher = ChunkFetcher(app_config, file_info, download_progress_per_file, site, pgdata, tablespaces)
+    fetcher = ChunkFetcher(
+        app_config, file_info, download_progress_per_file, site, pgdata, tablespaces
+    )
     fetcher.process_chunk()
 
 
 class ChunkFetcher:
-    def __init__(self, app_config, file_info: FileInfo, download_progress_per_file, site, pgdata, tablespaces):
+    def __init__(
+        self,
+        app_config,
+        file_info: FileInfo,
+        download_progress_per_file,
+        site,
+        pgdata,
+        tablespaces,
+    ):
         self.config = app_config
         self.file_info = file_info
         self.download_progress_per_file = download_progress_per_file
@@ -874,23 +1048,31 @@ class ChunkFetcher:
 
     def _progress_callback(self, current_pos, expected_max):
         assert isinstance(self.file_info, FilePathInfo)
-        self.download_progress_per_file[self.file_info.name] = self.file_info.size * (current_pos / expected_max)
+        self.download_progress_per_file[self.file_info.name] = self.file_info.size * (
+            current_pos / expected_max
+        )
 
     def process_chunk(self):
         self.log.info("Processing one chunk: %r", self.file_info)
 
         if self.file_info.file_type not in {FileInfoType.regular, FileInfoType.delta}:
-            raise NotImplementedError(f"Unknown FileInfoType {self.file_info.file_type}")
+            raise NotImplementedError(
+                f"Unknown FileInfoType {self.file_info.file_type}"
+            )
 
         if isinstance(self.file_info, FileDataInfo):
             if self.file_info.file_type == FileInfoType.regular:
                 src = io.BytesIO(self.file_info.data)
                 self._fetch_and_extract_one_backup(
-                    self.file_info.metadata, len(self.file_info.data), lambda sink: shutil.copyfileobj(src, sink)
+                    self.file_info.metadata,
+                    len(self.file_info.data),
+                    lambda sink: shutil.copyfileobj(src, sink),
                 )
             elif self.file_info.file_type == FileInfoType.delta:
                 assert self.file_info.new_name
-                with open(os.path.join(self.pgdata, self.file_info.new_name), "wb") as out_f:
+                with open(
+                    os.path.join(self.pgdata, self.file_info.new_name), "wb"
+                ) as out_f:
                     out_f.write(self.file_info.data)
 
         elif isinstance(self.file_info, FilePathInfo):
@@ -898,24 +1080,39 @@ class ChunkFetcher:
             metadata = transfer.get_metadata_for_key(self.file_info.name)
 
             def fetch_fn(sink):
-                transfer.get_contents_to_fileobj(self.file_info.name, sink, progress_callback=self._progress_callback)
+                transfer.get_contents_to_fileobj(
+                    self.file_info.name, sink, progress_callback=self._progress_callback
+                )
 
             if self.file_info.file_type == FileInfoType.regular:
-                self._fetch_and_extract_one_backup(metadata, self.file_info.size, fetch_fn)
+                self._fetch_and_extract_one_backup(
+                    metadata, self.file_info.size, fetch_fn
+                )
             elif self.file_info.file_type == FileInfoType.delta:
                 assert self.file_info.new_name
                 self._fetch_delta_file(metadata, fetch_fn)
 
         else:
-            raise NotImplementedError(f"Unknown FileInfo {self.file_info.__class__.__name__}")
+            raise NotImplementedError(
+                f"Unknown FileInfo {self.file_info.__class__.__name__}"
+            )
 
     def _build_tar_args(self, metadata):
         base_args = [self.config["tar_executable"], "-xf", "-", "-C", self.pgdata]
         file_format = metadata.get("format")
         if not file_format:
             return base_args
-        elif file_format in {BaseBackupFormat.v1, BaseBackupFormat.v2, BaseBackupFormat.delta_v1}:
-            extra_args = ["--exclude", ".pghoard_tar_metadata.json", "--transform", "s,^pgdata/,,"]
+        elif file_format in {
+            BaseBackupFormat.v1,
+            BaseBackupFormat.v2,
+            BaseBackupFormat.delta_v1,
+        }:
+            extra_args = [
+                "--exclude",
+                ".pghoard_tar_metadata.json",
+                "--transform",
+                "s,^pgdata/,,",
+            ]
             if file_format == BaseBackupFormat.delta_v1:
                 extra_args += ["--exclude", ".manifest.json"]
             if self.tablespaces:
@@ -924,15 +1121,20 @@ class ChunkFetcher:
                 extra_args.append("--transform")
                 extra_args.append(
                     r"s,^tablespaces/{}/\(.*\)$,{}/\1,".format(
-                        tsname.replace("\\", "\\\\").replace(",", "\\,"), settings["path"].replace(",", "\\,")
+                        tsname.replace("\\", "\\\\").replace(",", "\\,"),
+                        settings["path"].replace(",", "\\,"),
                     )
                 )
             return base_args + extra_args
         else:
-            raise RestoreError("Unrecognized basebackup format {!r}".format(file_format))
+            raise RestoreError(
+                "Unrecognized basebackup format {!r}".format(file_format)
+            )
 
     def _fetch_delta_file(self, metadata, fetch_fn):
-        with open(os.path.join(self.pgdata, self.file_info.new_name), "wb") as target_file:
+        with open(
+            os.path.join(self.pgdata, self.file_info.new_name), "wb"
+        ) as target_file:
             sink = rohmufile.create_sink_pipeline(
                 output=target_file,
                 file_size=self.file_info.size,
@@ -942,7 +1144,9 @@ class ChunkFetcher:
             fetch_fn(sink)
 
         self.log.info(
-            "Processing of delta file completed successfully: %r -> %r", self.file_info.name, self.file_info.new_name
+            "Processing of delta file completed successfully: %r -> %r",
+            self.file_info.name,
+            self.file_info.new_name,
         )
 
     def _fetch_and_extract_one_backup(self, metadata, file_size, fetch_fn):
@@ -955,14 +1159,14 @@ class ChunkFetcher:
             stdin=subprocess.PIPE,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
-            env=tar_env
+            env=tar_env,
         ) as tar:
             common.increase_pipe_capacity(tar.stdin, tar.stderr)
             sink = rohmufile.create_sink_pipeline(
                 file_size=file_size,
                 key_lookup=config.key_lookup_for_site(self.config, self.site),
                 metadata=metadata,
-                output=tar.stdin
+                output=tar.stdin,
             )
             # It would be prudent to read stderr while we're writing to stdin to avoid deadlocking
             # if stderr fills up but in practice tar should write very little to stderr and that
@@ -977,19 +1181,32 @@ class ChunkFetcher:
             tar.stdin = None
             output = tar.stderr.read()
             exit_code = tar.wait()
-            file_name = "<mem_bytes>" if isinstance(self.file_info, FileDataInfo) else self.file_info.name
+            file_name = (
+                "<mem_bytes>"
+                if isinstance(self.file_info, FileDataInfo)
+                else self.file_info.name
+            )
             if exit_code != 0:
-                ex_message = "tar exited with code {!r} for file {!r}, output: {!r}".format(exit_code, file_name, output)
+                ex_message = (
+                    "tar exited with code {!r} for file {!r}, output: {!r}".format(
+                        exit_code, file_name, output
+                    )
+                )
                 # Running multiple tar commands in parallel in the same
                 # directory can lead to race conditions while creating the
                 # intermediate directories.
                 # In that case, try to recover from it.
                 # See issue #452 and https://savannah.gnu.org/bugs/index.php?61015
-                if exit_code == 2 and b"Cannot open: No such file or directory" in output:
+                if (
+                    exit_code == 2
+                    and b"Cannot open: No such file or directory" in output
+                ):
                     raise MaybeRecoverableError(ex_message)
                 else:
                     raise Exception(
-                        "tar exited with code {!r} for file {!r}, output: {!r}".format(exit_code, file_name, output)
+                        "tar exited with code {!r} for file {!r}, output: {!r}".format(
+                            exit_code, file_name, output
+                        )
                     )
             self.log.info("Processing of %r completed successfully", file_name)
 
@@ -1013,8 +1230,12 @@ class ObjectStore:
     def get_basebackup_metadata(self, basebackup):
         return self.storage.get_metadata_for_key(basebackup)
 
-    def get_basebackup_file_to_fileobj(self, basebackup, fileobj, *, progress_callback=None):
-        return self.storage.get_contents_to_fileobj(basebackup, fileobj, progress_callback=progress_callback)
+    def get_basebackup_file_to_fileobj(
+        self, basebackup, fileobj, *, progress_callback=None
+    ):
+        return self.storage.get_contents_to_fileobj(
+            basebackup, fileobj, progress_callback=progress_callback
+        )
 
     def get_file_bytes(self, name):
         return self.storage.get_contents_to_string(name)[0]
@@ -1028,7 +1249,9 @@ class HTTPRestore(ObjectStore):
         self.session = Session()
 
     def _url(self, path):
-        return "http://{host}:{port}/{site}/{path}".format(host=self.host, port=self.port, site=self.site, path=path)
+        return "http://{host}:{port}/{site}/{path}".format(
+            host=self.host, port=self.port, site=self.site, path=path
+        )
 
     def list_basebackups(self):
         response = self.session.get(self._url("basebackup"))
@@ -1041,6 +1264,7 @@ def main():
         return restore.run()
     except (InvalidConfigurationError, RestoreError) as ex:
         import traceback
+
         traceback.print_exc()
         print("FATAL: {}: {}".format(ex.__class__.__name__, ex))
         return 1

@@ -11,19 +11,42 @@ class GnuTarEmulator:
     """Provides minimal set of tar processing functionality with interface
     identical to that of GNU tar. Only parameters that are required by PGHoard
     are supported."""
+
     def __init__(self):
         parser = argparse.ArgumentParser()
-        parser.add_argument("-x", "--extract", help="Extract a file", action="store_true", required=True)
-        parser.add_argument("-f", "--file", help="Specify the file to extract, - for stdin", type=str, required=True)
-        parser.add_argument("-C", "--directory", help="Target directory for extraction", type=str)
-        parser.add_argument("-P", "--absolute-names", help="Don't strip leading / from file names", action="store_true")
+        parser.add_argument(
+            "-x", "--extract", help="Extract a file", action="store_true", required=True
+        )
+        parser.add_argument(
+            "-f",
+            "--file",
+            help="Specify the file to extract, - for stdin",
+            type=str,
+            required=True,
+        )
+        parser.add_argument(
+            "-C", "--directory", help="Target directory for extraction", type=str
+        )
+        parser.add_argument(
+            "-P",
+            "--absolute-names",
+            help="Don't strip leading / from file names",
+            action="store_true",
+        )
         parser.add_argument(
             "--keep-directory-symlink",
             help="Follow symlinks to directories when extracting from the archive",
-            action="store_true"
+            action="store_true",
         )
-        parser.add_argument("--exclude", help="Exclude file matching given patter", type=str, action="append")
-        parser.add_argument("--transform", help="Transform file name", type=str, action="append")
+        parser.add_argument(
+            "--exclude",
+            help="Exclude file matching given patter",
+            type=str,
+            action="append",
+        )
+        parser.add_argument(
+            "--transform", help="Transform file name", type=str, action="append"
+        )
         self.args = parser.parse_args()
         self.substitutions = self._process_transform_arguments()
 
@@ -49,9 +72,13 @@ class GnuTarEmulator:
                 if not self.args.keep_directory_symlink:
                     # _build_target_name prefixed path with directory name but if absolute
                     # paths are allowed the path might be outside of target directory
-                    if self.args.directory and target_name.startswith(self.args.directory):
+                    if self.args.directory and target_name.startswith(
+                        self.args.directory
+                    ):
                         path = self.args.directory
-                        relative_path = target_name[len(self.args.directory):].lstrip(os.sep)
+                        relative_path = target_name[len(self.args.directory) :].lstrip(
+                            os.sep
+                        )
                     elif target_name.startswith(os.sep):
                         path = os.sep
                         relative_path = target_name.lstrip(os.sep)
@@ -77,7 +104,11 @@ class GnuTarEmulator:
                 elif tarinfo.issym():
                     os.symlink(tarinfo.linkname, target_name)
                 else:
-                    raise Exception("Unrecognized file type for file {!r} in tar".format(tarinfo.name))
+                    raise Exception(
+                        "Unrecognized file type for file {!r} in tar".format(
+                            tarinfo.name
+                        )
+                    )
 
         for target_name, tarinfo in paths:
             tar.chmod(tarinfo, target_name)
@@ -109,7 +140,9 @@ class GnuTarEmulator:
     def _process_transform_arguments(self):
         if not self.args.transform:
             return {}
-        return dict(SedStatementParser(statement).parse() for statement in self.args.transform)
+        return dict(
+            SedStatementParser(statement).parse() for statement in self.args.transform
+        )
 
     def _should_exclude(self, filename):
         if not self.args.exclude:
@@ -133,14 +166,24 @@ class SedStatementParser:
 
     def parse(self):
         if not self.statement.startswith("s"):
-            raise Exception("Transform statement must start with 's' {!r}".format(self.statement))
+            raise Exception(
+                "Transform statement must start with 's' {!r}".format(self.statement)
+            )
         statement = self.statement[1:]
         separator = statement[0]
         if not statement.endswith(separator):
-            raise Exception("Transform statement must end with separator {!r} ({!r})".format(separator, statement))
+            raise Exception(
+                "Transform statement must end with separator {!r} ({!r})".format(
+                    separator, statement
+                )
+            )
         tokens = self.tokenize_string(statement[1:-1], separator)
         if len(tokens) != 2:
-            raise Exception("Bad transform statement, must have search and replace expressions {!r}".format(statement))
+            raise Exception(
+                "Bad transform statement, must have search and replace expressions {!r}".format(
+                    statement
+                )
+            )
         search = tokens[0]
         replace = tokens[1]
         search = self.reverse_escaping(search)

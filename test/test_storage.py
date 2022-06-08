@@ -66,21 +66,29 @@ def _test_storage(st, driver, tmpdir, storage_config):
     def progress_callback(pos, total):
         reported_positions.append((pos, total))
 
-    assert st.get_contents_to_fileobj("test1/x1", out, progress_callback=progress_callback) == {}
+    assert (
+        st.get_contents_to_fileobj("test1/x1", out, progress_callback=progress_callback)
+        == {}
+    )
     assert out.getvalue() == input_data
     if driver in ["local", "sftp"]:
         input_size = len(input_data)
         assert reported_positions[-1] == (input_size, input_size)
 
     if driver == "local":
-        assert reported_positions == [(1024 * 1024, input_size), (input_size, input_size)]
+        assert reported_positions == [
+            (1024 * 1024, input_size),
+            (input_size, input_size),
+        ]
 
     if driver == "s3":
         response = st.s3_client.head_object(
             Bucket=st.bucket_name,
             Key=st.format_key_for_backend("test1/x1"),
         )
-        assert bool(response.get("ServerSideEncryption")) == bool(storage_config.get("encrypted"))
+        assert bool(response.get("ServerSideEncryption")) == bool(
+            storage_config.get("encrypted")
+        )
 
     st.store_file_from_memory("test1/x1", b"dummy", {"k": "v"})
     out = BytesIO()
@@ -92,8 +100,15 @@ def _test_storage(st, driver, tmpdir, storage_config):
         # Copy file
         st.copy_file(source_key="test1/x1", destination_key="test_copy/copy1")
         assert st.get_contents_to_string("test_copy/copy1") == (b"dummy", {"k": "v"})
-        st.copy_file(source_key="test1/x1", destination_key="test_copy/copy2", metadata={"new": "meta"})
-        assert st.get_contents_to_string("test_copy/copy2") == (b"dummy", {"new": "meta"})
+        st.copy_file(
+            source_key="test1/x1",
+            destination_key="test_copy/copy2",
+            metadata={"new": "meta"},
+        )
+        assert st.get_contents_to_string("test_copy/copy2") == (
+            b"dummy",
+            {"new": "meta"},
+        )
 
     st.store_file_from_memory("test1/x1", b"l", {"fancymetadata": "value"})
     assert st.get_contents_to_string("test1/x1") == (b"l", {"fancymetadata": "value"})
@@ -112,7 +127,9 @@ def _test_storage(st, driver, tmpdir, storage_config):
             Bucket=st.bucket_name,
             Key=st.format_key_for_backend("test1/x1"),
         )
-        assert bool(response.get("ServerSideEncryption")) == bool(storage_config.get("encrypted"))
+        assert bool(response.get("ServerSideEncryption")) == bool(
+            storage_config.get("encrypted")
+        )
 
     assert st.list_path("") == []  # nothing at top level (directories not listed)
     if driver == "local":
@@ -156,10 +173,20 @@ def _test_storage(st, driver, tmpdir, storage_config):
     if driver in ["local", "sftp"]:
         assert set(st.iter_prefixes("test1")) == {"test1/sub1", "test1/sub2"}
     else:
-        assert set(st.iter_prefixes("test1")) == {"test1/sub1", "test1/sub2", "test1/sub3"}
-    assert {item["name"] for item in st.list_path("test1")} == {"test1/x1", "test1/td", "test1/sub3"}
+        assert set(st.iter_prefixes("test1")) == {
+            "test1/sub1",
+            "test1/sub2",
+            "test1/sub3",
+        }
+    assert {item["name"] for item in st.list_path("test1")} == {
+        "test1/x1",
+        "test1/td",
+        "test1/sub3",
+    }
     assert set(st.iter_prefixes("test1/sub1")) == set()
-    assert {item["name"] for item in st.list_path("test1/sub1")} == {"test1/sub1/sub1.1"}
+    assert {item["name"] for item in st.list_path("test1/sub1")} == {
+        "test1/sub1/sub1.1"
+    }
     assert {item["name"] for item in st.list_path("test1/sub2")} == set()
     assert {item["name"] for item in st.list_path("test1/sub3")} == set()
     assert set(st.iter_prefixes("test1/sub2")) == {"test1/sub2/sub2.1"}
@@ -179,7 +206,9 @@ def _test_storage(st, driver, tmpdir, storage_config):
     if driver not in ["local", "sftp"]:
         expected_deep_iter_test1_names.add("test1/sub3/sub3.1/sub3.1.1")
 
-    assert {item["name"] for item in st.list_path("test1", deep=True)} == expected_deep_iter_test1_names
+    assert {
+        item["name"] for item in st.list_path("test1", deep=True)
+    } == expected_deep_iter_test1_names
 
     def _object_names(iterable):
         names = set()
@@ -188,8 +217,12 @@ def _test_storage(st, driver, tmpdir, storage_config):
             names.add(item.value["name"])
         return names
 
-    deep_names_with_key = _object_names(st.iter_key("test1/sub3", deep=True, include_key=True))
-    deep_names_without_key = _object_names(st.iter_key("test1/sub3", deep=True, include_key=False))
+    deep_names_with_key = _object_names(
+        st.iter_key("test1/sub3", deep=True, include_key=True)
+    )
+    deep_names_without_key = _object_names(
+        st.iter_key("test1/sub3", deep=True, include_key=False)
+    )
 
     if driver in ["local", "sftp"]:
         assert deep_names_with_key == {"test1/sub3"}
@@ -201,7 +234,10 @@ def _test_storage(st, driver, tmpdir, storage_config):
     if driver == "google":
         # test extra props for cacheControl in google
         st.store_file_from_memory(
-            "test1/x1", b"no cache test", metadata={"test": "value"}, extra_props={"cacheControl": "no-cache"}
+            "test1/x1",
+            b"no cache test",
+            metadata={"test": "value"},
+            extra_props={"cacheControl": "no-cache"},
         )
 
     if driver == "local":
@@ -223,10 +259,20 @@ def _test_storage(st, driver, tmpdir, storage_config):
         st.delete_key(key)
     assert st.list_path("test1") == []  # empty again
 
-    for name in ["test2/foo", "test2/suba/foo", "test2/subb/bar", "test2/subb/subsub/zob"]:
+    for name in [
+        "test2/foo",
+        "test2/suba/foo",
+        "test2/subb/bar",
+        "test2/subb/subsub/zob",
+    ]:
         st.store_file_from_memory(name, b"somedata")
     names = sorted(item["name"] for item in st.list_path("test2", deep=True))
-    assert names == ["test2/foo", "test2/suba/foo", "test2/subb/bar", "test2/subb/subsub/zob"]
+    assert names == [
+        "test2/foo",
+        "test2/suba/foo",
+        "test2/subb/bar",
+        "test2/subb/subsub/zob",
+    ]
 
     st.delete_tree("test2")
     assert st.list_path("test2", deep=True) == []
@@ -249,13 +295,17 @@ def _test_storage(st, driver, tmpdir, storage_config):
         metadata={
             "thirtymeg": "data",
             "size": test_size_send,
-            "key": "value-with-a-hyphen"
-        }
+            "key": "value-with-a-hyphen",
+        },
     )
 
     os.unlink(test_file)
 
-    expected_meta = {"thirtymeg": "data", "size": str(test_size_send), "key": "value-with-a-hyphen"}
+    expected_meta = {
+        "thirtymeg": "data",
+        "size": str(test_size_send),
+        "key": "value-with-a-hyphen",
+    }
     meta = st.get_metadata_for_key("test1/30m")
     assert meta == expected_meta
 
@@ -265,7 +315,10 @@ def _test_storage(st, driver, tmpdir, storage_config):
         progress_reports.append((current_pos, expected_max))
 
     with open(test_file, "wb") as fp:
-        assert st.get_contents_to_fileobj("test1/30m", fp, progress_callback=dl_progress) == expected_meta
+        assert (
+            st.get_contents_to_fileobj("test1/30m", fp, progress_callback=dl_progress)
+            == expected_meta
+        )
 
     assert len(progress_reports) > 0
     assert progress_reports[-1][0] == progress_reports[-1][1]
@@ -298,10 +351,10 @@ def _test_storage(st, driver, tmpdir, storage_config):
             os.truncate(test_file, st.segment_size + 1)
             test_size_send = os.path.getsize(test_file)
             st.store_file_from_disk(
-                "test1/30m", test_file, multipart=True, metadata={
-                    "30m": "less data",
-                    "size": test_size_send
-                }
+                "test1/30m",
+                test_file,
+                multipart=True,
+                metadata={"30m": "less data", "size": test_size_send},
             )
 
             segment_list = st.list_path("test1_segments/30m")
@@ -345,13 +398,20 @@ def _test_storage(st, driver, tmpdir, storage_config):
 def _test_storage_init(storage_type, with_prefix, tmpdir, config_overrides=None):
     if storage_type == "local":
         storage_config = {"directory": str(tmpdir.join("rohmu"))}
-    elif storage_type == "sftp" and os.path.isfile("/home/vagrant/pghoard-test-sftp-user"):
+    elif storage_type == "sftp" and os.path.isfile(
+        "/home/vagrant/pghoard-test-sftp-user"
+    ):
         with open("/home/vagrant/pghoard-test-sftp-user", "r") as sftpuser:
             username, password = sftpuser.read().strip().split(":")
 
         if username:
             # to ensure we are testing that you can use other than port 22, vagrant uses port 23
-            storage_config = {"server": "localhost", "port": 23, "username": username, "password": password}
+            storage_config = {
+                "server": "localhost",
+                "port": 23,
+                "username": username,
+                "password": password,
+            }
 
             # for no prefix testing, we need to cleanup existing files
             os.system("sudo rm -rf /home/{}/*".format(username))
@@ -451,19 +511,25 @@ def test_storage_sftp_with_prefix(tmpdir):
 
 def test_storage_sftp_no_prefix_private_key(tmpdir):
     _test_storage_init(
-        "sftp", False, tmpdir, config_overrides={
+        "sftp",
+        False,
+        tmpdir,
+        config_overrides={
             "private_key": "/home/vagrant/.ssh/id_rsa",
-            "password": "wrongpassword"
-        }
+            "password": "wrongpassword",
+        },
     )
 
 
 def test_storage_sftp_with_prefix_private_key(tmpdir):
     _test_storage_init(
-        "sftp", True, tmpdir, config_overrides={
+        "sftp",
+        True,
+        tmpdir,
+        config_overrides={
             "private_key": "/home/vagrant/.ssh/id_rsa",
-            "password": "wrongpassword"
-        }
+            "password": "wrongpassword",
+        },
     )
 
 
@@ -506,14 +572,16 @@ class RandomDataSource:
         if bytes_remaining == 0:
             return b""
         bytes_to_return = min(bytes_remaining, size)
-        data = self.data[self.bytes_returned:bytes_to_return + self.bytes_returned]
+        data = self.data[self.bytes_returned : bytes_to_return + self.bytes_returned]
         self.bytes_returned += bytes_to_return
         return data
 
 
 def test_media_stream_upload_read():
     bio = BytesIO(b"abcdefg")
-    msu = MediaStreamUpload(bio, chunk_size=1024, mime_type="application/octet-stream", name="foo")
+    msu = MediaStreamUpload(
+        bio, chunk_size=1024, mime_type="application/octet-stream", name="foo"
+    )
     assert msu.getbytes(0, 4) == b"abcd"
     assert msu.getbytes(2, 4) == b"cdef"
     assert msu.getbytes(2, 5) == b"cdefg"
@@ -524,7 +592,9 @@ def test_media_stream_upload_read():
 def test_media_stream_upload_read_aligned_size():
     b = b"abcdefghijklmnopqr"
     bio = BytesIO(b)
-    msu = MediaStreamUpload(bio, chunk_size=6, mime_type="application/octet-stream", name="foo")
+    msu = MediaStreamUpload(
+        bio, chunk_size=6, mime_type="application/octet-stream", name="foo"
+    )
     assert msu.size() is None
     assert msu.getbytes(0, 6) == b[:6]
     assert msu.size() is None

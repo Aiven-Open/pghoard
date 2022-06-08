@@ -38,14 +38,14 @@ class TestPGBaseBackup:
         with tarfile.open(fn, "w") as tfile:
             with open(os.path.join(td, "backup_label"), "wb") as fp:
                 fp.write(
-                    b'''\
+                    b"""\
 START WAL LOCATION: 0/4000028 (file 000000010000000000000004)
 CHECKPOINT LOCATION: 0/4000060
 BACKUP METHOD: streamed
 BACKUP FROM: master
 START TIME: 2015-02-12 14:07:19 GMT
 LABEL: pg_basebackup base backup
-'''
+"""
                 )
             tfile.add(os.path.join(td, "backup_label"), arcname="backup_label")
         pgb = PGBaseBackup(
@@ -56,7 +56,7 @@ LABEL: pg_basebackup base backup
             compression_queue=None,
             storage=None,
             transfer_queue=None,
-            metrics=metrics.Metrics(statsd={})
+            metrics=metrics.Metrics(statsd={}),
         )
         start_wal_segment, start_time = pgb.parse_backup_label_in_tar(fn)
         assert start_wal_segment == "000000010000000000000004"
@@ -71,8 +71,9 @@ LABEL: pg_basebackup base backup
 
         def create_test_files():
             # Create two temporary files on top level and one in global/ that we'll unlink while iterating
-            with open(top1, "w") as t1, open(top2, "w") as t2, \
-                    open(sub1, "w") as s1, open(sub2, "w") as s2, open(sub3, "w") as s3:
+            with open(top1, "w") as t1, open(top2, "w") as t2, open(
+                sub1, "w"
+            ) as s1, open(sub2, "w") as s2, open(sub3, "w") as s3:
                 t1.write("t1\n")
                 t2.write("t2\n")
                 s1.write("s1\n")
@@ -87,7 +88,7 @@ LABEL: pg_basebackup base backup
             compression_queue=None,
             storage=None,
             transfer_queue=None,
-            metrics=metrics.Metrics(statsd={})
+            metrics=metrics.Metrics(statsd={}),
         )
         create_test_files()
         files = pgb.find_files_to_backup(pgdata=db.pgdata, tablespaces={})
@@ -152,7 +153,9 @@ LABEL: pg_basebackup base backup
         assert len(arcnameset) == len(faketar.items)
         expected_items = bunameset - {"pgdata/global/sub2.test"}
         assert arcnameset == expected_items
-        assert "pgdata/global/sub1.test" not in arcnameset  # not in set of files to backup
+        assert (
+            "pgdata/global/sub1.test" not in arcnameset
+        )  # not in set of files to backup
         assert "pgdata/global/sub2.test" not in arcnameset  # acceptable loss
         assert "pgdata/global/sub3.test" in arcnameset  # acceptable
 
@@ -182,7 +185,7 @@ LABEL: pg_basebackup base backup
             compression_queue=None,
             storage=None,
             transfer_queue=None,
-            metrics=metrics.Metrics(statsd={})
+            metrics=metrics.Metrics(statsd={}),
         )
         total_file_count, chunks = pgb.find_and_split_files_to_backup(
             pgdata=pgdata, tablespaces={}, target_chunk_size=110000
@@ -215,13 +218,25 @@ LABEL: pg_basebackup base backup
         assert chunk3[2] == "pgdata/split_top/split_sub/f2"
         assert chunk3[3] == "pgdata/split_top/split_sub/f3"
 
-    def _test_create_basebackup(self, capsys, db, pghoard, mode, replica=False, active_backup_mode="archive_command"):
+    def _test_create_basebackup(
+        self,
+        capsys,
+        db,
+        pghoard,
+        mode,
+        replica=False,
+        active_backup_mode="archive_command",
+    ):
         pghoard.create_backup_site_paths(pghoard.test_site)
-        basebackup_path = os.path.join(pghoard.config["backup_location"], pghoard.test_site, "basebackup")
+        basebackup_path = os.path.join(
+            pghoard.config["backup_location"], pghoard.test_site, "basebackup"
+        )
         q = Queue()
 
         pghoard.config["backup_sites"][pghoard.test_site]["basebackup_mode"] = mode
-        pghoard.config["backup_sites"][pghoard.test_site]["active_backup_mode"] = active_backup_mode
+        pghoard.config["backup_sites"][pghoard.test_site][
+            "active_backup_mode"
+        ] = active_backup_mode
 
         now = datetime.datetime.now(datetime.timezone.utc)
         metadata = {
@@ -229,19 +244,23 @@ LABEL: pg_basebackup base backup
             "backup-decision-time": now.isoformat(),
             "normalized-backup-time": now.isoformat(),
         }
-        pghoard.create_basebackup(pghoard.test_site, db.user, basebackup_path, q, metadata)
+        pghoard.create_basebackup(
+            pghoard.test_site, db.user, basebackup_path, q, metadata
+        )
         result = q.get(timeout=60)
         assert result.success
 
         # make sure it shows on the list
-        Restore().run([
-            "list-basebackups",
-            "--config",
-            pghoard.config_path,
-            "--site",
-            pghoard.test_site,
-            "--verbose",
-        ])
+        Restore().run(
+            [
+                "list-basebackups",
+                "--config",
+                pghoard.config_path,
+                "--site",
+                pghoard.test_site,
+                "--verbose",
+            ]
+        )
         out, _ = capsys.readouterr()
         assert pghoard.test_site in out
         assert "pg-version" in out
@@ -252,13 +271,22 @@ LABEL: pg_basebackup base backup
             if replica is False:
                 assert "end-wal-segment" in out
 
-        storage_config = common.get_object_storage_config(pghoard.config, pghoard.test_site)
+        storage_config = common.get_object_storage_config(
+            pghoard.config, pghoard.test_site
+        )
         storage = get_transfer(storage_config)
-        backups = storage.list_path(os.path.join(pghoard.config["backup_sites"][pghoard.test_site]["prefix"], "basebackup"))
+        backups = storage.list_path(
+            os.path.join(
+                pghoard.config["backup_sites"][pghoard.test_site]["prefix"],
+                "basebackup",
+            )
+        )
         for backup in backups:
             assert "start-wal-segment" in backup["metadata"]
             assert "start-time" in backup["metadata"]
-            assert dateutil.parser.parse(backup["metadata"]["start-time"]).tzinfo  # pylint: disable=no-member
+            assert dateutil.parser.parse(
+                backup["metadata"]["start-time"]
+            ).tzinfo  # pylint: disable=no-member
             assert backup["metadata"]["backup-reason"] == "scheduled"
             assert backup["metadata"]["backup-decision-time"] == now.isoformat()
             assert backup["metadata"]["normalized-backup-time"] == now.isoformat()
@@ -266,26 +294,20 @@ LABEL: pg_basebackup base backup
                 if replica is False:
                     assert "end-wal-segment" in backup["metadata"]
                 assert "end-time" in backup["metadata"]
-                assert dateutil.parser.parse(backup["metadata"]["end-time"]).tzinfo  # pylint: disable=no-member
+                assert dateutil.parser.parse(
+                    backup["metadata"]["end-time"]
+                ).tzinfo  # pylint: disable=no-member
 
             assert backups[0]["metadata"]["active-backup-mode"] == active_backup_mode
 
-    def _test_restore_basebackup(self, db, pghoard, tmpdir, active_backup_mode="archive_command"):
+    def _test_restore_basebackup(
+        self, db, pghoard, tmpdir, active_backup_mode="archive_command"
+    ):
         backup_out = tmpdir.join("test-restore").strpath
         # Restoring to empty directory works
         os.makedirs(backup_out)
-        Restore().run([
-            "get-basebackup",
-            "--config",
-            pghoard.config_path,
-            "--site",
-            pghoard.test_site,
-            "--target-dir",
-            backup_out,
-        ])
-        # Restoring on top of another $PGDATA doesn't
-        with pytest.raises(RestoreError) as excinfo:
-            Restore().run([
+        Restore().run(
+            [
                 "get-basebackup",
                 "--config",
                 pghoard.config_path,
@@ -293,27 +315,50 @@ LABEL: pg_basebackup base backup
                 pghoard.test_site,
                 "--target-dir",
                 backup_out,
-            ])
+            ]
+        )
+        # Restoring on top of another $PGDATA doesn't
+        with pytest.raises(RestoreError) as excinfo:
+            Restore().run(
+                [
+                    "get-basebackup",
+                    "--config",
+                    pghoard.config_path,
+                    "--site",
+                    pghoard.test_site,
+                    "--target-dir",
+                    backup_out,
+                ]
+            )
         assert "--overwrite not specified" in str(excinfo.value)
         # Until we use the --overwrite flag
-        Restore().run([
-            "get-basebackup",
-            "--config",
-            pghoard.config_path,
-            "--site",
-            pghoard.test_site,
-            "--target-dir",
-            backup_out,
-            "--overwrite",
-        ])
+        Restore().run(
+            [
+                "get-basebackup",
+                "--config",
+                pghoard.config_path,
+                "--site",
+                pghoard.test_site,
+                "--target-dir",
+                backup_out,
+                "--overwrite",
+            ]
+        )
         check_call([os.path.join(db.pgbin, "pg_controldata"), backup_out])
         # TODO: check that the backup is valid
 
         # there should only be a single backup so lets compare what was in the metadata with what
         # was in the backup label
-        storage_config = common.get_object_storage_config(pghoard.config, pghoard.test_site)
+        storage_config = common.get_object_storage_config(
+            pghoard.config, pghoard.test_site
+        )
         storage = get_transfer(storage_config)
-        backups = storage.list_path(os.path.join(pghoard.config["backup_sites"][pghoard.test_site]["prefix"], "basebackup"))
+        backups = storage.list_path(
+            os.path.join(
+                pghoard.config["backup_sites"][pghoard.test_site]["prefix"],
+                "basebackup",
+            )
+        )
 
         # lets grab the backup label details for what we restored
         pgb = PGBaseBackup(
@@ -324,7 +369,7 @@ LABEL: pg_basebackup base backup
             compression_queue=None,
             storage=storage,
             transfer_queue=None,
-            metrics=metrics.Metrics(statsd={})
+            metrics=metrics.Metrics(statsd={}),
         )
 
         path = os.path.join(backup_out, "backup_label")
@@ -340,7 +385,9 @@ LABEL: pg_basebackup base backup
         if float(db.pgver) >= float("10.0"):
             wal_dir = "pg_wal"
 
-        path = os.path.join(backup_out, wal_dir, backups[0]["metadata"]["start-wal-segment"])
+        path = os.path.join(
+            backup_out, wal_dir, backups[0]["metadata"]["start-wal-segment"]
+        )
         if active_backup_mode == "standalone_hot_backup":
             assert os.path.isfile(path) is True
         else:
@@ -351,11 +398,15 @@ LABEL: pg_basebackup base backup
         self._test_restore_basebackup(db, pghoard, tmpdir)
 
     def test_basic_standalone_hot_backups(self, capsys, db, pghoard, tmpdir):
-        self._test_create_basebackup(capsys, db, pghoard, BaseBackupMode.basic, False, "standalone_hot_backup")
+        self._test_create_basebackup(
+            capsys, db, pghoard, BaseBackupMode.basic, False, "standalone_hot_backup"
+        )
         self._test_restore_basebackup(db, pghoard, tmpdir, "standalone_hot_backup")
 
     def test_pipe_standalone_hot_backups(self, capsys, db, pghoard, tmpdir):
-        self._test_create_basebackup(capsys, db, pghoard, BaseBackupMode.pipe, False, "standalone_hot_backup")
+        self._test_create_basebackup(
+            capsys, db, pghoard, BaseBackupMode.pipe, False, "standalone_hot_backup"
+        )
         self._test_restore_basebackup(db, pghoard, tmpdir, "standalone_hot_backup")
 
     def test_basebackups_basic(self, capsys, db, pghoard, tmpdir):
@@ -368,7 +419,9 @@ LABEL: pg_basebackup base backup
         self._test_basebackups(capsys, db, pghoard, tmpdir, BaseBackupMode.delta)
 
     def test_basebackups_local_tar_with_delta_stats(self, capsys, db, pghoard, tmpdir):
-        self._test_basebackups(capsys, db, pghoard, tmpdir, BaseBackupMode.local_tar_delta_stats)
+        self._test_basebackups(
+            capsys, db, pghoard, tmpdir, BaseBackupMode.local_tar_delta_stats
+        )
 
     def test_basebackups_local_tar_nonexclusive(self, capsys, db, pghoard, tmpdir):
         if LooseVersion(db.pgver) < "9.6":
@@ -380,7 +433,9 @@ LABEL: pg_basebackup base backup
             pytest.skip("PostgreSQL < 9.6 required for exclusive backup tests")
         self._test_basebackups(capsys, db, pghoard, tmpdir, BaseBackupMode.local_tar)
 
-    def test_basebackups_local_tar_exclusive_conflict(self, capsys, db, pghoard, tmpdir):
+    def test_basebackups_local_tar_exclusive_conflict(
+        self, capsys, db, pghoard, tmpdir
+    ):
         if LooseVersion(db.pgver) >= "9.6":
             pytest.skip("PostgreSQL < 9.6 required for exclusive backup tests")
         need_stop = False
@@ -388,9 +443,13 @@ LABEL: pg_basebackup base backup
             with db.connect() as conn:
                 conn.autocommit = True
                 cursor = conn.cursor()
-                cursor.execute("SELECT pg_start_backup('conflicting')")  # pylint: disable=used-before-assignment
+                cursor.execute(
+                    "SELECT pg_start_backup('conflicting')"
+                )  # pylint: disable=used-before-assignment
                 need_stop = True
-            self._test_basebackups(capsys, db, pghoard, tmpdir, BaseBackupMode.local_tar)
+            self._test_basebackups(
+                capsys, db, pghoard, tmpdir, BaseBackupMode.local_tar
+            )
             need_stop = False
         finally:
             if need_stop:
@@ -403,33 +462,49 @@ LABEL: pg_basebackup base backup
         with db.connect() as conn:
             conn.autocommit = True
             cursor = conn.cursor()
-            cursor.execute("SELECT 1 FROM pg_available_extensions WHERE name = 'pgespresso' AND default_version >= '1.2'")
+            cursor.execute(
+                "SELECT 1 FROM pg_available_extensions WHERE name = 'pgespresso' AND default_version >= '1.2'"
+            )
             if not cursor.fetchone():
                 pytest.skip("pgespresso not available")
             try:
                 cursor.execute("CREATE EXTENSION pgespresso")
-                self._test_basebackups(capsys, db, pghoard, tmpdir, BaseBackupMode.local_tar)
+                self._test_basebackups(
+                    capsys, db, pghoard, tmpdir, BaseBackupMode.local_tar
+                )
             finally:
                 cursor.execute("DROP EXTENSION pgespresso")
 
-    def test_basebackups_replica_local_tar_nonexclusive(self, capsys, recovery_db, pghoard, tmpdir):
+    def test_basebackups_replica_local_tar_nonexclusive(
+        self, capsys, recovery_db, pghoard, tmpdir
+    ):
         if LooseVersion(recovery_db.pgver) < "9.6":
             pytest.skip("PostgreSQL 9.6+ required for non-exclusive backups")
-        self._test_basebackups(capsys, recovery_db, pghoard, tmpdir, BaseBackupMode.local_tar, replica=True)
+        self._test_basebackups(
+            capsys, recovery_db, pghoard, tmpdir, BaseBackupMode.local_tar, replica=True
+        )
 
-    def test_basebackups_replica_local_tar_pgespresso(self, capsys, recovery_db, pghoard, tmpdir):
+    def test_basebackups_replica_local_tar_pgespresso(
+        self, capsys, recovery_db, pghoard, tmpdir
+    ):
         with recovery_db.connect() as conn:
             conn.autocommit = True
             cursor = conn.cursor()
-            cursor.execute("SELECT 1 FROM pg_available_extensions WHERE name = 'pgespresso' AND default_version >= '1.2'")
+            cursor.execute(
+                "SELECT 1 FROM pg_available_extensions WHERE name = 'pgespresso' AND default_version >= '1.2'"
+            )
             if not cursor.fetchone():
                 pytest.skip("pgespresso not available")
-        self._test_basebackups(capsys, recovery_db, pghoard, tmpdir, BaseBackupMode.local_tar, replica=True)
+        self._test_basebackups(
+            capsys, recovery_db, pghoard, tmpdir, BaseBackupMode.local_tar, replica=True
+        )
 
     def test_basebackups_pipe(self, capsys, db, pghoard, tmpdir):
         self._test_basebackups(capsys, db, pghoard, tmpdir, BaseBackupMode.pipe)
 
-    def test_basebackups_tablespaces(self, capsys, db, pghoard, tmpdir, pg_version: str):
+    def test_basebackups_tablespaces(
+        self, capsys, db, pghoard, tmpdir, pg_version: str
+    ):
         # Create a test tablespace for this instance, but make sure we drop it at the end of the test as the
         # database we use is shared by all test cases, and tablespaces are a global concept so the test
         # tablespace could interfere with other tests
@@ -441,15 +516,23 @@ LABEL: pg_basebackup base backup
         cursor.execute("CREATE TABLESPACE tstest LOCATION %s", [tspath])
         r_db, r_conn = None, None
         try:
-            cursor.execute("CREATE TABLE tstest (id BIGSERIAL PRIMARY KEY, value BIGINT) TABLESPACE tstest")
-            cursor.execute("INSERT INTO tstest (value) SELECT * FROM generate_series(1, 1000)")
+            cursor.execute(
+                "CREATE TABLE tstest (id BIGSERIAL PRIMARY KEY, value BIGINT) TABLESPACE tstest"
+            )
+            cursor.execute(
+                "INSERT INTO tstest (value) SELECT * FROM generate_series(1, 1000)"
+            )
             cursor.execute("CHECKPOINT")
-            cursor.execute("SELECT oid, pg_tablespace_location(oid) FROM pg_tablespace WHERE spcname = 'tstest'")
+            cursor.execute(
+                "SELECT oid, pg_tablespace_location(oid) FROM pg_tablespace WHERE spcname = 'tstest'"
+            )
             res = cursor.fetchone()
             assert res[1] == tspath
 
             # Start receivexlog since we want the WALs to be able to restore later on
-            wal_directory = os.path.join(pghoard.config["backup_location"], pghoard.test_site, "xlog_incoming")
+            wal_directory = os.path.join(
+                pghoard.config["backup_location"], pghoard.test_site, "xlog_incoming"
+            )
             makedirs(wal_directory, exist_ok=True)
             pghoard.receivexlog_listener(pghoard.test_site, db.user, wal_directory)
             switch_wal(conn)
@@ -462,47 +545,53 @@ LABEL: pg_basebackup base backup
             # Tablespaces are extracted to their previous absolute paths by default, but the path must be empty
             # and it isn't as it's still used by the running PG
             with pytest.raises(RestoreError) as excinfo:
-                Restore().run([
-                    "get-basebackup",
-                    "--config",
-                    pghoard.config_path,
-                    "--site",
-                    pghoard.test_site,
-                    "--target-dir",
-                    backup_out,
-                ])
+                Restore().run(
+                    [
+                        "get-basebackup",
+                        "--config",
+                        pghoard.config_path,
+                        "--site",
+                        pghoard.test_site,
+                        "--target-dir",
+                        backup_out,
+                    ]
+                )
             assert "Tablespace 'tstest' target directory" in str(excinfo.value)
             assert "not empty" in str(excinfo.value)
             # We can't restore tablespaces to non-existent directories either
             with pytest.raises(RestoreError) as excinfo:
-                Restore().run([
-                    "get-basebackup",
-                    "--config",
-                    pghoard.config_path,
-                    "--site",
-                    pghoard.test_site,
-                    "--target-dir",
-                    backup_out,
-                    "--tablespace-dir",
-                    "tstest={}".format(backup_ts_out),
-                ])
+                Restore().run(
+                    [
+                        "get-basebackup",
+                        "--config",
+                        pghoard.config_path,
+                        "--site",
+                        pghoard.test_site,
+                        "--target-dir",
+                        backup_out,
+                        "--tablespace-dir",
+                        "tstest={}".format(backup_ts_out),
+                    ]
+                )
             assert "Tablespace 'tstest' target directory" in str(excinfo.value)
             assert "does not exist" in str(excinfo.value)
             os.makedirs(backup_ts_out)
             # We can't restore if the directory isn't writable
             os.chmod(backup_ts_out, 0o500)
             with pytest.raises(RestoreError) as excinfo:
-                Restore().run([
-                    "get-basebackup",
-                    "--config",
-                    pghoard.config_path,
-                    "--site",
-                    pghoard.test_site,
-                    "--target-dir",
-                    backup_out,
-                    "--tablespace-dir",
-                    "tstest={}".format(backup_ts_out),
-                ])
+                Restore().run(
+                    [
+                        "get-basebackup",
+                        "--config",
+                        pghoard.config_path,
+                        "--site",
+                        pghoard.test_site,
+                        "--target-dir",
+                        backup_out,
+                        "--tablespace-dir",
+                        "tstest={}".format(backup_ts_out),
+                    ]
+                )
             assert "Tablespace 'tstest' target directory" in str(excinfo.value)
             assert "empty, but not writable" in str(excinfo.value)
             os.chmod(backup_ts_out, 0o700)
@@ -510,34 +599,40 @@ LABEL: pg_basebackup base backup
             backup_other_out = tmpdir.join("test-restore-other").strpath
             os.makedirs(backup_other_out)
             with pytest.raises(RestoreError) as excinfo:
-                Restore().run([
+                Restore().run(
+                    [
+                        "get-basebackup",
+                        "--config",
+                        pghoard.config_path,
+                        "--site",
+                        pghoard.test_site,
+                        "--target-dir",
+                        backup_out,
+                        "--tablespace-dir",
+                        "tstest={}".format(backup_ts_out),
+                        "--tablespace-dir",
+                        "other={}".format(backup_other_out),
+                    ]
+                )
+            assert "Tablespace mapping for ['other'] was requested, but" in str(
+                excinfo.value
+            )
+
+            # Now, finally, everything should be valid and we can proceed with restore
+            Restore().run(
+                [
                     "get-basebackup",
                     "--config",
                     pghoard.config_path,
                     "--site",
                     pghoard.test_site,
+                    "--restore-to-primary",
                     "--target-dir",
                     backup_out,
                     "--tablespace-dir",
                     "tstest={}".format(backup_ts_out),
-                    "--tablespace-dir",
-                    "other={}".format(backup_other_out),
-                ])
-            assert "Tablespace mapping for ['other'] was requested, but" in str(excinfo.value)
-
-            # Now, finally, everything should be valid and we can proceed with restore
-            Restore().run([
-                "get-basebackup",
-                "--config",
-                pghoard.config_path,
-                "--site",
-                pghoard.test_site,
-                "--restore-to-primary",
-                "--target-dir",
-                backup_out,
-                "--tablespace-dir",
-                "tstest={}".format(backup_ts_out),
-            ])
+                ]
+            )
 
             # Adjust the generated recovery.conf to point pghoard_postgres_command to our instance
             new_py_restore_cmd = "PYTHONPATH={} python3 -m pghoard.postgres_command --mode restore".format(
@@ -557,8 +652,12 @@ LABEL: pg_basebackup base backup
 
             with open(os.path.join(backup_out, target_recovery_conf), "r+") as fp:
                 rconf = fp.read()
-                rconf = rconf.replace("pghoard_postgres_command_go --mode restore", new_go_restore_cmd)
-                rconf = rconf.replace("pghoard_postgres_command --mode restore", new_py_restore_cmd)
+                rconf = rconf.replace(
+                    "pghoard_postgres_command_go --mode restore", new_go_restore_cmd
+                )
+                rconf = rconf.replace(
+                    "pghoard_postgres_command --mode restore", new_py_restore_cmd
+                )
                 fp.seek(0)
                 fp.write(rconf)
 
@@ -581,7 +680,9 @@ LABEL: pg_basebackup base backup
 
             r_cursor = r_conn.cursor()
             # Make sure the tablespace is defined and points to the right (new) path
-            r_cursor.execute("SELECT oid, pg_tablespace_location(oid) FROM pg_tablespace WHERE spcname = 'tstest'")
+            r_cursor.execute(
+                "SELECT oid, pg_tablespace_location(oid) FROM pg_tablespace WHERE spcname = 'tstest'"
+            )
             r_res = r_cursor.fetchone()
             assert r_res[1] == backup_ts_out
 
@@ -611,7 +712,9 @@ LABEL: pg_basebackup base backup
         pghoard.handle_site(pghoard.test_site, site_config)
         assert pghoard.test_site in pghoard.basebackups
         # wait for backup to complete and put the event back in so pghoard finds it, too
-        pghoard.basebackups_callbacks[pghoard.test_site].put(pghoard.basebackups_callbacks[pghoard.test_site].get())
+        pghoard.basebackups_callbacks[pghoard.test_site].put(
+            pghoard.basebackups_callbacks[pghoard.test_site].get()
+        )
 
         # adjust basebackup interval to be slightly longer than what this
         # basebackup took and make sure it's not retriggered
@@ -626,14 +729,18 @@ LABEL: pg_basebackup base backup
         pghoard.handle_site(pghoard.test_site, site_config)
         assert pghoard.test_site in pghoard.basebackups
         # wait for backup to complete and put the event back in so pghoard finds it, too
-        pghoard.basebackups_callbacks[pghoard.test_site].put(pghoard.basebackups_callbacks[pghoard.test_site].get())
+        pghoard.basebackups_callbacks[pghoard.test_site].put(
+            pghoard.basebackups_callbacks[pghoard.test_site].get()
+        )
         # now call handle_site so it notices the backup has finished (this must not start a new one)
         # We should be fine since the interval is at least two times the
         # duration of one backup, so even if this backup took longer than
         # expected it should still not start a new one.
         pghoard.handle_site(pghoard.test_site, site_config)
         assert pghoard.test_site not in pghoard.basebackups
-        first_basebackups = pghoard.state["backup_sites"][pghoard.test_site]["basebackups"]
+        first_basebackups = pghoard.state["backup_sites"][pghoard.test_site][
+            "basebackups"
+        ]
         assert first_basebackups[0]["metadata"]["backup-reason"] == "scheduled"
         assert first_basebackups[0]["metadata"]["backup-decision-time"]
         assert first_basebackups[0]["metadata"]["normalized-backup-time"] is None
@@ -646,7 +753,9 @@ LABEL: pg_basebackup base backup
         pghoard.handle_site(pghoard.test_site, site_config)
         assert pghoard.test_site not in pghoard.basebackups
 
-        second_basebackups = pghoard.state["backup_sites"][pghoard.test_site]["basebackups"]
+        second_basebackups = pghoard.state["backup_sites"][pghoard.test_site][
+            "basebackups"
+        ]
         second_time_of_check = pghoard.time_of_last_backup_check[pghoard.test_site]
         assert second_basebackups == first_basebackups
         assert second_time_of_check > first_time_of_check
@@ -656,11 +765,15 @@ LABEL: pg_basebackup base backup
         pghoard.handle_site(pghoard.test_site, site_config)
         assert pghoard.test_site in pghoard.basebackups
         # again, let pghoard notice the backup is done
-        pghoard.basebackups_callbacks[pghoard.test_site].put(pghoard.basebackups_callbacks[pghoard.test_site].get())
+        pghoard.basebackups_callbacks[pghoard.test_site].put(
+            pghoard.basebackups_callbacks[pghoard.test_site].get()
+        )
         pghoard.handle_site(pghoard.test_site, site_config)
         assert pghoard.test_site not in pghoard.basebackups
 
-        third_basebackups = pghoard.state["backup_sites"][pghoard.test_site]["basebackups"]
+        third_basebackups = pghoard.state["backup_sites"][pghoard.test_site][
+            "basebackups"
+        ]
         third_time_of_check = pghoard.time_of_last_backup_check[pghoard.test_site]
         assert third_basebackups != second_basebackups
         assert third_time_of_check > second_time_of_check
@@ -670,7 +783,9 @@ LABEL: pg_basebackup base backup
         pghoard.handle_site(pghoard.test_site, site_config)
         assert pghoard.test_site not in pghoard.basebackups
 
-        fourth_basebackups = pghoard.state["backup_sites"][pghoard.test_site]["basebackups"]
+        fourth_basebackups = pghoard.state["backup_sites"][pghoard.test_site][
+            "basebackups"
+        ]
         fourth_time_of_check = pghoard.time_of_last_backup_check[pghoard.test_site]
         assert fourth_basebackups == third_basebackups
         assert fourth_time_of_check == third_time_of_check
@@ -678,14 +793,18 @@ LABEL: pg_basebackup base backup
         pghoard.write_backup_state_to_json_file()
 
     def test_get_new_backup_details(self, pghoard):
-        now = datetime.datetime.now(datetime.timezone.utc).replace(hour=15, minute=20, second=30, microsecond=0)
+        now = datetime.datetime.now(datetime.timezone.utc).replace(
+            hour=15, minute=20, second=30, microsecond=0
+        )
 
         site = pghoard.test_site
         pghoard.set_state_defaults(site)
         site_config = pghoard.config["backup_sites"][site]
 
         # No backups, one should be created. No backup schedule defined so normalized backup time is None
-        metadata = pghoard.get_new_backup_details(now=now, site=pghoard.test_site, site_config=site_config)
+        metadata = pghoard.get_new_backup_details(
+            now=now, site=pghoard.test_site, site_config=site_config
+        )
         assert metadata
         assert metadata["backup-reason"] == "scheduled"
         assert metadata["backup-decision-time"] == now.isoformat()
@@ -694,7 +813,9 @@ LABEL: pg_basebackup base backup
         # No backups, one should be created. Backup schedule defined so normalized backup time is set
         site_config["basebackup_hour"] = 13
         site_config["basebackup_minute"] = 10
-        metadata = pghoard.get_new_backup_details(now=now, site=pghoard.test_site, site_config=site_config)
+        metadata = pghoard.get_new_backup_details(
+            now=now, site=pghoard.test_site, site_config=site_config
+        )
         assert metadata
         assert metadata["backup-reason"] == "scheduled"
         assert metadata["backup-decision-time"] == now.isoformat()
@@ -702,28 +823,36 @@ LABEL: pg_basebackup base backup
 
         # No backups, one should be created. Backup schedule defined so normalized backup time is set
         site_config["basebackup_interval_hours"] = 1.5
-        metadata = pghoard.get_new_backup_details(now=now, site=pghoard.test_site, site_config=site_config)
+        metadata = pghoard.get_new_backup_details(
+            now=now, site=pghoard.test_site, site_config=site_config
+        )
         assert metadata
         assert metadata["backup-reason"] == "scheduled"
         assert metadata["backup-decision-time"] == now.isoformat()
         assert "T14:40:00+00:00" in metadata["normalized-backup-time"]
 
-        pghoard.state["backup_sites"][site]["basebackups"].append({
-            "metadata": {
-                "start-time": now - datetime.timedelta(hours=1),
-                "backup-decision-time": now - datetime.timedelta(hours=1),
-                "backup-reason": "scheduled",
-                "normalized-backup-time": metadata["normalized-backup-time"],
-            },
-            "name": "name01",
-        })
+        pghoard.state["backup_sites"][site]["basebackups"].append(
+            {
+                "metadata": {
+                    "start-time": now - datetime.timedelta(hours=1),
+                    "backup-decision-time": now - datetime.timedelta(hours=1),
+                    "backup-reason": "scheduled",
+                    "normalized-backup-time": metadata["normalized-backup-time"],
+                },
+                "name": "name01",
+            }
+        )
 
         # A backup already exists. Current time yields the same normalized backup time so no new one is created
-        assert not pghoard.get_new_backup_details(now=now, site=pghoard.test_site, site_config=site_config)
+        assert not pghoard.get_new_backup_details(
+            now=now, site=pghoard.test_site, site_config=site_config
+        )
 
         # A backup already exists. Current time yields different normalized backup time so new one is created
         now2 = now + datetime.timedelta(hours=1)
-        metadata = pghoard.get_new_backup_details(now=now2, site=pghoard.test_site, site_config=site_config)
+        metadata = pghoard.get_new_backup_details(
+            now=now2, site=pghoard.test_site, site_config=site_config
+        )
         assert metadata
         assert metadata["backup-reason"] == "scheduled"
         assert metadata["backup-decision-time"] == now2.isoformat()
@@ -734,12 +863,16 @@ LABEL: pg_basebackup base backup
         site_config["basebackup_interval_hours"] = 12
         site_config["basebackup_hour"] = 14
         site_config["basebackup_minute"] = 50
-        assert not pghoard.get_new_backup_details(now=now2, site=pghoard.test_site, site_config=site_config)
+        assert not pghoard.get_new_backup_details(
+            now=now2, site=pghoard.test_site, site_config=site_config
+        )
 
         # A backup already exists. Current time yields different normalized backup time and enough time has
         # elapsed since the last backup so new one is created
         now3 = now + datetime.timedelta(hours=7)
-        metadata = pghoard.get_new_backup_details(now=now3, site=pghoard.test_site, site_config=site_config)
+        metadata = pghoard.get_new_backup_details(
+            now=now3, site=pghoard.test_site, site_config=site_config
+        )
         assert metadata
         assert metadata["backup-reason"] == "scheduled"
         assert metadata["backup-decision-time"] == now3.isoformat()
@@ -747,27 +880,37 @@ LABEL: pg_basebackup base backup
 
         # Having manual backup that is very recent doesn't prevent new scheduled backup from being created
         # so long as the normalized-backup-time of the manual backup differs
-        pghoard.state["backup_sites"][site]["basebackups"].append({
-            "metadata": {
-                "start-time": now3 - datetime.timedelta(hours=1),
-                "backup-decision-time": now - datetime.timedelta(hours=1),
-                "backup-reason": "requested",
-                "normalized-backup-time": metadata["normalized-backup-time"] + "different",
-            },
-            "name": "name02",
-        })
-        metadata2 = pghoard.get_new_backup_details(now=now3, site=pghoard.test_site, site_config=site_config)
+        pghoard.state["backup_sites"][site]["basebackups"].append(
+            {
+                "metadata": {
+                    "start-time": now3 - datetime.timedelta(hours=1),
+                    "backup-decision-time": now - datetime.timedelta(hours=1),
+                    "backup-reason": "requested",
+                    "normalized-backup-time": metadata["normalized-backup-time"]
+                    + "different",
+                },
+                "name": "name02",
+            }
+        )
+        metadata2 = pghoard.get_new_backup_details(
+            now=now3, site=pghoard.test_site, site_config=site_config
+        )
         assert metadata2 == metadata
 
         # normalized-backup-time of requested backup is the same as current normalized backup time so new backup is
         # not created
-        pghoard.state["backup_sites"][site]["basebackups"][-1]["metadata"]["normalized-backup-time"] = \
-            metadata["normalized-backup-time"]
-        assert not pghoard.get_new_backup_details(now=now3, site=pghoard.test_site, site_config=site_config)
+        pghoard.state["backup_sites"][site]["basebackups"][-1]["metadata"][
+            "normalized-backup-time"
+        ] = metadata["normalized-backup-time"]
+        assert not pghoard.get_new_backup_details(
+            now=now3, site=pghoard.test_site, site_config=site_config
+        )
 
         # New manual backups are always created
         pghoard.requested_basebackup_sites.add(site)
-        metadata2 = pghoard.get_new_backup_details(now=now3, site=pghoard.test_site, site_config=site_config)
+        metadata2 = pghoard.get_new_backup_details(
+            now=now3, site=pghoard.test_site, site_config=site_config
+        )
         assert metadata2
         assert metadata2["backup-reason"] == "requested"
         assert metadata2["backup-decision-time"] == now3.isoformat()
@@ -784,7 +927,7 @@ LABEL: pg_basebackup base backup
             "name": "foo/bar",
             "metadata": {
                 "start-time": now.isoformat(),
-            }
+            },
         }
         pghoard.patch_basebackup_info(entry=entry, site_config=site_config)
         assert entry["name"] == "bar"
@@ -797,16 +940,20 @@ LABEL: pg_basebackup base backup
             "name": "foo/bar",
             "metadata": {
                 "start-time": now.isoformat(),
-                "backup-decision-time": (now - datetime.timedelta(seconds=30)).isoformat(),
+                "backup-decision-time": (
+                    now - datetime.timedelta(seconds=30)
+                ).isoformat(),
                 "backup-reason": "requested",
                 "normalized-backup-time": None,
-            }
+            },
         }
         pghoard.patch_basebackup_info(entry=entry, site_config=site_config)
         assert entry["name"] == "bar"
         assert entry["metadata"]["start-time"] == now
         assert entry["metadata"]["backup-reason"] == "requested"
-        assert entry["metadata"]["backup-decision-time"] == now - datetime.timedelta(seconds=30)
+        assert entry["metadata"]["backup-decision-time"] == now - datetime.timedelta(
+            seconds=30
+        )
         assert entry["metadata"]["normalized-backup-time"] is None
 
     def test_chunk_path_to_middle_path_name(self):
@@ -815,13 +962,20 @@ LABEL: pg_basebackup base backup
         ) == (Path("basebackup"), "2022-04-19_09-27_0.00000000.pghoard")
 
         assert PGBaseBackup.chunk_path_to_middle_path_name(
-            Path("/a/b/2022-04-19_09-27_0/2022-04-19_09-27_0.00000001.pghoard"), FileType.Basebackup_chunk
-        ) == (Path("basebackup_chunk"), "2022-04-19_09-27_0/2022-04-19_09-27_0.00000001.pghoard")
+            Path("/a/b/2022-04-19_09-27_0/2022-04-19_09-27_0.00000001.pghoard"),
+            FileType.Basebackup_chunk,
+        ) == (
+            Path("basebackup_chunk"),
+            "2022-04-19_09-27_0/2022-04-19_09-27_0.00000001.pghoard",
+        )
 
         assert PGBaseBackup.chunk_path_to_middle_path_name(
-            Path("/a/b/0fdc9365aea5447f9a16da8104dc9fcc.delta"), FileType.Basebackup_delta
+            Path("/a/b/0fdc9365aea5447f9a16da8104dc9fcc.delta"),
+            FileType.Basebackup_delta,
         ) == (Path("basebackup_delta"), "0fdc9365aea5447f9a16da8104dc9fcc.delta")
 
         for file_type in {FileType.Wal, FileType.Metadata, FileType.Timeline}:
             with pytest.raises(NotImplementedError):
-                assert PGBaseBackup.chunk_path_to_middle_path_name(Path("/a/b/000000010000000000000002"), file_type)
+                assert PGBaseBackup.chunk_path_to_middle_path_name(
+                    Path("/a/b/000000010000000000000002"), file_type
+                )

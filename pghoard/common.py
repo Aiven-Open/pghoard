@@ -100,9 +100,11 @@ def create_pgpass_file(connection_string_or_info):
         host=info.get("host", "localhost"),
         port=info.get("port", 5432),
         user=info.get("user", ""),
-        dbname=info.get("dbname", "*")
+        dbname=info.get("dbname", "*"),
     )
-    pwline = "{linekey}{password}".format(linekey=linekey, password=info.pop("password"))
+    pwline = "{linekey}{password}".format(
+        linekey=linekey, password=info.pop("password")
+    )
     pgpass_path = os.path.join(os.environ.get("HOME"), ".pgpass")
     if os.path.exists(pgpass_path):
         with open(pgpass_path, "r") as fp:
@@ -110,10 +112,15 @@ def create_pgpass_file(connection_string_or_info):
     else:
         pgpass_lines = []
     if pwline in pgpass_lines:
-        LOG.debug("Not adding authentication data to: %s since it's already there", pgpass_path)
+        LOG.debug(
+            "Not adding authentication data to: %s since it's already there",
+            pgpass_path,
+        )
     else:
         # filter out any existing lines with our linekey and add the new line
-        pgpass_lines = [line for line in pgpass_lines if not line.startswith(linekey)] + [pwline]
+        pgpass_lines = [
+            line for line in pgpass_lines if not line.startswith(linekey)
+        ] + [pwline]
         content = "\n".join(pgpass_lines) + "\n"
         with open(pgpass_path, "w") as fp:
             os.fchmod(fp.fileno(), 0o600)
@@ -194,9 +201,15 @@ def extract_pg_command_version_string(command_version_string: str) -> str:
     """
     match = re.search(r" \(PostgreSQL\) ([0-9]+(?:\.[0-9]+)+)", command_version_string)
     if not match:
-        match = re.search(r" \(PostgreSQL\) ([0-9]+)((beta([0-9]))|(devel))", command_version_string)
+        match = re.search(
+            r" \(PostgreSQL\) ([0-9]+)((beta([0-9]))|(devel))", command_version_string
+        )
         if not match:
-            raise Error("Unrecognized PostgreSQL version string {!r}".format(command_version_string))
+            raise Error(
+                "Unrecognized PostgreSQL version string {!r}".format(
+                    command_version_string
+                )
+            )
     return match.group(1)
 
 
@@ -255,7 +268,7 @@ def json_encode(obj, compact=True, binary=False):
         sort_keys=not compact,
         indent=None if compact else 4,
         separators=(",", ":") if compact else None,
-        default=default_json_serialization
+        default=default_json_serialization,
     )
     return res.encode("utf-8") if binary else res
 
@@ -283,7 +296,9 @@ def get_object_storage_config(config, site):
             "storage_type": "local",
         }
     if "storage_type" not in storage_config:
-        raise InvalidConfigurationError("storage_type not defined in site {!r} object_storage".format(site))
+        raise InvalidConfigurationError(
+            "storage_type not defined in site {!r} object_storage".format(site)
+        )
     return storage_config
 
 

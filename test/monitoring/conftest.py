@@ -34,9 +34,15 @@ class LoggingRequestHandler(http.server.BaseHTTPRequestHandler):
 
 
 @pytest.fixture(scope="module", name="shared_logging_server")
-def fixture_shared_logging_server(get_available_port: Callable[[], int]) -> Iterator[LoggingServer]:
+def fixture_shared_logging_server(
+    get_available_port: Callable[[], int]
+) -> Iterator[LoggingServer]:
     server_address = ("localhost", get_available_port())
-    server = LoggingServer(server_address, RequestHandlerClass=LoggingRequestHandler, bind_and_activate=True)
+    server = LoggingServer(
+        server_address,
+        RequestHandlerClass=LoggingRequestHandler,
+        bind_and_activate=True,
+    )
     with ThreadPoolExecutor(max_workers=1) as executor:
         executor.submit(server.serve_forever)
         try:
@@ -46,7 +52,9 @@ def fixture_shared_logging_server(get_available_port: Callable[[], int]) -> Iter
 
 
 @pytest.fixture(name="logging_server")
-def fixture_logging_server(shared_logging_server: LoggingServer) -> Iterator[LoggingServer]:
+def fixture_logging_server(
+    shared_logging_server: LoggingServer,
+) -> Iterator[LoggingServer]:
     try:
         yield shared_logging_server
     finally:
@@ -62,7 +70,9 @@ class UdpServer:
         self.socket.bind(("localhost", self.port))
         return self
 
-    def __exit__(self, exc_type: Type, exc_val: BaseException, exc_tb: TracebackType) -> None:
+    def __exit__(
+        self, exc_type: Type, exc_val: BaseException, exc_tb: TracebackType
+    ) -> None:
         self.socket.close()
 
     def has_message(self) -> bool:

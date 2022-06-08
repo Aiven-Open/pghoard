@@ -33,7 +33,9 @@ from .test_wal import wal_header_for_file
 @pytest.fixture
 def http_restore(pghoard):
     pgdata = get_pg_wal_directory(pghoard.config["backup_sites"][pghoard.test_site])
-    return HTTPRestore("localhost", pghoard.config["http_port"], site=pghoard.test_site, pgdata=pgdata)
+    return HTTPRestore(
+        "localhost", pghoard.config["http_port"], site=pghoard.test_site, pgdata=pgdata
+    )
 
 
 class TestWebServer:
@@ -76,70 +78,97 @@ class TestWebServer:
 
     def test_requesting_metrics_enabled(self, pghoard_metrics):
         pghoard_metrics.write_backup_state_to_json_file()
-        conn = HTTPConnection(host="127.0.0.1", port=pghoard_metrics.config["http_port"])
+        conn = HTTPConnection(
+            host="127.0.0.1", port=pghoard_metrics.config["http_port"]
+        )
         conn.request("GET", "/metrics")
         response = conn.getresponse()
         assert response.status == 200
 
-    def test_list_empty_basebackups(self, pghoard, http_restore, capsys):  # pylint: disable=redefined-outer-name
+    def test_list_empty_basebackups(
+        self, pghoard, http_restore, capsys
+    ):  # pylint: disable=redefined-outer-name
         # List with direct HttpRestore access
         assert http_restore.list_basebackups() == []
         http_restore.show_basebackup_list()
         out, _ = capsys.readouterr()
         assert pghoard.test_site in out
         # list using restore command over http
-        Restore().run([
-            "list-basebackups-http",
-            "--host",
-            "localhost",
-            "--port",
-            str(pghoard.config["http_port"]),
-            "--site",
-            pghoard.test_site,
-        ])
+        Restore().run(
+            [
+                "list-basebackups-http",
+                "--host",
+                "localhost",
+                "--port",
+                str(pghoard.config["http_port"]),
+                "--site",
+                pghoard.test_site,
+            ]
+        )
         out, _ = capsys.readouterr()
         assert pghoard.test_site in out
         # list using restore command with direct object storage access
-        Restore().run([
-            "list-basebackups",
-            "--config",
-            pghoard.config_path,
-            "--site",
-            pghoard.test_site,
-        ])
+        Restore().run(
+            [
+                "list-basebackups",
+                "--config",
+                pghoard.config_path,
+                "--site",
+                pghoard.test_site,
+            ]
+        )
         out, _ = capsys.readouterr()
         assert pghoard.test_site in out
 
     def _run_and_wait_basebackup(self, pghoard, db, mode):
         pghoard.create_backup_site_paths(pghoard.test_site)
         backup_dir = os.path.join(
-            pghoard.config["backup_sites"][pghoard.test_site]["object_storage"]["directory"], pghoard.test_site, "basebackup"
+            pghoard.config["backup_sites"][pghoard.test_site]["object_storage"][
+                "directory"
+            ],
+            pghoard.test_site,
+            "basebackup",
         )
         if not os.path.exists(backup_dir):
             backups_before = set()
         else:
-            backups_before = set(f for f in os.listdir(backup_dir) if not f.endswith(".metadata"))
-        basebackup_path = os.path.join(pghoard.config["backup_location"], pghoard.test_site, "basebackup")
+            backups_before = set(
+                f for f in os.listdir(backup_dir) if not f.endswith(".metadata")
+            )
+        basebackup_path = os.path.join(
+            pghoard.config["backup_location"], pghoard.test_site, "basebackup"
+        )
         q = Queue()
         pghoard.config["backup_sites"][pghoard.test_site]["basebackup_mode"] = mode
         pghoard.create_basebackup(pghoard.test_site, db.user, basebackup_path, q)
         result = q.get(timeout=60)
         assert result.success
-        backups_after = set(f for f in os.listdir(backup_dir) if not f.endswith(".metadata"))
+        backups_after = set(
+            f for f in os.listdir(backup_dir) if not f.endswith(".metadata")
+        )
         new_backups = backups_after - backups_before
         assert len(new_backups) == 1
         return new_backups.pop()
 
-    def test_basebackups(self, capsys, db, http_restore, pghoard):  # pylint: disable=redefined-outer-name
+    def test_basebackups(
+        self, capsys, db, http_restore, pghoard
+    ):  # pylint: disable=redefined-outer-name
         final_location = self._run_and_wait_basebackup(pghoard, db, "pipe")
         backups = http_restore.list_basebackups()
         assert len(backups) == 1
         assert backups[0]["size"] > 0
-        assert backups[0]["name"] == os.path.join(pghoard.test_site, "basebackup", os.path.basename(final_location))
+        assert backups[0]["name"] == os.path.join(
+            pghoard.test_site, "basebackup", os.path.basename(final_location)
+        )
         # make sure they show up on the printable listing, too
         http_restore.show_basebackup_list()
         out, _ = capsys.readouterr()
-        assert "{} MB".format(int(backups[0]["metadata"]["original-file-size"]) // (1024 ** 2)) in out
+        assert (
+            "{} MB".format(
+                int(backups[0]["metadata"]["original-file-size"]) // (1024**2)
+            )
+            in out
+        )
         assert backups[0]["name"] in out
 
     def test_wal_fetch_optimization(self, pghoard):
@@ -147,12 +176,17 @@ class TestWebServer:
         invalid_wal_name = "000000060000000000000001"
         valid_wal_name = "000000060000000000000002"
         wal_name_output = "optimization_output_filename"
-        output_path = os.path.join(get_pg_wal_directory(pghoard.config["backup_sites"][pghoard.test_site]), wal_name_output)
+        output_path = os.path.join(
+            get_pg_wal_directory(pghoard.config["backup_sites"][pghoard.test_site]),
+            wal_name_output,
+        )
         invalid_wal_path = os.path.join(
-            get_pg_wal_directory(pghoard.config["backup_sites"][pghoard.test_site]), invalid_wal_name
+            get_pg_wal_directory(pghoard.config["backup_sites"][pghoard.test_site]),
+            invalid_wal_name,
         )
         valid_wal_path = os.path.join(
-            get_pg_wal_directory(pghoard.config["backup_sites"][pghoard.test_site]), valid_wal_name
+            get_pg_wal_directory(pghoard.config["backup_sites"][pghoard.test_site]),
+            valid_wal_name,
         )
 
         with open(valid_wal_path, "wb") as out_file:
@@ -167,7 +201,7 @@ class TestWebServer:
             host="127.0.0.1",
             port=pghoard.config["http_port"],
             output=output_path,
-            retry_interval=0.1
+            retry_interval=0.1,
         )
         assert os.path.exists(output_path)
         os.unlink(output_path)
@@ -179,7 +213,7 @@ class TestWebServer:
                 host="127.0.0.1",
                 port=pghoard.config["http_port"],
                 output=output_path,
-                retry_interval=0.1
+                retry_interval=0.1,
             )
         assert not os.path.exists(output_path)
         os.unlink(invalid_wal_path)
@@ -187,14 +221,25 @@ class TestWebServer:
     def test_archiving(self, pghoard):
         store = pghoard.transfer_agents[0].get_object_storage(pghoard.test_site)
         # inject fake WAL and timeline files for testing
-        for xlog_type, wal_name in [("xlog", "0000000000000000000000CC"), ("timeline", "0000000F.history")]:
-            foo_path = os.path.join(get_pg_wal_directory(pghoard.config["backup_sites"][pghoard.test_site]), wal_name)
+        for xlog_type, wal_name in [
+            ("xlog", "0000000000000000000000CC"),
+            ("timeline", "0000000F.history"),
+        ]:
+            foo_path = os.path.join(
+                get_pg_wal_directory(pghoard.config["backup_sites"][pghoard.test_site]),
+                wal_name,
+            )
             with open(foo_path, "wb") as out_file:
                 if xlog_type == "xlog":
                     out_file.write(wal_header_for_file(wal_name))
                 else:
                     out_file.write(b"1 2 3\n")
-            archive_command(host="localhost", port=pghoard.config["http_port"], site=pghoard.test_site, xlog=wal_name)
+            archive_command(
+                host="localhost",
+                port=pghoard.config["http_port"],
+                site=pghoard.test_site,
+                xlog=wal_name,
+            )
             archive_path = os.path.join(pghoard.test_site, xlog_type, wal_name)
             store.get_metadata_for_key(archive_path)
             store.delete_key(archive_path)
@@ -243,7 +288,13 @@ class TestWebServer:
                     files_found += 1
                     yield fname
 
-            log.info("Listed %r, %r out of %r matched %r pattern", path_to_list, files_found, files_total, folder)
+            log.info(
+                "Listed %r, %r out of %r matched %r pattern",
+                path_to_list,
+                files_found,
+                files_total,
+                folder,
+            )
 
         # create a basebackup to start with
         self._run_and_wait_basebackup(pghoard, db, "pipe")
@@ -253,13 +304,17 @@ class TestWebServer:
         # we should have at least 4 WAL files now (there may be more in
         # case other tests created them -- we share a single postresql
         # cluster between all tests)
-        pg_wal_dir = get_pg_wal_directory(pghoard.config["backup_sites"][pghoard.test_site])
-        pg_wals = {f for f in os.listdir(pg_wal_dir) if wal.WAL_RE.match(f) and f > start_wal}
+        pg_wal_dir = get_pg_wal_directory(
+            pghoard.config["backup_sites"][pghoard.test_site]
+        )
+        pg_wals = {
+            f for f in os.listdir(pg_wal_dir) if wal.WAL_RE.match(f) and f > start_wal
+        }
         assert len(pg_wals) >= 4
 
         # create a couple of "recycled" xlog files that we must ignore
         last_wal = sorted(pg_wals)[-1]
-        dummy_data = b"x" * (16 * 2 ** 20)
+        dummy_data = b"x" * (16 * 2**20)
 
         def write_dummy_wal(inc):
             filename = "{:024X}".format((int(last_wal, 16) + inc))
@@ -329,7 +384,9 @@ class TestWebServer:
         db.run_cmd("pg_ctl", "-D", db.pgdata, "promote")
         time.sleep(5)  # TODO: instead of sleeping, poll the db until ready
         # we should have a single timeline file in pg_xlog/pg_wal now
-        pg_wal_timelines = {f for f in os.listdir(pg_wal_dir) if wal.TIMELINE_RE.match(f)}
+        pg_wal_timelines = {
+            f for f in os.listdir(pg_wal_dir) if wal.TIMELINE_RE.match(f)
+        }
         assert len(pg_wal_timelines) > 0
         # but there should be nothing archived as archive_command wasn't setup
         archived_timelines = set(list_archive("timeline"))
@@ -363,16 +420,31 @@ class TestWebServer:
         # only WAL and timeline (.history) files can be archived
         bl_label = "000000010000000000000002.00000028.backup"
         bl_file = "xlog/{}".format(bl_label)
-        wal_path = os.path.join(get_pg_wal_directory(pghoard.config["backup_sites"][pghoard.test_site]), bl_label)
-        backup_wal_path = os.path.join(pghoard.config["backup_location"], pghoard.test_site, bl_file)
+        wal_path = os.path.join(
+            get_pg_wal_directory(pghoard.config["backup_sites"][pghoard.test_site]),
+            bl_label,
+        )
+        backup_wal_path = os.path.join(
+            pghoard.config["backup_location"], pghoard.test_site, bl_file
+        )
         with open(wal_path, "w") as fp:
             fp.write("jee")
         # backup labels are ignored - archiving returns success but file won't appear on disk
-        archive_command(host="127.0.0.1", port=pghoard.config["http_port"], site=pghoard.test_site, xlog=bl_label)
+        archive_command(
+            host="127.0.0.1",
+            port=pghoard.config["http_port"],
+            site=pghoard.test_site,
+            xlog=bl_label,
+        )
         assert not os.path.exists(backup_wal_path)
         # any other files raise an error
         with pytest.raises(postgres_command.PGCError) as excinfo:
-            archive_command(host="127.0.0.1", port=pghoard.config["http_port"], site=pghoard.test_site, xlog=bl_label + ".x")
+            archive_command(
+                host="127.0.0.1",
+                port=pghoard.config["http_port"],
+                site=pghoard.test_site,
+                xlog=bl_label + ".x",
+            )
         assert excinfo.value.exit_code == postgres_command.EXIT_ARCHIVE_FAIL
         assert not os.path.exists(backup_wal_path + ".x")
 
@@ -407,7 +479,7 @@ class TestWebServer:
                 host="127.0.0.1",
                 port=pghoard.config["http_port"],
                 output=None,
-                retry_interval=0.1
+                retry_interval=0.1,
             )
         assert excinfo.value.exit_code == postgres_command.EXIT_NOT_FOUND
 
@@ -416,7 +488,9 @@ class TestWebServer:
         valid_wal_seg = "0000DDDD0000000D000000FC"
         valid_wal = "/{}/xlog/{}".format(pghoard.test_site, valid_wal_seg)
         store = pghoard.transfer_agents[0].get_object_storage(pghoard.test_site)
-        store.store_file_from_memory(valid_wal, wal_header_for_file(valid_wal_seg), metadata={"a": "b"})
+        store.store_file_from_memory(
+            valid_wal, wal_header_for_file(valid_wal_seg), metadata={"a": "b"}
+        )
         conn.request("HEAD", valid_wal)
         status = conn.getresponse().status
         assert status == 200
@@ -426,7 +500,7 @@ class TestWebServer:
             host="127.0.0.1",
             port=pghoard.config["http_port"],
             output=None,
-            retry_interval=0.1
+            retry_interval=0.1,
         )
 
         # write to non-existent directory
@@ -442,7 +516,9 @@ class TestWebServer:
         valid_wal_seg = "0000DDDD0000000D000000FC"
         valid_wal = "/{}/xlog/{}".format(pghoard.test_site, valid_wal_seg)
         store = pghoard.transfer_agents[0].get_object_storage(pghoard.test_site)
-        store.store_file_from_memory(valid_wal, wal_header_for_file(valid_wal_seg), metadata={"a": "b"})
+        store.store_file_from_memory(
+            valid_wal, wal_header_for_file(valid_wal_seg), metadata={"a": "b"}
+        )
         conn = HTTPConnection(host="127.0.0.1", port=pghoard.config["http_port"])
 
         def get_failing_func(orig_func):
@@ -456,7 +532,9 @@ class TestWebServer:
 
         for ta in pghoard.transfer_agents:
             store = ta.get_object_storage(pghoard.test_site)
-            store.get_contents_to_string = get_failing_func(store.get_contents_to_string)
+            store.get_contents_to_string = get_failing_func(
+                store.get_contents_to_string
+            )
 
         prefetch_n = pghoard.config["restore_prefetch"]
         try:
@@ -499,11 +577,18 @@ class TestWebServer:
         store.store_file_from_memory(valid_wal, storage_data, metadata={"a": "b"})
 
         other_segments = ["0000DDDD0000000D000000F{}".format(i) for i in range(10)]
-        other_paths = ["/{}/xlog/{}".format(pghoard.test_site, other_segment) for other_segment in other_segments]
+        other_paths = [
+            "/{}/xlog/{}".format(pghoard.test_site, other_segment)
+            for other_segment in other_segments
+        ]
         for other_segment, other_path in zip(other_segments, other_paths):
-            store.store_file_from_memory(other_path, wal_header_for_file(other_segment), metadata={"a": "b"})
+            store.store_file_from_memory(
+                other_path, wal_header_for_file(other_segment), metadata={"a": "b"}
+            )
 
-        datadir = pghoard.config["backup_sites"]["test_retry_fetches_remote"]["pg_data_directory"]
+        datadir = pghoard.config["backup_sites"]["test_retry_fetches_remote"][
+            "pg_data_directory"
+        ]
         # Actual directory might depend on the PG version available, write to both
         for dirname in ["pg_xlog", "pg_wal"]:
             full_dir = os.path.join(datadir, dirname)
@@ -564,7 +649,9 @@ class TestWebServer:
         def fail_http_request(*args):
             if failures[0] > 0:
                 failures[0] -= 1
-                raise socket.error("test_restore_command_retry failure: {}".format(failures[1]))
+                raise socket.error(
+                    "test_restore_command_retry failure: {}".format(failures[1])
+                )
             return orig_http_request(*args)
 
         postgres_command.http_request = fail_http_request
@@ -573,14 +660,16 @@ class TestWebServer:
         wal_seg = "E" * 24
         wal_path = "/{}/xlog/{}".format(pghoard.test_site, wal_seg)
         store = pghoard.transfer_agents[0].get_object_storage(pghoard.test_site)
-        store.store_file_from_memory(wal_path, wal_header_for_file(wal_seg), metadata={"a": "b"})
+        store.store_file_from_memory(
+            wal_path, wal_header_for_file(wal_seg), metadata={"a": "b"}
+        )
         restore_command(
             site=pghoard.test_site,
             xlog=wal_seg,
             output=None,
             host="127.0.0.1",
             port=pghoard.config["http_port"],
-            retry_interval=0.1
+            retry_interval=0.1,
         )
 
         # now make the webserver fail all attempts
@@ -594,7 +683,7 @@ class TestWebServer:
                 output=None,
                 host="127.0.0.1",
                 port=pghoard.config["http_port"],
-                retry_interval=0.1
+                retry_interval=0.1,
             )
         assert excinfo.value.exit_code == postgres_command.EXIT_ABORT
         assert failures[0] == 1  # fail_http_request should've have 1 failure left
@@ -608,7 +697,7 @@ class TestWebServer:
             output=None,
             host="127.0.0.1",
             port=pghoard.config["http_port"],
-            retry_interval=0.1
+            retry_interval=0.1,
         )
         assert failures[0] == 0
 
@@ -620,7 +709,9 @@ class TestWebServer:
         wal_file = "xlog/{}".format(wal_seg)
         # NOTE: create WAL header for the "previous" timeline, this should be accepted
         content = wal_header_for_file(wal_seg_prev_tli)
-        wal_dir = get_pg_wal_directory(pghoard.config["backup_sites"][pghoard.test_site])
+        wal_dir = get_pg_wal_directory(
+            pghoard.config["backup_sites"][pghoard.test_site]
+        )
         archive_path = os.path.join(pghoard.test_site, wal_file)
         compressor = pghoard.Compressor()
         compressed_content = compressor.compress(content) + (compressor.flush() or b"")
@@ -629,15 +720,25 @@ class TestWebServer:
             "original-file-size": len(content),
         }
         store = pghoard.transfer_agents[0].get_object_storage(pghoard.test_site)
-        store.store_file_from_memory(archive_path, compressed_content, metadata=metadata)
+        store.store_file_from_memory(
+            archive_path, compressed_content, metadata=metadata
+        )
 
         restore_command(
-            site=pghoard.test_site, xlog=wal_seg, output=None, host="127.0.0.1", port=pghoard.config["http_port"]
+            site=pghoard.test_site,
+            xlog=wal_seg,
+            output=None,
+            host="127.0.0.1",
+            port=pghoard.config["http_port"],
         )
         restore_target = os.path.join(wal_dir, wal_seg)
 
         restore_command(
-            site=pghoard.test_site, xlog=wal_seg, output=restore_target, host="127.0.0.1", port=pghoard.config["http_port"]
+            site=pghoard.test_site,
+            xlog=wal_seg,
+            output=restore_target,
+            host="127.0.0.1",
+            port=pghoard.config["http_port"],
         )
         assert os.path.exists(restore_target) is True
         with open(restore_target, "rb") as fp:
@@ -646,20 +747,22 @@ class TestWebServer:
 
         # test the same thing using restore as 'pghoard_postgres_command'
         tmp_out = os.path.join(wal_dir, restore_target + ".cmd")
-        postgres_command.main([
-            "--host",
-            "localhost",
-            "--port",
-            str(pghoard.config["http_port"]),
-            "--site",
-            pghoard.test_site,
-            "--mode",
-            "restore",
-            "--output",
-            tmp_out,
-            "--xlog",
-            wal_seg,
-        ])
+        postgres_command.main(
+            [
+                "--host",
+                "localhost",
+                "--port",
+                str(pghoard.config["http_port"]),
+                "--site",
+                pghoard.test_site,
+                "--mode",
+                "restore",
+                "--output",
+                tmp_out,
+                "--xlog",
+                wal_seg,
+            ]
+        )
         with open(tmp_out, "rb") as fp:
             restored_data = fp.read()
         assert content == restored_data
@@ -671,7 +774,9 @@ class TestWebServer:
         compressed_content = compressor.compress(content) + (compressor.flush() or b"")
         encryptor = Encryptor(CONSTANT_TEST_RSA_PUBLIC_KEY)
         encrypted_content = encryptor.update(compressed_content) + encryptor.finalize()
-        wal_dir = get_pg_wal_directory(pghoard.config["backup_sites"][pghoard.test_site])
+        wal_dir = get_pg_wal_directory(
+            pghoard.config["backup_sites"][pghoard.test_site]
+        )
         archive_path = os.path.join(pghoard.test_site, "xlog", wal_seg)
         metadata = {
             "compression-algorithm": pghoard.config["compression"]["algorithm"],
@@ -680,7 +785,9 @@ class TestWebServer:
         }
         store = pghoard.transfer_agents[0].get_object_storage(pghoard.test_site)
         store.store_file_from_memory(archive_path, encrypted_content, metadata=metadata)
-        pghoard.webserver.config["backup_sites"][pghoard.test_site]["encryption_keys"] = {
+        pghoard.webserver.config["backup_sites"][pghoard.test_site][
+            "encryption_keys"
+        ] = {
             "testkey": {
                 "public": CONSTANT_TEST_RSA_PUBLIC_KEY,
                 "private": CONSTANT_TEST_RSA_PRIVATE_KEY,
@@ -688,7 +795,11 @@ class TestWebServer:
         }
         restore_target = os.path.join(wal_dir, wal_seg)
         restore_command(
-            site=pghoard.test_site, xlog=wal_seg, output=restore_target, host="127.0.0.1", port=pghoard.config["http_port"]
+            site=pghoard.test_site,
+            xlog=wal_seg,
+            output=restore_target,
+            host="127.0.0.1",
+            port=pghoard.config["http_port"],
         )
         assert os.path.exists(restore_target)
         with open(restore_target, "rb") as fp:
@@ -715,7 +826,9 @@ class TestWebServer:
     def test_response_handler_exception(self, pghoard):
         conn = HTTPConnection(host="127.0.0.1", port=pghoard.config["http_port"])
         with mock.patch.object(
-            pghoard.webserver.server.RequestHandlerClass, "_parse_request", side_effect=Exception("just a test")
+            pghoard.webserver.server.RequestHandlerClass,
+            "_parse_request",
+            side_effect=Exception("just a test"),
         ):
             conn.request("PUT", "/{}/archive/basebackup".format(pghoard.test_site))
             resp = conn.getresponse()
@@ -732,7 +845,12 @@ class TestWebServer:
     def test_parse_request_invalid_path(self, pghoard):
         "/{}/archive/xlog".format(pghoard.test_site)
         conn = HTTPConnection(host="127.0.0.1", port=pghoard.config["http_port"])
-        conn.request("PUT", "/{}/archive/000000000000000000000000/foo".format(pghoard.test_site))
+        conn.request(
+            "PUT", "/{}/archive/000000000000000000000000/foo".format(pghoard.test_site)
+        )
         resp = conn.getresponse()
         assert resp.status == 400
-        assert resp.read() == b"Invalid 'archive' request, only single file retrieval is supported for now"
+        assert (
+            resp.read()
+            == b"Invalid 'archive' request, only single file retrieval is supported for now"
+        )

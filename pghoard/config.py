@@ -14,7 +14,11 @@ from rohmu import get_class_for_transfer
 from rohmu.errors import InvalidConfigurationError
 from rohmu.snappyfile import snappy
 
-from pghoard.common import (extract_pg_command_version_string, pg_major_version, pg_version_string_to_number)
+from pghoard.common import (
+    extract_pg_command_version_string,
+    pg_major_version,
+    pg_version_string_to_number,
+)
 from pghoard.postgres_command import PGHOARD_HOST, PGHOARD_PORT
 
 SUPPORTED_VERSIONS = ["14", "13", "12", "11", "10", "9.6", "9.5", "9.4", "9.3"]
@@ -43,7 +47,9 @@ def get_command_version(command: str, can_fail=True) -> Optional[str]:
     return None
 
 
-def find_pg_binary(wanted_program, versions=None, pg_bin_directory=None, check_commands=True):
+def find_pg_binary(
+    wanted_program, versions=None, pg_bin_directory=None, check_commands=True
+):
     """
     Find pg binary tries to find the wanted_program in one of the wanted
     versions using the following locations:
@@ -58,7 +64,10 @@ def find_pg_binary(wanted_program, versions=None, pg_bin_directory=None, check_c
         programs = ["pg_receivexlog", "pg_receivewal"]
     else:
         programs = [wanted_program]
-    pathformats = ["/usr/pgsql-{ver}/bin/{prog}", "/usr/lib/postgresql/{ver}/bin/{prog}"]
+    pathformats = [
+        "/usr/pgsql-{ver}/bin/{prog}",
+        "/usr/lib/postgresql/{ver}/bin/{prog}",
+    ]
     if pg_bin_directory is not None:
         pathformats = [pg_bin_directory + "/{prog}"]
     versions = versions or SUPPORTED_VERSIONS
@@ -95,7 +104,9 @@ def set_and_check_config_defaults(config, *, check_commands=True, check_pgdata=T
     config.setdefault("json_state_file_path", "/var/lib/pghoard/pghoard_state.json")
     config.setdefault("maintenance_mode_file", "/var/lib/pghoard/maintenance_mode_file")
     config.setdefault("log_level", "INFO")
-    config.setdefault("path_prefix", "")  # deprecated, used in the default path for sites
+    config.setdefault(
+        "path_prefix", ""
+    )  # deprecated, used in the default path for sites
     config.setdefault("tar_executable", "pghoard_gnutaremu")
     config.setdefault("upload_retries_warning_limit", 3)
     config.setdefault("hash_algorithm", "sha1")
@@ -138,7 +149,10 @@ def set_and_check_config_defaults(config, *, check_commands=True, check_pgdata=T
         site_config.setdefault("basebackup_delta_mode_max_retries", 10)
         site_config.setdefault("basebackup_interval_hours", 24)
         # NOTE: stream_compression removed from documentation after 1.6.0 release
-        site_config.setdefault("basebackup_mode", "pipe" if site_config.get("stream_compression") else "basic")
+        site_config.setdefault(
+            "basebackup_mode",
+            "pipe" if site_config.get("stream_compression") else "basic",
+        )
         site_config.setdefault("basebackup_threads", 1)
         site_config.setdefault("encryption_key_id", None)
         site_config.setdefault("object_storage", None)
@@ -150,7 +164,9 @@ def set_and_check_config_defaults(config, *, check_commands=True, check_pgdata=T
         # NOTE: pg_data_directory doesn't have a default value
         data_dir = site_config.get("pg_data_directory")
         if not data_dir and check_pgdata:
-            raise InvalidConfigurationError("Site {!r}: pg_data_directory must be set".format(site_name))
+            raise InvalidConfigurationError(
+                "Site {!r}: pg_data_directory must be set".format(site_name)
+            )
 
         if check_pgdata:
             version_file = os.path.join(data_dir, "PG_VERSION") if data_dir else None
@@ -161,8 +177,14 @@ def set_and_check_config_defaults(config, *, check_commands=True, check_pgdata=T
         if not obj_store:
             pass
         elif "storage_type" not in obj_store:
-            raise InvalidConfigurationError("Site {!r}: storage_type not defined for object_storage".format(site_name))
-        elif obj_store["storage_type"] == "local" and obj_store.get("directory") == config.get("backup_location"):
+            raise InvalidConfigurationError(
+                "Site {!r}: storage_type not defined for object_storage".format(
+                    site_name
+                )
+            )
+        elif obj_store["storage_type"] == "local" and obj_store.get(
+            "directory"
+        ) == config.get("backup_location"):
             raise InvalidConfigurationError(
                 "Site {!r}: invalid 'local' target directory {!r}, must be different from 'backup_location'".format(
                     site_name, config.get("backup_location")
@@ -173,7 +195,9 @@ def set_and_check_config_defaults(config, *, check_commands=True, check_pgdata=T
                 get_class_for_transfer(obj_store)
             except ImportError as ex:
                 raise InvalidConfigurationError(
-                    "Site {0!r} object_storage: {1.__class__.__name__!s}: {1!s}".format(site_name, ex)
+                    "Site {0!r} object_storage: {1.__class__.__name__!s}: {1!s}".format(
+                        site_name, ex
+                    )
                 )
         fill_config_command_paths(config, site_name, check_commands)
     return config
@@ -199,14 +223,18 @@ def fill_config_command_paths(config, site_name, check_commands):
             if "pg_data_directory_version" in site_config:
                 pg_versions_to_check = [site_config["pg_data_directory_version"]]
             try:
-                command_path, version_string = find_pg_binary(command, pg_versions_to_check, bin_dir, needs_check)
+                command_path, version_string = find_pg_binary(
+                    command, pg_versions_to_check, bin_dir, needs_check
+                )
                 version_int = pg_version_string_to_number(version_string)
             except RuntimeError as _:
                 # Only raise an error if we are expected to validate
                 # the commands. Otherwise let it fail later
                 if needs_check:
                     raise InvalidConfigurationError(
-                        "Site {!r} command {!r} not found from path {}".format(site_name, command, command_path)
+                        "Site {!r} command {!r} not found from path {}".format(
+                            site_name, command, command_path
+                        )
                     )
         elif check_commands and site_config["active"]:
             version_string = get_command_version(command_path, can_fail=False)
@@ -215,23 +243,35 @@ def fill_config_command_paths(config, site_name, check_commands):
         site_config[command + "_version"] = version_int
 
 
-def read_json_config_file(filename, *, check_commands=True, add_defaults=True, check_pgdata=True):
+def read_json_config_file(
+    filename, *, check_commands=True, add_defaults=True, check_pgdata=True
+):
     try:
         with open(filename, "r") as fp:
             config = json.load(fp)
     except FileNotFoundError:
-        raise InvalidConfigurationError("Configuration file {!r} does not exist".format(filename))
+        raise InvalidConfigurationError(
+            "Configuration file {!r} does not exist".format(filename)
+        )
     except ValueError as ex:
-        raise InvalidConfigurationError("Configuration file {!r} does not contain valid JSON: {}".format(filename, str(ex)))
+        raise InvalidConfigurationError(
+            "Configuration file {!r} does not contain valid JSON: {}".format(
+                filename, str(ex)
+            )
+        )
     except OSError as ex:
         raise InvalidConfigurationError(
-            "Configuration file {!r} can't be opened: {}".format(filename, ex.__class__.__name__)
+            "Configuration file {!r} can't be opened: {}".format(
+                filename, ex.__class__.__name__
+            )
         )
 
     if not add_defaults:
         return config
 
-    return set_and_check_config_defaults(config, check_commands=check_commands, check_pgdata=check_pgdata)
+    return set_and_check_config_defaults(
+        config, check_commands=check_commands, check_pgdata=check_pgdata
+    )
 
 
 def get_site_from_config(config, site):

@@ -15,7 +15,8 @@ from queue import Empty, Queue
 import psycopg2
 import psycopg2.errors
 from psycopg2.extras import (  # pylint: disable=no-name-in-module
-    REPLICATION_PHYSICAL, PhysicalReplicationConnection
+    REPLICATION_PHYSICAL,
+    PhysicalReplicationConnection,
 )
 
 from pghoard.common import FileType, FileTypePrefixes, PGHoardThread, suppress
@@ -35,7 +36,7 @@ class WALReceiver(PGHoardThread):
         pg_version_server,
         site,
         last_flushed_lsn=None,
-        metrics=None
+        metrics=None,
     ):
         super().__init__()
         self.log = logging.getLogger("WALReceiver")
@@ -57,24 +58,29 @@ class WALReceiver(PGHoardThread):
         self.last_flushed_lsn = last_flushed_lsn
         self.metrics = metrics
         self.log.info(
-            "WALReceiver initialized with replication_slot: %r, last_flushed_lsn: %r", self.replication_slot,
-            last_flushed_lsn
+            "WALReceiver initialized with replication_slot: %r, last_flushed_lsn: %r",
+            self.replication_slot,
+            last_flushed_lsn,
         )
 
     def _init_cursor(self):
-        self.conn = psycopg2.connect(self.dsn, connection_factory=PhysicalReplicationConnection)
+        self.conn = psycopg2.connect(
+            self.dsn, connection_factory=PhysicalReplicationConnection
+        )
         self.c = self.conn.cursor()
 
     def create_replication_slot(self):
         try:
-            self.c.create_replication_slot(self.replication_slot, slot_type=REPLICATION_PHYSICAL)
+            self.c.create_replication_slot(
+                self.replication_slot, slot_type=REPLICATION_PHYSICAL
+            )
         except psycopg2.errors.DuplicateObject as _:  # pylint: disable=no-member
             self.log.info("Replication slot %s already exists", self.replication_slot)
 
     def fetch_timeline_history_files(self, max_timeline):
         """Copy all timeline history files found on the server without
-           checking if we have them or not. The history files are very small
-           so reuploading them should not matter."""
+        checking if we have them or not. The history files are very small
+        so reuploading them should not matter."""
         while max_timeline > 1:
             self.c.execute("TIMELINE_HISTORY {}".format(max_timeline))
             timeline_history = self.c.fetchone()
@@ -85,7 +91,11 @@ class WALReceiver(PGHoardThread):
                 history_data = timeline_history[1].tobytes()
             else:
                 history_data = timeline_history[1].encode()
-            self.log.debug("Received timeline history: %s for timeline %r", history_filename, max_timeline)
+            self.log.debug(
+                "Received timeline history: %s for timeline %r",
+                history_filename,
+                max_timeline,
+            )
 
             compression_event = CompressionEvent(
                 callback_queue=Queue(),  # added so the event can be created, but the result is currently ignored
@@ -94,7 +104,7 @@ class WALReceiver(PGHoardThread):
                 file_path=FileTypePrefixes[FileType.Timeline] / history_filename,
                 file_type=FileType.Timeline,
                 backup_site_name=self.site,
-                metadata={}
+                metadata={},
             )
             self.compression_queue.put(compression_event)
             max_timeline -= 1
@@ -118,17 +128,29 @@ class WALReceiver(PGHoardThread):
         else:
             lsn = lsn_from_sysinfo(identify_system, self.pg_version_server)
         lsn = str(lsn.walfile_start_lsn)
-        self.log.info("Starting replication from %r, timeline: %r with slot: %r", lsn, timeline, self.replication_slot)
+        self.log.info(
+            "Starting replication from %r, timeline: %r with slot: %r",
+            lsn,
+            timeline,
+            self.replication_slot,
+        )
         if self.replication_slot:
             self.c.start_replication(
-                slot_name=self.replication_slot, slot_type=REPLICATION_PHYSICAL, start_lsn=lsn, timeline=timeline
+                slot_name=self.replication_slot,
+                slot_type=REPLICATION_PHYSICAL,
+                start_lsn=lsn,
+                timeline=timeline,
             )
         else:
             self.c.start_replication(start_lsn=lsn, timeline=timeline)
         return timeline
 
     def switch_wal(self):
-        self.log.debug("Switching WAL from %r amount of data: %r", self.latest_wal, self.buffer.tell())
+        self.log.debug(
+            "Switching WAL from %r amount of data: %r",
+            self.latest_wal,
+            self.buffer.tell(),
+        )
 
         self.buffer.seek(0)
         wal_data = BytesIO(self.buffer.read(WAL_SEG_SIZE))
@@ -147,7 +169,7 @@ class WALReceiver(PGHoardThread):
             file_type=FileType.Wal,
             file_path=FileTypePrefixes[FileType.Wal] / self.latest_wal,
             backup_site_name=self.site,
-            metadata={}
+            metadata={},
         )
         self.latest_wal = None
         self.compression_queue.put(compression_event)
@@ -171,10 +193,19 @@ class WALReceiver(PGHoardThread):
                 self.metrics.unexpected_exception(ex, where="walreceiver_run")
                 time.sleep(1)
                 continue
-            self.log.debug("replication_msg: %r, buffer: %r/%r", msg, self.buffer.tell(), WAL_SEG_SIZE)
+            self.log.debug(
+                "replication_msg: %r, buffer: %r/%r",
+                msg,
+                self.buffer.tell(),
+                WAL_SEG_SIZE,
+            )
             if msg:
                 self.latest_activity = datetime.datetime.utcnow()
-                lsn = LSN(msg.data_start, timeline_id=timeline, server_version=self.pg_version_server)
+                lsn = LSN(
+                    msg.data_start,
+                    timeline_id=timeline,
+                    server_version=self.pg_version_server,
+                )
                 wal_name = lsn.walfile_name
 
                 if not self.latest_wal:
@@ -185,12 +216,19 @@ class WALReceiver(PGHoardThread):
                 # TODO: Calculate end pos and transmit that?
                 msg.cursor.send_feedback(write_lsn=lsn.lsn)
 
-            if wal_name and self.latest_wal != wal_name or self.buffer.tell() >= WAL_SEG_SIZE:
+            if (
+                wal_name
+                and self.latest_wal != wal_name
+                or self.buffer.tell() >= WAL_SEG_SIZE
+            ):
                 self.switch_wal()
             self.process_completed_segments()
 
             if not msg:
-                timeout = KEEPALIVE_INTERVAL - (datetime.datetime.now() - self.c.io_timestamp).total_seconds()
+                timeout = (
+                    KEEPALIVE_INTERVAL
+                    - (datetime.datetime.now() - self.c.io_timestamp).total_seconds()
+                )
                 with suppress(InterruptedError):
                     if not any(select.select([self.c], [], [], max(0, timeout))):
                         self.c.send_feedback()  # timing out, send keepalive

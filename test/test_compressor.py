@@ -23,10 +23,14 @@ from rohmu.snappyfile import SnappyFile, snappy
 
 from pghoard import metrics
 from pghoard.common import FileType, FileTypePrefixes, QuitEvent
-from pghoard.compressor import (CompressionEvent, CompressorThread, DecompressionEvent)
+from pghoard.compressor import CompressionEvent, CompressorThread, DecompressionEvent
 
 # pylint: disable=attribute-defined-outside-init
-from .base import (CONSTANT_TEST_RSA_PRIVATE_KEY, CONSTANT_TEST_RSA_PUBLIC_KEY, PGHoardTestCase)
+from .base import (
+    CONSTANT_TEST_RSA_PRIVATE_KEY,
+    CONSTANT_TEST_RSA_PUBLIC_KEY,
+    PGHoardTestCase,
+)
 from .test_wal import wal_header_for_file
 
 
@@ -61,28 +65,30 @@ class CompressionCase(PGHoardTestCase):
     def setup_method(self, method):
         super().setup_method(method)
         self.log = logging.getLogger(str(method))
-        self.config = self.config_template({
-            "backup_sites": {
-                self.test_site: {
-                    "backup_location": self.temp_dir,
-                    "encryption_key_id": None,
-                    "encryption_keys": {
-                        "testkey": {
-                            "public": CONSTANT_TEST_RSA_PUBLIC_KEY,
-                            "private": CONSTANT_TEST_RSA_PRIVATE_KEY
+        self.config = self.config_template(
+            {
+                "backup_sites": {
+                    self.test_site: {
+                        "backup_location": self.temp_dir,
+                        "encryption_key_id": None,
+                        "encryption_keys": {
+                            "testkey": {
+                                "public": CONSTANT_TEST_RSA_PUBLIC_KEY,
+                                "private": CONSTANT_TEST_RSA_PRIVATE_KEY,
+                            },
                         },
+                        "object_storage": {
+                            "storage_type": "s3",
+                        },
+                        "pg_version": 90500,
+                        "prefix": "",
                     },
-                    "object_storage": {
-                        "storage_type": "s3",
-                    },
-                    "pg_version": 90500,
-                    "prefix": "",
                 },
-            },
-            "compression": {
-                "algorithm": self.algorithm,
-            },
-        })
+                "compression": {
+                    "algorithm": self.algorithm,
+                },
+            }
+        )
         self.compression_queue = Queue()
         self.transfer_queue = Queue()
         self.wal_file_deletion_queue = Queue()
@@ -105,7 +111,7 @@ class CompressionCase(PGHoardTestCase):
             transfer_queue=self.transfer_queue,
             metrics=metrics.Metrics(statsd={}),
             critical_failure_event=Event(),
-            wal_file_deletion_queue=self.wal_file_deletion_queue
+            wal_file_deletion_queue=self.wal_file_deletion_queue,
         )
         self.compressor.start()
 
@@ -153,14 +159,15 @@ class CompressionCase(PGHoardTestCase):
                 file_type=FileType(filetype),
                 backup_site_name=self.test_site,
                 callback_queue=None,
-                metadata={}
+                metadata={},
             )
         )
         transfer_event = self.transfer_queue.get(timeout=5.0)
         expected = {
             "file_type": filetype,
             "file_path": dest_file_path,
-            "source_data": self.compressor.get_compressed_file_dir(self.test_site) / dest_file_path,
+            "source_data": self.compressor.get_compressed_file_dir(self.test_site)
+            / dest_file_path,
             "metadata": {
                 "compression-algorithm": self.algorithm,
                 "compression-level": 0,
@@ -189,7 +196,7 @@ class CompressionCase(PGHoardTestCase):
                 file_type=FileType.Wal,
                 backup_site_name=self.test_site,
                 callback_queue=None,
-                metadata={}
+                metadata={},
             )
         )
         expected = {
@@ -232,7 +239,7 @@ class CompressionCase(PGHoardTestCase):
             transfer_queue=Queue(),
             metrics=metrics.Metrics(statsd={}),
             critical_failure_event=Event(),
-            wal_file_deletion_queue=wal_file_deletion_queue
+            wal_file_deletion_queue=wal_file_deletion_queue,
         )
         test_compressor.MAX_FAILED_RETRY_ATTEMPTS = 2
         test_compressor.RETRY_INTERVAL = 0
@@ -241,7 +248,9 @@ class CompressionCase(PGHoardTestCase):
         test_compressor.handle_event.side_effect = side_effects
         test_compressor.start()
         ifile = WALTester(self.incoming_path, "0000000100000000000000FF", "random")
-        assert not test_compressor.critical_failure_event.is_set(), "Critical failure event shouldn't be set yet"
+        assert (
+            not test_compressor.critical_failure_event.is_set()
+        ), "Critical failure event shouldn't be set yet"
         file_path = Path(ifile.path)
         compression_queue.put(
             CompressionEvent(
@@ -251,17 +260,25 @@ class CompressionCase(PGHoardTestCase):
                 backup_site_name=self.test_site,
                 file_type=FileType.Wal,
                 callback_queue=None,
-                metadata={}
+                metadata={},
             )
         )
         test_compressor.critical_failure_event.wait(5)
         if is_failure:
-            assert test_compressor.critical_failure_event.is_set(), "Critical failure event should be set"
-            assert not test_compressor.running, "Compressor thread should not be running any more"
+            assert (
+                test_compressor.critical_failure_event.is_set()
+            ), "Critical failure event should be set"
+            assert (
+                not test_compressor.running
+            ), "Compressor thread should not be running any more"
         else:
-            assert not test_compressor.critical_failure_event.is_set(), "Critical failure event should not be set"
+            assert (
+                not test_compressor.critical_failure_event.is_set()
+            ), "Critical failure event should not be set"
             assert test_compressor.running, "Compressor thread should still be running"
-        assert test_compressor.handle_event.call_count > 1, "Failed operation should have been retried at least once"
+        assert (
+            test_compressor.handle_event.call_count > 1
+        ), "Failed operation should have been retried at least once"
         # cleanup
         if test_compressor.is_alive():
             test_compressor.running = False
@@ -272,7 +289,9 @@ class CompressionCase(PGHoardTestCase):
         ifile = WALTester(self.incoming_path, "0000000100000000000000FB", "random")
         file_path = Path(ifile.path)
         dest_file_path = FileTypePrefixes[FileType.Wal] / file_path.name
-        self.compressor.config["backup_sites"][self.test_site]["encryption_key_id"] = "testkey"
+        self.compressor.config["backup_sites"][self.test_site][
+            "encryption_key_id"
+        ] = "testkey"
         event = CompressionEvent(
             compress_to_memory=True,
             file_path=dest_file_path,
@@ -280,7 +299,7 @@ class CompressionCase(PGHoardTestCase):
             backup_site_name=self.test_site,
             file_type=FileType.Wal,
             callback_queue=None,
-            metadata={}
+            metadata={},
         )
         self.compressor.handle_event(event)
         expected = {
@@ -316,7 +335,7 @@ class CompressionCase(PGHoardTestCase):
             source_data=file_path,
             backup_site_name=self.test_site,
             file_type=FileType.Wal,
-            metadata={}
+            metadata={},
         )
         self.compression_queue.put(event)
         transfer_event = self.transfer_queue.get(timeout=5.0)
@@ -412,7 +431,9 @@ class CompressionCase(PGHoardTestCase):
         assert fdata == ifile.contents
 
     def test_compress_decompress_fileobj(self, tmpdir):
-        plaintext = WALTester(self.incoming_path, "00000001000000000000000E", "random").contents
+        plaintext = WALTester(
+            self.incoming_path, "00000001000000000000000E", "random"
+        ).contents
         output_file = tmpdir.join("data.out").strpath
         with open(output_file, "w+b") as plain_fp:
             cmp_fp = compressor.CompressionFile(plain_fp, self.algorithm)
@@ -451,7 +472,9 @@ class CompressionCase(PGHoardTestCase):
             assert plaintext == result
 
     def test_compress_decompress_stream(self):
-        plaintext = WALTester(self.incoming_path, "00000001000000000000000E", "random").contents
+        plaintext = WALTester(
+            self.incoming_path, "00000001000000000000000E", "random"
+        ).contents
         compressed_stream = self.make_compress_stream(io.BytesIO(plaintext))
         result_data = io.BytesIO()
         while True:

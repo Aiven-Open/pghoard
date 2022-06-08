@@ -33,9 +33,14 @@ def configure_logging(level=logging.DEBUG, short_log=False):
     if os.getenv("NOTIFY_SOCKET"):
         logging.basicConfig(level=level, format=LOG_FORMAT_SYSLOG)
         if not daemon:
-            print("WARNING: Running under systemd but python-systemd not available, " "systemd won't see our notifications")
+            print(
+                "WARNING: Running under systemd but python-systemd not available, "
+                "systemd won't see our notifications"
+            )
     else:
-        logging.basicConfig(level=level, format=LOG_FORMAT_SHORT if short_log else LOG_FORMAT)
+        logging.basicConfig(
+            level=level, format=LOG_FORMAT_SHORT if short_log else LOG_FORMAT
+        )
 
 
 def notify_systemd(status):

@@ -24,9 +24,13 @@ def wal_header_for_file(name, version=90500):
     seg = lsn._seg  # pylint: disable=protected-access
     if version < 90300:
         recoff = seg * wal.WAL_SEG_SIZE
-        return struct.pack("=HHILLI", wal.WAL_MAGIC_BY_VERSION[version], 0, timeline_id, log, recoff, 0)
+        return struct.pack(
+            "=HHILLI", wal.WAL_MAGIC_BY_VERSION[version], 0, timeline_id, log, recoff, 0
+        )
     pageaddr = (log << 32) | (seg * wal.WAL_SEG_SIZE)
-    return struct.pack("=HHIQI", wal.WAL_MAGIC_BY_VERSION[version], 0, timeline_id, pageaddr, 0)
+    return struct.pack(
+        "=HHIQI", wal.WAL_MAGIC_BY_VERSION[version], 0, timeline_id, pageaddr, 0
+    )
 
 
 def test_wal_header_pg95():
@@ -66,14 +70,24 @@ def test_lsn_cls_from_walfilename():
 
 
 def test_lsn_from_name():
-    assert str(wal.LSN.from_walfile_name("0000002E0000001100000004", server_version=None)) == "11/4000000"
-    assert str(wal.LSN.from_walfile_name("000000FF0000001100000004", server_version=None)) == "11/4000000"
+    assert (
+        str(wal.LSN.from_walfile_name("0000002E0000001100000004", server_version=None))
+        == "11/4000000"
+    )
+    assert (
+        str(wal.LSN.from_walfile_name("000000FF0000001100000004", server_version=None))
+        == "11/4000000"
+    )
 
 
 def test_construct_wal_name():
     sysinfo = ("6181331723016416192", "4", "F/190001B0", "")
-    assert wal.lsn_from_sysinfo(sysinfo, None) == wal.LSN("F/190001B0", timeline_id=4, server_version=None)
-    assert wal.lsn_from_sysinfo(sysinfo, None).walfile_name == "000000040000000F00000019"
+    assert wal.lsn_from_sysinfo(sysinfo, None) == wal.LSN(
+        "F/190001B0", timeline_id=4, server_version=None
+    )
+    assert (
+        wal.lsn_from_sysinfo(sysinfo, None).walfile_name == "000000040000000F00000019"
+    )
     assert str(wal.lsn_from_sysinfo(sysinfo, None).walfile_start_lsn) == "F/19000000"
 
 
@@ -149,7 +163,7 @@ def test_lsn_repr():
     [
         (
             wal.LSN(1234, 42),
-            type("", (object, ), {"lsn": 42})(),
+            type("", (object,), {"lsn": 42})(),
             "Cannot compare LSN to ",
         ),
         (
