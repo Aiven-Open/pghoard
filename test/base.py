@@ -6,8 +6,6 @@ See LICENSE for details
 """
 import logging
 import os
-
-# pylint: disable=attribute-defined-outside-init
 from distutils.version import LooseVersion
 from shutil import rmtree
 from tempfile import mkdtemp
@@ -15,6 +13,8 @@ from tempfile import mkdtemp
 import psycopg2.extras
 
 from pghoard.config import find_pg_binary, set_and_check_config_defaults
+
+# pylint: disable=attribute-defined-outside-init
 
 CONSTANT_TEST_RSA_PUBLIC_KEY = """\
 -----BEGIN PUBLIC KEY-----

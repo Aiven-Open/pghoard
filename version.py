@@ -5,7 +5,6 @@ pghoard - version detection and version.py __version__ generation
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
-
 import imp
 import os
 import subprocess

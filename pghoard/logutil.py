@@ -5,8 +5,6 @@ pghoard - logging formats and utility functions
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
-
-import logging
 import logging.handlers
 import os
 

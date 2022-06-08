@@ -12,12 +12,8 @@ import time
 from io import BytesIO
 from queue import Empty, Queue
 
-import psycopg2
 import psycopg2.errors
-from psycopg2.extras import (  # pylint: disable=no-name-in-module
-    REPLICATION_PHYSICAL,
-    PhysicalReplicationConnection,
-)
+from psycopg2.extras import REPLICATION_PHYSICAL, PhysicalReplicationConnection
 
 from pghoard.common import FileType, FileTypePrefixes, PGHoardThread, suppress
 from pghoard.compressor import CompressionEvent

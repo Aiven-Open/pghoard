@@ -215,7 +215,7 @@ def read_header(blob):
                 WAL_HEADER_LEN, len(blob)
             )
         )
-    magic, info, timeline_id, pageaddr, rem_len = struct.unpack(
+    magic, _, timeline_id, pageaddr, _ = struct.unpack(
         "=HHIQI", blob[:WAL_HEADER_LEN]
     )  # pylint: disable=unused-variable
     version = WAL_MAGIC[magic]

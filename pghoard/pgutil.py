@@ -5,7 +5,6 @@ pghoard - postgresql utility functions
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
-
 from urllib.parse import parse_qs, urlparse
 
 

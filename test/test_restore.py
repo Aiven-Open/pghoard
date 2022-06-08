@@ -7,7 +7,6 @@ See LICENSE for details
 import datetime
 import hashlib
 import json
-import multiprocessing
 import multiprocessing.pool
 import os
 import shutil
@@ -80,6 +79,7 @@ class TestRecoveryConf(PGHoardTestCase):
         assert "recovery_target_time 'foobar'" in str(excinfo.value)
 
     def test_find_nearest_backup(self):
+        # pylint: disable=protected-access
         r = Restore()
         r.storage = Mock()
         basebackups = [
@@ -96,21 +96,15 @@ class TestRecoveryConf(PGHoardTestCase):
         ]
 
         r.storage.list_basebackups = Mock(return_value=basebackups)
-        assert (
-            r._find_nearest_basebackup()["name"] == "2015-02-13_0"
-        )  # pylint: disable=protected-access
+        assert r._find_nearest_basebackup()["name"] == "2015-02-13_0"
         recovery_time = datetime.datetime(2015, 2, 1)
         recovery_time = recovery_time.replace(tzinfo=datetime.timezone.utc)
         with pytest.raises(RestoreError):
-            r._find_nearest_basebackup(
-                recovery_time
-            )  # pylint: disable=protected-access
+            r._find_nearest_basebackup(recovery_time)
 
         recovery_time = datetime.datetime(2015, 2, 12, 14, 20)
         recovery_time = recovery_time.replace(tzinfo=datetime.timezone.utc)
-        assert (
-            r._find_nearest_basebackup(recovery_time)["name"] == "2015-02-12_0"
-        )  # pylint: disable=protected-access
+        assert r._find_nearest_basebackup(recovery_time)["name"] == "2015-02-12_0"
 
     def test_compatible_cli_args(self):
         parser = Restore().create_parser()
@@ -295,8 +289,8 @@ class TestBasebackupFetcher(unittest.TestCase):
             original_tar_executable = fetcher.config["tar_executable"]
             fetcher.config["tar_executable"] = "test/tar_failer"
             original_build_tar_args = (
-                ChunkFetcher._build_tar_args
-            )  # pylint: disable=protected-access
+                ChunkFetcher._build_tar_args  # pylint: disable=protected-access
+            )
 
             def _build_tar_args(self, metadata):
                 nonlocal retry, pass_after_retry
@@ -323,9 +317,9 @@ class TestBasebackupFetcher(unittest.TestCase):
             self.run_restore_test("basebackup_one_chunk", "tar", simulate_tar_failure)
 
     def real_processing(self, fetcher, restore_dir):
-        assert (
+        assert (  # pylint: disable=comparison-with-callable
             fetcher.pool_class == multiprocessing.Pool
-        )  # pylint: disable=comparison-with-callable
+        )
         fetcher.fetch_all()
         self.check_sha256(
             os.path.join(restore_dir, "base", "1", "2996"),

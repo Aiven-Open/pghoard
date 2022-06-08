@@ -1,5 +1,4 @@
 import dataclasses
-import http
 import http.server
 import selectors
 import socket

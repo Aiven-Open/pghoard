@@ -29,7 +29,6 @@ from rohmu.delta.common import EMBEDDED_FILE_SIZE
 
 from pghoard.compressor import CompressionEvent
 
-# pylint: disable=superfluous-parens
 from . import common, version, wal
 from .basebackup_delta import DeltaBaseBackup
 from .common import (
@@ -48,6 +47,8 @@ from .common import (
     terminate_subprocess,
 )
 from .transfer import UploadEvent
+
+# pylint: disable=too-many-lines,superfluous-parens
 
 BASEBACKUP_NAME = "pghoard_base_backup"
 EMPTY_DIRS = [

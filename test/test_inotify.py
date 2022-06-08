@@ -12,8 +12,9 @@ from unittest import SkipTest
 import pytest
 from rohmu.inotify import InotifyWatcher
 
-# pylint: disable=attribute-defined-outside-init
 from .base import PGHoardTestCase
+
+# pylint: disable=attribute-defined-outside-init
 
 
 class TestInotify(PGHoardTestCase):

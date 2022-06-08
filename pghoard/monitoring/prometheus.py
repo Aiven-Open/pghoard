@@ -2,7 +2,6 @@
 Prometheus client (used to create a Prometheus endpoint)
 
 """
-
 import time
 
 

@@ -22,8 +22,9 @@ from pghoard.transfer import (
     UploadEvent,
 )
 
-# pylint: disable=attribute-defined-outside-init
 from .base import PGHoardTestCase
+
+# pylint: disable=attribute-defined-outside-init
 
 
 class MockStorage(Mock):

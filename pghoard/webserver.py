@@ -4,7 +4,6 @@ pghoard - internal http server for serving backup objects
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
-
 import logging
 import os
 import tempfile
@@ -85,30 +84,30 @@ class WebServer(PGHoardThread):
         )
 
     def run_safe(self):
+        # pylint: disable=attribute-defined-outside-init
+
         # We bind the port only when we start running
         self._running = True
         self.server = OwnHTTPServer((self.address, self.port), RequestHandler)
-        self.server.config = (
-            self.config
-        )  # pylint: disable=attribute-defined-outside-init
+        self.server.config = self.config
         self.server.log = self.log  # pylint: disable=attribute-defined-outside-init
         self.server.requested_basebackup_sites = self.requested_basebackup_sites
-        self.server.compression_queue = (
+        self.server.compression_queue = (  # pylint: disable=attribute-defined-outside-init
             self.compression_queue
-        )  # pylint: disable=attribute-defined-outside-init
-        self.server.transfer_queue = (
+        )
+        self.server.transfer_queue = (  # pylint: disable=attribute-defined-outside-init
             self.transfer_queue
-        )  # pylint: disable=attribute-defined-outside-init
+        )
         self.server.lock = self.lock  # pylint: disable=attribute-defined-outside-init
-        self.server.pending_download_ops = (
+        self.server.pending_download_ops = (  # pylint: disable=attribute-defined-outside-init
             self.pending_download_ops
-        )  # pylint: disable=attribute-defined-outside-init
-        self.server.download_results = (
+        )
+        self.server.download_results = (  # pylint: disable=attribute-defined-outside-init
             self.download_results
-        )  # pylint: disable=attribute-defined-outside-init
-        self.server.most_recently_served_files = (
+        )
+        self.server.most_recently_served_files = (  # pylint: disable=attribute-defined-outside-init
             {}
-        )  # pylint: disable=attribute-defined-outside-init
+        )
         # Bounded list of files returned from local disk. Sometimes the file on disk is in some way "bad"
         # and PostgreSQL doesn't accept it and keeps on requesting it again. If the file was recently served
         # from disk serve it from file storage instead because the file there could be different.
@@ -121,9 +120,9 @@ class WebServer(PGHoardThread):
         self.server.prefetch_404 = deque(
             maxlen=32
         )  # pylint: disable=attribute-defined-outside-init
-        self.server.metrics = (
+        self.server.metrics = (  # pylint: disable=attribute-defined-outside-init
             self.metrics
-        )  # pylint: disable=attribute-defined-outside-init
+        )
         self.server.serve_forever()
 
     def close(self):

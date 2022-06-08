@@ -1,5 +1,4 @@
 # Copyright (c) 2022 Aiven, Helsinki, Finland. https://aiven.io/
-
 import sys
 from unittest import mock
 

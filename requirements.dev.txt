@@ -1,6 +1,7 @@
 # Use pip for build requirements to harmonize between OS versions
 mock
 mypy
+pre-commit
 pylint>=2.4.3,<=2.7.2
 pylint-quotes
 pytest

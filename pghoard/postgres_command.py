@@ -4,7 +4,6 @@ pghoard - archive_command and restore_command for postgresql
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
-
 import argparse
 import os
 import socket

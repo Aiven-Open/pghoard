@@ -1,5 +1,4 @@
 # Copyright (c) 2022 Aiven, Helsinki, Finland. https://aiven.io/
-
 import datetime
 import sys
 from unittest import mock

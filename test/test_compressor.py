@@ -25,13 +25,14 @@ from pghoard import metrics
 from pghoard.common import FileType, FileTypePrefixes, QuitEvent
 from pghoard.compressor import CompressionEvent, CompressorThread, DecompressionEvent
 
-# pylint: disable=attribute-defined-outside-init
 from .base import (
     CONSTANT_TEST_RSA_PRIVATE_KEY,
     CONSTANT_TEST_RSA_PUBLIC_KEY,
     PGHoardTestCase,
 )
 from .test_wal import wal_header_for_file
+
+# pylint: disable=attribute-defined-outside-init
 
 
 class WALTester:

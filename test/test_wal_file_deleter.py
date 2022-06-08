@@ -1,5 +1,4 @@
 # Copyright (c) 2021 Aiven, Helsinki, Finland. https://aiven.io/
-
 import time
 from pathlib import Path
 from queue import Queue

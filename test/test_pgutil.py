@@ -5,7 +5,6 @@ pghoard - postgresql utility function tests
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
-
 from pytest import raises
 
 from pghoard.pgutil import (

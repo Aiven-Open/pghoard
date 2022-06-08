@@ -25,9 +25,10 @@ from pghoard.pgutil import create_connection_string
 from pghoard.postgres_command import archive_command, restore_command
 from pghoard.restore import HTTPRestore, Restore
 
-# pylint: disable=attribute-defined-outside-init
 from .base import CONSTANT_TEST_RSA_PRIVATE_KEY, CONSTANT_TEST_RSA_PUBLIC_KEY
 from .test_wal import wal_header_for_file
+
+# pylint: disable=attribute-defined-outside-init
 
 
 @pytest.fixture

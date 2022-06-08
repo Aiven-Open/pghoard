@@ -15,8 +15,6 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
-
-# pylint: disable=attribute-defined-outside-init
 from rohmu import rohmufile
 
 import pghoard.pghoard as pghoard_module
@@ -33,6 +31,8 @@ from pghoard.pgutil import create_connection_string
 
 from .base import PGHoardTestCase
 from .util import switch_wal, wait_for_xlog
+
+# pylint: disable=attribute-defined-outside-init
 
 
 class TestPGHoard(PGHoardTestCase):

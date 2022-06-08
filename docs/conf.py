@@ -3,9 +3,7 @@
 # This file only contains a selection of the most common options. For a full
 # list see the documentation:
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
-
 # -- Path setup --------------------------------------------------------------
-
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
@@ -19,7 +17,7 @@ from version import get_project_version
 # -- Project information -----------------------------------------------------
 
 project = "PGHoard"
-copyright = "2021, Aiven"
+copyright = "2021, Aiven"  # pylint: disable=redefined-builtin
 author = "Aiven"
 
 # The full version, including alpha/beta/rc tags
@@ -39,7 +37,6 @@ templates_path = ["_templates"]
 # directories to ignore when looking for source files.
 # This pattern also affects html_static_path and html_extra_path.
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
-
 
 # -- Options for HTML output -------------------------------------------------
 

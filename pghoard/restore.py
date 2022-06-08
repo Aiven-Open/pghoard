@@ -13,7 +13,6 @@ import enum
 import errno
 import io
 import logging
-import multiprocessing
 import multiprocessing.pool
 import os
 import re
@@ -23,10 +22,8 @@ import sys
 import tempfile
 import time
 import uuid
-
-# ignore pylint/distutils issue, https://github.com/PyCQA/pylint/issues/73
-from distutils.version import (  # pylint: disable=no-name-in-module,import-error
-    LooseVersion,
+from distutils.version import (
+    LooseVersion,  # pylint: disable=no-name-in-module,import-error
 )
 from threading import RLock
 from typing import Dict, List, Optional, Set
@@ -40,6 +37,8 @@ from pghoard.common import BaseBackupFormat, StrEnum
 
 from . import common, config, logutil, version
 from .postgres_command import PGHOARD_HOST, PGHOARD_PORT
+
+# pylint: disable=too-many-lines
 
 
 class RestoreError(Error):

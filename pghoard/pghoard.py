@@ -58,6 +58,8 @@ from pghoard.transfer import TransferAgent, TransferQueue, UploadEvent
 from pghoard.walreceiver import WALReceiver
 from pghoard.webserver import WebServer
 
+# pylint: disable=too-many-lines
+
 
 @dataclass
 class DeltaBaseBackupFailureInfo:

@@ -4,7 +4,6 @@ pghoard - pg_receivexlog handler
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
-
 import datetime
 import logging
 import os
