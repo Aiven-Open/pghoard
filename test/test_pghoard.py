@@ -9,6 +9,7 @@ import json
 import os
 import sys
 from pathlib import Path
+from typing import Any, Dict
 from unittest.mock import Mock, patch
 
 import pytest
@@ -453,6 +454,136 @@ dbname|"""
         assert sorted(left_delta_files) == [
             "fc61c91430dcb345001306ad513f103380c16896093a17868fc909aeda393559",
         ]
+
+    @pytest.mark.parametrize(
+        "backup_to_delete, backup_to_delete_meta", [("bb_v1", {
+            "format": BaseBackupFormat.v1
+        }), ("bb_v2", {
+            "format": BaseBackupFormat.v2
+        }), ("delta_v1", {
+            "format": BaseBackupFormat.delta_v1
+        }), ("delta_v2", {
+            "format": BaseBackupFormat.delta_v2
+        })]
+    )
+    def test_get_delta_basebackup_files(self, backup_to_delete: str, backup_to_delete_meta: dict) -> None:
+        backups_to_keep = [
+            {
+                "name": "bb_v1",
+                "metadata": {
+                    "format": BaseBackupFormat.v1
+                },
+            },
+            {
+                "name": "bb_v2",
+                "metadata": {
+                    "format": BaseBackupFormat.v2
+                },
+            },
+            {
+                "name": "delta_v1",
+                "metadata": {
+                    "format": BaseBackupFormat.delta_v1
+                },
+            },
+            {
+                "name": "delta_v2",
+                "metadata": {
+                    "format": BaseBackupFormat.delta_v2
+                },
+            },
+        ]
+        for idx, _ in enumerate(backups_to_keep):
+            if backups_to_keep[idx]["name"] == backup_to_delete:
+                del backups_to_keep[idx]
+                break
+
+        def fake_download_backup_meta_file(basebackup_path: str, **kwargs):  # pylint: disable=unused-argument
+            meta: Dict[str, Any] = {"manifest": {"snapshot_result": {"state": {"files": []}}}}
+            files = []
+            if basebackup_path == os.path.join(self.test_site, "basebackup", "delta_v1"):
+                files = [
+                    {
+                        "relative_path": "base/1/1",
+                        "file_size": 8192,
+                        "stored_file_size": 100,
+                        "mtime_ns": 1652175599798812244,
+                        "hexdigest": "undeletable",  # this file should stay, because the same hash exists in another backup
+                        "content_b64": None,
+                    },
+                    {
+                        "relative_path": "base/100/221",
+                        "file_size": 812392,
+                        "stored_file_size": 121300,
+                        "mtime_ns": 1652175599798812244,
+                        "hexdigest": "delta_v1_hex1",
+                        "content_b64": None,
+                    }
+                ]
+                meta["chunks"] = [{
+                    "chunk_filename": "/delta_v1/chunk1",
+                    "result_size": 12
+                }, {
+                    "chunk_filename": "/delta_v1/chunk2",
+                    "result_size": 143
+                }]
+            elif basebackup_path == os.path.join(self.test_site, "basebackup", "delta_v2"):
+                files = [{
+                    "relative_path": "base/2/1",
+                    "file_size": 8192,
+                    "stored_file_size": 100,
+                    "mtime_ns": 1652175599798812244,
+                    "hexdigest": "undeletable",
+                    "content_b64": None,
+                }, {
+                    "relative_path": "base/100/221",
+                    "file_size": 812392,
+                    "stored_file_size": 121300,
+                    "mtime_ns": 1652175599798812244,
+                    "hexdigest": "delta_v2_hex1",
+                    "content_b64": None,
+                }]
+                meta["chunks"] = [{"chunk_filename": "/delta_v2/chunk1", "result_size": 34}]
+            else:
+                meta["chunks"] = [{
+                    "chunk_filename": "/bb/chunk1",
+                    "result_size": 150
+                }, {
+                    "chunk_filename": "/bb/chunk2",
+                    "result_size": 26
+                }]
+
+            meta["manifest"]["snapshot_result"]["state"]["files"] = files
+            return meta, b"some content"
+
+        if backup_to_delete_meta["format"] not in (BaseBackupFormat.delta_v1, BaseBackupFormat.delta_v2):
+            with pytest.raises(AssertionError):
+                self.pghoard._get_delta_basebackup_files(  # pylint: disable=protected-access
+                    site=self.test_site,
+                    storage=Mock(),
+                    metadata=backup_to_delete_meta,
+                    basebackup_name_to_delete=backup_to_delete,
+                    backups_to_keep=backups_to_keep
+                )
+        else:
+            with patch("pghoard.pghoard.download_backup_meta_file", new=fake_download_backup_meta_file):
+                res = self.pghoard._get_delta_basebackup_files(  # pylint: disable=protected-access
+                    site=self.test_site,
+                    storage=Mock(),
+                    metadata=backup_to_delete_meta,
+                    basebackup_name_to_delete=backup_to_delete,
+                    backups_to_keep=backups_to_keep
+                )
+                if backup_to_delete == "delta_v1":
+                    assert sorted(res) == sorted([
+                        "/delta_v1/chunk1", "/delta_v1/chunk2",
+                        os.path.join(self.test_site, "basebackup_delta", "delta_v1_hex1")
+                    ])
+                elif backup_to_delete == "delta_v2":
+                    assert sorted(res) == sorted([
+                        "/delta_v2/chunk1",
+                        os.path.join(self.test_site, "basebackup_delta", "delta_v2_hex1")
+                    ])
 
     def test_alert_files(self):
         alert_file_path = os.path.join(self.config["alert_file_dir"], "test_alert")

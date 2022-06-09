@@ -38,60 +38,63 @@ def fixture_chunk_uploader():
     )
 
 
-class TestChunkUploader:
-    def test_chunk_path_to_middle_path_name(self):
-        assert ChunkUploader.chunk_path_to_middle_path_name(
-            Path("/a/b/2022-04-19_09-27_0.00000000.pghoard"), FileType.Basebackup
-        ) == (Path("basebackup"), "2022-04-19_09-27_0.00000000.pghoard")
+def test_chunk_path_to_middle_path_name():
+    assert ChunkUploader.chunk_path_to_middle_path_name(
+        Path("/a/b/2022-04-19_09-27_0.00000000.pghoard"), FileType.Basebackup
+    ) == (Path("basebackup"), "2022-04-19_09-27_0.00000000.pghoard")
 
-        assert ChunkUploader.chunk_path_to_middle_path_name(
-            Path("/a/b/2022-04-19_09-27_0/2022-04-19_09-27_0.00000001.pghoard"), FileType.Basebackup_chunk
-        ) == (Path("basebackup_chunk"), "2022-04-19_09-27_0/2022-04-19_09-27_0.00000001.pghoard")
+    assert ChunkUploader.chunk_path_to_middle_path_name(
+        Path("/a/b/2022-04-19_09-27_0/2022-04-19_09-27_0.00000001.pghoard"), FileType.Basebackup_chunk
+    ) == (Path("basebackup_chunk"), "2022-04-19_09-27_0/2022-04-19_09-27_0.00000001.pghoard")
 
-        assert ChunkUploader.chunk_path_to_middle_path_name(
-            Path("/a/b/0fdc9365aea5447f9a16da8104dc9fcc.delta"), FileType.Basebackup_delta
-        ) == (Path("basebackup_delta"), "0fdc9365aea5447f9a16da8104dc9fcc.delta")
+    assert ChunkUploader.chunk_path_to_middle_path_name(
+        Path("/a/b/0fdc9365aea5447f9a16da8104dc9fcc.delta"), FileType.Basebackup_delta
+    ) == (Path("basebackup_delta"), "0fdc9365aea5447f9a16da8104dc9fcc.delta")
 
-        assert ChunkUploader.chunk_path_to_middle_path_name(
-            Path("/a/b/2022-04-19_09-27_0/2022-04-19_09-27_0.00000001.pghoard"), FileType.Basebackup_delta_chunk
-        ) == (Path("basebackup_delta_chunk"), "2022-04-19_09-27_0/2022-04-19_09-27_0.00000001.pghoard")
+    assert ChunkUploader.chunk_path_to_middle_path_name(
+        Path("/a/b/2022-04-19_09-27_0/2022-04-19_09-27_0.00000001.pghoard"), FileType.Basebackup_delta_chunk
+    ) == (Path("basebackup_delta_chunk"), "2022-04-19_09-27_0/2022-04-19_09-27_0.00000001.pghoard")
 
-        for file_type in {FileType.Wal, FileType.Metadata, FileType.Timeline}:
-            with pytest.raises(NotImplementedError):
-                ChunkUploader.chunk_path_to_middle_path_name(Path("/a/b/000000010000000000000002"), file_type)
+    for file_type in {FileType.Wal, FileType.Metadata, FileType.Timeline}:
+        with pytest.raises(NotImplementedError):
+            ChunkUploader.chunk_path_to_middle_path_name(Path("/a/b/000000010000000000000002"), file_type)
 
-    def test_write_files_to_tar_stops_when_not_running(self):
-        cu = ChunkUploader(
-            metrics=metrics.Metrics(statsd={}),
-            chunks_on_disk=0,
-            encryption_data=EncryptionData("foo_id", "foo_key"),
-            compression_data=CompressionData("snappy", 0),
-            site_config={},
-            site="foosite",
-            is_running=lambda: False,
-            transfer_queue=TransferQueue()
-        )
-        with pytest.raises(BackupFailure):
-            cu.write_files_to_tar(files=[("foo", "foo", False)], tar=None)
 
-    def test_write_files_to_tar_missing_raises_exception(self, chunk_uploader):
-        with pytest.raises(FileNotFoundError):
-            chunk_uploader.write_files_to_tar(files=[("foo", "foo", False)], tar=FakeTar())
+def test_write_files_to_tar_stops_when_not_running():
+    cu = ChunkUploader(
+        metrics=metrics.Metrics(statsd={}),
+        chunks_on_disk=0,
+        encryption_data=EncryptionData("foo_id", "foo_key"),
+        compression_data=CompressionData("snappy", 0),
+        site_config={},
+        site="foosite",
+        is_running=lambda: False,
+        transfer_queue=TransferQueue()
+    )
+    with pytest.raises(BackupFailure):
+        cu.write_files_to_tar(files=[("foo", "foo", False)], tar=None)
 
-    def test_write_files_to_tar_adds_tar_info_file(self, chunk_uploader):
-        faketar = FakeTar()
-        ti = TarInfo(name="test tar info file")
-        chunk_uploader.write_files_to_tar(files=[(ti, "foo", False)], tar=faketar)
-        assert faketar.items == [ti]
 
-    def test_wait_for_chunk_transfer_to_complete_upload_in_progress(self, chunk_uploader):
-        assert not chunk_uploader.wait_for_chunk_transfer_to_complete(
-            chunk_count=1,
-            upload_results=[],
-            chunk_callback_queue=CallbackQueue(),
-            start_time=time.monotonic(),
-            queue_timeout=0.1
-        )
+def test_write_files_to_tar_missing_raises_exception(chunk_uploader):
+    with pytest.raises(FileNotFoundError):
+        chunk_uploader.write_files_to_tar(files=[("foo", "foo", False)], tar=FakeTar())
+
+
+def test_write_files_to_tar_adds_tar_info_file(chunk_uploader):
+    faketar = FakeTar()
+    ti = TarInfo(name="test tar info file")
+    chunk_uploader.write_files_to_tar(files=[(ti, "foo", False)], tar=faketar)
+    assert faketar.items == [ti]
+
+
+def test_wait_for_chunk_transfer_to_complete_upload_in_progress(chunk_uploader):
+    assert not chunk_uploader.wait_for_chunk_transfer_to_complete(
+        chunk_count=1,
+        upload_results=[],
+        chunk_callback_queue=CallbackQueue(),
+        start_time=time.monotonic(),
+        queue_timeout=0.1
+    )
 
 
 def test_hash_file():

@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from queue import Empty, Queue
 from threading import Event
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 import psycopg2
 from rohmu import dates, get_transfer, rohmufile
@@ -35,7 +35,7 @@ from pghoard import config, logutil, metrics, version, wal
 from pghoard.basebackup import PGBaseBackup
 from pghoard.common import (
     BaseBackupFormat, BaseBackupMode, CallbackEvent, FileType, FileTypePrefixes, create_alert_file,
-    extract_pghoard_bb_v2_metadata, extract_pghoard_delta_metadata, get_object_storage_config,
+    download_backup_meta_file, extract_pghoard_bb_v2_metadata, extract_pghoard_delta_metadata, get_object_storage_config,
     replication_connection_string_and_slot_using_pgpass, write_json_file
 )
 from pghoard.compressor import (
@@ -337,24 +337,29 @@ class PGHoard:
                 self.log.exception("Problem deleting: %r", wal_path)
                 self.metrics.unexpected_exception(ex, where="delete_remote_wal_before")
 
-    def _get_delta_basebackup_files(self, site, storage, metadata, basebackup_name_to_delete, backups_to_keep):
+    def _get_delta_basebackup_files(self, site, storage, metadata, basebackup_name_to_delete, backups_to_keep) -> List:
+        delta_formats = (BaseBackupFormat.delta_v1, BaseBackupFormat.delta_v2)
+        assert metadata["format"] in delta_formats
         all_hexdigests = set()
         keep_hexdigests = set()
 
         basebackup_data_files = list()
-        delta_backups_to_keep = filter(
-            lambda x: x["metadata"]["format"] in (BaseBackupFormat.delta_v1, BaseBackupFormat.delta_v2), backups_to_keep
-        )
-        for backup_name in [basebackup_name_to_delete] + [back["name"] for back in delta_backups_to_keep]:
-            delta_backup_key = os.path.join(self._get_site_prefix(site), "basebackup", backup_name)
-            bmeta_compressed = storage.get_contents_to_string(delta_backup_key)[0]
-            with rohmufile.file_reader(
-                fileobj=io.BytesIO(bmeta_compressed),
-                metadata=metadata,
-                key_lookup=config.key_lookup_for_site(self.config, site)
-            ) as input_obj:
-                meta = extract_pghoard_delta_metadata(input_obj)
+        delta_backup_names = {
+            backup["name"]: backup["metadata"]
+            for backup in backups_to_keep
+            if backup["metadata"]["format"] in delta_formats
+        }
+        delta_backup_names[basebackup_name_to_delete] = metadata
 
+        for backup_name, backup_metadata in delta_backup_names.items():
+            delta_backup_key = os.path.join(self._get_site_prefix(site), "basebackup", backup_name)
+            meta, _ = download_backup_meta_file(
+                storage=storage,
+                basebackup_path=delta_backup_key,
+                metadata=backup_metadata,
+                key_lookup=config.key_lookup_for_site(self.config, site),
+                extract_meta_func=extract_pghoard_delta_metadata
+            )
             manifest = meta["manifest"]
             snapshot_result = manifest["snapshot_result"]
             backup_state = snapshot_result["state"]

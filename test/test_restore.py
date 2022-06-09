@@ -499,80 +499,79 @@ class TestBasebackupFetcher(unittest.TestCase):
             assert actual_sha256.hexdigest() == expected_sha256
 
 
-class TestRestore:
-    def test_get_delta_basebackup_data(self):
-        metadata = {
-            "manifest": {
-                "snapshot_result": {
-                    "state": {
-                        "files": [{
-                            "relative_path": "base/1/1",
-                            "file_size": 8192,
-                            "stored_file_size": 100,
-                            "mtime_ns": 1652175599798812244,
-                            "hexdigest": "delta1hex1",
-                            "content_b64": None,
-                            "should_be_bundled": False,
-                        }, {
-                            "relative_path": "base/1/0",
-                            "file_size": 8,
-                            "stored_file_size": 8,
-                            "mtime_ns": 1652175599798812244,
-                            "hexdigest": "",
-                            "content_b64": "YXNkYXNk",
-                            "should_be_bundled": False,
-                        }],
-                        "empty_dirs": ["base/dir1"],
-                    }
-                }
-            },
-            "chunks": [{
-                "chunk_filename": "chunk1",
-                "result_size": 80
-            }, {
-                "chunk_filename": "chunk2",
-                "result_size": 10
-            }],
-            "tablespaces": {
-                "foo": {
-                    "oid": 1234,
-                    "path": "/tmp/test_restore2"
+def test_restore_get_delta_basebackup_data():
+    metadata = {
+        "manifest": {
+            "snapshot_result": {
+                "state": {
+                    "files": [{
+                        "relative_path": "base/1/1",
+                        "file_size": 8192,
+                        "stored_file_size": 100,
+                        "mtime_ns": 1652175599798812244,
+                        "hexdigest": "delta1hex1",
+                        "content_b64": None,
+                        "should_be_bundled": False,
+                    }, {
+                        "relative_path": "base/1/0",
+                        "file_size": 8,
+                        "stored_file_size": 8,
+                        "mtime_ns": 1652175599798812244,
+                        "hexdigest": "",
+                        "content_b64": "YXNkYXNk",
+                        "should_be_bundled": False,
+                    }],
+                    "empty_dirs": ["base/dir1"],
                 }
             }
+        },
+        "chunks": [{
+            "chunk_filename": "chunk1",
+            "result_size": 80
+        }, {
+            "chunk_filename": "chunk2",
+            "result_size": 10
+        }],
+        "tablespaces": {
+            "foo": {
+                "oid": 1234,
+                "path": "/tmp/test_restore2"
+            }
         }
+    }
 
-        data = dict_to_tar_data(metadata, tar_name=".pghoard_tar_metadata.json")
+    data = dict_to_tar_data(metadata, tar_name=".pghoard_tar_metadata.json")
 
-        r = Restore()
-        r.config = {
-            "backup_sites": {
-                "test": {
-                    "prefix": "abc/def",
-                },
+    r = Restore()
+    r.config = {
+        "backup_sites": {
+            "test": {
+                "prefix": "abc/def",
             },
-        }
-        r.storage = Mock()  # pylint: disable=protected-access
-        r.storage.storage.get_contents_to_string.return_value = (data, {})
-        file_metadata = {"compression-algorithm": "snappy", "format": "pghoard-delta-v2"}
-        tablespaces, files, empty_dirs = r._get_delta_basebackup_data(  # pylint: disable=protected-access
-            site="test", metadata=file_metadata, basebackup_name="delta_backup1"
-        )
-        assert tablespaces == {"foo": {"oid": 1234, "path": "/tmp/test_restore2"}}
-        assert empty_dirs == ["base/dir1"]
-        assert len(files) == 5
-        expected_files = [
-            FilePathInfo(name="abc/def/basebackup_delta_chunk/chunk1", size=80),
-            FilePathInfo(name="abc/def/basebackup_delta_chunk/chunk2", size=10),
-            FileDataInfo(data=data, size=0, metadata=file_metadata),
-            FilePathInfo(
-                name="abc/def/basebackup_delta/delta1hex1", new_name="base/1/1", size=100, file_type=FileInfoType.delta
-            ),
-            FileDataInfo(
-                data=base64.b64decode("YXNkYXNk"),
-                new_name="base/1/0",
-                size=8,
-                metadata=file_metadata,
-                file_type=FileInfoType.delta
-            ),
-        ]
-        assert all(f in files for f in expected_files)
+        },
+    }
+    r.storage = Mock()
+    r.storage.storage.get_contents_to_string.return_value = (data, {})
+    file_metadata = {"compression-algorithm": "snappy", "format": "pghoard-delta-v2"}
+    tablespaces, files, empty_dirs = r._get_delta_basebackup_data(  # pylint: disable=protected-access
+        site="test", metadata=file_metadata, basebackup_name="delta_backup1"
+    )
+    assert tablespaces == {"foo": {"oid": 1234, "path": "/tmp/test_restore2"}}
+    assert empty_dirs == ["base/dir1"]
+    assert len(files) == 5
+    expected_files = [
+        FilePathInfo(name="abc/def/basebackup_delta_chunk/chunk1", size=80),
+        FilePathInfo(name="abc/def/basebackup_delta_chunk/chunk2", size=10),
+        FileDataInfo(data=data, size=0, metadata=file_metadata),
+        FilePathInfo(
+            name="abc/def/basebackup_delta/delta1hex1", new_name="base/1/1", size=100, file_type=FileInfoType.delta
+        ),
+        FileDataInfo(
+            data=base64.b64decode("YXNkYXNk"),
+            new_name="base/1/0",
+            size=8,
+            metadata=file_metadata,
+            file_type=FileInfoType.delta
+        ),
+    ]
+    assert all(f in files for f in expected_files)

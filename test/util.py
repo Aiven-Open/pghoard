@@ -2,8 +2,7 @@ import io
 import tarfile
 import time
 from pathlib import Path
-from tempfile import NamedTemporaryFile
-from typing import Any, Dict, Union
+from typing import Any, BinaryIO, Dict, Union
 
 from rohmu import rohmufile
 
@@ -41,13 +40,14 @@ def switch_wal(connection):
     cur.close()
 
 
-def dict_to_fp(fp, data: Dict[str, Any], tar_name: str) -> int:
+def dict_to_file_obj(fileobj: BinaryIO, data: Dict[str, Any], tar_name: str) -> int:
+    """Dumps data into a compressed tar file and writes to fileobj, returns the size of the resulting file"""
     blob = io.BytesIO(json_encode(data, binary=True))
     ti = tarfile.TarInfo(name=tar_name)
     ti.size = len(blob.getbuffer())
     ti.mtime = int(time.time())
 
-    with rohmufile.file_writer(compression_algorithm="snappy", compression_level=0, fileobj=fp) as output_obj:
+    with rohmufile.file_writer(compression_algorithm="snappy", compression_level=0, fileobj=fileobj) as output_obj:
         with tarfile.TarFile(fileobj=output_obj, mode="w") as output_tar:
             output_tar.addfile(ti, blob)
 
@@ -56,11 +56,11 @@ def dict_to_fp(fp, data: Dict[str, Any], tar_name: str) -> int:
 
 def dict_to_tar_file(data: Dict[str, Any], file_path: Union[str, Path], tar_name: str) -> int:
     with open(file_path, "wb") as raw_output_obj:
-        return dict_to_fp(raw_output_obj, data=data, tar_name=tar_name)
+        return dict_to_file_obj(raw_output_obj, data=data, tar_name=tar_name)
 
 
 def dict_to_tar_data(data: Dict[str, Any], tar_name: str) -> bytes:
-    with NamedTemporaryFile(suffix=".tmp") as raw_output_obj:
-        dict_to_fp(raw_output_obj, data=data, tar_name=tar_name)
+    with io.BytesIO() as raw_output_obj:
+        dict_to_file_obj(raw_output_obj, data=data, tar_name=tar_name)
         raw_output_obj.seek(0)
         return raw_output_obj.read()

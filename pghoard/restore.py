@@ -24,6 +24,7 @@ import tempfile
 import time
 import uuid
 # ignore pylint/distutils issue, https://github.com/PyCQA/pylint/issues/73
+from dataclasses import dataclass, field
 from distutils.version import \
     LooseVersion  # pylint: disable=no-name-in-module,import-error
 from threading import RLock
@@ -53,49 +54,30 @@ class FileInfoType(StrEnum):
 
 
 class FileInfo(abc.ABC):
-    def __init__(self, size: int, file_type: FileInfoType, new_name: Optional[str] = None):
-        self.size: int = size
-        self.id = str(uuid.uuid4())
-        self.new_name = new_name
-        self.file_type = file_type
-
-    def __repr__(self):
-        return f"{self.new_name} (size={self.size}, file_type={self.file_type})"
+    size: int
+    file_type: FileInfoType
+    id: str
+    new_name: Optional[str]
 
 
+# This needs to be refactored in favor of kw_only=True when Python 3.10+ is widely used
+@dataclass(frozen=True)
 class FilePathInfo(FileInfo):
-    def __init__(self, name: str, size: int, new_name: Optional[str] = None, file_type: FileInfoType = FileInfoType.regular):
-        self.name: str = name
-        super().__init__(size=size, new_name=new_name, file_type=file_type)
-
-    def __eq__(self, other):
-        return isinstance(other, FilePathInfo) and self.name == other.name and self.size == other.size \
-               and self.new_name == other.new_name and self.file_type == other.file_type
-
-    def __repr__(self):
-        return f"{self.name} (size={self.size}, file_type={self.file_type})"
+    size: int
+    name: str
+    id: str = field(default_factory=lambda: str(uuid.uuid4()), compare=False)
+    file_type: FileInfoType = FileInfoType.regular
+    new_name: Optional[str] = None
 
 
+@dataclass(frozen=True)
 class FileDataInfo(FileInfo):
-    def __init__(
-        self,
-        data: bytes,
-        size: int,
-        new_name: Optional[str] = None,
-        metadata: Optional[Dict] = None,
-        file_type: FileInfoType = FileInfoType.regular
-    ):
-        self.data: bytes = data
-        self.metadata = metadata
-        super().__init__(size=size, new_name=new_name, file_type=file_type)
-
-    def __eq__(self, other):
-        return isinstance(other, FileDataInfo) and self.data == other.data and self.size == other.size \
-               and self.new_name == other.new_name and self.metadata == other.metadata \
-               and self.file_type == other.file_type
-
-    def __repr__(self):
-        return f"<data> (size={self.size}, file_type={self.file_type}, metadata={self.metadata})"
+    size: int
+    data: bytes = field(repr=False)
+    id: str = field(default_factory=lambda: str(uuid.uuid4()), compare=False)
+    file_type: FileInfoType = FileInfoType.regular
+    new_name: Optional[str] = None
+    metadata: Optional[Dict] = None
 
 
 def create_signal_file(file_path):

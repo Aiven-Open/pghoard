@@ -502,7 +502,8 @@ class PGBaseBackup(PGHoardThread):
         return CompressionData.from_config(self.config)
 
     def fetch_all_data_files_hashes(self) -> Dict[str, int]:
-        """Download delta stats from all usual backups of the latest format - hashes with sizes"""
+        """Download delta stats from all usual backups of the latest format - the keys are file hashes,
+        the values are the size of the files in bytes"""
         hashes: Dict[str, int] = {}
 
         for backup in self.get_remote_basebackups_info(self.site):
@@ -654,8 +655,8 @@ class PGBaseBackup(PGHoardThread):
 
                         existing_hashes = self.fetch_all_data_files_hashes()
                         new_hashes = {
-                            k: delta_stats.hexdigests_sizes[k]
-                            for k in set(delta_stats.hexdigests_sizes).difference(set(existing_hashes))
+                            hexdigest: delta_stats.hexdigests_sizes[hexdigest]
+                            for hexdigest in set(delta_stats.hexdigests_sizes).difference(set(existing_hashes))
                         }
 
                         planned_chunks_count = math.ceil(

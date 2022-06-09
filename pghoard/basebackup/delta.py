@@ -125,9 +125,6 @@ class DeltaBaseBackup:
 
         result_hash = hashlib.blake2s()
 
-        def update_hash(data):
-            result_hash.update(data)
-
         with NamedTemporaryFile(dir=temp_dir, prefix=os.path.basename(chunk_path), suffix=".tmp") as raw_output_obj:
             rohmufile.write_file(
                 input_obj=file_obj,
@@ -136,7 +133,7 @@ class DeltaBaseBackup:
                 compression_level=self.compression_data.level,
                 rsa_public_key=self.encryption_data.rsa_public_key,
                 log_func=self.log.info,
-                data_callback=update_hash
+                data_callback=result_hash.update
             )
             result_size = raw_output_obj.tell()
             raw_output_obj.seek(0)
