@@ -7,6 +7,8 @@ See LICENSE for details
 import datetime
 import json
 import os
+from pathlib import Path
+from typing import Any, Dict
 
 import pytest
 from rohmu.errors import Error
@@ -50,7 +52,7 @@ class TestCommon(PGHoardTestCase):
         os.environ["HOME"] = original_home
 
     def test_json_serialization(self, tmpdir):
-        ob = {
+        ob: Dict[str, Any] = {
             "foo": [
                 "bar",
                 "baz",
@@ -58,9 +60,10 @@ class TestCommon(PGHoardTestCase):
             ],
             "t": datetime.datetime(2015, 9, 1, 4, 0, 0),
             "f": 0.42,
+            "path": Path("/some/path")
         }
         res = json.dumps(ob, default=default_json_serialization, separators=(",", ":"), sort_keys=True)
-        assert res == '{"f":0.42,"foo":["bar","baz",42],"t":"2015-09-01T04:00:00Z"}'
+        assert res == '{"f":0.42,"foo":["bar","baz",42],"path":"/some/path","t":"2015-09-01T04:00:00Z"}'
 
         assert isinstance(json_encode(ob), str)
         assert isinstance(json_encode(ob, binary=True), bytes)
@@ -71,7 +74,7 @@ class TestCommon(PGHoardTestCase):
         write_json_file(output_file, ob)
         with open(output_file, "r") as fp:
             ob2 = json.load(fp)
-        ob_ = dict(ob, t=ob["t"].isoformat() + "Z")
+        ob_ = dict(ob, t=ob["t"].isoformat() + "Z", path=str(ob["path"]))
         assert ob2 == ob_
 
         write_json_file(output_file, ob, compact=True)
