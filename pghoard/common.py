@@ -246,6 +246,8 @@ def default_json_serialization(obj):
             return obj.isoformat().replace("+00:00", "Z")
         # assume UTC for datetime objects without a timezone
         return obj.isoformat() + "Z"
+    elif isinstance(obj, Path):
+        return str(obj)
     return None
 
 
