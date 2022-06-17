@@ -256,11 +256,14 @@ class DeltaBaseBackup:
 
         return True
 
-    def _upload_single_delta_files(self, todo_hexdigests: Set[str], snapshotter: Snapshotter) -> UploadedFilesMetric:
+    def _upload_single_delta_files(
+        self, todo_hexdigests: Set[str], snapshotter: Snapshotter, progress: float
+    ) -> UploadedFilesMetric:
         """Upload delta files, if upload fails - try to clean up uploaded files"""
         # Keep track of the new hashes submitted with the current upload, so we can clean them up in case of error
         new_hashes: Dict[str, Tuple[int, int]] = {}
         callback_queue = CallbackQueue()
+        hexdigests_count = len(todo_hexdigests)
 
         sorted_todo_hexdigests = sorted(
             todo_hexdigests, key=lambda hexdigest: -snapshotter.hexdigest_to_snapshotfiles[hexdigest][0].file_size
@@ -270,7 +273,8 @@ class DeltaBaseBackup:
             self._submit_files_in_thread, snapshotter=snapshotter, callback_queue=callback_queue, new_hashes=new_hashes
         )
         with Pool(self.parallel) as p:
-            for hexdigest, res in zip(iterable_as_list, p.imap(submit_files, iterable_as_list)):
+            for idx, hexdigest_result in enumerate(zip(iterable_as_list, p.imap(submit_files, iterable_as_list))):
+                hexdigest, res = hexdigest_result
                 if not res:
                     self.log.error(
                         "Error while processing digest for upload %r, waiting for workers pool to shutdown", hexdigest
@@ -290,6 +294,12 @@ class DeltaBaseBackup:
                             self.log.warning("Object with key %r does not exist, skipping", key)
 
                     raise BackupFailure("Error while uploading backup files")
+
+                self.metrics.gauge(
+                    "pghoard.basebackup_estimated_progress",
+                    float(progress + (idx + 1) * (100 - progress) / hexdigests_count),
+                    tags={"site": self.site}
+                )
 
         result_metric = UploadedFilesMetric()
         for size, stored_size in new_hashes.values():
@@ -338,13 +348,14 @@ class DeltaBaseBackup:
 
         return delta_chunks, todo_hexdigests
 
-    def _upload_chunks(self, delta_chunks) -> Tuple[UploadedFilesMetric, List[Dict[str, Any]]]:
+    def _upload_chunks(self, delta_chunks, chunks_max_progress: float) -> Tuple[UploadedFilesMetric, List[Dict[str, Any]]]:
         """Upload small files grouped into chunks to save on latency and requests costs"""
         chunk_files = self.chunk_uploader.create_and_upload_chunks(
             chunks=delta_chunks,
             data_file_format=self.data_file_format,
             temp_base_dir=self.compressed_base,
-            file_type=FileType.Basebackup_delta_chunk
+            file_type=FileType.Basebackup_delta_chunk,
+            chunks_max_progress=chunks_max_progress,
         )
         total_chunks_size = sum(item["input_size"] for item in chunk_files)
         uploaded_chunks_size = sum(item["result_size"] for item in chunk_files)
@@ -403,11 +414,13 @@ class DeltaBaseBackup:
                 chunk_size=self.site_config["basebackup_delta_mode_chunk_size"],
                 skip_hexdigests=set(self.tracked_snapshot_files.keys())
             )
+            delta_chunks_count = len(delta_chunks)
             self.log.info(
-                "Submitting %r delta chunks from %r files in total for upload", len(delta_chunks),
+                "Submitting %r delta chunks from %r files in total for upload", delta_chunks_count,
                 sum(len(chunk) for chunk in delta_chunks)
             )
-            chunks_metric, chunk_files = self._upload_chunks(delta_chunks)
+            chunks_max_progress = delta_chunks_count * 100.0 / (delta_chunks_count + len(todo_hexdigests))
+            chunks_metric, chunk_files = self._upload_chunks(delta_chunks, chunks_max_progress=chunks_max_progress)
 
             self.log.info(
                 "Submitting hashes for upload: %r, total hashes in the snapshot: %r", len(todo_hexdigests),
@@ -416,6 +429,7 @@ class DeltaBaseBackup:
             delta_metric = self._upload_single_delta_files(
                 todo_hexdigests=todo_hexdigests,
                 snapshotter=snapshotter,
+                progress=chunks_max_progress,
             )
 
             uploaded_size = chunks_metric.stored_size + delta_metric.stored_size

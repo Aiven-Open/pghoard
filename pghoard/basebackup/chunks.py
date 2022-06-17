@@ -268,7 +268,8 @@ class ChunkUploader:
         data_file_format: Callable[[int], str],
         temp_base_dir: Path,
         delta_stats: Optional[DeltaStats] = None,
-        file_type: FileType = FileType.Basebackup_chunk
+        file_type: FileType = FileType.Basebackup_chunk,
+        chunks_max_progress: float = 100.0
     ) -> List[Dict[str, Any]]:
         start_time = time.monotonic()
         chunk_files = []
@@ -290,7 +291,7 @@ class ChunkUploader:
                     chunk_files.append(task_to_wait.result())
                     self.metrics.gauge(
                         "pghoard.basebackup_estimated_progress",
-                        float(len(chunk_files) * 100 / len(chunks)),
+                        float(len(chunk_files) * chunks_max_progress / len(chunks)),
                         tags={"site": self.site}
                     )
                 if self.chunks_on_disk < max_chunks_on_disk:
@@ -317,7 +318,7 @@ class ChunkUploader:
                 chunk_files.append(task.result())
                 self.metrics.gauge(
                     "pghoard.basebackup_estimated_progress",
-                    float(len(chunk_files) * 100 / len(chunks)),
+                    float(len(chunk_files) * chunks_max_progress / len(chunks)),
                     tags={"site": self.site}
                 )
 

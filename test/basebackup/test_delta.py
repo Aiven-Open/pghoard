@@ -1,10 +1,13 @@
 # Copyright (c) 2022 Aiven, Helsinki, Finland. https://aiven.io/
+import random
+import string
 from pathlib import Path
 from queue import Empty
 from test.base import CONSTANT_TEST_RSA_PUBLIC_KEY
-from typing import Any, Dict, Generator, Tuple
+from typing import Any, Callable, Dict, Generator, Tuple
 from unittest.mock import MagicMock, Mock
 
+import mock
 import pytest
 from mock import patch
 from rohmu.delta.common import SnapshotFile, SnapshotResult, SnapshotState
@@ -12,6 +15,7 @@ from rohmu.delta.snapshot import Snapshotter
 from rohmu.errors import FileNotFoundFromStorageError
 
 from pghoard.basebackup import ChunkUploader, DeltaBaseBackup
+from pghoard.basebackup.chunks import HashFile
 from pghoard.basebackup.delta import UploadedFilesMetric
 from pghoard.common import (BackupFailure, BaseBackupFormat, CallbackEvent, CallbackQueue, CompressionData, EncryptionData)
 from pghoard.metrics import Metrics
@@ -33,17 +37,32 @@ def fixture_snapshotter(delta_paths: Tuple[Path, Path]) -> Snapshotter:
     return Snapshotter(globs=["**/*"], src=src, dst=dst)
 
 
+DeltaFilesGeneratorType = Callable[[int], Generator[Tuple[Path, str], None, None]]
+
+
+@pytest.fixture(name="delta_files_generator")
+def fixture_delta_files_generator(delta_paths: Tuple[Path, Path]) -> DeltaFilesGeneratorType:
+    def delta_files(n: int):
+        src, _ = delta_paths
+        for i in range(n):
+            file_name = Path(f"test_{i}.dat")
+
+            with open(src / file_name, "w") as f:
+                for _ in range(4):
+                    f.write(random.choice(string.ascii_letters) * 50)
+
+            with HashFile(path=src / file_name) as hash_file:
+                hash_file.read()
+                file_hash = hash_file.hash.hexdigest()
+
+            yield file_name, file_hash
+
+    return delta_files
+
+
 @pytest.fixture(name="delta_file")
-def fixture_delta_file(delta_paths: Tuple[Path, Path]) -> Tuple[Path, str]:
-    src, _ = delta_paths
-    file_name = Path("test.dat")
-
-    with open(src / file_name, "w") as f:
-        f.write("a" * 200)
-
-    file_hash = "2b033f9f5ba9cf20671da79e492f41545e673b562603945ffed09662fd92321a"
-
-    return file_name, file_hash
+def fixture_delta_file(delta_files_generator: DeltaFilesGeneratorType) -> Tuple[Path, str]:
+    return next(delta_files_generator(1))
 
 
 @pytest.fixture(name="deltabasebackup")
@@ -403,10 +422,35 @@ def test_upload_single_delta_files_cleanup_after_error(
         with snapshotter.lock:
             deltabasebackup._snapshot(snapshotter=snapshotter)  # pylint: disable=protected-access
             with pytest.raises(BackupFailure):
-                deltabasebackup._upload_single_delta_files(todo_hexdigests={file_hash}, snapshotter=snapshotter)  # pylint: disable=protected-access
-            deltabasebackup.storage.delete_key.assert_called_with(
-                "abc/basebackup_delta/2b033f9f5ba9cf20671da79e492f41545e673b562603945ffed09662fd92321a"
+                deltabasebackup._upload_single_delta_files(todo_hexdigests={file_hash}, snapshotter=snapshotter, progress=0)  # pylint: disable=protected-access
+            deltabasebackup.storage.delete_key.assert_called_with(f"abc/basebackup_delta/{file_hash}")
+
+
+@pytest.mark.parametrize("files_count, initial_progress", [(1, 0), (4, 0), (10, 0), (1, 90), (15, 10)])
+def test_upload_single_delta_files_progress(
+    deltabasebackup: DeltaBaseBackup, snapshotter: Snapshotter, delta_files_generator: DeltaFilesGeneratorType,
+    files_count: int, initial_progress: float
+) -> None:
+    delta_files = list(delta_files_generator(files_count))
+    delta_hashes = {file_hash for _, file_hash in delta_files}
+
+    with patch.object(deltabasebackup, "_delta_upload_hexdigest") as mock_delta_upload_hexdigest, \
+            patch.object(deltabasebackup, "metrics") as mock_metrics:
+        mock_delta_upload_hexdigest.side_effect = [(200, 10, file_hash, True) for file_hash in delta_hashes]
+        snapshotter.update_snapshot_file_data = Mock()
+        with snapshotter.lock:
+            deltabasebackup._snapshot(snapshotter=snapshotter)  # pylint: disable=protected-access
+            deltabasebackup._upload_single_delta_files(  # pylint: disable=protected-access
+                todo_hexdigests=delta_hashes, snapshotter=snapshotter, progress=initial_progress
             )
+            expected_calls = [
+                mock.call(
+                    "pghoard.basebackup_estimated_progress",
+                    initial_progress + (idx + 1) * (100 - initial_progress) / files_count,
+                    tags={"site": "delta"}
+                ) for idx in range(files_count)
+            ]
+            assert mock_metrics.gauge.mock_calls == expected_calls
 
 
 def test_upload_single_delta_files(
@@ -418,7 +462,9 @@ def test_upload_single_delta_files(
         mock_delta_upload_hexdigest.return_value = (200, 10, file_hash, True)
         with snapshotter.lock:
             deltabasebackup._snapshot(snapshotter=snapshotter)  # pylint: disable=protected-access
-            metric = deltabasebackup._upload_single_delta_files(todo_hexdigests={file_hash}, snapshotter=snapshotter)  # pylint: disable=protected-access
+            metric = deltabasebackup._upload_single_delta_files(  # pylint: disable=protected-access
+                todo_hexdigests={file_hash}, snapshotter=snapshotter, progress=0
+            )
             assert metric == UploadedFilesMetric(input_size=200, stored_size=10, count=1)
 
 
