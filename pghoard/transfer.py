@@ -129,6 +129,7 @@ class TransferAgent(PGHoardThread):
                     "basebackup": EMPTY.copy(),
                     "basebackup_chunk": EMPTY.copy(),
                     "basebackup_delta": EMPTY.copy(),
+                    "basebackup_delta_chunk": EMPTY.copy(),
                     "timeline": EMPTY.copy(),
                     "xlog": EMPTY.copy(),
                 }
@@ -212,7 +213,10 @@ class TransferAgent(PGHoardThread):
                 if oper == TransferOperation.Upload:
                     if filetype == FileType.Wal:
                         self.state[site][oper]["xlog"]["xlogs_since_basebackup"] += 1
-                    elif filetype in {FileType.Basebackup, FileType.Basebackup_chunk}:
+                    elif filetype in {
+                        FileType.Basebackup, FileType.Basebackup_chunk, FileType.Basebackup_delta,
+                        FileType.Basebackup_delta_chunk
+                    }:
                         # reset corresponding xlog stats at basebackup
                         self.state[site][oper]["xlog"]["xlogs_since_basebackup"] = 0
                     self.metrics.gauge(

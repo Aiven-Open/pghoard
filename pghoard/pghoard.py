@@ -35,7 +35,7 @@ from pghoard import config, logutil, metrics, version, wal
 from pghoard.basebackup import PGBaseBackup
 from pghoard.common import (
     BaseBackupFormat, BaseBackupMode, CallbackEvent, FileType, FileTypePrefixes, create_alert_file,
-    extract_pghoard_bb_v2_metadata, extract_pghoard_delta_v1_metadata, get_object_storage_config,
+    extract_pghoard_bb_v2_metadata, extract_pghoard_delta_metadata, get_object_storage_config,
     replication_connection_string_and_slot_using_pgpass, write_json_file
 )
 from pghoard.compressor import (
@@ -342,7 +342,9 @@ class PGHoard:
         keep_hexdigests = set()
 
         basebackup_data_files = list()
-        delta_backups_to_keep = filter(lambda x: x["metadata"]["format"] == BaseBackupFormat.delta_v1, backups_to_keep)
+        delta_backups_to_keep = filter(
+            lambda x: x["metadata"]["format"] in (BaseBackupFormat.delta_v1, BaseBackupFormat.delta_v2), backups_to_keep
+        )
         for backup_name in [basebackup_name_to_delete] + [back["name"] for back in delta_backups_to_keep]:
             delta_backup_key = os.path.join(self._get_site_prefix(site), "basebackup", backup_name)
             bmeta_compressed = storage.get_contents_to_string(delta_backup_key)[0]
@@ -351,7 +353,7 @@ class PGHoard:
                 metadata=metadata,
                 key_lookup=config.key_lookup_for_site(self.config, site)
             ) as input_obj:
-                meta = extract_pghoard_delta_v1_metadata(input_obj)
+                meta = extract_pghoard_delta_metadata(input_obj)
 
             manifest = meta["manifest"]
             snapshot_result = manifest["snapshot_result"]
@@ -364,6 +366,16 @@ class PGHoard:
             if backup_name != basebackup_name_to_delete:
                 # Keep data file in case if there is still a reference from other backups
                 keep_hexdigests |= backup_hexdigests
+            else:
+                # Add bundles to remove
+                for chunk in meta.get("chunks", []):
+                    basebackup_data_files.append(
+                        os.path.join(
+                            self._get_site_prefix(site),
+                            FileTypePrefixes[FileType.Basebackup_delta_chunk],
+                            chunk["chunk_filename"],
+                        )
+                    )
 
         # Remove unreferenced files
         extra_hexdigests = set(all_hexdigests).difference(keep_hexdigests)
@@ -395,7 +407,7 @@ class PGHoard:
                             chunk["chunk_filename"],
                         )
                     )
-        elif metadata.get("format") == BaseBackupFormat.delta_v1:
+        elif metadata.get("format") in (BaseBackupFormat.delta_v1, BaseBackupFormat.delta_v2):
             basebackup_data_files.extend(self._get_delta_basebackup_files(site, storage, metadata, basebackup, basebackups))
 
         self.log.debug("Deleting basebackup datafiles: %r", ", ".join(basebackup_data_files))

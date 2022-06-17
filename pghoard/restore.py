@@ -27,14 +27,16 @@ import uuid
 from distutils.version import \
     LooseVersion  # pylint: disable=no-name-in-module,import-error
 from threading import RLock
-from typing import Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Union
 
 from psycopg2.extensions import adapt
 from requests import Session
 from rohmu import dates, get_transfer, rohmufile
 from rohmu.errors import (Error, InvalidConfigurationError, MaybeRecoverableError)
 
-from pghoard.common import BaseBackupFormat, StrEnum
+from pghoard.common import (
+    BaseBackupFormat, FileType, FileTypePrefixes, StrEnum, download_backup_meta_file, extract_pghoard_delta_metadata
+)
 
 from . import common, config, logutil, version
 from .postgres_command import PGHOARD_HOST, PGHOARD_PORT
@@ -51,25 +53,24 @@ class FileInfoType(StrEnum):
 
 
 class FileInfo(abc.ABC):
-    def __init__(self, size, new_name, metadata, file_type):
+    def __init__(self, size: int, file_type: FileInfoType, new_name: Optional[str] = None):
         self.size: int = size
         self.id = str(uuid.uuid4())
         self.new_name = new_name
-        self.metadata = metadata
         self.file_type = file_type
+
+    def __repr__(self):
+        return f"{self.new_name} (size={self.size}, file_type={self.file_type})"
 
 
 class FilePathInfo(FileInfo):
-    def __init__(
-        self,
-        name: str,
-        size: int,
-        new_name: Optional[str] = None,
-        metadata: Optional[Dict] = None,
-        file_type: Optional[FileInfoType] = FileInfoType.regular
-    ):
+    def __init__(self, name: str, size: int, new_name: Optional[str] = None, file_type: FileInfoType = FileInfoType.regular):
         self.name: str = name
-        super().__init__(size=size, new_name=new_name, metadata=metadata, file_type=file_type)
+        super().__init__(size=size, new_name=new_name, file_type=file_type)
+
+    def __eq__(self, other):
+        return isinstance(other, FilePathInfo) and self.name == other.name and self.size == other.size \
+               and self.new_name == other.new_name and self.file_type == other.file_type
 
     def __repr__(self):
         return f"{self.name} (size={self.size}, file_type={self.file_type})"
@@ -82,10 +83,19 @@ class FileDataInfo(FileInfo):
         size: int,
         new_name: Optional[str] = None,
         metadata: Optional[Dict] = None,
-        file_type: Optional[FileInfoType] = FileInfoType.regular
+        file_type: FileInfoType = FileInfoType.regular
     ):
         self.data: bytes = data
-        super().__init__(size=size, new_name=new_name, metadata=metadata, file_type=file_type)
+        self.metadata = metadata
+        super().__init__(size=size, new_name=new_name, file_type=file_type)
+
+    def __eq__(self, other):
+        return isinstance(other, FileDataInfo) and self.data == other.data and self.size == other.size \
+               and self.new_name == other.new_name and self.metadata == other.metadata \
+               and self.file_type == other.file_type
+
+    def __repr__(self):
+        return f"<data> (size={self.size}, file_type={self.file_type}, metadata={self.metadata})"
 
 
 def create_signal_file(file_path):
@@ -388,16 +398,27 @@ class Restore:
         print("\nSelecting {!r} for restore".format(selected["name"]))
         return selected
 
-    def _get_delta_basebackup_data(self, site, metadata, basebackup_name):
-        basebackup_data_files = []
-        bmeta_compressed = self.storage.get_file_bytes(basebackup_name)
-        with rohmufile.file_reader(
-            fileobj=io.BytesIO(bmeta_compressed),
+    def _get_delta_basebackup_data(self, site: str, metadata: Dict[str, Any], basebackup_name: str):
+        bmeta, bmeta_compressed = download_backup_meta_file(
+            storage=self.storage.storage,
+            basebackup_path=basebackup_name,
             metadata=metadata,
-            key_lookup=config.key_lookup_for_site(self.config, site)
-        ) as input_obj:
-            bmeta = common.extract_pghoard_delta_v1_metadata(input_obj)
+            key_lookup=config.key_lookup_for_site(self.config, site),
+            extract_meta_func=extract_pghoard_delta_metadata
+        )
         self.log.debug("Delta backup metadata: %r", bmeta)
+
+        basebackup_data_files: List[Union[FilePathInfo, FileDataInfo]] = [
+            FilePathInfo(
+                name=os.path.join(
+                    self._get_site_prefix(site), FileTypePrefixes[FileType.Basebackup_delta_chunk], chunk["chunk_filename"]
+                ),
+                size=chunk["result_size"]
+            ) for chunk in bmeta.get("chunks", [])
+        ]
+
+        # We need the files from the main basebackup file too
+        basebackup_data_files.append(FileDataInfo(data=bmeta_compressed, metadata=metadata, size=0))
 
         delta_objects_path = os.path.join(self._get_site_prefix(site), "basebackup_delta")
 
@@ -428,8 +449,6 @@ class Restore:
                         file_type=FileInfoType.delta
                     )
                 )
-
-        basebackup_data_files.append(FileDataInfo(data=bmeta_compressed, metadata=metadata, size=0))
 
         return tablespaces, basebackup_data_files, empty_dirs
 
@@ -529,7 +548,7 @@ class Restore:
 
             basebackup_data_files = [FilePathInfo(name=basebackup["name"], size=basebackup["size"])]
 
-        elif metadata.get("format") == BaseBackupFormat.delta_v1:
+        elif metadata.get("format") in {BaseBackupFormat.delta_v1, BaseBackupFormat.delta_v2}:
             tablespaces, basebackup_data_files, empty_dirs = self._get_delta_basebackup_data(
                 site, metadata, basebackup["name"]
             )
@@ -914,9 +933,9 @@ class ChunkFetcher:
         file_format = metadata.get("format")
         if not file_format:
             return base_args
-        elif file_format in {BaseBackupFormat.v1, BaseBackupFormat.v2, BaseBackupFormat.delta_v1}:
+        elif file_format in {BaseBackupFormat.v1, BaseBackupFormat.v2, BaseBackupFormat.delta_v1, BaseBackupFormat.delta_v2}:
             extra_args = ["--exclude", ".pghoard_tar_metadata.json", "--transform", "s,^pgdata/,,"]
-            if file_format == BaseBackupFormat.delta_v1:
+            if file_format in {BaseBackupFormat.delta_v1, BaseBackupFormat.delta_v2}:
                 extra_args += ["--exclude", ".manifest.json"]
             if self.tablespaces:
                 extra_args.append("--absolute-names")

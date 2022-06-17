@@ -11,24 +11,40 @@ import time
 from copy import deepcopy
 from distutils.version import LooseVersion
 from os import makedirs
-from pathlib import Path
 from queue import Queue
 from subprocess import check_call
+from typing import Any, Dict
 
 import dateutil.parser
 import psycopg2
 import pytest
+from mock import ANY, Mock
+from mock.mock import patch
 from rohmu import get_transfer
 
 from pghoard import common, metrics
 from pghoard.basebackup import PGBaseBackup
-from pghoard.common import BaseBackupMode, FileType
+from pghoard.common import (BaseBackupFormat, BaseBackupMode, CallbackEvent, CallbackQueue)
 from pghoard.restore import Restore, RestoreError
 
-from .conftest import PGTester
-from .util import switch_wal
+from ..conftest import PGTester
+from ..util import switch_wal
 
 Restore.log_tracebacks = True
+
+SIMPLE_BACKUP_CONFIG: Dict[str, Any] = {
+    "backup_sites": {
+        "foosite": {
+            "encryption_key_id": None,
+            "encryption_keys": {},
+            "prefix": "a/b/c",
+        },
+    },
+    "compression": {
+        "algorithm": "snappy",
+        "level": 10
+    },
+}
 
 
 class TestPGBaseBackup:
@@ -49,7 +65,7 @@ LABEL: pg_basebackup base backup
                 )
             tfile.add(os.path.join(td, "backup_label"), arcname="backup_label")
         pgb = PGBaseBackup(
-            config=None,
+            config=SIMPLE_BACKUP_CONFIG,
             site="foosite",
             connection_info=None,
             basebackup_path=None,
@@ -80,7 +96,7 @@ LABEL: pg_basebackup base backup
                 s3.write("s3\n")
 
         pgb = PGBaseBackup(
-            config=None,
+            config=SIMPLE_BACKUP_CONFIG,
             site="foosite",
             connection_info=None,
             basebackup_path=None,
@@ -139,7 +155,7 @@ LABEL: pg_basebackup base backup
         # This will fail because top-level items may not be missing
         faketar = FakeTar()
         with pytest.raises(FileNotFoundError):
-            pgb.write_files_to_tar(files=ftbu, tar=faketar)
+            pgb.chunk_uploader.write_files_to_tar(files=ftbu, tar=faketar)
 
         # Recreate test files and unlink just a subdirectory item
         create_test_files()
@@ -147,7 +163,7 @@ LABEL: pg_basebackup base backup
 
         # Now adding files should work and we should end up with every file except for sub2 in the archive
         faketar = FakeTar()
-        pgb.write_files_to_tar(files=ftbu, tar=faketar)
+        pgb.chunk_uploader.write_files_to_tar(files=ftbu, tar=faketar)
         arcnameset = set(item[1] for item in faketar.items)
         assert len(arcnameset) == len(faketar.items)
         expected_items = bunameset - {"pgdata/global/sub2.test"}
@@ -175,7 +191,7 @@ LABEL: pg_basebackup base backup
             f.write("a" * 50000)
 
         pgb = PGBaseBackup(
-            config=None,
+            config=SIMPLE_BACKUP_CONFIG,
             site="foosite",
             connection_info=None,
             basebackup_path=None,
@@ -317,7 +333,7 @@ LABEL: pg_basebackup base backup
 
         # lets grab the backup label details for what we restored
         pgb = PGBaseBackup(
-            config=None,
+            config=SIMPLE_BACKUP_CONFIG,
             site="foosite",
             connection_info=None,
             basebackup_path=None,
@@ -809,19 +825,76 @@ LABEL: pg_basebackup base backup
         assert entry["metadata"]["backup-decision-time"] == now - datetime.timedelta(seconds=30)
         assert entry["metadata"]["normalized-backup-time"] is None
 
-    def test_chunk_path_to_middle_path_name(self):
-        assert PGBaseBackup.chunk_path_to_middle_path_name(
-            Path("/a/b/2022-04-19_09-27_0.00000000.pghoard"), FileType.Basebackup
-        ) == (Path("basebackup"), "2022-04-19_09-27_0.00000000.pghoard")
+    def test_run_safe_unsupported_basebackup(self):
+        config = SIMPLE_BACKUP_CONFIG.copy()
+        config["backup_sites"]["foosite"]["basebackup_mode"] = "non-existing"
+        callback_queue = CallbackQueue()
+        callback_queue.put = Mock()
+        pgb = PGBaseBackup(
+            config=SIMPLE_BACKUP_CONFIG,
+            site="foosite",
+            connection_info=None,
+            callback_queue=callback_queue,
+            basebackup_path=None,
+            compression_queue=None,
+            storage=None,
+            transfer_queue=None,
+            metrics=metrics.Metrics(statsd={})
+        )
+        pgb.run_safe()
+        callback_queue.put.assert_called_once_with(CallbackEvent(success=False, exception=ANY))
 
-        assert PGBaseBackup.chunk_path_to_middle_path_name(
-            Path("/a/b/2022-04-19_09-27_0/2022-04-19_09-27_0.00000001.pghoard"), FileType.Basebackup_chunk
-        ) == (Path("basebackup_chunk"), "2022-04-19_09-27_0/2022-04-19_09-27_0.00000001.pghoard")
+    def test_fetch_all_data_files_hashes(self):
+        pgb = PGBaseBackup(
+            config=SIMPLE_BACKUP_CONFIG,
+            site="foosite",
+            connection_info=None,
+            callback_queue=None,
+            basebackup_path=None,
+            compression_queue=None,
+            storage=None,
+            transfer_queue=None,
+            metrics=metrics.Metrics(statsd={})
+        )
 
-        assert PGBaseBackup.chunk_path_to_middle_path_name(
-            Path("/a/b/0fdc9365aea5447f9a16da8104dc9fcc.delta"), FileType.Basebackup_delta
-        ) == (Path("basebackup_delta"), "0fdc9365aea5447f9a16da8104dc9fcc.delta")
+        def fake_download_backup_meta_file(basebackup_path: str, **kwargs):  # pylint: disable=unused-argument
+            meta = {}
+            # Local base backup name includes path to the backup file
+            name_prefix = os.path.join(SIMPLE_BACKUP_CONFIG["backup_sites"]["foosite"]["prefix"], "basebackup")
+            if basebackup_path == os.path.join(name_prefix, "backup2"):
+                meta = {
+                    "delta_stats": {
+                        "hashes": {
+                            "8ee55c458dde7fd7ea43b946dfb3c9713a360280ee2927e600b9d6d4630ef3fd": 1636,
+                            "7e0c70d50c0ccd9ca4cb8c6837fbfffb4ef7e885aa1c6370fcfc307541a03e27": 8192,
+                        }
+                    }
+                }
+            elif basebackup_path == os.path.join(name_prefix, "backup3"):
+                meta = {
+                    "delta_stats": {
+                        "hashes": {
+                            "8ee55c458dde7fd7ea43b946dfb3c9713a360280ee2927e600b9d6d4630ef3fd": 1636,
+                            "7e0c70d50c0ccd9ca4cb8c6837fbfffb4ef7e885aa1c6370fcfc307541a03e28": 800,
+                        }
+                    }
+                }
+            elif basebackup_path == os.path.join(name_prefix, "backup4"):
+                meta = {"delta_stats": {"hashes": {}}}
 
-        for file_type in {FileType.Wal, FileType.Metadata, FileType.Timeline}:
-            with pytest.raises(NotImplementedError):
-                assert PGBaseBackup.chunk_path_to_middle_path_name(Path("/a/b/000000010000000000000002"), file_type)
+            return meta, b"some content"
+        with patch.object(pgb, "get_remote_basebackups_info") as mock_get_remote_basebackups_info, \
+                patch("pghoard.basebackup.download_backup_meta_file", new=fake_download_backup_meta_file):
+            mock_get_remote_basebackups_info.return_value = [{
+                "name": f"backup{idx}",
+                "metadata": {
+                    "format": bb_format
+                }
+            } for idx, bb_format in enumerate([BaseBackupFormat.v1] + [BaseBackupFormat.v2] * 3 +
+                                              [BaseBackupFormat.delta_v1, BaseBackupFormat.delta_v2])]
+            res = pgb.fetch_all_data_files_hashes()
+            assert res == {
+                "8ee55c458dde7fd7ea43b946dfb3c9713a360280ee2927e600b9d6d4630ef3fd": 1636,
+                "7e0c70d50c0ccd9ca4cb8c6837fbfffb4ef7e885aa1c6370fcfc307541a03e27": 8192,
+                "7e0c70d50c0ccd9ca4cb8c6837fbfffb4ef7e885aa1c6370fcfc307541a03e28": 800
+            }

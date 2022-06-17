@@ -5,27 +5,23 @@ Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
 import datetime
-import io
 import json
 import os
 import sys
-import tarfile
-import time
 from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
-# pylint: disable=attribute-defined-outside-init
-from rohmu import rohmufile
 
 import pghoard.pghoard as pghoard_module
-from pghoard import common
 from pghoard.common import (BaseBackupFormat, FileType, create_alert_file, delete_alert_file, write_json_file)
 from pghoard.pghoard import PGHoard
 from pghoard.pgutil import create_connection_string
 
 from .base import PGHoardTestCase
-from .util import switch_wal, wait_for_xlog
+from .util import dict_to_tar_file, switch_wal, wait_for_xlog
+
+# pylint: disable=attribute-defined-outside-init
 
 
 class TestPGHoard(PGHoardTestCase):
@@ -388,19 +384,7 @@ dbname|"""
                             }
                         }
                     }
-                    mtime = time.time()
-                    blob = io.BytesIO(common.json_encode(metadata, binary=True))
-                    ti = tarfile.TarInfo(name=".pghoard_tar_metadata.json")
-                    ti.size = len(blob.getbuffer())
-                    ti.mtime = mtime
-
-                    with open(bb_path, "wb") as fp:
-                        with rohmufile.file_writer(
-                            compression_algorithm="snappy", compression_level=0, fileobj=fp
-                        ) as output_obj:
-                            with tarfile.TarFile(fileobj=output_obj, mode="w") as tar:
-                                tar.addfile(ti, blob)
-                            input_size = output_obj.tell()
+                    input_size = dict_to_tar_file(data=metadata, file_path=bb_path, tar_name=".pghoard_tar_metadata.json")
 
                     for h in hexdigests:
                         with open(Path(basebackup_delta_path) / h, "w") as digest_file, \
@@ -412,7 +396,7 @@ dbname|"""
                         json.dump({
                             "start-wal-segment": wal_start,
                             "start-time": start_time.isoformat(),
-                            "format": BaseBackupFormat.delta_v1,
+                            "format": BaseBackupFormat.delta_v2,
                             "compression-algorithm": "snappy",
                             "original-file-size": input_size
                         }, fp)
