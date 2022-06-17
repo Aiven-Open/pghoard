@@ -1,3 +1,4 @@
+# Copyright (c) 2022 Aiven, Helsinki, Finland. https://aiven.io/
 import os
 import time
 from pathlib import Path

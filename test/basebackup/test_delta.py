@@ -14,9 +14,8 @@ from rohmu.delta.common import SnapshotFile, SnapshotResult, SnapshotState
 from rohmu.delta.snapshot import Snapshotter
 from rohmu.errors import FileNotFoundFromStorageError
 
-from pghoard.basebackup import ChunkUploader, DeltaBaseBackup
-from pghoard.basebackup.chunks import HashFile
-from pghoard.basebackup.delta import UploadedFilesMetric
+from pghoard.basebackup.chunks import ChunkUploader, HashFile
+from pghoard.basebackup.delta import DeltaBaseBackup, UploadedFilesMetric
 from pghoard.common import (BackupFailure, BaseBackupFormat, CallbackEvent, CallbackQueue, CompressionData, EncryptionData)
 from pghoard.metrics import Metrics
 from pghoard.transfer import TransferQueue

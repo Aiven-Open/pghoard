@@ -23,7 +23,7 @@ from mock.mock import patch
 from rohmu import get_transfer
 
 from pghoard import common, metrics
-from pghoard.basebackup import PGBaseBackup
+from pghoard.basebackup.base import PGBaseBackup
 from pghoard.common import (BaseBackupFormat, BaseBackupMode, CallbackEvent, CallbackQueue)
 from pghoard.restore import Restore, RestoreError
 
@@ -884,7 +884,7 @@ LABEL: pg_basebackup base backup
 
             return meta, b"some content"
         with patch.object(pgb, "get_remote_basebackups_info") as mock_get_remote_basebackups_info, \
-                patch("pghoard.basebackup.download_backup_meta_file", new=fake_download_backup_meta_file):
+                patch("pghoard.basebackup.base.download_backup_meta_file", new=fake_download_backup_meta_file):
             mock_get_remote_basebackups_info.return_value = [{
                 "name": f"backup{idx}",
                 "metadata": {

@@ -32,7 +32,7 @@ from rohmu.errors import (FileNotFoundFromStorageError, InvalidConfigurationErro
 from rohmu.inotify import InotifyWatcher
 
 from pghoard import config, logutil, metrics, version, wal
-from pghoard.basebackup import PGBaseBackup
+from pghoard.basebackup.base import PGBaseBackup
 from pghoard.common import (
     BaseBackupFormat, BaseBackupMode, CallbackEvent, FileType, FileTypePrefixes, create_alert_file,
     download_backup_meta_file, extract_pghoard_bb_v2_metadata, extract_pghoard_delta_metadata, get_object_storage_config,
