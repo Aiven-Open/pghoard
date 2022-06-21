@@ -718,11 +718,11 @@ class PGBaseBackup(PGHoardThread):
                     # and this assumption greatly simplifies the logic.
                     task_to_wait = pending_compress_and_encrypt_tasks.pop(0)
                     chunk_files.append(task_to_wait.result())
-                    self.metrics.gauge(
-                        "pghoard.basebackup_estimated_progress",
-                        float(len(chunk_files) * 100 / len(chunks)),
-                        tags={"site": self.site}
-                    )
+                self.metrics.gauge(
+                    "pghoard.basebackup_estimated_progress",
+                    float(len(chunk_files) * 100 / len(chunks)),
+                    tags={"site": self.site}
+                )
                 if self.chunks_on_disk < max_chunks_on_disk:
                     chunk_id = i + 1
                     task = tpe.submit(
