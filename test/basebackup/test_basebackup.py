@@ -380,8 +380,37 @@ LABEL: pg_basebackup base backup
     def test_basebackups_basic_lzma(self, capsys, db, pghoard_lzma, tmpdir):
         self._test_basebackups(capsys, db, pghoard_lzma, tmpdir, BaseBackupMode.basic)
 
-    def test_basebackups_delta(self, capsys, db, pghoard, tmpdir):
-        self._test_basebackups(capsys, db, pghoard, tmpdir, BaseBackupMode.delta)
+    @pytest.mark.parametrize(
+        "delta_file_size, delta_chunk_size, expected_chunks_count, expected_delta_files_count",
+        [(None, None, 1, 0), (1024 * 1024, None, 1, 2), (1024 * 1024 * 2, None, 1, 1), (1024 * 1024 * 5, None, 1, 0),
+         (None, 1024 * 1024 * 10, 3, 0)]
+    )
+    def test_basebackups_delta_config_params(
+        self, capsys, db, pghoard, tmpdir, delta_file_size: int, delta_chunk_size: int, expected_chunks_count: int,
+        expected_delta_files_count: int
+    ) -> None:
+        site = pghoard.test_site
+        site_config = pghoard.config["backup_sites"][site]
+        pghoard.set_state_defaults(site)
+
+        if delta_file_size is not None:
+            site_config["basebackup_delta_mode_min_delta_file_size"] = delta_file_size
+        if delta_chunk_size is not None:
+            site_config["basebackup_delta_mode_chunk_size"] = delta_chunk_size
+
+        self._test_create_basebackup(capsys, db, pghoard, BaseBackupMode.delta, replica=False)
+
+        storage_config = common.get_object_storage_config(pghoard.config, site)
+        storage = get_transfer(storage_config)
+        backup_prefix = pghoard.config["backup_sites"][site]["prefix"]
+
+        chunks_count = len(storage.list_path(os.path.join(backup_prefix, "basebackup_delta_chunk"), deep=True))
+        assert chunks_count == expected_chunks_count
+
+        delta_files_count = len(storage.list_path(os.path.join(backup_prefix, "basebackup_delta")))
+        assert delta_files_count == expected_delta_files_count
+
+        self._test_restore_basebackup(db, pghoard, tmpdir)
 
     def test_basebackups_local_tar_with_delta_stats(self, capsys, db, pghoard, tmpdir):
         self._test_basebackups(capsys, db, pghoard, tmpdir, BaseBackupMode.local_tar_delta_stats)

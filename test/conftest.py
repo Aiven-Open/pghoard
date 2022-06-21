@@ -204,6 +204,15 @@ def fixture_pg_version(request) -> str:
 @pytest.fixture(scope="session", name="db")
 def fixture_db(pg_version: str) -> Iterator[PGTester]:
     with setup_pg(pg_version=pg_version) as pg:
+        with contextlib.closing(psycopg2.connect(pgutil.create_connection_string(pg.user))) as conn, \
+                contextlib.closing(conn.cursor()) as cursor:
+            cursor.execute("CREATE TABLE test_table_1(data text)")
+            cursor.execute("CREATE TABLE test_table_2(data text)")
+            # Generate ~1 MB table data
+            cursor.execute("INSERT INTO test_table_1 (data) SELECT * FROM generate_series(1, 30000)")
+            # ~2 MB
+            cursor.execute("INSERT INTO test_table_2 (data) SELECT * FROM generate_series(1, 60000)")
+            conn.commit()
         yield pg
 
 
@@ -211,14 +220,13 @@ def fixture_db(pg_version: str) -> Iterator[PGTester]:
 def fixture_recovery_db(pg_version: str) -> Iterator[PGTester]:
     with setup_pg(pg_version=pg_version) as pg:
         # Make sure pgespresso extension is installed before we turn this into a standby
-        conn_str = pgutil.create_connection_string(pg.user)
-        conn = psycopg2.connect(conn_str)
-        cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM pg_available_extensions WHERE name = 'pgespresso' AND default_version >= '1.2'")
-        if cursor.fetchone():
-            cursor.execute("CREATE EXTENSION pgespresso")
-        conn.commit()
-        conn.close()
+        with contextlib.closing(psycopg2.connect(pgutil.create_connection_string(pg.user))) as conn, \
+                contextlib.closing(conn.cursor()) as cursor:
+            cursor.execute("SELECT 1 FROM pg_available_extensions WHERE name = 'pgespresso' AND default_version >= '1.2'")
+            if cursor.fetchone():
+                cursor.execute("CREATE EXTENSION pgespresso")
+            conn.commit()
+
         # Now perform a clean shutdown and restart in recovery
         pg.kill(force=False, immediate=False)
 
