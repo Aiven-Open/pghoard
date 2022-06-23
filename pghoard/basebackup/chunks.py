@@ -19,7 +19,8 @@ from rohmu.delta.common import EMBEDDED_FILE_SIZE
 
 # pylint: disable=superfluous-parens
 from pghoard.common import (
-    BackupFailure, BaseBackupFormat, CallbackEvent, CallbackQueue, CompressionData, EncryptionData, FileType, NoException
+    BackupFailure, BaseBackupFormat, CallbackEvent, CallbackQueue, CompressionData, EncryptionData, FileType,
+    FileTypePrefixes, NoException
 )
 from pghoard.metrics import Metrics
 from pghoard.transfer import TransferQueue, UploadEvent
@@ -78,18 +79,12 @@ class ChunkUploader:
     @staticmethod
     def chunk_path_to_middle_path_name(chunk_path: Path, file_type: FileType) -> Tuple[Path, str]:
         chunk_rel_path = chunk_path.relative_to(chunk_path.parent.parent)
-        if file_type == FileType.Basebackup_chunk:
-            middle_path = Path("basebackup_chunk")
+        if file_type in (FileType.Basebackup_chunk, FileType.Basebackup_delta_chunk):
+            middle_path = FileTypePrefixes[file_type]
             chunk_name = str(chunk_rel_path)
-        elif file_type == FileType.Basebackup:
-            middle_path = Path("basebackup")
+        elif file_type in (FileType.Basebackup, FileType.Basebackup_delta):
+            middle_path = FileTypePrefixes[file_type]
             chunk_name = chunk_rel_path.name
-        elif file_type == FileType.Basebackup_delta:
-            middle_path = Path("basebackup_delta")
-            chunk_name = chunk_rel_path.name
-        elif file_type == FileType.Basebackup_delta_chunk:
-            middle_path = Path("basebackup_delta_chunk")
-            chunk_name = str(chunk_rel_path)
         else:
             raise NotImplementedError(f"Unsupported file type: {file_type}")
 

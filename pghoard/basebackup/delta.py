@@ -26,8 +26,8 @@ from rohmu.errors import FileNotFoundFromStorageError
 
 from pghoard.basebackup.chunks import ChunkUploader
 from pghoard.common import (
-    BackupFailure, BaseBackupFormat, CallbackQueue, CompressionData, EncryptionData, FileType, download_backup_meta_file,
-    extract_pghoard_delta_metadata
+    BackupFailure, BaseBackupFormat, CallbackQueue, CompressionData, EncryptionData, FileType, FileTypePrefixes,
+    download_backup_meta_file, extract_pghoard_delta_metadata
 )
 from pghoard.metrics import Metrics
 from pghoard.transfer import TransferQueue, UploadEvent
@@ -286,7 +286,7 @@ class DeltaBaseBackup:
                     self.log.info("Cleaning up already uploaded new backup files")
 
                     for new_hash in new_hashes:
-                        key = os.path.join(self.site_config["prefix"], "basebackup_delta", new_hash)
+                        key = os.path.join(self.site_config["prefix"], FileTypePrefixes[FileType.Basebackup_delta], new_hash)
                         self.log.info("Removing object from the storage: %r", key)
                         try:
                             self.storage.delete_key(key)
