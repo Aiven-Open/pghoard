@@ -1,3 +1,5 @@
+comment:
+  layout: "reach, diff, flags, files"
 coverage:
   status:
     project:
