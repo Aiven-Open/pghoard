@@ -9,7 +9,7 @@
                 }
             },
             "object_storage": {
-                "directory": "test/basebackup_delta/chunks",
+                "directory": "test/data/basebackup/chunks",
                 "storage_type": "local"
             },
             "prefix": "1052a492-1a01-459d-a126-9db8518724c0/f73f56ee-6b9f-4ce0-b7aa-a170d58da833"

@@ -7,6 +7,7 @@ See LICENSE for details
 import datetime
 import enum
 import fcntl
+import io
 import json
 import logging
 import os
@@ -21,9 +22,9 @@ from distutils.version import LooseVersion
 from pathlib import Path
 from queue import Queue
 from threading import Thread
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import (TYPE_CHECKING, Any, BinaryIO, Callable, Dict, Optional, Tuple)
 
-from rohmu import IO_BLOCK_SIZE
+from rohmu import IO_BLOCK_SIZE, BaseTransfer, rohmufile
 from rohmu.errors import Error, InvalidConfigurationError
 
 from pghoard import pgutil
@@ -60,6 +61,7 @@ class FileType(StrEnum):
     Basebackup = "basebackup"
     Basebackup_chunk = "basebackup_chunk"
     Basebackup_delta = "basebackup_delta"
+    Basebackup_delta_chunk = "basebackup_delta_chunk"
     Metadata = "metadata"
     Timeline = "timeline"
 
@@ -70,6 +72,7 @@ FileTypePrefixes = {
     FileType.Basebackup: Path("basebackup/"),
     FileType.Basebackup_chunk: Path("basebackup_chunk/"),
     FileType.Basebackup_delta: Path("basebackup_delta/"),
+    FileType.Basebackup_delta_chunk: Path("basebackup_delta_chunk/"),
 }
 
 
@@ -78,6 +81,7 @@ class BaseBackupFormat(StrEnum):
     v1 = "pghoard-bb-v1"
     v2 = "pghoard-bb-v2"
     delta_v1 = "pghoard-delta-v1"
+    delta_v2 = "pghoard-delta-v2"
 
 
 @enum.unique
@@ -318,7 +322,7 @@ def extract_pghoard_bb_v2_metadata(fileobj):
     return _extract_metadata(fileobj)
 
 
-def extract_pghoard_delta_v1_metadata(fileobj):
+def extract_pghoard_delta_metadata(fileobj):
     return _extract_metadata(fileobj)
 
 
@@ -383,3 +387,44 @@ class PGHoardThread(Thread):
 
 class BackupFailure(Exception):
     """Backup failed - post a failure to callback_queue and allow the thread to terminate"""
+
+
+class NoException(BaseException):
+    """Exception that's never raised, used in conditional except blocks"""
+
+
+@dataclass(frozen=True)
+class EncryptionData:
+    encryption_key_id: Optional[str]
+    rsa_public_key: Optional[str]
+
+    @staticmethod
+    def from_site_config(site_config) -> "EncryptionData":
+        encryption_key_id = site_config["encryption_key_id"]
+        if encryption_key_id:
+            rsa_public_key = site_config["encryption_keys"][encryption_key_id]["public"]
+        else:
+            rsa_public_key = None
+
+        return EncryptionData(encryption_key_id=encryption_key_id, rsa_public_key=rsa_public_key)
+
+
+@dataclass(frozen=True)
+class CompressionData:
+    algorithm: str
+    level: int
+
+    @staticmethod
+    def from_config(config) -> "CompressionData":
+        algorithm = config["compression"]["algorithm"]
+        level = config["compression"]["level"]
+        return CompressionData(algorithm=algorithm, level=level)
+
+
+def download_backup_meta_file(
+    storage: BaseTransfer, basebackup_path: str, metadata: Dict[str, Any], key_lookup: Callable[[str], str],
+    extract_meta_func: Callable[[BinaryIO], Dict[str, Any]]
+) -> Tuple[Dict[str, Any], bytes]:
+    bmeta_compressed = storage.get_contents_to_string(basebackup_path)[0]
+    with rohmufile.file_reader(fileobj=io.BytesIO(bmeta_compressed), metadata=metadata, key_lookup=key_lookup) as input_obj:
+        return extract_meta_func(input_obj), bmeta_compressed

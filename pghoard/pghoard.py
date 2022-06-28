@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from queue import Empty, Queue
 from threading import Event
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 import psycopg2
 from rohmu import dates, get_transfer, rohmufile
@@ -32,10 +32,10 @@ from rohmu.errors import (FileNotFoundFromStorageError, InvalidConfigurationErro
 from rohmu.inotify import InotifyWatcher
 
 from pghoard import config, logutil, metrics, version, wal
-from pghoard.basebackup import PGBaseBackup
+from pghoard.basebackup.base import PGBaseBackup
 from pghoard.common import (
     BaseBackupFormat, BaseBackupMode, CallbackEvent, FileType, FileTypePrefixes, create_alert_file,
-    extract_pghoard_bb_v2_metadata, extract_pghoard_delta_v1_metadata, get_object_storage_config,
+    download_backup_meta_file, extract_pghoard_bb_v2_metadata, extract_pghoard_delta_metadata, get_object_storage_config,
     replication_connection_string_and_slot_using_pgpass, write_json_file
 )
 from pghoard.compressor import (
@@ -337,22 +337,29 @@ class PGHoard:
                 self.log.exception("Problem deleting: %r", wal_path)
                 self.metrics.unexpected_exception(ex, where="delete_remote_wal_before")
 
-    def _get_delta_basebackup_files(self, site, storage, metadata, basebackup_name_to_delete, backups_to_keep):
+    def _get_delta_basebackup_files(self, site, storage, metadata, basebackup_name_to_delete, backups_to_keep) -> List:
+        delta_formats = (BaseBackupFormat.delta_v1, BaseBackupFormat.delta_v2)
+        assert metadata["format"] in delta_formats
         all_hexdigests = set()
         keep_hexdigests = set()
 
         basebackup_data_files = list()
-        delta_backups_to_keep = filter(lambda x: x["metadata"]["format"] == BaseBackupFormat.delta_v1, backups_to_keep)
-        for backup_name in [basebackup_name_to_delete] + [back["name"] for back in delta_backups_to_keep]:
-            delta_backup_key = os.path.join(self._get_site_prefix(site), "basebackup", backup_name)
-            bmeta_compressed = storage.get_contents_to_string(delta_backup_key)[0]
-            with rohmufile.file_reader(
-                fileobj=io.BytesIO(bmeta_compressed),
-                metadata=metadata,
-                key_lookup=config.key_lookup_for_site(self.config, site)
-            ) as input_obj:
-                meta = extract_pghoard_delta_v1_metadata(input_obj)
+        delta_backup_names = {
+            backup["name"]: backup["metadata"]
+            for backup in backups_to_keep
+            if backup["metadata"]["format"] in delta_formats
+        }
+        delta_backup_names[basebackup_name_to_delete] = metadata
 
+        for backup_name, backup_metadata in delta_backup_names.items():
+            delta_backup_key = os.path.join(self._get_site_prefix(site), "basebackup", backup_name)
+            meta, _ = download_backup_meta_file(
+                storage=storage,
+                basebackup_path=delta_backup_key,
+                metadata=backup_metadata,
+                key_lookup=config.key_lookup_for_site(self.config, site),
+                extract_meta_func=extract_pghoard_delta_metadata
+            )
             manifest = meta["manifest"]
             snapshot_result = manifest["snapshot_result"]
             backup_state = snapshot_result["state"]
@@ -364,6 +371,16 @@ class PGHoard:
             if backup_name != basebackup_name_to_delete:
                 # Keep data file in case if there is still a reference from other backups
                 keep_hexdigests |= backup_hexdigests
+            else:
+                # Add bundles to remove
+                for chunk in meta.get("chunks", []):
+                    basebackup_data_files.append(
+                        os.path.join(
+                            self._get_site_prefix(site),
+                            FileTypePrefixes[FileType.Basebackup_delta_chunk],
+                            chunk["chunk_filename"],
+                        )
+                    )
 
         # Remove unreferenced files
         extra_hexdigests = set(all_hexdigests).difference(keep_hexdigests)
@@ -395,7 +412,7 @@ class PGHoard:
                             chunk["chunk_filename"],
                         )
                     )
-        elif metadata.get("format") == BaseBackupFormat.delta_v1:
+        elif metadata.get("format") in (BaseBackupFormat.delta_v1, BaseBackupFormat.delta_v2):
             basebackup_data_files.extend(self._get_delta_basebackup_files(site, storage, metadata, basebackup, basebackups))
 
         self.log.debug("Deleting basebackup datafiles: %r", ", ".join(basebackup_data_files))
@@ -699,8 +716,8 @@ class PGHoard:
                     self.log.info("Giving up backup after exceeding max retries: %r", retries)
                     return
                 else:
-                    # Start from ~2 min with cap of one hour
-                    retry_interval = min(2 ** (retries + 7), 60 * 60)
+                    # Start from ~3 sec with cap of one hour
+                    retry_interval = min(3 ** (retries + 1), 60 * 60)
                     if utc_now(
                     ) >= self.delta_backup_failures[site].last_failed_time + datetime.timedelta(seconds=retry_interval):
                         self.log.info("Re-trying delta basebackup")

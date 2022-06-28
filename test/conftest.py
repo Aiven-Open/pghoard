@@ -25,8 +25,6 @@ from unittest import SkipTest
 import psycopg2
 import pytest
 from py import path as py_path  # pylint: disable=no-name-in-module
-from rohmu.delta.common import EMBEDDED_FILE_SIZE, Progress
-from rohmu.delta.snapshot import Snapshotter
 from rohmu.snappyfile import snappy
 
 from pghoard import config as pghconfig
@@ -206,6 +204,15 @@ def fixture_pg_version(request) -> str:
 @pytest.fixture(scope="session", name="db")
 def fixture_db(pg_version: str) -> Iterator[PGTester]:
     with setup_pg(pg_version=pg_version) as pg:
+        with contextlib.closing(psycopg2.connect(pgutil.create_connection_string(pg.user))) as conn, \
+                contextlib.closing(conn.cursor()) as cursor:
+            cursor.execute("CREATE TABLE test_table_1(data text)")
+            cursor.execute("CREATE TABLE test_table_2(data text)")
+            # Generate ~1 MB table data
+            cursor.execute("INSERT INTO test_table_1 (data) SELECT * FROM generate_series(1, 30000)")
+            # ~2 MB
+            cursor.execute("INSERT INTO test_table_2 (data) SELECT * FROM generate_series(1, 60000)")
+            conn.commit()
         yield pg
 
 
@@ -213,14 +220,13 @@ def fixture_db(pg_version: str) -> Iterator[PGTester]:
 def fixture_recovery_db(pg_version: str) -> Iterator[PGTester]:
     with setup_pg(pg_version=pg_version) as pg:
         # Make sure pgespresso extension is installed before we turn this into a standby
-        conn_str = pgutil.create_connection_string(pg.user)
-        conn = psycopg2.connect(conn_str)
-        cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM pg_available_extensions WHERE name = 'pgespresso' AND default_version >= '1.2'")
-        if cursor.fetchone():
-            cursor.execute("CREATE EXTENSION pgespresso")
-        conn.commit()
-        conn.close()
+        with contextlib.closing(psycopg2.connect(pgutil.create_connection_string(pg.user))) as conn, \
+                contextlib.closing(conn.cursor()) as cursor:
+            cursor.execute("SELECT 1 FROM pg_available_extensions WHERE name = 'pgespresso' AND default_version >= '1.2'")
+            if cursor.fetchone():
+                cursor.execute("CREATE EXTENSION pgespresso")
+            conn.commit()
+
         # Now perform a clean shutdown and restart in recovery
         pg.kill(force=False, immediate=False)
 
@@ -417,31 +423,6 @@ def fixture_pghoard_metrics(db, tmpdir, request):
         },
     }
     yield from pghoard_base(db, tmpdir, request, metrics_cfg=metrics_cfg)
-
-
-class SnapshotterWithDefaults(Snapshotter):
-    def create_4foobar(self):
-        (self.src / "foo").write_text("foobar")
-        (self.src / "foo2").write_text("foobar")
-        (self.src / "foobig").write_text("foobar" * EMBEDDED_FILE_SIZE)
-        (self.src / "foobig2").write_text("foobar" * EMBEDDED_FILE_SIZE)
-        progress = Progress()
-        assert self.snapshot(progress=progress) > 0
-        ss1 = self.get_snapshot_state()
-        assert self.snapshot(progress=Progress()) == 0
-        ss2 = self.get_snapshot_state()
-        print("ss1", ss1)
-        print("ss2", ss2)
-        assert ss1 == ss2
-
-
-@pytest.fixture(name="snapshotter")
-def fixture_snapshotter(tmpdir):
-    src = Path(tmpdir) / "src"
-    src.mkdir()
-    dst = Path(tmpdir) / "dst"
-    dst.mkdir()
-    yield SnapshotterWithDefaults(src=src, dst=dst, globs=["*"], parallel=1)
 
 
 @dataclass(frozen=True)

@@ -4,6 +4,7 @@ pghoard
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
+import base64
 import datetime
 import hashlib
 import json
@@ -24,6 +25,7 @@ from pghoard.restore import (
 )
 
 from .base import PGHoardTestCase
+from .util import dict_to_tar_data
 
 
 class TestRecoveryConf(PGHoardTestCase):
@@ -460,7 +462,7 @@ class TestBasebackupFetcher(unittest.TestCase):
         )
 
     def run_restore_test(self, path, tar_executable, logic, tablespaces=None, files=None, file_type=FileInfoType.regular):
-        chunk_dir = os.path.join("test", path, "chunks")
+        chunk_dir = os.path.join("test", "data", path, "chunks")
         files_names = [fn for fn in os.listdir(chunk_dir) if ".metadata" not in fn and (not files or fn in files)]
         if file_type == FileInfoType.delta:
             files = [
@@ -473,7 +475,7 @@ class TestBasebackupFetcher(unittest.TestCase):
                 for fn in files_names
             ]
 
-        with open(os.path.join("test", path, "config.json"), "r") as f:
+        with open(os.path.join("test", "data", path, "config.json"), "r") as f:
             config = json.loads(f.read())
         restore_dir = mkdtemp(prefix=self.__class__.__name__)
         scratch_dir = mkdtemp(prefix=self.__class__.__name__)
@@ -495,3 +497,81 @@ class TestBasebackupFetcher(unittest.TestCase):
         with open(fn, "rb") as f:
             actual_sha256.update(f.read())
             assert actual_sha256.hexdigest() == expected_sha256
+
+
+def test_restore_get_delta_basebackup_data():
+    metadata = {
+        "manifest": {
+            "snapshot_result": {
+                "state": {
+                    "files": [{
+                        "relative_path": "base/1/1",
+                        "file_size": 8192,
+                        "stored_file_size": 100,
+                        "mtime_ns": 1652175599798812244,
+                        "hexdigest": "delta1hex1",
+                        "content_b64": None,
+                        "should_be_bundled": False,
+                    }, {
+                        "relative_path": "base/1/0",
+                        "file_size": 8,
+                        "stored_file_size": 8,
+                        "mtime_ns": 1652175599798812244,
+                        "hexdigest": "",
+                        "content_b64": "YXNkYXNk",
+                        "should_be_bundled": False,
+                    }],
+                    "empty_dirs": ["base/dir1"],
+                }
+            }
+        },
+        "chunks": [{
+            "chunk_filename": "chunk1",
+            "result_size": 80
+        }, {
+            "chunk_filename": "chunk2",
+            "result_size": 10
+        }],
+        "tablespaces": {
+            "foo": {
+                "oid": 1234,
+                "path": "/tmp/test_restore2"
+            }
+        }
+    }
+
+    data = dict_to_tar_data(metadata, tar_name=".pghoard_tar_metadata.json")
+
+    r = Restore()
+    r.config = {
+        "backup_sites": {
+            "test": {
+                "prefix": "abc/def",
+            },
+        },
+    }
+    r.storage = Mock()
+    r.storage.storage.get_contents_to_string.return_value = (data, {})
+    file_metadata = {"compression-algorithm": "snappy", "format": "pghoard-delta-v2"}
+    tablespaces, files, empty_dirs = r._get_delta_basebackup_data(  # pylint: disable=protected-access
+        site="test", metadata=file_metadata, basebackup_name="delta_backup1"
+    )
+    assert tablespaces == {"foo": {"oid": 1234, "path": "/tmp/test_restore2"}}
+    assert empty_dirs == ["base/dir1"]
+    assert len(files) == 5
+    expected_files = [
+        FilePathInfo(name="abc/def/basebackup_delta_chunk/chunk1", size=80),
+        FilePathInfo(name="abc/def/basebackup_delta_chunk/chunk2", size=10),
+        FileDataInfo(data=data, size=0, metadata=file_metadata),
+        FilePathInfo(
+            name="abc/def/basebackup_delta/delta1hex1", new_name="base/1/1", size=100, file_type=FileInfoType.delta
+        ),
+        FileDataInfo(
+            data=base64.b64decode("YXNkYXNk"),
+            new_name="base/1/0",
+            size=8,
+            metadata=file_metadata,
+            file_type=FileInfoType.delta
+        ),
+    ]
+    assert all(f in files for f in expected_files)

@@ -9,7 +9,7 @@
                 }
             },
             "object_storage": {
-                "directory": "test/basebackup_with_ts/chunks",
+                "directory": "test/data/basebackup_with_ts/chunks",
                 "storage_type": "local"
             },
             "prefix": "2332f272-198b-46e7-bd34-ef603d04d460/96be37ae-75d8-48ca-92e2-53f838d22f1d"
