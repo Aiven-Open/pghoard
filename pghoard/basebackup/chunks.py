@@ -138,7 +138,8 @@ class ChunkUploader:
         callback_queue: CallbackQueue,
         file_type: FileType = FileType.Basebackup_chunk,
         extra_metadata: Optional[Dict[str, Any]] = None,
-        delta_stats: Optional[DeltaStats] = None
+        delta_stats: Optional[DeltaStats] = None,
+        encrypt=True
     ) -> Tuple[str, int, int]:
         start_time = time.monotonic()
 
@@ -148,7 +149,7 @@ class ChunkUploader:
                 compression_algorithm=self.compression_data.algorithm,
                 compression_level=self.compression_data.level,
                 compression_threads=self.site_config["basebackup_compression_threads"],
-                rsa_public_key=self.encryption_data.rsa_public_key,
+                rsa_public_key=self.encryption_data.rsa_public_key if encrypt else None,
                 fileobj=raw_output_obj
             ) as output_obj:
                 with tarfile.TarFile(fileobj=output_obj, mode="w") as output_tar:
@@ -161,7 +162,7 @@ class ChunkUploader:
             os.link(raw_output_obj.name, chunk_path)
 
         rohmufile.log_compression_result(
-            encrypted=bool(self.encryption_data.encryption_key_id),
+            encrypted=bool(self.encryption_data.encryption_key_id) if encrypt else False,
             elapsed=time.monotonic() - start_time,
             original_size=input_size,
             result_size=result_size,
@@ -182,7 +183,7 @@ class ChunkUploader:
 
         metadata = {
             "compression-algorithm": self.compression_data.algorithm,
-            "encryption-key-id": self.encryption_data.encryption_key_id,
+            "encryption-key-id": self.encryption_data.encryption_key_id if encrypt else None,
             "format": BaseBackupFormat.v2,
             "original-file-size": input_size,
             "host": socket.gethostname(),
