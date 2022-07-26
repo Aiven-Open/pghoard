@@ -22,7 +22,7 @@ def wait_for_xlog(pghoard: PGHoardForTest, count: int):
             if xlogs >= count:
                 break
 
-        if time.monotonic() - start > 15:
+        if time.monotonic() - start > 30:
             assert False, "Expected at least {} xlog uploads, got {}".format(count, xlogs)
 
         time.sleep(0.1)
