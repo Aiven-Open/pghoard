@@ -212,11 +212,13 @@ class TransferAgent(PGHoardThread):
                 filename = file_to_transfer.file_path.name
                 if oper == TransferOperation.Upload:
                     if filetype == FileType.Wal:
+                        self.log.info("Received new wal")
                         self.state[site][oper]["xlog"]["xlogs_since_basebackup"] += 1
                     elif filetype in {
                         FileType.Basebackup, FileType.Basebackup_chunk, FileType.Basebackup_delta,
                         FileType.Basebackup_delta_chunk
                     }:
+                        self.log.info("Received new %s, resetting xlogs", filetype)
                         # reset corresponding xlog stats at basebackup
                         self.state[site][oper]["xlog"]["xlogs_since_basebackup"] = 0
                     self.metrics.gauge(
