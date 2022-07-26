@@ -178,6 +178,7 @@ class CompressorThread(PGHoardThread):
 
     def handle_event(self, event):
         # pylint: disable=redefined-variable-type
+        self.log.info("New event: %s", event)
         file_type = event.file_type
         rsa_public_key = None
         site = event.backup_site_name

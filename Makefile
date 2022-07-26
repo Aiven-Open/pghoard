@@ -28,7 +28,7 @@ fmt: version
 
 .PHONY: coverage
 coverage: version
-	$(PYTHON) -m pytest $(PYTEST_ARG) --cov-report term-missing --cov-report xml:coverage.xml \
+	$(PYTHON) -m pytest $(PYTEST_ARG) -k 'test_pause_on_disk_full' --cov-report term-missing --cov-report xml:coverage.xml \
 		--cov pghoard test/
 
 .PHONY: clean
