@@ -1,4 +1,5 @@
 import io
+import logging
 import tarfile
 import time
 from pathlib import Path
@@ -12,7 +13,9 @@ from .conftest import PGHoardForTest
 
 
 def wait_for_xlog(pghoard: PGHoardForTest, count: int):
+    log = logging.getLogger("wait_for_xlog")
     start = time.monotonic()
+    log.info("Start waiting for xlog...")
     while True:
         xlogs = None
         # At the start, this is not yet defined
@@ -22,6 +25,7 @@ def wait_for_xlog(pghoard: PGHoardForTest, count: int):
             if xlogs >= count:
                 break
 
+        log.info("Not enough xlogs yet: %s", xlogs)
         if time.monotonic() - start > 30:
             assert False, "Expected at least {} xlog uploads, got {}".format(count, xlogs)
 
