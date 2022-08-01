@@ -50,9 +50,8 @@ jobs:
     strategy:
       max-parallel: 4
       matrix:
-        python-version: [3.6, 3.7, 3.8, 3.9]
         pg-version: [9.6, 10, 11, 12, 13, 14]
-
+        python-version: ["3.7", "3.8", "3.9", "3.10"]
     steps:
       - id: checkout-code
         uses: actions/checkout@v2
