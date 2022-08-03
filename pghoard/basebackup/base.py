@@ -311,6 +311,7 @@ class PGBaseBackup(PGHoardThread):
             "original-file-size": original_input_size,
             "pg-version": self.pg_version_server,
             "active-backup-mode": self.site_config["active_backup_mode"],
+            "basebackup-mode": self.site_config["basebackup_mode"],
         })
         metadata.update(self.metadata)
 
@@ -383,6 +384,7 @@ class PGBaseBackup(PGHoardThread):
                     "start-time": start_time,
                     "start-wal-segment": start_wal_segment,
                     "active-backup-mode": self.site_config["active_backup_mode"],
+                    "basebackup-mode": self.site_config["basebackup_mode"],
                 }
             )
         )
@@ -769,6 +771,7 @@ class PGBaseBackup(PGHoardThread):
                 "end-wal-segment": backup_end_wal_segment,
                 "pg-version": self.pg_version_server,
                 "active-backup-mode": self.site_config["active_backup_mode"],
+                "basebackup-mode": self.site_config["basebackup_mode"],
                 "start-time": backup_start_time,
                 "start-wal-segment": backup_start_wal_segment,
                 "total-size-plain": total_size_plain,
