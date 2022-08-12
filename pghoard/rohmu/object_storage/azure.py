@@ -47,9 +47,11 @@ logging.getLogger("azure.core.pipeline.policies.http_logging_policy").setLevel(l
 
 
 class AzureTransfer(BaseTransfer):
-    def __init__(self, account_name, account_key, bucket_name, prefix=None, azure_cloud=None, proxy_info=None):
+    def __init__(
+        self, account_name, account_key, bucket_name, prefix=None, azure_cloud=None, proxy_info=None, notification_url=None
+    ):
         prefix = "{}".format(prefix.lstrip("/") if prefix else "")
-        super().__init__(prefix=prefix)
+        super().__init__(prefix=prefix, notification_url=notification_url)
         self.account_name = account_name
         self.account_key = account_key
         self.container_name = bucket_name

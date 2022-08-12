@@ -45,9 +45,10 @@ class S3Transfer(BaseTransfer):
         is_verify_tls=False,
         segment_size=MULTIPART_CHUNK_SIZE,
         encrypted=False,
-        proxy_info=None
+        proxy_info=None,
+        notification_url=None,
     ):
-        super().__init__(prefix=prefix)
+        super().__init__(prefix=prefix, notification_url=notification_url)
         botocore_session = botocore.session.get_session()
         self.bucket_name = bucket_name
         self.location = ""
