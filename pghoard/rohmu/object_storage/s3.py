@@ -142,10 +142,12 @@ class S3Transfer(BaseTransfer):
         return response["Metadata"]
 
     def delete_key(self, key):
+        plain_key = key
         key = self.format_key_for_backend(key, remove_slash_prefix=True)
         self.log.debug("Deleting key: %r", key)
         self._metadata_for_key(key)  # check that key exists
         self.s3_client.delete_object(Bucket=self.bucket_name, Key=key)
+        self.notify_delete(plain_key)
 
     def delete_tree(self, key):
         key = self.format_key_for_backend(key, remove_slash_prefix=True, trailing_slash=True)
@@ -255,6 +257,7 @@ class S3Transfer(BaseTransfer):
                 raise StorageError("File size lookup failed for {}".format(key)) from ex
 
     def store_file_from_memory(self, key, memstring, metadata=None, cache_control=None, mimetype=None):
+        plain_key = key
         key = self.format_key_for_backend(key, remove_slash_prefix=True)
         args = {
             "Bucket": self.bucket_name,
@@ -270,8 +273,10 @@ class S3Transfer(BaseTransfer):
         if mimetype is not None:
             args["ContentType"] = mimetype
         self.s3_client.put_object(**args)
+        self.notify_write(key=plain_key, size=len(bytes(memstring)))
 
     def store_file_from_disk(self, key, filepath, metadata=None, multipart=None, cache_control=None, mimetype=None):
+        plain_key = key
         size = os.path.getsize(filepath)
         if not multipart or size <= self.multipart_chunk_size:
             with open(filepath, "rb") as fh:
@@ -283,6 +288,7 @@ class S3Transfer(BaseTransfer):
             self.multipart_upload_file_object(
                 cache_control=cache_control, fp=fp, key=key, metadata=metadata, mimetype=mimetype, size=size
             )
+        self.notify_write(key=plain_key, size=size)
 
     def multipart_upload_file_object(self, *, cache_control, fp, key, metadata, mimetype, progress_fn=None, size=None):
         key = self.format_key_for_backend(key, remove_slash_prefix=True)
@@ -396,6 +402,7 @@ class S3Transfer(BaseTransfer):
             mimetype=mimetype,
             progress_fn=upload_progress_fn
         )
+        self.notify_write(key=key, size=self.get_file_size(key))
 
     def check_or_create_bucket(self):
         create_bucket = False

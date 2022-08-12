@@ -284,11 +284,13 @@ class GoogleTransfer(BaseTransfer):
                     raise NotImplementedError(property_name)
 
     def delete_key(self, key):
+        plain_key = key
         key = self.format_key_for_backend(key)
         self.log.debug("Deleting key: %r", key)
         with self._object_client(not_found=key) as clob:
             req = clob.delete(bucket=self.bucket_name, object=key)
             self._retry_on_reset(req, req.execute)
+        self.notify_delete(plain_key)
 
     def get_contents_to_file(self, key, filepath_to_store_to, *, progress_callback=None):
         fileobj = FileIO(filepath_to_store_to, mode="wb")
@@ -373,7 +375,8 @@ class GoogleTransfer(BaseTransfer):
         upload = MediaIoBaseUpload(
             BytesIO(memstring), mimetype or "application/octet-stream", chunksize=UPLOAD_CHUNK_SIZE, resumable=True
         )
-        return self._upload(upload, key, self.sanitize_metadata(metadata), extra_props, cache_control=cache_control)
+        self._upload(upload, key, self.sanitize_metadata(metadata), extra_props, cache_control=cache_control)
+        self.notify_write(key=key, size=len(bytes(memstring)))
 
     # pylint: disable=arguments-differ
     def store_file_from_disk(
@@ -389,11 +392,13 @@ class GoogleTransfer(BaseTransfer):
     ):
         mimetype = mimetype or "application/octet-stream"
         upload = MediaFileUpload(filepath, mimetype, chunksize=UPLOAD_CHUNK_SIZE, resumable=True)
-        return self._upload(upload, key, self.sanitize_metadata(metadata), extra_props, cache_control=cache_control)
+        self._upload(upload, key, self.sanitize_metadata(metadata), extra_props, cache_control=cache_control)
+        size = os.path.getsize(filepath)
+        self.notify_write(key=key, size=size)
 
     def store_file_object(self, key, fd, *, cache_control=None, metadata=None, mimetype=None, upload_progress_fn=None):
         mimetype = mimetype or "application/octet-stream"
-        return self._upload(
+        self._upload(
             MediaStreamUpload(fd, chunk_size=UPLOAD_CHUNK_SIZE, mime_type=mimetype, name=key),
             key,
             self.sanitize_metadata(metadata),
@@ -401,6 +406,7 @@ class GoogleTransfer(BaseTransfer):
             cache_control=cache_control,
             upload_progress_fn=upload_progress_fn,
         )
+        self.notify_write(key=key, size=self.get_file_size(key))
 
     def get_or_create_bucket(self, bucket_name):
         """Look up the bucket if it already exists and try to create the
