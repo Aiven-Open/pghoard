@@ -62,10 +62,11 @@ class SwiftTransfer(BaseTransfer):
         project_domain_id=None,
         project_domain_name=None,
         service_type=None,
-        endpoint_type=None
+        endpoint_type=None,
+        notification_url=None,
     ):
         prefix = prefix.lstrip("/") if prefix else ""
-        super().__init__(prefix=prefix)
+        super().__init__(prefix=prefix, notification_url=notification_url)
         self.container_name = container_name
 
         if auth_version == "3.0":

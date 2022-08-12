@@ -20,9 +20,9 @@ CHUNK_SIZE = 1024 * 1024
 
 
 class LocalTransfer(BaseTransfer):
-    def __init__(self, directory, prefix=None):
+    def __init__(self, directory, prefix=None, notification_url=None):
         prefix = os.path.join(directory, (prefix or "").strip("/"))
-        super().__init__(prefix=prefix)
+        super().__init__(prefix=prefix, notification_url=notification_url)
         self.log.debug("LocalTransfer initialized")
 
     def copy_file(self, *, source_key, destination_key, metadata=None, **_kwargs):
