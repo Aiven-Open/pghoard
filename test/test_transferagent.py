@@ -6,8 +6,10 @@ See LICENSE for details
 """
 import os
 import time
+from asyncio import Event
 from pathlib import Path
 from queue import Empty, Queue
+from threading import Thread
 from unittest.mock import ANY, Mock, patch
 
 import pytest
@@ -19,6 +21,7 @@ from pghoard.transfer import (BaseTransferEvent, DownloadEvent, TransferAgent, U
 
 # pylint: disable=attribute-defined-outside-init
 from .base import PGHoardTestCase
+from .transfer_lib import (BlockingTransferFailingAfterTenSeconds, alternate_get_transfer)
 
 
 class MockStorage(Mock):
@@ -105,7 +108,7 @@ class TestTransferAgent(PGHoardTestCase):
         storage = Mock()
         storage.get_contents_to_string.return_value = "foo", {"key": "value"}
         self._inject_prefix("site_specific_prefix")
-        self.transfer_agent.get_object_storage = lambda x: storage
+        self.transfer_agent._get_object_storage = lambda x: storage
         self.transfer_agent.fetch_manager.transfer_provider = lambda x: storage
         self.transfer_queue.put(
             DownloadEvent(
@@ -124,7 +127,7 @@ class TestTransferAgent(PGHoardTestCase):
     def test_handle_upload_xlog(self):
         callback_queue = Queue()
         storage = Mock()
-        self.transfer_agent.get_object_storage = lambda x: storage
+        self.transfer_agent._get_object_storage = lambda x: storage
         assert os.path.exists(self.foo_path) is True
         self.transfer_queue.put(
             UploadEvent(
@@ -174,7 +177,7 @@ class TestTransferAgent(PGHoardTestCase):
     def test_handle_upload_basebackup(self):
         callback_queue = Queue()
         storage = Mock()
-        self.transfer_agent.get_object_storage = storage
+        self.transfer_agent._get_object_storage = storage
         assert os.path.exists(self.foo_path) is True
         self.transfer_queue.put(
             UploadEvent(
@@ -201,7 +204,7 @@ class TestTransferAgent(PGHoardTestCase):
         callback_queue = Queue()
         storage = MockStorageRaising()
         self.transfer_agent.sleep = sleep
-        self.transfer_agent.get_object_storage = storage
+        self.transfer_agent._get_object_storage = storage
         assert os.path.exists(self.foo_path) is True
         self.transfer_queue.put(
             UploadEvent(
@@ -245,7 +248,7 @@ class TestTransferAgent(PGHoardTestCase):
         """Check that handle_list returns the correct CallbackEvent upon error.
         """
         with patch.object(self.transfer_agent, "get_object_storage", side_effect=exception):
-            evt = self.transfer_agent.handle_list(self.test_site, "foo", "bar")
+            evt = self.transfer_agent._handle_list(self.test_site, "foo", "bar")
             assert evt.success is False
             assert isinstance(evt.exception, exception)
 
@@ -253,6 +256,59 @@ class TestTransferAgent(PGHoardTestCase):
         """Check that handle_metadata returns the correct CallbackEvent upon error.
         """
         with patch.object(self.transfer_agent, "get_object_storage", side_effect=Exception):
-            evt = self.transfer_agent.handle_metadata(self.test_site, "foo", "bar")
+            evt = self.transfer_agent._handle_metadata(self.test_site, "foo", "bar")
             assert evt.success is False
             assert isinstance(evt.exception, Exception)
+
+
+@pytest.mark.xfail
+def test_transferagent_hangs_indefinitely_if_upload_transfer_blocks(tmp_path: Path):
+    config = {
+        "backup_sites": {
+            "some_site": {
+                "object_storage": {
+                    "storage_type": "local",
+                    "directory": str(tmp_path)
+                },
+            },
+        },
+    }
+
+    transfer_queue = Queue()
+
+    # without mp-manager will yield a single-threaded download approach - we don't care
+    # for uploads, actually
+    # there seems to be no way to configure timeouts, actually
+    transfer_agent = TransferAgent(
+        config=config,
+        mp_manager=None,
+        transfer_queue=transfer_queue,
+        metrics=metrics.Metrics(statsd={}),
+        shared_state_dict={},
+        transfer_factory=alternate_get_transfer,
+    )
+    transfer_agent.start()
+
+    callback_queue = Queue()
+
+    # we don't actually care about the event content
+    transfer_queue.put(
+        UploadEvent(
+            callback_queue=callback_queue,
+            file_type=FileType.Basebackup,
+            file_path=tmp_path / "basebackup",
+            file_size=3,
+            source_data=tmp_path / "sourcedata",
+            metadata={"start-wal-segment": "00000001000000000000000C"},
+            backup_site_name="some_site"
+        )
+    )
+
+    for x in range(10):
+        try:
+            callback_queue.get(block=True, timeout=1.0)
+            break
+        except Empty:
+            pass
+    else:
+        raise ValueError("could not find any in queue, transfer is hanging")

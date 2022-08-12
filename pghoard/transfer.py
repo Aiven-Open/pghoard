@@ -15,7 +15,7 @@ from io import BytesIO
 from pathlib import Path
 from queue import Empty
 from threading import Lock
-from typing import Any, BinaryIO, Dict, Optional, Union
+from typing import Any, BinaryIO, Callable, Dict, Optional, Union
 
 from rohmu import get_transfer
 from rohmu.errors import FileNotFoundFromStorageError
@@ -25,7 +25,7 @@ from pghoard.common import (
     CallbackEvent, CallbackQueue, FileType, PGHoardThread, Queue, QuitEvent, StrEnum, create_alert_file,
     get_object_storage_config
 )
-from pghoard.fetcher import FileFetchManager
+from pghoard.fetcher import create_fetch_manager
 
 _STATS_LOCK = Lock()
 _last_stats_transmit_time = 0
@@ -99,21 +99,30 @@ TransferQueue = Queue
 
 
 class TransferAgent(PGHoardThread):
-    def __init__(self, config, mp_manager, transfer_queue: TransferQueue, metrics, shared_state_dict):
+    def __init__(
+        self,
+        config,
+        mp_manager,
+        transfer_queue: TransferQueue,
+        metrics,
+        shared_state_dict,
+        transfer_factory: Callable[[dict], BaseTransfer] = get_transfer
+    ):
         super().__init__()
         self.log = logging.getLogger("TransferAgent")
         self.config = config
         self.metrics = metrics
         self.mp_manager = mp_manager
-        self.fetch_manager = FileFetchManager(self.config, self.mp_manager, self.get_object_storage)
+        self.fetch_manager = create_fetch_manager(self.config, self.mp_manager, self._get_object_storage)
         self.transfer_queue = transfer_queue
         self.running = True
         self.sleep = time.sleep
         self.state = shared_state_dict
         self.site_transfers: Dict[str, BaseTransfer] = {}
+        self._transfer_factory = transfer_factory
         self.log.debug("TransferAgent initialized")
 
-    def set_state_defaults_for_site(self, site):
+    def _set_state_defaults_for_site(self, site):
         if site not in self.state:
             EMPTY = {
                 "data": 0,
@@ -141,16 +150,16 @@ class TransferAgent(PGHoardThread):
                 "list": defaults(),
             }
 
-    def get_object_storage(self, site_name):
+    def _get_object_storage(self, site_name):
         storage = self.site_transfers.get(site_name)
         if not storage:
             storage_config = get_object_storage_config(self.config, site_name)
-            storage = get_transfer(storage_config)
+            storage = self._transfer_factory(storage_config)
             self.site_transfers[site_name] = storage
 
         return storage
 
-    def transmit_metrics(self):
+    def _transmit_metrics(self):
         """
         Keep metrics updated about how long time ago each filetype was successfully uploaded.
         Transmits max once per ten seconds, regardless of how many threads are running.
@@ -175,7 +184,7 @@ class TransferAgent(PGHoardThread):
 
     def run_safe(self):
         while self.running:
-            self.transmit_metrics()
+            self._transmit_metrics()
             self.fetch_manager.check_state()
             try:
                 file_to_transfer = self.transfer_queue.get(timeout=1.0)
@@ -192,18 +201,18 @@ class TransferAgent(PGHoardThread):
             key = str(Path(site_prefix) / file_to_transfer.file_path)
             oper = str(file_to_transfer.operation)
             if file_to_transfer.operation == TransferOperation.Download:
-                result = self.handle_download(site, key, file_to_transfer)
+                result = self._handle_download(site, key, file_to_transfer)
             elif file_to_transfer.operation == TransferOperation.Upload:
-                result = self.handle_upload(site, key, file_to_transfer)
+                result = self._handle_upload(site, key, file_to_transfer)
             elif file_to_transfer.operation == TransferOperation.List:
-                result = self.handle_list(site, key, file_to_transfer)
+                result = self._handle_list(site, key, file_to_transfer)
             elif file_to_transfer.operation == TransferOperation.Metadata:
-                result = self.handle_metadata(site, key, file_to_transfer)
+                result = self._handle_metadata(site, key, file_to_transfer)
             else:
                 raise TypeError(f"Invalid transfer operation {file_to_transfer.operation}")
 
             # increment statistics counters
-            self.set_state_defaults_for_site(site)
+            self._set_state_defaults_for_site(site)
             if not result:
                 self.state[site][oper][filetype]["failures"] += 1
                 continue
@@ -266,9 +275,9 @@ class TransferAgent(PGHoardThread):
         self.fetch_manager.stop()
         self.log.debug("Quitting TransferAgent")
 
-    def handle_list(self, site, key, file_to_transfer):
+    def _handle_list(self, site, key, file_to_transfer):
         try:
-            storage = self.get_object_storage(site)
+            storage = self._get_object_storage(site)
             items = storage.list_path(key)
             payload = {"file_size": len(repr(items)), "items": items}
             return CallbackEvent(success=True, payload=payload)
@@ -280,9 +289,9 @@ class TransferAgent(PGHoardThread):
             self.metrics.unexpected_exception(ex, where="handle_list")
             return CallbackEvent(success=False, exception=ex)
 
-    def handle_metadata(self, site, key, file_to_transfer):
+    def _handle_metadata(self, site, key, file_to_transfer):
         try:
-            storage = self.get_object_storage(site)
+            storage = self._get_object_storage(site)
             metadata = storage.get_metadata_for_key(key)
             payload = {"metadata": metadata, "file_size": len(repr(metadata))}
             return CallbackEvent(success=True, payload=payload)
@@ -294,7 +303,7 @@ class TransferAgent(PGHoardThread):
             self.metrics.unexpected_exception(ex, where="handle_metadata")
             return CallbackEvent(success=False, exception=ex)
 
-    def handle_download(self, site, key, file_to_transfer):
+    def _handle_download(self, site, key, file_to_transfer):
         try:
             path = file_to_transfer.destination_path
             self.log.info("Requesting download of object key: src=%r dst=%r", key, path)
@@ -309,10 +318,10 @@ class TransferAgent(PGHoardThread):
             self.metrics.unexpected_exception(ex, where="handle_download")
             return CallbackEvent(success=False, exception=ex, opaque=file_to_transfer.opaque)
 
-    def handle_upload(self, site, key, file_to_transfer):
+    def _handle_upload(self, site, key, file_to_transfer):
         payload = {"file_size": file_to_transfer.file_size}
         try:
-            storage = self.get_object_storage(site)
+            storage = self._get_object_storage(site)
             unlink_local = file_to_transfer.remove_after_upload
             self.log.info("Uploading file to object store: src=%r dst=%r", file_to_transfer.source_data, key)
             if not isinstance(file_to_transfer.source_data, BytesIO):

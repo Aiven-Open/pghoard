@@ -185,7 +185,7 @@ class TestWebServer:
         os.unlink(invalid_wal_path)
 
     def test_archiving(self, pghoard):
-        store = pghoard.transfer_agents[0].get_object_storage(pghoard.test_site)
+        store = pghoard.transfer_agents[0]._get_object_storage(pghoard.test_site)
         # inject fake WAL and timeline files for testing
         for xlog_type, wal_name in [("xlog", "0000000000000000000000CC"), ("timeline", "0000000F.history")]:
             foo_path = os.path.join(get_pg_wal_directory(pghoard.config["backup_sites"][pghoard.test_site]), wal_name)
@@ -226,7 +226,7 @@ class TestWebServer:
 
     def test_archive_sync(self, db, pghoard):
         log = logging.getLogger("test_archive_sync")
-        store = pghoard.transfer_agents[0].get_object_storage(pghoard.test_site)
+        store = pghoard.transfer_agents[0]._get_object_storage(pghoard.test_site)
 
         def list_archive(folder):
             if folder == "timeline":
@@ -415,7 +415,7 @@ class TestWebServer:
         # start by making sure we can access the file normally
         valid_wal_seg = "0000DDDD0000000D000000FC"
         valid_wal = "/{}/xlog/{}".format(pghoard.test_site, valid_wal_seg)
-        store = pghoard.transfer_agents[0].get_object_storage(pghoard.test_site)
+        store = pghoard.transfer_agents[0]._get_object_storage(pghoard.test_site)
         store.store_file_from_memory(valid_wal, wal_header_for_file(valid_wal_seg), metadata={"a": "b"})
         conn.request("HEAD", valid_wal)
         status = conn.getresponse().status
@@ -441,7 +441,7 @@ class TestWebServer:
         pghoard = pghoard_no_mp
         valid_wal_seg = "0000DDDD0000000D000000FC"
         valid_wal = "/{}/xlog/{}".format(pghoard.test_site, valid_wal_seg)
-        store = pghoard.transfer_agents[0].get_object_storage(pghoard.test_site)
+        store = pghoard.transfer_agents[0]._get_object_storage(pghoard.test_site)
         store.store_file_from_memory(valid_wal, wal_header_for_file(valid_wal_seg), metadata={"a": "b"})
         conn = HTTPConnection(host="127.0.0.1", port=pghoard.config["http_port"])
 
@@ -455,7 +455,7 @@ class TestWebServer:
             return failing_func
 
         for ta in pghoard.transfer_agents:
-            store = ta.get_object_storage(pghoard.test_site)
+            store = ta._get_object_storage(pghoard.test_site)
             store.get_contents_to_string = get_failing_func(store.get_contents_to_string)
 
         prefetch_n = pghoard.config["restore_prefetch"]
@@ -495,7 +495,7 @@ class TestWebServer:
 
         assert pghoard.webserver.get_most_recently_served_files() == {}
 
-        store = pghoard.transfer_agents[0].get_object_storage(pghoard.test_site)
+        store = pghoard.transfer_agents[0]._get_object_storage(pghoard.test_site)
         store.store_file_from_memory(valid_wal, storage_data, metadata={"a": "b"})
 
         other_segments = ["0000DDDD0000000D000000F{}".format(i) for i in range(10)]
@@ -572,7 +572,7 @@ class TestWebServer:
         # create a valid WAL file and make sure we can restore it normally
         wal_seg = "E" * 24
         wal_path = "/{}/xlog/{}".format(pghoard.test_site, wal_seg)
-        store = pghoard.transfer_agents[0].get_object_storage(pghoard.test_site)
+        store = pghoard.transfer_agents[0]._get_object_storage(pghoard.test_site)
         store.store_file_from_memory(wal_path, wal_header_for_file(wal_seg), metadata={"a": "b"})
         restore_command(
             site=pghoard.test_site,
@@ -628,7 +628,7 @@ class TestWebServer:
             "compression-algorithm": pghoard.config["compression"]["algorithm"],
             "original-file-size": len(content),
         }
-        store = pghoard.transfer_agents[0].get_object_storage(pghoard.test_site)
+        store = pghoard.transfer_agents[0]._get_object_storage(pghoard.test_site)
         store.store_file_from_memory(archive_path, compressed_content, metadata=metadata)
 
         restore_command(
@@ -678,7 +678,7 @@ class TestWebServer:
             "original-file-size": len(content),
             "encryption-key-id": "testkey",
         }
-        store = pghoard.transfer_agents[0].get_object_storage(pghoard.test_site)
+        store = pghoard.transfer_agents[0]._get_object_storage(pghoard.test_site)
         store.store_file_from_memory(archive_path, encrypted_content, metadata=metadata)
         pghoard.webserver.config["backup_sites"][pghoard.test_site]["encryption_keys"] = {
             "testkey": {
