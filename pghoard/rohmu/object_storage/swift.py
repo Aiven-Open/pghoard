@@ -244,11 +244,13 @@ class SwiftTransfer(BaseTransfer):
         if cache_control is not None:
             raise NotImplementedError("SwiftTransfer: cache_control support not implemented")
 
+        plain_key = key
         key = self.format_key_for_backend(key)
         metadata_to_send = self._metadata_to_headers(self.sanitize_metadata(metadata))
         self.conn.put_object(
             self.container_name, key, contents=bytes(memstring), content_type=mimetype, headers=metadata_to_send
         )
+        self.notify_write(key=plain_key, size=len(bytes(memstring)))
 
     def store_file_from_disk(self, key, filepath, metadata=None, multipart=None, cache_control=None, mimetype=None):
         if cache_control is not None:
@@ -261,6 +263,7 @@ class SwiftTransfer(BaseTransfer):
             # chunks.
             with suppress(FileNotFoundFromStorageError):
                 self.delete_key(key)
+        plain_key = key
         key = self.format_key_for_backend(key)
         headers = self._metadata_to_headers(self.sanitize_metadata(metadata))
         obsz = os.path.getsize(filepath)
@@ -289,6 +292,8 @@ class SwiftTransfer(BaseTransfer):
             self.log.info("Uploaded %r segments of %r to %r", segment_no, key, segment_path)
             headers["x-object-manifest"] = "{}/{}".format(self.container_name, segment_path.lstrip("/"))
             self.conn.put_object(self.container_name, key, contents="", headers=headers, content_length=0)
+        size = os.path.getsize(filepath)
+        self.notify_write(key=plain_key, size=size)
 
     def get_or_create_container(self, container_name):
         start_time = time.monotonic()
