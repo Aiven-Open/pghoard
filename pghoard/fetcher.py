@@ -2,22 +2,44 @@ import multiprocessing
 import os
 import queue
 import signal
+import sys
 import threading
 import time
+import traceback
+from abc import ABC
+from typing import Any, Callable
 
-from rohmu import get_transfer
+from rohmu import BaseTransfer, get_transfer
 from rohmu.rohmufile import create_sink_pipeline
 
 from pghoard.common import get_object_storage_config
 from pghoard.config import key_lookup_for_site
 
 
-class FileFetchManager:
+class FileFetchManager(ABC):
+    def check_state(self) -> None:
+        pass
+
+    def fetch_file(self, site: str, key: str, target_path: str) -> tuple[int, dict[str, Any]]:
+        pass
+
+    def stop(self) -> None:
+        pass
+
+
+def create_fetch_manager(app_config, mp_manager, transfer_provider) -> FileFetchManager:
+    if mp_manager:
+        return SpawningFileFetchManager(app_config, mp_manager)
+    else:
+        return InProcessFileFetchManager(app_config, transfer_provider)
+
+
+class SpawningFileFetchManager(FileFetchManager):
     """Manages (potentially) multiprocessing related assets for fetching file contents from
     object storage. If a multiprocess.Manager instance is provided, the fetch is performed
     in a subprocess to avoid GIL related performance constraints, otherwise file is fetched
     in current process."""
-    def __init__(self, app_config, mp_manager, transfer_provider):
+    def __init__(self, app_config: dict, mp_manager: multiprocessing.Manager, use_alternate_transfer_class_provider=None):
         self.config = app_config
         self.last_activity = time.monotonic()
         self.lock = threading.RLock()
@@ -26,7 +48,7 @@ class FileFetchManager:
         self.process = None
         self.result_queue = None
         self.task_queue = None
-        self.transfer_provider = transfer_provider
+        self._use_alternate_transfer_class_provider = use_alternate_transfer_class_provider or get_transfer
 
     def check_state(self):
         if self.process and time.monotonic() - self.last_activity > self.max_idle_age:
@@ -35,19 +57,15 @@ class FileFetchManager:
     def fetch_file(self, site, key, target_path):
         self.last_activity = time.monotonic()
         self._start_process()
-        if self.mp_manager:
-            self.task_queue.put((site, key, target_path))
-            result = self.result_queue.get()
-            if result is None:
-                # Should only happen if the process is terminated while we're waiting for
-                # a result, which is pretty much the same as timeout
-                raise queue.Empty
-            elif isinstance(result[1], Exception):
-                raise result[1]
-            return result[1], result[2]
-        else:
-            transfer = self.transfer_provider(site)
-            return FileFetcher(self.config, transfer).fetch(site, key, target_path)
+        self.task_queue.put((site, key, target_path))
+        result = self.result_queue.get()
+        if result is None:
+            # Should only happen if the process is terminated while we're waiting for
+            # a result, which is pretty much the same as timeout
+            raise queue.Empty
+        elif isinstance(result[1], Exception):
+            raise result[1]
+        return result[1], result[2]
 
     def stop(self):
         with self.lock:
@@ -66,14 +84,33 @@ class FileFetchManager:
 
     def _start_process(self):
         with self.lock:
-            if not self.mp_manager or self.process:
+            if self.process:
                 return
             self.result_queue = self.mp_manager.Queue()
             self.task_queue = self.mp_manager.Queue()
             self.process = multiprocessing.Process(
-                target=_remote_file_fetch_loop, args=(self.config, self.task_queue, self.result_queue)
+                target=_remote_file_fetch_loop,
+                args=(self.config, self.task_queue, self.result_queue, self._use_alternate_transfer_class_provider)
             )
             self.process.start()
+
+
+class InProcessFileFetchManager(FileFetchManager):
+    def __init__(self, app_config: dict, transfer_provider: Callable[[str], BaseTransfer]):
+        self.config = app_config
+        self.last_activity = time.monotonic()
+        self.transfer_provider = transfer_provider
+
+    def check_state(self):
+        pass
+
+    def fetch_file(self, site, key, target_path):
+        self.last_activity = time.monotonic()
+        transfer = self.transfer_provider(site)
+        return FileFetcher(self.config, transfer).fetch(site, key, target_path)
+
+    def stop(self):
+        pass
 
 
 class FileFetcher:
@@ -101,7 +138,9 @@ class FileFetcher:
             raise
 
 
-def _remote_file_fetch_loop(app_config, task_queue, result_queue):
+def _remote_file_fetch_loop(
+    app_config, task_queue, result_queue, transfer_factory: Callable[[dict], BaseTransfer] = get_transfer
+):
     transfers = {}
     while True:
         task = task_queue.get()
@@ -111,9 +150,9 @@ def _remote_file_fetch_loop(app_config, task_queue, result_queue):
             site, key, target_path = task
             transfer = transfers.get(site)
             if not transfer:
-                transfer = get_transfer(get_object_storage_config(app_config, site))
+                transfer = transfer_factory(get_object_storage_config(app_config, site))
                 transfers[site] = transfer
             file_size, metadata = FileFetcher(app_config, transfer).fetch(site, key, target_path)
             result_queue.put((task, file_size, metadata))
         except Exception as e:  # pylint: disable=broad-except
-            result_queue.put((task, e))
+            result_queue.put((task, e, "".join(traceback.format_exception(*sys.exc_info()))))
