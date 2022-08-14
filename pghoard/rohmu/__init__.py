@@ -37,4 +37,7 @@ def get_transfer(storage_config):
     storage_class = get_class_for_transfer(storage_config)
     storage_config = storage_config.copy()
     storage_config.pop("storage_type")
-    return storage_class(**storage_config)
+    notification_url = storage_config.pop("notification_url", None)
+    ret = storage_class(**storage_config)
+    ret.update_notification_url(notification_url)
+    return ret

@@ -96,17 +96,8 @@ def base64_to_hex(b64val):
 
 
 class GoogleTransfer(BaseTransfer):
-    def __init__(
-        self,
-        project_id,
-        bucket_name,
-        credential_file=None,
-        credentials=None,
-        prefix=None,
-        proxy_info=None,
-        notification_url=None
-    ):
-        super().__init__(prefix=prefix, notification_url=notification_url)
+    def __init__(self, project_id, bucket_name, credential_file=None, credentials=None, prefix=None, proxy_info=None):
+        super().__init__(prefix=prefix)
         self.project_id = project_id
         self.proxy_info = proxy_info
         self.google_creds = get_credentials(credential_file=credential_file, credentials=credentials)

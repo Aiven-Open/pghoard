@@ -7,7 +7,6 @@ See LICENSE for details
 import logging
 import platform
 from collections import namedtuple
-from dataclasses import dataclass
 
 import requests
 
@@ -33,9 +32,9 @@ def get_requests_session() -> requests.Session:
 
 
 class BaseTransfer:
-    def __init__(self, prefix, notification_url=None):
+    def __init__(self, prefix):
         self.log = logging.getLogger(self.__class__.__name__)
-        self.notification_url = notification_url
+        self.notification_url = None
         if not prefix:
             prefix = ""
         elif prefix[-1] != "/":
@@ -137,6 +136,10 @@ class BaseTransfer:
 
     def store_file_object(self, key, fd, *, cache_control=None, metadata=None, mimetype=None, upload_progress_fn=None):
         raise NotImplementedError
+
+    def update_notification_url(self, url: str) -> None:
+        """Allow changing the notificaiton url without having to recreate the object"""
+        self.notification_url = url
 
     def _notify(self, operation):
         """Inform notification_url about operation"""
