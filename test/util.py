@@ -11,8 +11,6 @@ from pghoard.common import json_encode
 
 from .conftest import PGHoardForTest
 
-
-
 log = logging.getLogger(__name__)
 
 
