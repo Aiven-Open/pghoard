@@ -41,8 +41,8 @@ def switch_wal(connection):
         cur.execute("SELECT pg_switch_wal()")
     else:
         cur.execute("SELECT pg_switch_xlog()")
-    cur.execute("SELECT name FROM pg_ls_waldir()")
-    res = cur.fetchmany()
+    cur.execute("SELECT name FROM pg_ls_waldir() order by name")
+    res = cur.fetchall()
     if res:
         for item in res:
             log.info("WAL FILE NAME %r", item)
