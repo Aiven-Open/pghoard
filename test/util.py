@@ -1,4 +1,5 @@
 import io
+import logging
 import tarfile
 import time
 from pathlib import Path
@@ -9,6 +10,9 @@ from rohmu import rohmufile
 from pghoard.common import json_encode
 
 from .conftest import PGHoardForTest
+
+
+log = logging.getLogger(__name__)
 
 
 def wait_for_xlog(pghoard: PGHoardForTest, count: int):
@@ -37,6 +41,13 @@ def switch_wal(connection):
         cur.execute("SELECT pg_switch_wal()")
     else:
         cur.execute("SELECT pg_switch_xlog()")
+    cur.execute("SELECT name FROM pg_ls_waldir()")
+    res = cur.fetchmany()
+    if res:
+        for item in res:
+            log.info("WAL FILE NAME %r", item)
+    else:
+        log.info("NO WAL FILE")
     cur.close()
 
 
