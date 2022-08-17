@@ -37,6 +37,7 @@ def switch_wal(connection):
         cur.execute("SELECT pg_switch_wal()")
     else:
         cur.execute("SELECT pg_switch_xlog()")
+    cur.execute("SELECT txid_current()")
     cur.close()
 
 
