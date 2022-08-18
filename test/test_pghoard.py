@@ -632,6 +632,10 @@ class TestPGHoardWithPG:
         if pghoard.receivexlogs[pghoard.test_site].is_alive():
             pghoard.receivexlogs[pghoard.test_site].join()
         del pghoard.receivexlogs[pghoard.test_site]
+        # stopping the thread is not enough, it's possible that killed receiver will leave incomplete partial files
+        # around, pghoard is capable of cleaning those up but needs to be restarted, for the test it should be OK
+        # just to call startup_walk_for_missed_files, so it takes care of cleaning up
+        pghoard.startup_walk_for_missed_files()
 
         n_xlogs = pghoard.transfer_agent_state[pghoard.test_site]["upload"]["xlog"]["xlogs_since_basebackup"]
 
