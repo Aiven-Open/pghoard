@@ -32,6 +32,8 @@ def switch_wal(connection):
     cur = connection.cursor()
     # Force allocating a XID, otherwise if there was no activity we will
     # stay on the same WAL
+    # Note: do not combine two function call in one select, PG executes it differently and
+    # sometimes looks like it generates less WAL files than we wanted
     cur.execute("SELECT txid_current()")
     if connection.server_version >= 100000:
         cur.execute("SELECT pg_switch_wal()")
