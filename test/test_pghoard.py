@@ -529,27 +529,34 @@ dbname|"""
         assert self.pghoard.compression_queue.qsize() == 2
         assert self.pghoard.transfer_queue.qsize() == 0
 
-    def test_startup_walk_for_missed_uncompressed_files_timeline(self):
+    @pytest.mark.parametrize(
+        "file_type, file_name", [(FileType.Wal, "000000010000000000000004"), (FileType.Timeline, "00000002.history")]
+    )
+    def test_startup_walk_for_missed_uncompressed_file_type(self, file_type: FileType, file_name: str):
         compressed_wal_path, _ = self.pghoard.create_backup_site_paths(self.test_site)
         uncompressed_wal_path = compressed_wal_path + "_incoming"
-        with open(os.path.join(uncompressed_wal_path, "00000002.history"), "wb") as fp:
+        with open(os.path.join(uncompressed_wal_path, file_name), "wb") as fp:
             fp.write(b"foo")
         self.pghoard.startup_walk_for_missed_files()
         assert self.pghoard.compression_queue.qsize() == 1
         assert self.pghoard.transfer_queue.qsize() == 0
         compress_event = self.pghoard.compression_queue.get(timeout=1.0)
-        assert compress_event.file_type == FileType.Timeline
+        assert compress_event.file_type == file_type
 
-    def test_startup_walk_for_missed_uncompressed_files_wal(self):
+    @pytest.mark.parametrize(
+        "file_type, file_name", [(FileType.Wal, "000000010000000000000005"), (FileType.Timeline, "00000003.history")]
+    )
+    def test_startup_walk_for_missed_compressed_file_type(self, file_type: FileType, file_name: str):
         compressed_wal_path, _ = self.pghoard.create_backup_site_paths(self.test_site)
-        uncompressed_wal_path = compressed_wal_path + "_incoming"
-        with open(os.path.join(uncompressed_wal_path, "000000010000000000000004"), "wb") as fp:
+        with open(os.path.join(compressed_wal_path, file_name), "wb") as fp:
             fp.write(b"foo")
+        with open(os.path.join(compressed_wal_path, f"{file_name}.metadata"), "wb") as fp:
+            fp.write(b"{}")
         self.pghoard.startup_walk_for_missed_files()
-        assert self.pghoard.compression_queue.qsize() == 1
-        assert self.pghoard.transfer_queue.qsize() == 0
-        compress_event = self.pghoard.compression_queue.get(timeout=1.0)
-        assert compress_event.file_type == FileType.Wal
+        assert self.pghoard.compression_queue.qsize() == 0
+        assert self.pghoard.transfer_queue.qsize() == 1
+        upload_event = self.pghoard.transfer_queue.get(timeout=1.0)
+        assert upload_event.file_type == file_type
 
 
 class TestPGHoardWithPG:
