@@ -719,8 +719,6 @@ class TestPGHoardWithPG:
         # MiB so if logic for automatically suspending pg_receive(xlog|wal) wasn't working the volume
         # would certainly fill up and the files couldn't be processed. Now this should work fine.
         for _ in range(16):
-            # Note: do not combine two function call in one select, PG executes it differently and
-            # sometimes looks like it generates less WAL files than we wanted
             switch_wal(conn)
         conn.close()
 
