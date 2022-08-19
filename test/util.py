@@ -39,6 +39,11 @@ def switch_wal(connection):
         cur.execute("SELECT pg_switch_wal()")
     else:
         cur.execute("SELECT pg_switch_xlog()")
+    # This should fix flaky tests, which expect a specific number of WAL files which never arrive.
+    # Quite often the last WAL would not be finalized by walreceiver unless there is some extra activity after
+    # switching, the bug should be fixed in PG 15
+    # https://github.com/postgres/postgres/commit/596ba75cb11173a528c6b6ec0142a282e42b69ec
+    cur.execute("SELECT txid_current()")
     cur.close()
 
 
