@@ -618,11 +618,13 @@ class PGHoard:
                 with open(metadata_path, "r") as fp:
                     metadata = json.load(fp)
 
+                file_type = FileType.Wal if is_xlog else FileType.Timeline
+
                 transfer_event = UploadEvent(
-                    file_type=FileType.Wal,
+                    file_type=file_type,
                     backup_site_name=site,
                     file_size=os.path.getsize(full_path),
-                    file_path=FileTypePrefixes[FileType.Wal] / filename,
+                    file_path=FileTypePrefixes[file_type] / filename,
                     source_data=Path(full_path),
                     callback_queue=None,
                     metadata=metadata
