@@ -87,11 +87,6 @@ jobs:
       - id: unittest
         run: |
           make coverage PYTEST_TMPDIR=/tmp/${{ matrix.python-version }}
-          make coverage PYTEST_TMPDIR=/tmp/${{ matrix.python-version }}
-          make coverage PYTEST_TMPDIR=/tmp/${{ matrix.python-version }}
-          make coverage PYTEST_TMPDIR=/tmp/${{ matrix.python-version }}
-          make coverage PYTEST_TMPDIR=/tmp/${{ matrix.python-version }}
-          make coverage PYTEST_TMPDIR=/tmp/${{ matrix.python-version }}
 
       - id: upload-codecov
         # Third-party action pinned to v2.1.0
