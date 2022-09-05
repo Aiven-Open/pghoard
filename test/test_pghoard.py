@@ -8,6 +8,7 @@ import datetime
 import json
 import os
 import sys
+from contextlib import closing
 from pathlib import Path
 from typing import Any, Dict
 from unittest.mock import Mock, patch
@@ -708,19 +709,21 @@ class TestPGHoardWithPG:
 
     def test_pause_on_disk_full(self, db, pghoard_separate_volume, caplog):
         pghoard = pghoard_separate_volume
-        conn = db.connect()
-        conn.autocommit = True
 
-        wal_directory = os.path.join(pghoard.config["backup_location"], pghoard.test_site, "xlog_incoming")
-        os.makedirs(wal_directory, exist_ok=True)
+        with closing(db.connect()) as conn:
+            conn.autocommit = True
 
-        pghoard.receivexlog_listener(pghoard.test_site, db.user, wal_directory)
-        # Create 15 new WAL segments in very quick succession. Our volume for incoming WALs is only 150
-        # MiB so if logic for automatically suspending pg_receive(xlog|wal) wasn't working the volume
-        # would certainly fill up and the files couldn't be processed. Now this should work fine.
-        for _ in range(16):
-            switch_wal(conn)
-        conn.close()
+            wal_directory = os.path.join(pghoard.config["backup_location"], pghoard.test_site, "xlog_incoming")
+            os.makedirs(wal_directory, exist_ok=True)
+
+            pghoard.receivexlog_listener(pghoard.test_site, db.user, wal_directory)
+            # Create 15 new WAL segments in very quick succession. Our volume for incoming WALs is only 150
+            # MiB so if logic for automatically suspending pg_receive(xlog|wal) wasn't working the volume
+            # would certainly fill up and the files couldn't be processed. Now this should work fine.
+            for _ in range(16):
+                switch_wal(conn)
+            with closing(conn.cursor()) as cur:
+                cur.execute("CHECKPOINT")
 
         wait_for_xlog(pghoard, 15)
         assert "pausing pg_receive(wal|xlog)" in caplog.text
