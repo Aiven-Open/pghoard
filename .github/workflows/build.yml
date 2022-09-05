@@ -87,6 +87,15 @@ jobs:
       - id: unittest
         run: |
           make coverage
+          make coverage
+          make coverage
+          make coverage
+          make coverage
+          make coverage
+          make coverage
+          make coverage
+          make coverage
+          make coverage
 
       - id: upload-codecov
         # Third-party action pinned to v2.1.0
