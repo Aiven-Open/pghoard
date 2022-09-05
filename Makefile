@@ -8,6 +8,10 @@ PYTHON ?= python3
 PYTHON_SOURCE_DIRS = pghoard/ test/
 PYTEST_ARG ?= -v
 
+ifdef PYTEST_TMPDIR
+PYTEST_ARG := $(PYTEST_ARG) --basetemp=$(PYTEST_TMPDIR)
+endif
+
 .PHONY: unittest
 unittest: version
 	$(PYTHON) -m pytest -vv test/
