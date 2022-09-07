@@ -7,11 +7,13 @@ See LICENSE for details
 import dataclasses
 import enum
 import logging
+import multiprocessing
 import os
 import time
 from contextlib import suppress
 from dataclasses import dataclass
 from io import BytesIO
+from multiprocessing.managers import SyncManager
 from pathlib import Path
 from queue import Empty
 from threading import Lock
@@ -25,7 +27,8 @@ from pghoard.common import (
     CallbackEvent, CallbackQueue, FileType, PGHoardThread, Queue, QuitEvent, StrEnum, create_alert_file,
     get_object_storage_config
 )
-from pghoard.fetcher import create_fetch_manager
+from pghoard.fetcher import create_fetch_manager, FileFetchManager
+from pghoard.metrics import Metrics
 
 _STATS_LOCK = Lock()
 _last_stats_transmit_time = 0
@@ -101,13 +104,13 @@ TransferQueue = Queue
 class TransferAgent(PGHoardThread):
     def __init__(
         self,
-        config,
-        mp_manager,
+        config: dict,
+        mp_manager: multiprocessing.Manager,
         transfer_queue: TransferQueue,
-        metrics,
-        shared_state_dict,
+        metrics: Metrics,
+        shared_state_dict: dict,
         transfer_factory: Callable[[dict], BaseTransfer] = get_transfer
-    ):
+    ) -> None:
         super().__init__()
         self.log = logging.getLogger("TransferAgent")
         self.config = config
@@ -122,7 +125,7 @@ class TransferAgent(PGHoardThread):
         self._transfer_factory = transfer_factory
         self.log.debug("TransferAgent initialized")
 
-    def _set_state_defaults_for_site(self, site):
+    def _set_state_defaults_for_site(self, site) -> None:
         if site not in self.state:
             EMPTY = {
                 "data": 0,
@@ -307,7 +310,12 @@ class TransferAgent(PGHoardThread):
         try:
             path = file_to_transfer.destination_path
             self.log.info("Requesting download of object key: src=%r dst=%r", key, path)
-            file_size, metadata = self.fetch_manager.fetch_file(site, key, path)
+            self.fetch_manager.start_fetching_file(site, key, path)
+            self.fetch_manager.has_fetching_completed()
+            while not self.fetch_manager.has_fetching_completed():
+                self.fetch_manager.check_state()
+                time.sleep(5.0)
+            file_size, metadata = self.fetch_manager.retrieve_fetched_file()
             payload = {"file_size": file_size, "metadata": metadata, "target_path": path}
             return CallbackEvent(success=True, opaque=file_to_transfer.opaque, payload=payload)
         except FileNotFoundFromStorageError as ex:

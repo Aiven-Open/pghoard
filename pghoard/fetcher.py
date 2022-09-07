@@ -23,6 +23,15 @@ class FileFetchManager(ABC):
     def fetch_file(self, site: str, key: str, target_path: str) -> tuple[int, dict[str, Any]]:
         pass
 
+    def start_fetching_file(self, site: str, key: str, target_path: str) -> None:
+        pass
+
+    def has_fetching_completed(self) -> bool:
+        pass
+
+    def retrieve_fetched_file(self) -> tuple[int, dict[str, Any]]:
+        pass
+
     def stop(self) -> None:
         pass
 
@@ -39,6 +48,8 @@ class SpawningFileFetchManager(FileFetchManager):
     object storage. If a multiprocess.Manager instance is provided, the fetch is performed
     in a subprocess to avoid GIL related performance constraints, otherwise file is fetched
     in current process."""
+    _NO_RESULT = (object(), object(), object())
+
     def __init__(self, app_config: dict, mp_manager: multiprocessing.Manager, use_alternate_transfer_class_provider=None):
         self.config = app_config
         self.last_activity = time.monotonic()
@@ -49,6 +60,8 @@ class SpawningFileFetchManager(FileFetchManager):
         self.result_queue = None
         self.task_queue = None
         self._use_alternate_transfer_class_provider = use_alternate_transfer_class_provider or get_transfer
+        self._result = self._NO_RESULT
+
 
     def check_state(self):
         if self.process and time.monotonic() - self.last_activity > self.max_idle_age:
@@ -59,6 +72,30 @@ class SpawningFileFetchManager(FileFetchManager):
         self._start_process()
         self.task_queue.put((site, key, target_path))
         result = self.result_queue.get()
+        if result is None:
+            # Should only happen if the process is terminated while we're waiting for
+            # a result, which is pretty much the same as timeout
+            raise queue.Empty
+        elif isinstance(result[1], Exception):
+            raise result[1]
+        return result[1], result[2]
+
+    def start_fetching_file(self, site: str, key: str, target_path: str) -> None:
+        self.last_activity = time.monotonic()
+        self._start_process()
+        self.task_queue.put((site, key, target_path))
+
+    def has_fetching_completed(self) -> bool:
+        try:
+            self._result = self.result_queue.get(block=False)
+            return True
+        except queue.Empty:
+            return False
+
+    def retrieve_fetched_file(self) -> tuple[int, dict[str, Any]]:
+        if self._result == self._NO_RESULT:
+            raise ValueError("Must not call this method without a completed result fetching")
+        result = self._result
         if result is None:
             # Should only happen if the process is terminated while we're waiting for
             # a result, which is pretty much the same as timeout
@@ -108,6 +145,15 @@ class InProcessFileFetchManager(FileFetchManager):
         self.last_activity = time.monotonic()
         transfer = self.transfer_provider(site)
         return FileFetcher(self.config, transfer).fetch(site, key, target_path)
+
+    def start_fetching_file(self, site: str, key: str, target_path: str) -> int:
+        raise NotImplementedError("Cannot be implemented by in-process filefetchmanager")
+
+    def has_fetching_completed(self, handle: int) -> bool:
+        raise NotImplementedError("Cannot be implemented by in-process filefetchmanager")
+
+    def retrieve_fetched_file(self, handle: int) -> tuple[int, dict[str, Any]]:
+        raise NotImplementedError("Cannot be implemented by in-process filefetchmanager")
 
     def stop(self):
         pass

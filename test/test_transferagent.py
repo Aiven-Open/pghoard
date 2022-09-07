@@ -4,6 +4,7 @@ pghoard
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
+import multiprocessing
 import os
 import time
 from asyncio import Event
@@ -21,7 +22,7 @@ from pghoard.transfer import (BaseTransferEvent, DownloadEvent, TransferAgent, U
 
 # pylint: disable=attribute-defined-outside-init
 from .base import PGHoardTestCase
-from .transfer_lib import (BlockingTransferFailingAfterTenSeconds, alternate_get_transfer)
+from .transfer_lib import (BlockingTransferFailingAfterSixtySeconds, alternate_get_transfer)
 
 
 class MockStorage(Mock):
@@ -261,7 +262,7 @@ class TestTransferAgent(PGHoardTestCase):
             assert isinstance(evt.exception, Exception)
 
 
-@pytest.mark.xfail
+
 def test_transferagent_hangs_indefinitely_if_upload_transfer_blocks(tmp_path: Path):
     config = {
         "backup_sites": {
@@ -281,7 +282,7 @@ def test_transferagent_hangs_indefinitely_if_upload_transfer_blocks(tmp_path: Pa
     # there seems to be no way to configure timeouts, actually
     transfer_agent = TransferAgent(
         config=config,
-        mp_manager=None,
+        mp_manager=multiprocessing.Manager(),
         transfer_queue=transfer_queue,
         metrics=metrics.Metrics(statsd={}),
         shared_state_dict={},
@@ -312,3 +313,61 @@ def test_transferagent_hangs_indefinitely_if_upload_transfer_blocks(tmp_path: Pa
             pass
     else:
         raise ValueError("could not find any in queue, transfer is hanging")
+
+
+def test_transferagent_doesnt_hang_indefinitely_if_download_transfer_blocks(tmp_path: Path):
+    config = {
+        "backup_sites": {
+            "some_site": {
+                "object_storage": {
+                    "storage_type": "local",
+                    "directory": str(tmp_path)
+                },
+                "prefix": "some_prefix"
+            },
+        },
+    }
+
+    transfer_queue = Queue()
+
+    # without mp-manager will yield a single-threaded download approach - we don't care
+    # for uploads, actually
+    # there seems to be no way to configure timeouts, actually
+    transfer_agent = TransferAgent(
+        config=config,
+        mp_manager=multiprocessing.Manager(),
+        transfer_queue=transfer_queue,
+        metrics=metrics.Metrics(statsd={}),
+        shared_state_dict={},
+        transfer_factory=alternate_get_transfer,
+    )
+    transfer_agent.fetch_manager.max_idle_age = 5
+    transfer_agent.start()
+    try:
+
+        callback_queue = Queue()
+
+        # we don't actually care about the event content
+        transfer_queue.put(
+            DownloadEvent(
+                callback_queue=callback_queue,
+                file_type=FileType.Basebackup,
+                file_path=tmp_path / "basebackup",
+                file_size=3,
+                destination_path=tmp_path / "destination",
+                backup_site_name="some_site"
+            )
+        )
+
+        for x in range(30):
+            try:
+                callback_event = callback_queue.get(block=True, timeout=1.0)
+                assert not callback_event.success
+                break
+            except Empty:
+                pass
+        else:
+            raise ValueError("could not find any in queue, transfer is hanging")
+    finally:
+        transfer_agent.running = False
+        transfer_agent.join()

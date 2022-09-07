@@ -102,7 +102,7 @@ class PGHoard:
         self.walreceivers = {}
         self.transfer_agents = []
         self.config = {}
-        self.mp_manager = None
+        self.mp_manager = multiprocessing.Manager()
         self.thread_critical_failure_event = Event()
         self.site_transfers = {}
         self.state = {
@@ -111,8 +111,8 @@ class PGHoard:
         }
         self.transfer_agent_state = {}  # shared among transfer agents
         self.load_config()
-        if self.config["transfer"]["thread_count"] > 1:
-            self.mp_manager = multiprocessing.Manager()
+        # if self.config["transfer"]["thread_count"] > 1:
+        #     self.mp_manager = multiprocessing.Manager()
 
         if not os.path.exists(self.config["backup_location"]):
             os.makedirs(self.config["backup_location"])
@@ -151,15 +151,15 @@ class PGHoard:
             )
             self.compressors.append(compressor)
 
-        for _ in range(self.config["transfer"]["thread_count"]):
-            ta = TransferAgent(
-                config=self.config,
-                mp_manager=self.mp_manager,
-                transfer_queue=self.transfer_queue,
-                metrics=self.metrics,
-                shared_state_dict=self.transfer_agent_state
-            )
-            self.transfer_agents.append(ta)
+        #for _ in range(self.config["transfer"]["thread_count"]):
+        ta = TransferAgent(
+            config=self.config,
+            mp_manager=self.mp_manager,
+            transfer_queue=self.transfer_queue,
+            metrics=self.metrics,
+            shared_state_dict=self.transfer_agent_state
+        )
+        #    self.transfer_agents.append(ta)
 
         logutil.notify_systemd("READY=1")
         self.log.info("pghoard initialized, own_hostname: %r, cwd: %r", socket.gethostname(), os.getcwd())
