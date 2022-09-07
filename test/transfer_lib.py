@@ -12,6 +12,10 @@ class BlockingTransferFailingAfterSixtySeconds(BaseTransfer):
         time.sleep(60)
         raise ValueError("this should not happen a timeout should happen before (while testing)")
 
+    def store_file_object(self, key, fd, *, cache_control=None, metadata=None, mimetype=None, upload_progress_fn=None):
+        time.sleep(60)
+        raise ValueError("this should not happen a timeout should happen before (while testing)")
+
 
 def alternate_get_transfer(storage_config) -> BaseTransfer:
     return BlockingTransferFailingAfterSixtySeconds()

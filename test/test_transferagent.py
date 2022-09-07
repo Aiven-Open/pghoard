@@ -262,15 +262,18 @@ class TestTransferAgent(PGHoardTestCase):
             assert isinstance(evt.exception, Exception)
 
 
-
+@pytest.mark.xfail
 def test_transferagent_hangs_indefinitely_if_upload_transfer_blocks(tmp_path: Path):
     config = {
         "backup_sites": {
             "some_site": {
                 "object_storage": {
                     "storage_type": "local",
-                    "directory": str(tmp_path)
+                    "directory": str(tmp_path),
+
                 },
+                "prefix": "some_prefix"
+
             },
         },
     }
@@ -292,14 +295,17 @@ def test_transferagent_hangs_indefinitely_if_upload_transfer_blocks(tmp_path: Pa
 
     callback_queue = Queue()
 
+
     # we don't actually care about the event content
+    source_data = tmp_path / "sourcedata"
+    source_data.write_bytes(b'abc')
     transfer_queue.put(
         UploadEvent(
             callback_queue=callback_queue,
             file_type=FileType.Basebackup,
             file_path=tmp_path / "basebackup",
             file_size=3,
-            source_data=tmp_path / "sourcedata",
+            source_data=source_data,
             metadata={"start-wal-segment": "00000001000000000000000C"},
             backup_site_name="some_site"
         )
