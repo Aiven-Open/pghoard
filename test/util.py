@@ -1,4 +1,6 @@
 import io
+import logging
+import os
 import tarfile
 import time
 from pathlib import Path
@@ -10,8 +12,9 @@ from pghoard.common import json_encode
 
 from .conftest import PGHoardForTest
 
+logger = logging.getLogger()
 
-def wait_for_xlog(pghoard: PGHoardForTest, count: int):
+def wait_for_xlog(pghoard: PGHoardForTest, count: int, wal_directory = None):
     start = time.monotonic()
     while True:
         xlogs = None
@@ -21,6 +24,10 @@ def wait_for_xlog(pghoard: PGHoardForTest, count: int):
             xlogs = transfer_agent_state_for_site["upload"]["xlog"]["xlogs_since_basebackup"]
             if xlogs >= count:
                 break
+
+        if wal_directory:
+            for xlog_file in os.listdir(wal_directory):
+                logger.info(xlog_file)
 
         if time.monotonic() - start > 15:
             assert False, "Expected at least {} xlog uploads, got {}".format(count, xlogs)

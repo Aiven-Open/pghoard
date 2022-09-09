@@ -725,7 +725,7 @@ class TestPGHoardWithPG:
             with closing(conn.cursor()) as cur:
                 cur.execute("CHECKPOINT")
 
-        wait_for_xlog(pghoard, 15)
+        wait_for_xlog(pghoard, 15, wal_directory)
         assert "pausing pg_receive(wal|xlog)" in caplog.text
 
     def test_surviving_pg_receivewal_hickup(self, db, pghoard):
