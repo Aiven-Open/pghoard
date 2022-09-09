@@ -27,7 +27,10 @@ def wait_for_xlog(pghoard: PGHoardForTest, count: int, wal_directory = None):
 
         if wal_directory:
             for xlog_file in os.listdir(wal_directory):
-                logger.info(xlog_file)
+                try:
+                    logger.info(f"{xlog_file}: {os.stat(os.path.join(wal_directory, xlog_file)).st_size}")
+                except:
+                    logger.info("File disappeared while getting info %r", xlog_file)
 
         if time.monotonic() - start > 15:
             assert False, "Expected at least {} xlog uploads, got {}".format(count, xlogs)
