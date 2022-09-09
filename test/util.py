@@ -18,12 +18,6 @@ def wait_for_xlog(pghoard: PGHoardForTest, count: int, wal_directory = None):
     start = time.monotonic()
     while True:
         xlogs = None
-        # At the start, this is not yet defined
-        transfer_agent_state_for_site = pghoard.transfer_agent_state.get(pghoard.test_site)
-        if transfer_agent_state_for_site:
-            xlogs = transfer_agent_state_for_site["upload"]["xlog"]["xlogs_since_basebackup"]
-            if xlogs >= count:
-                break
 
         if wal_directory:
             for xlog_file in os.listdir(wal_directory):
@@ -31,6 +25,13 @@ def wait_for_xlog(pghoard: PGHoardForTest, count: int, wal_directory = None):
                     logger.info(f"{xlog_file}: {os.stat(os.path.join(wal_directory, xlog_file)).st_size}")
                 except:
                     logger.info("File disappeared while getting info %r", xlog_file)
+
+        # At the start, this is not yet defined
+        transfer_agent_state_for_site = pghoard.transfer_agent_state.get(pghoard.test_site)
+        if transfer_agent_state_for_site:
+            xlogs = transfer_agent_state_for_site["upload"]["xlog"]["xlogs_since_basebackup"]
+            if xlogs >= count:
+                break
 
         if time.monotonic() - start > 15:
             assert False, "Expected at least {} xlog uploads, got {}".format(count, xlogs)

@@ -722,8 +722,9 @@ class TestPGHoardWithPG:
             # would certainly fill up and the files couldn't be processed. Now this should work fine.
             for _ in range(16):
                 switch_wal(conn)
-            with closing(conn.cursor()) as cur:
-                cur.execute("CHECKPOINT")
+
+        with closing(db.connect()) as conn, closing(conn.cursor()) as cur:
+            cur.execute("CHECKPOINT")
 
         wait_for_xlog(pghoard, 15, wal_directory)
         assert "pausing pg_receive(wal|xlog)" in caplog.text
