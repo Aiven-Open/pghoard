@@ -8,6 +8,7 @@ import datetime
 import json
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Any, Dict
 from unittest.mock import Mock, patch
@@ -20,7 +21,7 @@ from pghoard.pghoard import PGHoard
 from pghoard.pgutil import create_connection_string
 
 from .base import PGHoardTestCase
-from .util import dict_to_tar_file, switch_wal, wait_for_xlog
+from .util import Timeout, dict_to_tar_file, switch_wal, wait_for_xlog
 
 # pylint: disable=attribute-defined-outside-init
 
@@ -763,6 +764,57 @@ class TestPGHoardWithPG:
 
         # We should now process all created segments, not only the ones which were created after pg_receivewal was restarted
         wait_for_xlog(pghoard, n_xlogs + 10)
+
+    def test_xlog_receiver_config_changes(self, db, pghoard_separate_volume):
+        """
+        Test that configuration changes are respected.
+        """
+        pghoard = pghoard_separate_volume
+        wal_directory = os.path.join(pghoard.config["backup_location"], pghoard.test_site, "xlog_incoming")
+        os.makedirs(wal_directory, exist_ok=True)
+
+        pghoard.receivexlog_listener(pghoard.test_site, db.user, wal_directory)
+
+        def set_config(prop: str, value: int) -> None:
+            for site in pghoard.config["backup_sites"].values():
+                site["pg_receivexlog"][prop] = value
+            pghoard.synchronize_new_config()
+
+        # Ensure that we quickly respond to changes in the
+        # disk free configuration values
+        set_config("disk_space_check_interval", 1)
+        conn = db.connect()
+        conn.autocommit = True
+        for _ in range(4):
+            switch_wal(conn)
+        conn.close()
+
+        # Check that we uploaded one file, and it is the right one.
+        wait_for_xlog(pghoard, 2)
+        wait_for_xlog(pghoard, 3)
+
+        set_config("min_disk_free_bytes", 10 ** 20)
+
+        # Ensure the new configuration has been loaded
+        time.sleep(1)
+
+        # Because min_disk_free_bytes is so large , the receiver
+        # should have been paused, at the latest after the next
+        # WAL is received. Therefore, send two and expect a
+        # timeout.
+        conn = db.connect()
+        conn.autocommit = True
+        for _ in range(3):
+            switch_wal(conn)
+        conn.close()
+
+        with pytest.raises(Timeout):
+            wait_for_xlog(pghoard, 5)
+
+        set_config("min_disk_free_bytes", 10 ** 3)
+
+        # Now the receiver should start up again
+        wait_for_xlog(pghoard, 5)
 
 
 def test_pghoard_main_config_does_not_exist():
