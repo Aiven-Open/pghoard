@@ -897,7 +897,11 @@ class PGHoard:
             self.webserver.server.config = new_config
 
         for thread in self._get_all_threads():
-            thread.config = new_config
+            if hasattr(thread, "new_config"):
+                thread.new_config.put(self.config)
+            else:
+                thread.config = self.config
+
             thread.site_transfers = {}
 
         self.log.debug("Loaded config: %r from: %r", self.config, self.config_path)

@@ -8,6 +8,7 @@ import datetime
 import json
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Any, Dict
 from unittest.mock import Mock, patch
@@ -792,3 +793,34 @@ def test_pghoard_invalid_config():
 def test_pghoard_no_pgdata_dir():
     with pytest.raises(FileNotFoundError, match="/path/where/my/pgdata/resides/PG_VERSION"):
         PGHoard("pghoard.json").run()
+
+
+def test_xlog_receiver_config_changes(self, db, pghoard_separate_volume):
+    """
+    Test that configuration changes are respected.
+    """
+    pghoard = pghoard_separate_volume
+    wal_directory = os.path.join(pghoard.config["backup_location"], pghoard.test_site, "xlog_incoming")
+    os.makedirs(wal_directory, exist_ok=True)
+
+    pghoard.receivexlog_listener(pghoard.test_site, db.user, wal_directory)
+
+    def set_config(prop: str, value: int) -> None:  # pylint: disable=unused-argument
+        pghoard.config[prop] = value
+        pghoard.synchronize_new_config()
+
+    def get_pause_statuses():
+        return {receivexlog.receiver_paused for receivexlog in pghoard.receivexlogs.values()}
+
+    # Ensure that we quickly respond to changes in the
+    # disk free configuration values
+    set_config("disk_space_check_interval", 1)
+    set_config("min_disk_free_bytes", 10 ** 20)
+
+    time.sleep(2)
+    assert get_pause_statuses() == {True}
+    # Ensure the new configuration has been loaded
+    set_config("min_disk_free_bytes", 10 ** 3)
+    time.sleep(2)
+    assert get_pause_statuses() == {False}
+
