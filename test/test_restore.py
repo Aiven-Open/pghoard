@@ -21,7 +21,8 @@ import pytest
 
 from pghoard.common import write_json_file
 from pghoard.restore import (
-    BasebackupFetcher, ChunkFetcher, FileDataInfo, FileInfoType, FilePathInfo, Restore, RestoreError, create_recovery_conf
+    MAX_RETRIES, BasebackupFetcher, ChunkFetcher, FileDataInfo, FileInfoType, FilePathInfo, Restore, RestoreError,
+    create_recovery_conf
 )
 
 from .base import PGHoardTestCase
@@ -360,7 +361,7 @@ class TestBasebackupFetcher(unittest.TestCase):
 
         fetcher.max_stale_seconds = 2
         with patch("pghoard.restore.ChunkFetcher", new=FailingChunkFetcher):
-            if max_fails <= 2:
+            if max_fails < MAX_RETRIES:
                 fetcher.fetch_all()
                 self.check_sha256(
                     os.path.join(restore_dir, "pg_notify", "0000"),
