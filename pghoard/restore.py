@@ -899,7 +899,12 @@ class ChunkFetcher:
             metadata = transfer.get_metadata_for_key(self.file_info.name)
 
             def fetch_fn(sink):
-                transfer.get_contents_to_fileobj(self.file_info.name, sink, progress_callback=self._progress_callback)
+                try:
+                    transfer.get_contents_to_fileobj(self.file_info.name, sink, progress_callback=self._progress_callback)
+                    self.log.warning("OK fetch_fn")
+                except Exception as e:
+                    self.log.warning("FAIL: %r", e)
+                    raise
 
             if self.file_info.file_type == FileInfoType.regular:
                 self._fetch_and_extract_one_backup(metadata, self.file_info.size, fetch_fn)
