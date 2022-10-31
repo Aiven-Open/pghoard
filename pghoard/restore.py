@@ -867,6 +867,7 @@ def _fetch_and_process_chunk(
     except Exception as ex:  # pylint: disable=broad-except
         raise Exception(repr(ex))
 
+
 class ChunkFetcher:
     def __init__(self, app_config, file_info: FileInfo, download_progress_per_file, site, pgdata, tablespaces):
         self.config = app_config
