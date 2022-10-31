@@ -856,8 +856,16 @@ def _fetch_and_process_chunk(
 ):
     logutil.configure_logging(level=logging.DEBUG if debug else logging.INFO)
     fetcher = ChunkFetcher(app_config, file_info, download_progress_per_file, site, pgdata, tablespaces)
-    fetcher.process_chunk()
-
+    # By using this we avoid PickleErrors when passing the exception to the parent process.
+    # Previously if an exception fails to deserialize with pickle the original error would be masked,
+    # i.e \'PicklingError("Can\'t pickle <class \'zstd.ZstdError\'>: import of module \'zstd\' failed")
+    # We need to take care to not break error handling upstream though by masking everyting
+    try:
+        fetcher.process_chunk()
+    except MaybeRecoverableError:
+        raise  # raise as-is since caller has special logic for this particular exception
+    except Exception as ex:  # pylint: disable=broad-except
+        raise Exception(repr(ex))
 
 class ChunkFetcher:
     def __init__(self, app_config, file_info: FileInfo, download_progress_per_file, site, pgdata, tablespaces):
