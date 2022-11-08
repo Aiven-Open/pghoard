@@ -137,7 +137,7 @@ class ChunkUploader:
         files_to_backup,
         callback_queue: CallbackQueue,
         file_type: FileType = FileType.Basebackup_chunk,
-        extra_metadata: Dict[str, Any] = None,
+        extra_metadata: Optional[Dict[str, Any]] = None,
         delta_stats: Optional[DeltaStats] = None
     ) -> Tuple[str, int, int]:
         start_time = time.monotonic()
