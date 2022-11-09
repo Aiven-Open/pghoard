@@ -264,9 +264,6 @@ class PGHoard:
     def start_walreceiver(self, site, chosen_backup_node, last_flushed_lsn):
         connection_string, slot = replication_connection_string_and_slot_using_pgpass(chosen_backup_node)
         pg_version_server = self.check_pg_server_version(connection_string, site)
-        if not WALReceiver:
-            self.log.error("Could not import WALReceiver, incorrect psycopg2 version?")
-            return
 
         thread = WALReceiver(
             config=self.config,
