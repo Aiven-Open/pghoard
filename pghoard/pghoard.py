@@ -188,6 +188,9 @@ class PGHoard:
         return True
 
     def create_basebackup(self, site, connection_info, basebackup_path, callback_queue=None, metadata=None):
+        if self.metrics:
+            self.metrics.gauge("pghoard.backup_stream.basebackup_requested", 1, tags={"site": site})
+
         connection_string, _ = replication_connection_string_and_slot_using_pgpass(connection_info)
         pg_version_server = self.check_pg_server_version(connection_string, site)
         if not self.check_pg_versions_ok(site, pg_version_server, "pg_basebackup"):
