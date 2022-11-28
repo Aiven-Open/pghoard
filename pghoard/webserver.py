@@ -4,9 +4,10 @@ pghoard - internal http server for serving backup objects
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
-
+import ipaddress
 import logging
 import os
+import socket
 import tempfile
 import time
 from collections import deque
@@ -36,6 +37,19 @@ class OwnHTTPServer(PoolMixIn, HTTPServer):
     """httpserver with 10 thread pool"""
     pool = ThreadPoolExecutor(max_workers=10)
     requested_basebackup_sites = None
+
+    def __init__(self, server_address, RequestHandlerClass):
+        # to avoid any kind of regression where the server address is not a legal ip address, catch any ValueError
+        try:
+            # specifying an empty http_address will make pghoard listen on all IPV4 addresses,
+            # the equivalent of 0.0.0.0.   To avoid changing existing behaviour, to listen on IPV6
+            # and IPV4 addresses :: must be specified
+            if server_address[0] and ":" in server_address[0] and \
+                    isinstance(ipaddress.ip_address(server_address[0]), ipaddress.IPv6Address):
+                self.address_family = socket.AF_INET6
+        except ValueError:
+            pass
+        HTTPServer.__init__(self, server_address, RequestHandlerClass)
 
 
 class HttpResponse(Exception):

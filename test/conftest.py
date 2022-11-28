@@ -256,6 +256,26 @@ def fixture_pghoard(db, tmpdir, request):
     yield from pghoard_base(db, tmpdir, request)
 
 
+@pytest.fixture(name="pghoard_ipv4_hostname")
+def fixture_pghoard_ipv4_hostname(db, tmpdir, request):
+    yield from pghoard_base(db, tmpdir, request, listen_http_address="localhost")
+
+
+@pytest.fixture(name="pghoard_ipv6_wildcard")
+def fixture_pghoard_ipv6_wildcard(db, tmpdir, request):
+    yield from pghoard_base(db, tmpdir, request, listen_http_address="::")
+
+
+@pytest.fixture(name="pghoard_empty_listen_address")
+def fixture_pghoard_empty_listen_address(db, tmpdir, request):
+    yield from pghoard_base(db, tmpdir, request, listen_http_address="")
+
+
+@pytest.fixture(name="pghoard_ipv6_loopback")
+def fixture_pghoard_ipv6_loopback(db, tmpdir, request):
+    yield from pghoard_base(db, tmpdir, request, listen_http_address="::1")
+
+
 @pytest.fixture(name="pghoard_walreceiver")
 def fixture_pghoard_walreceiver(db, tmpdir, request):
     # Initialize with only one transfer agent, as we want a reliable
@@ -320,7 +340,8 @@ def pghoard_base(
     pg_receivexlog_config=None,
     active_backup_mode="pg_receivexlog",
     slot_name=None,
-    compression_count=None
+    compression_count=None,
+    listen_http_address="127.0.0.1"
 ):
     test_site = request.function.__name__
 
@@ -353,7 +374,7 @@ def pghoard_base(
         "compression": {
             "algorithm": compression,
         },
-        "http_address": "127.0.0.1",
+        "http_address": listen_http_address,
         "http_port": random.randint(1024, 32000),
         "json_state_file_path": tmpdir.join("pghoard_state.json").strpath,
         "maintenance_mode_file": tmpdir.join("maintenance_mode_file").strpath,
