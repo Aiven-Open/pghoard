@@ -23,6 +23,10 @@ Vagrant.configure("2") do |config|
     $script = <<-SCRIPT
         export DEBIAN_FRONTEND="noninteractive"
 
+        # do not disable ipv6, the base vagrant image has disabled this
+        sysctl net.ipv6.conf.all.disable_ipv6=0
+        sed -i '/net.ipv6.conf.all.disable_ipv6/d' /etc/sysctl.conf
+
         # optionally enable use of ng apt cacher on the host
         export NG_PROXY_URL="#{ENV['NG_PROXY_URL']}"
         if [ "$NG_PROXY_URL" != "" ]; then
