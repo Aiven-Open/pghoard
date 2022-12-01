@@ -480,7 +480,8 @@ be one of the algorithms supported by Python's hashlib.
 ``http_address`` (default ``"127.0.0.1"``)
 
 Address to bind the PGHoard HTTP server to.  Set to an empty string to
-listen to all available addresses.
+listen to all available IPv4 addresses.   Set it to the IPv6 ``::`` wildcard
+address to bind to all available IPv4 and IPv6 addresses.
 
 ``http_port`` (default ``16000``)
 
