@@ -4,7 +4,7 @@
   <meta charset="utf-8" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Development &mdash; PGHoard 0.0.1-0-unknown-10586d3 documentation</title>
+  <title>Development &mdash; PGHoard 0.0.1-0-unknown-332cf00 documentation</title>
       <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
       <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
   <!--[if lt IE 9]>
@@ -115,25 +115,40 @@ should work on other platforms that provide the required modules.</p>
 <section id="vagrant">
 <h1>Vagrant<a class="headerlink" href="#vagrant" title="Permalink to this headline"></a></h1>
 <p>The Vagrantfile can be used to setup a vagrant development environment.   The vagrant environment has
-python 3.6, 3.7, 3.8 and 3.9 virtual environments and installations of postgresql 10 and newer.</p>
-<p>By default vagrant up will start a Virtualbox environment.   The Vagrantfile will also work for libvirt, just prefix
-VAGRANT_DEFAULT_PROVIDER=libvirt to the vagrant up command.</p>
+python 3.7, 3.8, 3.9 and 3.10 virtual environments and installations of postgresql 10, 11 and 12, 13 and 14.</p>
+<p>By default vagrant up will start a Virtualbox environment. The Vagrantfile will also work for libvirt, just prefix
+<code class="docutils literal notranslate"><span class="pre">VAGRANT_DEFAULT_PROVIDER=libvirt</span></code> to the <code class="docutils literal notranslate"><span class="pre">vagrant</span> <span class="pre">up</span></code> command.</p>
+<p>Any combination of Python (3.7, 3.8, 3.9 and 3.10) and Postgresql (10, 11, 12, 13 and 14)</p>
 <p>Bring up vagrant instance and connect via ssh:</p>
-<p>vagrant up
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>vagrant up
 vagrant ssh
-<a class="reference external" href="mailto:vagrant&#37;&#52;&#48;ubuntu2004">vagrant<span>&#64;</span>ubuntu2004</a>:~$ cd /vagrant</p>
-<p>Test with Python 3.7 and Postgresql 10</p>
-<p><a class="reference external" href="mailto:vagrant&#37;&#52;&#48;ubuntu2004">vagrant<span>&#64;</span>ubuntu2004</a>:~$ source ~/venv3.7/bin/activate
-<a class="reference external" href="mailto:vagrant&#37;&#52;&#48;ubuntu2004">vagrant<span>&#64;</span>ubuntu2004</a>:~$ PG_VERSION=10 make unittest
-<a class="reference external" href="mailto:vagrant&#37;&#52;&#48;ubuntu2004">vagrant<span>&#64;</span>ubuntu2004</a>:~$ deactivate</p>
-<p>Test with Python 3.8 and Postgresql 11</p>
-<p><a class="reference external" href="mailto:vagrant&#37;&#52;&#48;ubuntu2004">vagrant<span>&#64;</span>ubuntu2004</a>:~$ source ~/venv3.8/bin/activate
-<a class="reference external" href="mailto:vagrant&#37;&#52;&#48;ubuntu2004">vagrant<span>&#64;</span>ubuntu2004</a>:~$ PG_VERSION=11 make unittest
-<a class="reference external" href="mailto:vagrant&#37;&#52;&#48;ubuntu2004">vagrant<span>&#64;</span>ubuntu2004</a>:~$ deactivate</p>
-<p>Test with Python 3.9 and Postgresql 12</p>
-<p><a class="reference external" href="mailto:vagrant&#37;&#52;&#48;ubuntu2004">vagrant<span>&#64;</span>ubuntu2004</a>:~$ source ~/venv3.9/bin/activate
-<a class="reference external" href="mailto:vagrant&#37;&#52;&#48;ubuntu2004">vagrant<span>&#64;</span>ubuntu2004</a>:~$ PG_VERSION=12 make unittest
-<a class="reference external" href="mailto:vagrant&#37;&#52;&#48;ubuntu2004">vagrant<span>&#64;</span>ubuntu2004</a>:~$ deactivate</p>
+vagrant@ubuntu2004:~$ cd /vagrant
+</pre></div>
+</div>
+<p>Test with Python 3.7 and Postgresql 10:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>vagrant@ubuntu2004:~$ source ~/venv3.7/bin/activate
+vagrant@ubuntu2004:~$ PG_VERSION=10 make unittest
+vagrant@ubuntu2004:~$ deactivate
+</pre></div>
+</div>
+<p>Test with Python 3.8 and Postgresql 11:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>vagrant@ubuntu2004:~$ source ~/venv3.8/bin/activate
+vagrant@ubuntu2004:~$ PG_VERSION=11 make unittest
+vagrant@ubuntu2004:~$ deactivate
+</pre></div>
+</div>
+<p>Test with Python 3.9 and Postgresql 12:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>vagrant@ubuntu2004:~$ source ~/venv3.9/bin/activate
+vagrant@ubuntu2004:~$ PG_VERSION=12 make unittest
+vagrant@ubuntu2004:~$ deactivate
+</pre></div>
+</div>
+<p>Test with Python 3.10 and Postgresql 13:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>vagrant@ubuntu2004:~$ source ~/venv3.10/bin/activate
+vagrant@ubuntu2004:~$ PG_VERSION=13 make unittest
+vagrant@ubuntu2004:~$ deactivate
+</pre></div>
+</div>
 <p>And so on</p>
 <section id="building">
 <span id="building-from-source"></span><h2>Building<a class="headerlink" href="#building" title="Permalink to this headline"></a></h2>
