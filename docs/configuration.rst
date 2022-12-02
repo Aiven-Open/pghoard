@@ -166,7 +166,8 @@ for fetching of basebackups/WAL's when restoring if not using an object store.
 
 http_address (default ``"127.0.0.1"``)
                Address to bind the PGHoard HTTP server to.  Set to an empty string to
-               listen to all available addresses.
+               listen to all available IPv4 addresses.   Set it to the IPv6 ``::`` wildcard
+               address to bind to all available IPv4 and IPv6 addresses.
 http_port (default ``16000``)
             HTTP webserver port. Used for the archive command and for fetching of
             basebackups/WAL's when restoring if not using an object store.
