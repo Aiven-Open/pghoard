@@ -4,7 +4,7 @@
   <meta charset="utf-8" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Configuration &mdash; PGHoard 0.0.1-0-unknown-332cf00 documentation</title>
+  <title>Configuration &mdash; PGHoard 0.0.1-0-unknown-6a29d01 documentation</title>
       <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
       <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
   <!--[if lt IE 9]>
@@ -257,7 +257,8 @@ The value is a JSON obejct, for example:</p>
 for fetching of basebackups/WAL’s when restoring if not using an object store.</p>
 <dl class="simple">
 <dt>http_address (default <code class="docutils literal notranslate"><span class="pre">&quot;127.0.0.1&quot;</span></code>)</dt><dd><p>Address to bind the PGHoard HTTP server to.  Set to an empty string to
-listen to all available addresses.</p>
+listen to all available IPv4 addresses.   Set it to the IPv6 <code class="docutils literal notranslate"><span class="pre">::</span></code> wildcard
+address to bind to all available IPv4 and IPv6 addresses.</p>
 </dd>
 <dt>http_port (default <code class="docutils literal notranslate"><span class="pre">16000</span></code>)</dt><dd><p>HTTP webserver port. Used for the archive command and for fetching of
 basebackups/WAL’s when restoring if not using an object store.</p>
