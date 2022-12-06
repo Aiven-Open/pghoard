@@ -100,7 +100,27 @@ class PGTester:
             "listen_addresses=",
         ]
         self.pg = subprocess.Popen(cmd)
-        time.sleep(1.0)  # let pg start
+        self.wait_for_pg_startup(data_dir=Path(self.pgdata))
+
+    def wait_for_pg_startup(self, data_dir: Path, timeout: float = 30.0) -> None:
+        """Waits until PostgreSQL is actually ready to receive connections.
+
+        This relies on postmaster.pid metadata.
+        """
+        end_time = time.monotonic() + timeout
+        status = None
+        # Extra spaces are intentional
+        while status != "ready   ":
+            if time.monotonic() > end_time:
+                raise TimeoutError(f"waiting for postgres to start (timeout: {timeout:.3f}s)")
+            time.sleep(0.1)
+            try:
+                with open(data_dir / "postmaster.pid") as lock_file:
+                    lines = lock_file.read().splitlines()
+                    if len(lines) >= 8:
+                        status = lines[7]
+            except FileNotFoundError:
+                pass
 
     def kill(self, force=True, immediate=True):
         if self.pg is None:
@@ -419,7 +439,7 @@ def pghoard_base(
     else:
         pgh.Compressor = lambda: lzma.LZMACompressor(preset=0)  # pylint: disable=redefined-variable-type
 
-    time.sleep(0.05)  # Hack to give the server time to start up
+    pgh.webserver.is_initialized.wait(timeout=30.0)
     yield pgh
     pgh.quit()
 
