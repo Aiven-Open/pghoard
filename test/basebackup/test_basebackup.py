@@ -9,7 +9,6 @@ import os
 import tarfile
 import time
 from copy import deepcopy
-from distutils.version import LooseVersion
 from os import makedirs
 from queue import Queue
 from subprocess import check_call
@@ -417,59 +416,9 @@ LABEL: pg_basebackup base backup
         self._test_basebackups(capsys, db, pghoard, tmpdir, BaseBackupMode.local_tar_delta_stats)
 
     def test_basebackups_local_tar_nonexclusive(self, capsys, db, pghoard, tmpdir):
-        if LooseVersion(db.pgver) < "9.6":
-            pytest.skip("PostgreSQL 9.6+ required for non-exclusive backups")
         self._test_basebackups(capsys, db, pghoard, tmpdir, BaseBackupMode.local_tar)
-
-    def test_basebackups_local_tar_legacy(self, capsys, db, pghoard, tmpdir):
-        if LooseVersion(db.pgver) >= "9.6":
-            pytest.skip("PostgreSQL < 9.6 required for exclusive backup tests")
-        self._test_basebackups(capsys, db, pghoard, tmpdir, BaseBackupMode.local_tar)
-
-    def test_basebackups_local_tar_exclusive_conflict(self, capsys, db, pghoard, tmpdir):
-        if LooseVersion(db.pgver) >= "9.6":
-            pytest.skip("PostgreSQL < 9.6 required for exclusive backup tests")
-        need_stop = False
-        try:
-            with db.connect() as conn:
-                conn.autocommit = True
-                cursor = conn.cursor()
-                cursor.execute("SELECT pg_start_backup('conflicting')")  # pylint: disable=used-before-assignment
-                need_stop = True
-            self._test_basebackups(capsys, db, pghoard, tmpdir, BaseBackupMode.local_tar)
-            need_stop = False
-        finally:
-            if need_stop:
-                with db.connect() as conn:
-                    conn.autocommit = True
-                    cursor = conn.cursor()
-                    cursor.execute("SELECT pg_stop_backup()")
-
-    def test_basebackups_local_tar_pgespresso(self, capsys, db, pghoard, tmpdir):
-        with db.connect() as conn:
-            conn.autocommit = True
-            cursor = conn.cursor()
-            cursor.execute("SELECT 1 FROM pg_available_extensions WHERE name = 'pgespresso' AND default_version >= '1.2'")
-            if not cursor.fetchone():
-                pytest.skip("pgespresso not available")
-            try:
-                cursor.execute("CREATE EXTENSION pgespresso")
-                self._test_basebackups(capsys, db, pghoard, tmpdir, BaseBackupMode.local_tar)
-            finally:
-                cursor.execute("DROP EXTENSION pgespresso")
 
     def test_basebackups_replica_local_tar_nonexclusive(self, capsys, recovery_db, pghoard, tmpdir):
-        if LooseVersion(recovery_db.pgver) < "9.6":
-            pytest.skip("PostgreSQL 9.6+ required for non-exclusive backups")
-        self._test_basebackups(capsys, recovery_db, pghoard, tmpdir, BaseBackupMode.local_tar, replica=True)
-
-    def test_basebackups_replica_local_tar_pgespresso(self, capsys, recovery_db, pghoard, tmpdir):
-        with recovery_db.connect() as conn:
-            conn.autocommit = True
-            cursor = conn.cursor()
-            cursor.execute("SELECT 1 FROM pg_available_extensions WHERE name = 'pgespresso' AND default_version >= '1.2'")
-            if not cursor.fetchone():
-                pytest.skip("pgespresso not available")
         self._test_basebackups(capsys, recovery_db, pghoard, tmpdir, BaseBackupMode.local_tar, replica=True)
 
     def test_basebackups_pipe(self, capsys, db, pghoard, tmpdir):
@@ -619,7 +568,7 @@ LABEL: pg_basebackup base backup
                     r_conn = r_db.connect()
                     break
                 except psycopg2.OperationalError as ex:
-                    if "starting up" in str(ex):
+                    if "starting up" in str(ex) or "not yet accepting connections" in str(ex):
                         assert time.monotonic() - start_time <= 10
                         time.sleep(1)
                     else:

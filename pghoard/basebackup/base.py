@@ -544,46 +544,10 @@ class PGBaseBackup(PGHoardThread):
         with psycopg2.connect(connection_string) as db_conn:
             cursor = db_conn.cursor()
 
-            if self.pg_version_server >= 90600:
-                # We'll always use the the non-exclusive backup mode on 9.6 and newer
-                cursor.execute("SELECT pg_start_backup(%s, true, false)", [BASEBACKUP_NAME])
-                backup_label = None
-                backup_mode = "non-exclusive"
-            else:
-                # On older versions, first check if we're in recovery, and find out the version of a possibly
-                # installed pgespresso extension.  We use pgespresso's backup control functions when they're
-                # available, and require them in case we're running on a replica.  We also make sure the
-                # extension version is 1.2 or newer to prevent crashing when using tablespaces.
-                cursor.execute(
-                    "SELECT pg_is_in_recovery(), "
-                    "       (SELECT extversion FROM pg_extension WHERE extname = 'pgespresso')"
-                )
-                in_recovery, pgespresso_version = cursor.fetchone()  # type: ignore
-                if in_recovery and (not pgespresso_version or pgespresso_version < "1.2"):
-                    raise errors.InvalidConfigurationError(
-                        "pgespresso version 1.2 or higher must be installed "
-                        "to take `local-tar` backups from a replica"
-                    )
+            if self.pg_version_server < 90600:
+                raise errors.InvalidConfigurationError("Postgresql < 9.6 is not supported")
 
-                if pgespresso_version and pgespresso_version >= "1.2":
-                    cursor.execute("SELECT pgespresso_start_backup(%s, true)", [BASEBACKUP_NAME])
-                    backup_label = cursor.fetchone()[0]  # type: ignore
-                    backup_mode = "pgespresso"
-                else:
-                    try:
-                        cursor.execute("SELECT pg_start_backup(%s, true)", [BASEBACKUP_NAME])
-                    except psycopg2.OperationalError as ex:
-                        self.log.warning("Exclusive pg_start_backup() failed: %s: %s", ex.__class__.__name__, ex)
-                        db_conn.rollback()
-                        if "a backup is already in progress" not in str(ex):
-                            raise
-                        self.log.info("Calling pg_stop_backup() and retrying")
-                        cursor.execute("SELECT pg_stop_backup()")
-                        cursor.execute("SELECT pg_start_backup(%s, true)", [BASEBACKUP_NAME])
-
-                    with open(os.path.join(pgdata, "backup_label"), "r") as fp:
-                        backup_label = fp.read()
-                    backup_mode = "legacy"
+            self._start_backup(cursor, BASEBACKUP_NAME)
 
             backup_stopped = False
             try:
@@ -705,14 +669,11 @@ class PGBaseBackup(PGHoardThread):
                 with open(os.path.join(pgdata, "global", "pg_control"), "rb") as fp:
                     pg_control = fp.read()
 
-                # Call the stop backup functions now to get backup label for 9.6+ non-exclusive backups
-                if backup_mode == "non-exclusive":
-                    cursor.execute("SELECT labelfile FROM pg_stop_backup(false)")
-                    backup_label = cursor.fetchone()[0]  # type: ignore
-                elif backup_mode == "pgespresso":
-                    cursor.execute("SELECT pgespresso_stop_backup(%s)", [backup_label])
+                if self.pg_version_server >= 150000:
+                    cursor.execute("SELECT labelfile FROM pg_backup_stop()")
                 else:
-                    cursor.execute("SELECT pg_stop_backup()")
+                    cursor.execute("SELECT labelfile FROM pg_stop_backup(false)")
+                backup_label = cursor.fetchone()[0]  # type: ignore
                 db_conn.commit()
                 backup_stopped = True
 
@@ -726,18 +687,13 @@ class PGBaseBackup(PGHoardThread):
             finally:
                 db_conn.rollback()
                 if not backup_stopped:
-                    if backup_mode == "non-exclusive":
-                        cursor.execute("SELECT pg_stop_backup(false)")
-                    elif backup_mode == "pgespresso":
-                        cursor.execute("SELECT pgespresso_stop_backup(%s)", [backup_label])
-                    else:
-                        cursor.execute("SELECT pg_stop_backup()")
+                    self._stop_backup(cursor)
                 db_conn.commit()
 
             assert backup_label
             backup_label_data = backup_label.encode("utf-8")
             backup_start_wal_segment, backup_start_time = self.parse_backup_label(backup_label_data)
-            backup_end_wal_segment, backup_end_time = self.get_backup_end_segment_and_time(db_conn, backup_mode)
+            backup_end_wal_segment, backup_end_time = self.get_backup_end_segment_and_time(db_conn)
 
         # Generate and upload the metadata chunk
         metadata = {
@@ -810,14 +766,14 @@ class PGBaseBackup(PGHoardThread):
         chunks.append(one_chunk_files)
         return total_file_count, chunks
 
-    def get_backup_end_segment_and_time(self, db_conn, backup_mode):
+    def get_backup_end_segment_and_time(self, db_conn):
         """Grab a timestamp and WAL segment name after the end of the backup: this is a point in time to which
         we must be able to recover to, and the last WAL segment that is required for the backup to be
         consistent.
 
-        Note that pg_switch_xlog()/pg_switch_wal() is a superuser-only function, but since pg_start_backup() and
-        pg_stop_backup() cause an WAL switch we'll call them instead.  The downside is an unnecessary
-        checkpoint.
+        Note that pg_switch_xlog()/pg_switch_wal() is a superuser-only function, but since pg_start_backup()/
+        pg_backup_start() and pg_stop_backup()/pg_backup_stop() cause an WAL switch we'll call them instead.
+        The downside is an unnecessary checkpoint.
         """
         cursor = db_conn.cursor()
 
@@ -848,16 +804,21 @@ class PGBaseBackup(PGHoardThread):
                 cursor.execute("SELECT pg_switch_wal()")
             else:
                 cursor.execute("SELECT pg_switch_xlog()")
-        elif backup_mode == "non-exclusive":
-            cursor.execute("SELECT pg_start_backup(%s, true, false)", [backup_end_name])
-            cursor.execute("SELECT pg_stop_backup(false)")
-        elif backup_mode == "pgespresso":
-            cursor.execute("SELECT pgespresso_start_backup(%s, true)", [backup_end_name])
-            backup_label = cursor.fetchone()[0]
-            cursor.execute("SELECT pgespresso_stop_backup(%s)", [backup_label])
         else:
-            cursor.execute("SELECT pg_start_backup(%s, true)", [backup_end_name])
-            cursor.execute("SELECT pg_stop_backup()")
+            self._start_backup(cursor, backup_end_name)
+            self._stop_backup(cursor)
         db_conn.commit()
 
         return backup_end_wal_segment, backup_end_time
+
+    def _start_backup(self, cursor: psycopg2.extensions.cursor, basebackup_name: str) -> None:
+        if self.pg_version_server >= 150000:
+            cursor.execute("SELECT pg_backup_start(%s, true)", [basebackup_name])
+        else:
+            cursor.execute("SELECT pg_start_backup(%s, true, false)", [basebackup_name])
+
+    def _stop_backup(self, cursor: psycopg2.extensions.cursor) -> None:
+        if self.pg_version_server >= 150000:
+            cursor.execute("SELECT pg_backup_stop()")
+        else:
+            cursor.execute("SELECT pg_stop_backup(false)")

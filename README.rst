@@ -80,11 +80,11 @@ if the host running PGHoard is incapacitated.
 Requirements
 ============
 
-PGHoard can backup and restore PostgreSQL versions 9.3 and above, but is
+PGHoard can backup and restore PostgreSQL versions 9.6 and above, but is
 only tested and actively developed with version 10 and above.
 
 The daemon is implemented in Python and is tested and developed with version
-3.6 and above. The following Python modules are required:
+3.7 and above. The following Python modules are required:
 
 * psycopg2_ to look up transaction log metadata
 * requests_ for the internal client-server architecture
@@ -711,9 +711,6 @@ entirely when ``pghoard`` is running on the same host as the database.
 PGHoard reads the files directly from ``$PGDATA`` in this mode and
 compresses and optionally encrypts them.  This mode allows backing up user
 tablespaces.
-
-Note that the ``local-tar`` backup mode can not be used on replica servers
-prior to PostgreSQL 9.6 unless the pgespresso extension is installed.
 
 When using ``delta`` mode, only changed files are uploaded into the storage.
 On every backup snapshot of the data files is taken, this results in a manifest file,

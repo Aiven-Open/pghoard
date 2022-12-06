@@ -34,7 +34,7 @@ from pghoard.pghoard import PGHoard
 
 logutil.configure_logging()
 
-DEFAULT_PG_VERSIONS = ["14", "13", "12", "11", "10"]
+DEFAULT_PG_VERSIONS = ["15", "14", "13", "12", "11", "10"]
 
 
 def port_is_listening(hostname: str, port: int, timeout: float = 0.5) -> bool:
