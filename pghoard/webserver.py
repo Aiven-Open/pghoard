@@ -9,6 +9,7 @@ import logging
 import os
 import socket
 import tempfile
+import threading
 import time
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
@@ -81,6 +82,7 @@ class WebServer(PGHoardThread):
         self.download_results = Queue()
         self._running = False
         self.log.debug("WebServer initialized with address: %r port: %r", self.address, self.port)
+        self.is_initialized = threading.Event()
 
     def run_safe(self):
         # We bind the port only when we start running
@@ -104,6 +106,7 @@ class WebServer(PGHoardThread):
         # later on in the object store.
         self.server.prefetch_404 = deque(maxlen=32)  # pylint: disable=attribute-defined-outside-init
         self.server.metrics = self.metrics  # pylint: disable=attribute-defined-outside-init
+        self.is_initialized.set()
         self.server.serve_forever()
 
     def close(self):

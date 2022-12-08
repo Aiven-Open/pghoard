@@ -35,6 +35,7 @@ def switch_wal(connection):
     # Note: do not combine two function call in one select, PG executes it differently and
     # sometimes looks like it generates less WAL files than we wanted
     cur.execute("SELECT txid_current()")
+    cur.execute("CHECKPOINT")
     if connection.server_version >= 100000:
         cur.execute("SELECT pg_switch_wal()")
     else:
@@ -44,6 +45,7 @@ def switch_wal(connection):
     # switching, the bug should be fixed in PG 15
     # https://github.com/postgres/postgres/commit/596ba75cb11173a528c6b6ec0142a282e42b69ec
     cur.execute("SELECT txid_current()")
+    cur.execute("CHECKPOINT")
     cur.close()
 
 
