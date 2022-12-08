@@ -715,11 +715,17 @@ class TestPGHoardWithPG:
         os.makedirs(wal_directory, exist_ok=True)
 
         pghoard.receivexlog_listener(pghoard.test_site, db.user, wal_directory)
-        # Create 15 new WAL segments in very quick succession. Our volume for incoming WALs is only 150
+        # Create 15 new WAL segments in very quick succession while temporarily slowing
+        # down the wal file deleter. Our volume for incoming WALs is only 150
         # MiB so if logic for automatically suspending pg_receive(xlog|wal) wasn't working the volume
         # would certainly fill up and the files couldn't be processed. Now this should work fine.
+        pghoard_separate_volume.wal_file_deleter.min_sleep_between_events = 1.0
         for _ in range(16):
             switch_wal(conn)
+            if "pausing pg_receive(wal|xlog)" in caplog.text:
+                # Speed-up the deleter again as soon as we know we had at least one pause,
+                # this keeps the test reasonably fast.
+                pghoard_separate_volume.wal_file_deleter.min_sleep_between_events = 0.0
         conn.close()
 
         wait_for_xlog(pghoard, 15)

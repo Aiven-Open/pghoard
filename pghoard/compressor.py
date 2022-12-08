@@ -323,11 +323,13 @@ class WALFileDeleterThread(PGHoardThread):
         self.metrics = metrics
         self.wal_file_deletion_queue = wal_file_deletion_queue
         self.running = True
+        self.min_sleep_between_events = 0.0
         self.to_be_deleted_files: Dict[str, Set[Path]] = defaultdict(set)
         self.log.debug("WALFileDeleter initialized")
 
     def run_safe(self):
         while self.running:
+            time.sleep(self.min_sleep_between_events)
             wait_timeout = 1.0
             # config can be changed in another thread, so we have to lookup this within the loop
             config_wait_timeout = self.config.get("deleter_event_get_timeout", wait_timeout)
