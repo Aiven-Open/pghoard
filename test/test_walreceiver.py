@@ -70,7 +70,7 @@ class TestWalReceiver:
         previous_wal_name = lsn.previous_walfile_start_lsn.walfile_name
         pghoard.start_walreceiver(pghoard.test_site, node, last_flushed_lsn)
         wait_for_xlog(pghoard, 4)
-        last_flushed_lsn = stop_walreceiver(pghoard)
+        stop_walreceiver(pghoard)
         state = get_transfer_agent_upload_xlog_state(pghoard)
         assert state.get("xlogs_since_basebackup") == 4
         assert state.get("latest_filename") == previous_wal_name
