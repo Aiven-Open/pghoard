@@ -127,6 +127,14 @@ class WALReceiver(PGHoardThread):
             self.c.start_replication(start_lsn=lsn, timeline=timeline)
         return timeline
 
+    def stop_replication(self) -> None:
+        if self.c is not None:
+            self.c.close()
+            self.c = None
+        if self.conn is not None:
+            self.conn.close()
+            self.conn = None
+
     def switch_wal(self):
         self.log.debug("Switching WAL from %r amount of data: %r", self.latest_wal, self.buffer.tell())
 
@@ -159,43 +167,46 @@ class WALReceiver(PGHoardThread):
 
     def run_safe(self):
         self._init_cursor()
-        if self.replication_slot:
-            self.create_replication_slot()
-        timeline = self.start_replication()
-        while self.running:
-            wal_name = None
-            try:
-                msg = self.c.read_message()
-            except psycopg2.DatabaseError as ex:
-                self.log.exception("Unexpected exception in reading walreceiver msg")
-                self.metrics.unexpected_exception(ex, where="walreceiver_run")
-                time.sleep(1)
-                continue
-            self.log.debug("replication_msg: %r, buffer: %r/%r", msg, self.buffer.tell(), WAL_SEG_SIZE)
-            if msg:
-                self.latest_activity = datetime.datetime.utcnow()
-                lsn = LSN(msg.data_start, timeline_id=timeline, server_version=self.pg_version_server)
-                wal_name = lsn.walfile_name
+        try:
+            if self.replication_slot:
+                self.create_replication_slot()
+            timeline = self.start_replication()
+            while self.running:
+                wal_name = None
+                try:
+                    msg = self.c.read_message()
+                except psycopg2.DatabaseError as ex:
+                    self.log.exception("Unexpected exception in reading walreceiver msg")
+                    self.metrics.unexpected_exception(ex, where="walreceiver_run")
+                    time.sleep(1)
+                    continue
+                self.log.debug("replication_msg: %r, buffer: %r/%r", msg, self.buffer.tell(), WAL_SEG_SIZE)
+                if msg:
+                    self.latest_activity = datetime.datetime.utcnow()
+                    lsn = LSN(msg.data_start, timeline_id=timeline, server_version=self.pg_version_server)
+                    wal_name = lsn.walfile_name
 
-                if not self.latest_wal:
-                    self.latest_wal_start = lsn.lsn
-                    self.latest_wal = wal_name
-                self.buffer.write(msg.payload)
+                    if not self.latest_wal:
+                        self.latest_wal_start = lsn.lsn
+                        self.latest_wal = wal_name
+                    self.buffer.write(msg.payload)
 
-                # TODO: Calculate end pos and transmit that?
-                msg.cursor.send_feedback(write_lsn=lsn.lsn)
+                    # TODO: Calculate end pos and transmit that?
+                    msg.cursor.send_feedback(write_lsn=lsn.lsn)
 
-            if wal_name and self.latest_wal != wal_name or self.buffer.tell() >= WAL_SEG_SIZE:
-                self.switch_wal()
-            self.process_completed_segments()
+                if wal_name and self.latest_wal != wal_name or self.buffer.tell() >= WAL_SEG_SIZE:
+                    self.switch_wal()
+                self.process_completed_segments()
 
-            if not msg:
-                timeout = KEEPALIVE_INTERVAL - (datetime.datetime.now() - self.c.io_timestamp).total_seconds()
-                with suppress(InterruptedError):
-                    if not any(select.select([self.c], [], [], max(0, timeout))):
-                        self.c.send_feedback()  # timing out, send keepalive
-        # When we stop, process sent wals to update last_flush lsn.
-        self.process_completed_segments(block=True)
+                if not msg:
+                    timeout = KEEPALIVE_INTERVAL - (datetime.datetime.now() - self.c.io_timestamp).total_seconds()
+                    with suppress(InterruptedError):
+                        if not any(select.select([self.c], [], [], max(0.0, timeout))):
+                            self.c.send_feedback()  # timing out, send keepalive
+            # When we stop, process sent wals to update last_flush lsn.
+            self.process_completed_segments(block=True)
+        finally:
+            self.stop_replication()
 
     def process_completed_segments(self, *, block=False):
         for wal_start, queue in self.callbacks.items():
