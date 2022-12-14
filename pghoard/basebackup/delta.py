@@ -455,7 +455,8 @@ class DeltaBaseBackup:
                 if digests_metric.stored_size:
                     self.metrics.gauge(
                         "pghoard.delta_backup_changed_data_size_ratio",
-                        (delta_metric.stored_size + chunks_metric.stored_size) / digests_metric.stored_size,
+                        (delta_metric.stored_size + chunks_metric.stored_size) /
+                        (digests_metric.stored_size + chunks_metric.stored_size),
                     )
                 self.metrics.gauge(
                     "pghoard.delta_backup_remained_data_size",
