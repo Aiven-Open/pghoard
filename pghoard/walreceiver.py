@@ -210,6 +210,10 @@ class WALReceiver(PGHoardThread):
                     with suppress(InterruptedError):
                         if not any(select.select([self.c], [], [], max(0.0, timeout))):
                             self.c.send_feedback()  # timing out, send keepalive
+                            # Don't leave unfinished segments waiting for more than the KEEPALIVE_INTERVAL
+                            if self.buffer.tell() > 0:
+                                self.switch_wal()
+                                self.process_completed_segments()
             # When we stop, process sent wals to update last_flush lsn.
             self.process_completed_segments(block=True)
         finally:
