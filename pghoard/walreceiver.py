@@ -186,6 +186,13 @@ class WALReceiver(PGHoardThread):
                     lsn = LSN(msg.data_start, timeline_id=timeline, server_version=self.pg_version_server)
                     wal_name = lsn.walfile_name
 
+                    if self.buffer.tell() > 0 and self.buffer.tell() + len(msg.payload) > WAL_SEG_SIZE:
+                        # If adding the payload would make the wal segment too large, switch the WAL
+                        # now instead of adding the payload and having it written partly in the current
+                        # wal segment and partly in the next one.
+                        self.switch_wal()
+                        self.process_completed_segments()
+
                     if not self.latest_wal:
                         self.latest_wal_start = lsn.lsn
                         self.latest_wal = wal_name
