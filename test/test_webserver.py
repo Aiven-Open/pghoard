@@ -21,9 +21,10 @@ from rohmu.encryptor import Encryptor
 from pghoard import postgres_command, wal
 from pghoard.archive_sync import ArchiveSync
 from pghoard.common import get_pg_wal_directory
+from pghoard.object_store import HTTPRestore
 from pghoard.pgutil import create_connection_string
 from pghoard.postgres_command import archive_command, restore_command
-from pghoard.restore import HTTPRestore, Restore
+from pghoard.restore import Restore
 
 # pylint: disable=attribute-defined-outside-init
 from .base import CONSTANT_TEST_RSA_PRIVATE_KEY, CONSTANT_TEST_RSA_PUBLIC_KEY

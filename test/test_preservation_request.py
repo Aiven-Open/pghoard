@@ -3,6 +3,7 @@ Copyright (c) 2022 Aiven Ltd
 See LICENSE for details
 """
 import datetime
+from typing import Any
 
 from pghoard.preservation_request import (
     is_basebackup_preserved, parse_preservation_requests, patch_basebackup_metadata_with_preservation
@@ -11,14 +12,14 @@ from pghoard.preservation_request import (
 
 def test_patch_basebackup_metadata_with_preservation() -> None:
     preserve_until = datetime.datetime(2022, 12, 26, 10, 20, tzinfo=datetime.timezone.utc)
-    basebackup_entry = {"name": "2022_12_20", "metadata": {}}
+    basebackup_entry: dict[str, Any] = {"name": "2022_12_20", "metadata": {}}
     backups_to_preserve = {"2022_12_20": preserve_until}
     patch_basebackup_metadata_with_preservation(basebackup_entry, backups_to_preserve)
     assert basebackup_entry["metadata"]["preserve-until"] == preserve_until
 
 
 def test_patch_basebackup_metadata_with_preservation_with_no_match() -> None:
-    basebackup_entry = {"name": "2022_12_20", "metadata": {}}
+    basebackup_entry: dict[str, Any] = {"name": "2022_12_20", "metadata": {}}
     backups_to_preserve = {"2022_12_14": datetime.datetime(2022, 12, 20, 10, 20, 30, 123456)}
     patch_basebackup_metadata_with_preservation(basebackup_entry, backups_to_preserve)
     assert basebackup_entry["metadata"]["preserve-until"] is None
