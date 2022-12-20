@@ -12,14 +12,14 @@ from copy import deepcopy
 from os import makedirs
 from queue import Queue
 from subprocess import check_call
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import dateutil.parser
 import psycopg2
 import pytest
 from mock import ANY, Mock
 from mock.mock import patch
-from rohmu import get_transfer
+from rohmu import dates, get_transfer
 
 from pghoard import common, metrics
 from pghoard.basebackup.base import PGBaseBackup
@@ -87,7 +87,7 @@ LABEL: pg_basebackup base backup
         def create_test_files():
             # Create two temporary files on top level and one in global/ that we'll unlink while iterating
             with open(top1, "w") as t1, open(top2, "w") as t2, \
-                    open(sub1, "w") as s1, open(sub2, "w") as s2, open(sub3, "w") as s3:
+                open(sub1, "w") as s1, open(sub2, "w") as s2, open(sub3, "w") as s3:
                 t1.write("t1\n")
                 t2.write("t2\n")
                 s1.write("s1\n")
@@ -286,42 +286,24 @@ LABEL: pg_basebackup base backup
             assert backups[0]["metadata"]["active-backup-mode"] == active_backup_mode
             assert backups[0]["metadata"]["basebackup-mode"] == mode
 
-    def _test_restore_basebackup(self, db, pghoard, tmpdir, active_backup_mode="archive_command"):
+    def _test_restore_basebackup(
+        self, db, pghoard, tmpdir, active_backup_mode="archive_command", preserve_until: Optional[str] = None
+    ):
         backup_out = tmpdir.join("test-restore").strpath
         # Restoring to empty directory works
         os.makedirs(backup_out)
-        Restore().run([
-            "get-basebackup",
-            "--config",
-            pghoard.config_path,
-            "--site",
-            pghoard.test_site,
-            "--target-dir",
-            backup_out,
-        ])
+        arguments = [
+            "get-basebackup", "--config", pghoard.config_path, "--site", pghoard.test_site, "--target-dir", backup_out
+        ]
+        if preserve_until is not None:
+            arguments.extend(["--preserve-until", preserve_until])
+        Restore().run(arguments)
         # Restoring on top of another $PGDATA doesn't
         with pytest.raises(RestoreError) as excinfo:
-            Restore().run([
-                "get-basebackup",
-                "--config",
-                pghoard.config_path,
-                "--site",
-                pghoard.test_site,
-                "--target-dir",
-                backup_out,
-            ])
+            Restore().run(arguments)
         assert "--overwrite not specified" in str(excinfo.value)
         # Until we use the --overwrite flag
-        Restore().run([
-            "get-basebackup",
-            "--config",
-            pghoard.config_path,
-            "--site",
-            pghoard.test_site,
-            "--target-dir",
-            backup_out,
-            "--overwrite",
-        ])
+        Restore().run(arguments + ["--overwrite"])
         check_call([os.path.join(db.pgbin, "pg_controldata"), backup_out])
         # TODO: check that the backup is valid
 
@@ -362,9 +344,9 @@ LABEL: pg_basebackup base backup
         else:
             assert os.path.isfile(path) is False
 
-    def _test_basebackups(self, capsys, db, pghoard, tmpdir, mode, *, replica=False):
+    def _test_basebackups(self, capsys, db, pghoard, tmpdir, mode, *, replica=False, preserve_until: Optional[None] = None):
         self._test_create_basebackup(capsys, db, pghoard, mode, replica=replica)
-        self._test_restore_basebackup(db, pghoard, tmpdir)
+        self._test_restore_basebackup(db, pghoard, tmpdir, preserve_until=preserve_until)
 
     def test_basic_standalone_hot_backups(self, capsys, db, pghoard, tmpdir):
         self._test_create_basebackup(capsys, db, pghoard, BaseBackupMode.basic, False, "standalone_hot_backup")
@@ -379,6 +361,10 @@ LABEL: pg_basebackup base backup
 
     def test_basebackups_basic_lzma(self, capsys, db, pghoard_lzma, tmpdir):
         self._test_basebackups(capsys, db, pghoard_lzma, tmpdir, BaseBackupMode.basic)
+
+    def test_basebackups_preserve_until(self, capsys, db, pghoard, tmpdir):
+        preserve_until = str(dates.now() + datetime.timedelta(days=2))
+        self._test_basebackups(capsys, db, pghoard, tmpdir, BaseBackupMode.basic, preserve_until=preserve_until)
 
     @pytest.mark.parametrize(
         "delta_file_size, delta_chunk_size, expected_chunks_count, expected_delta_files_count",
@@ -862,8 +848,9 @@ LABEL: pg_basebackup base backup
                 meta = {"delta_stats": {"hashes": {}}}
 
             return meta, b"some content"
+
         with patch.object(pgb, "get_remote_basebackups_info") as mock_get_remote_basebackups_info, \
-                patch("pghoard.basebackup.base.download_backup_meta_file", new=fake_download_backup_meta_file):
+            patch("pghoard.basebackup.base.download_backup_meta_file", new=fake_download_backup_meta_file):
             mock_get_remote_basebackups_info.return_value = [{
                 "name": f"backup{idx}",
                 "metadata": {

@@ -258,6 +258,85 @@ dbname|"""
         assert to_delete == bbs[:len(to_delete)]
         assert bbs_copy == bbs[len(to_delete):]
 
+    def test_determine_backups_to_delete_with_preserve_when_more_than_backups_count(self) -> None:
+        now = datetime.datetime.now(datetime.timezone.utc)
+        bbs = [
+            {
+                "name": "bb1",
+                "metadata": {
+                    "start-time": now - datetime.timedelta(days=10, hours=4),
+                }
+            },
+            {
+                "name": "bb1",
+                "metadata": {
+                    "start-time": now - datetime.timedelta(days=9, hours=4),
+                    "preserve-until": now + datetime.timedelta(days=2)
+                }
+            },
+            {
+                "name": "bb1",
+                "metadata": {
+                    "start-time": now - datetime.timedelta(days=8, hours=4)
+                }
+            },
+            {
+                "name": "bb1",
+                "metadata": {
+                    "start-time": now - datetime.timedelta(days=7, hours=4)
+                }
+            },
+        ]
+
+        site_config = {
+            "basebackup_count": 2,
+            "basebackup_count_min": 1,
+            "basebackup_interval_hours": 24,
+        }
+        bbs_copy = list(bbs)
+        to_delete = self.pghoard.determine_backups_to_delete(basebackups=bbs_copy, site_config=site_config)
+        assert to_delete == [bbs[0]]
+
+    def test_determine_backups_to_delete_with_preserve_when_older_than_max_age(self) -> None:
+        now = datetime.datetime.now(datetime.timezone.utc)
+        bbs = [
+            {
+                "name": "bb1",
+                "metadata": {
+                    "start-time": now - datetime.timedelta(days=10, hours=4),
+                }
+            },
+            {
+                "name": "bb1",
+                "metadata": {
+                    "start-time": now - datetime.timedelta(days=9, hours=4),
+                    "preserve-until": now + datetime.timedelta(days=2)
+                }
+            },
+            {
+                "name": "bb1",
+                "metadata": {
+                    "start-time": now - datetime.timedelta(days=8, hours=4)
+                }
+            },
+            {
+                "name": "bb1",
+                "metadata": {
+                    "start-time": now - datetime.timedelta(days=7, hours=4)
+                }
+            },
+        ]
+
+        site_config = {
+            "basebackup_count": 8,
+            "basebackup_count_min": 2,
+            "basebackup_interval_hours": 24,
+            "basebackup_age_days_max": 4,
+        }
+        bbs_copy = list(bbs)
+        to_delete = self.pghoard.determine_backups_to_delete(basebackups=bbs_copy, site_config=site_config)
+        assert to_delete == [bbs[0]]
+
     def test_local_refresh_backup_list_and_delete_old(self):
         basebackup_storage_path = os.path.join(self.local_storage_dir, "basebackup")
         wal_storage_path = os.path.join(self.local_storage_dir, "xlog")

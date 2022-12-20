@@ -27,6 +27,7 @@ import uuid
 from dataclasses import dataclass, field
 from distutils.version import \
     LooseVersion  # pylint: disable=no-name-in-module,import-error
+from pathlib import Path
 from threading import RLock
 from typing import Any, Dict, List, Optional, Set, Union
 
@@ -268,6 +269,9 @@ class Restore:
                 help="Restore the database to a PG primary",
                 action="store_true"
             )
+            cmd.add_argument(
+                "--preserve-until", help="Request the backup to be preserved until that date", metavar="ISO_TIMESTAMP"
+            )
 
         cmd = add_cmd(self.list_basebackups_http)
         host_port_args()
@@ -332,6 +336,7 @@ class Restore:
                 overwrite=arg.overwrite,
                 tablespace_mapping=tablespace_mapping,
                 tablespace_base_dir=arg.tablespace_base_dir,
+                preserve_until=arg.preserve_until,
             )
         except RestoreError:  # pylint: disable=try-except-raise
             # Pass RestoreErrors thru
@@ -450,7 +455,8 @@ class Restore:
         restore_to_primary=None,
         overwrite=False,
         tablespace_mapping=None,
-        tablespace_base_dir=None
+        tablespace_base_dir=None,
+        preserve_until: Optional[str] = None,
     ):
         targets = [recovery_target_name, recovery_target_time, recovery_target_xid]
         if sum(0 if flag is None else 1 for flag in targets) > 1:
@@ -471,6 +477,12 @@ class Restore:
         # Grab basebackup metadata to make sure it exists and to look up tablespace requirements
         metadata = self.storage.get_basebackup_metadata(basebackup["name"])
         tablespaces = {}
+
+        # If requested, mark the backup for preservation
+        preserve_request: Optional[str] = None
+        if preserve_until is not None:
+            preserve_until_datetime = dates.parse_timestamp(preserve_until)
+            preserve_request = self.storage.try_request_backup_preservation(basebackup["name"], preserve_until_datetime)
 
         # Make sure we have a proper place to write the $PGDATA and possible tablespaces
         dirs_to_create = []
@@ -611,6 +623,11 @@ class Restore:
             recovery_target_xid=recovery_target_xid,
             restore_to_primary=restore_to_primary,
         )
+
+        if preserve_request is not None:
+            # This is intentionally not done if pghoard fails earlier with an exception,
+            # we only cancel the preservation if the backup was successfully restored.
+            self.storage.try_cancel_backup_preservation(preserve_request)
 
         print("Basebackup restoration complete.")
         print("You can start PostgreSQL by running pg_ctl -D %s start" % pgdata)
@@ -1014,6 +1031,39 @@ class ObjectStore:
 
     def list_basebackups(self):
         return self.storage.list_path(os.path.join(self.prefix, "basebackup"))
+
+    def try_request_backup_preservation(self, basebackup: str, preserve_until: datetime.datetime) -> Optional[str]:
+        try:
+            return self.request_backup_preservation(basebackup, preserve_until)
+        except Exception:  # pylint: disable=broad-except
+            # rohmu does not wrap storage implementation errors in high-level errors:
+            # we can't catch something more specific like "permission denied".
+            self.log.exception("Could not request backup preservation")
+            return None
+
+    def try_cancel_backup_preservation(self, request_name: str) -> None:
+        try:
+            self.cancel_backup_preservation(request_name)
+        except Exception:  # pylint: disable=broad-except
+            # rohmu does not wrap storage implementation errors in high-level errors:
+            # we can't catch something more specific like "permission denied".
+            self.log.exception("Could not cancel backup preservation")
+
+    def request_backup_preservation(self, basebackup: str, preserve_until: datetime.datetime) -> str:
+        backup_name = Path(basebackup).name
+        request_name = f"{backup_name}_{preserve_until}"
+        request_path = os.path.join(self.prefix, "preservation_request", request_name)
+        self.storage.store_file_from_memory(
+            request_path, b"", {
+                "preserve-backup": backup_name,
+                "preserve-until": str(preserve_until)
+            }
+        )
+        return request_name
+
+    def cancel_backup_preservation(self, request_name: str) -> None:
+        request_path = os.path.join(self.prefix, "preservation_request", request_name)
+        self.storage.delete_key(request_path)
 
     def show_basebackup_list(self, verbose=True):
         result = self.list_basebackups()
