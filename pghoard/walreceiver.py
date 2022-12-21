@@ -8,9 +8,11 @@ import datetime
 import logging
 import os
 import select
+import threading
 import time
 from io import BytesIO
 from queue import Empty, Queue
+from typing import Optional
 
 import psycopg2
 import psycopg2.errors
@@ -50,6 +52,8 @@ class WALReceiver(PGHoardThread):
         self.conn = None
         self.c = None
         self.buffer = BytesIO()
+        self.initial_lsn: Optional[LSN] = None
+        self.initial_lsn_available = threading.Event()
         self.latest_wal = None
         self.latest_wal_start = None
         self.latest_activity = datetime.datetime.utcnow()
@@ -117,6 +121,8 @@ class WALReceiver(PGHoardThread):
             lsn = LSN(self.last_flushed_lsn, self.pg_version_server)
         else:
             lsn = lsn_from_sysinfo(identify_system, self.pg_version_server)
+        self.initial_lsn = lsn
+        self.initial_lsn_available.set()
         lsn = str(lsn.walfile_start_lsn)
         self.log.info("Starting replication from %r, timeline: %r with slot: %r", lsn, timeline, self.replication_slot)
         if self.replication_slot:
@@ -126,6 +132,14 @@ class WALReceiver(PGHoardThread):
         else:
             self.c.start_replication(start_lsn=lsn, timeline=timeline)
         return timeline
+
+    def stop_replication(self) -> None:
+        if self.c is not None:
+            self.c.close()
+            self.c = None
+        if self.conn is not None:
+            self.conn.close()
+            self.conn = None
 
     def switch_wal(self):
         self.log.debug("Switching WAL from %r amount of data: %r", self.latest_wal, self.buffer.tell())
@@ -159,43 +173,57 @@ class WALReceiver(PGHoardThread):
 
     def run_safe(self):
         self._init_cursor()
-        if self.replication_slot:
-            self.create_replication_slot()
-        timeline = self.start_replication()
-        while self.running:
-            wal_name = None
-            try:
-                msg = self.c.read_message()
-            except psycopg2.DatabaseError as ex:
-                self.log.exception("Unexpected exception in reading walreceiver msg")
-                self.metrics.unexpected_exception(ex, where="walreceiver_run")
-                time.sleep(1)
-                continue
-            self.log.debug("replication_msg: %r, buffer: %r/%r", msg, self.buffer.tell(), WAL_SEG_SIZE)
-            if msg:
-                self.latest_activity = datetime.datetime.utcnow()
-                lsn = LSN(msg.data_start, timeline_id=timeline, server_version=self.pg_version_server)
-                wal_name = lsn.walfile_name
+        try:
+            if self.replication_slot:
+                self.create_replication_slot()
+            timeline = self.start_replication()
+            while self.running:
+                wal_name = None
+                try:
+                    msg = self.c.read_message()
+                except psycopg2.DatabaseError as ex:
+                    self.log.exception("Unexpected exception in reading walreceiver msg")
+                    self.metrics.unexpected_exception(ex, where="walreceiver_run")
+                    time.sleep(1)
+                    continue
+                self.log.debug("replication_msg: %r, buffer: %r/%r", msg, self.buffer.tell(), WAL_SEG_SIZE)
+                if msg:
+                    self.latest_activity = datetime.datetime.utcnow()
+                    lsn = LSN(msg.data_start, timeline_id=timeline, server_version=self.pg_version_server)
+                    wal_name = lsn.walfile_name
 
-                if not self.latest_wal:
-                    self.latest_wal_start = lsn.lsn
-                    self.latest_wal = wal_name
-                self.buffer.write(msg.payload)
+                    if self.buffer.tell() > 0 and self.buffer.tell() + len(msg.payload) > WAL_SEG_SIZE:
+                        # If adding the payload would make the wal segment too large, switch the WAL
+                        # now instead of adding the payload and having it written partly in the current
+                        # wal segment and partly in the next one.
+                        self.switch_wal()
+                        self.process_completed_segments()
 
-                # TODO: Calculate end pos and transmit that?
-                msg.cursor.send_feedback(write_lsn=lsn.lsn)
+                    if not self.latest_wal:
+                        self.latest_wal_start = lsn.lsn
+                        self.latest_wal = wal_name
+                    self.buffer.write(msg.payload)
 
-            if wal_name and self.latest_wal != wal_name or self.buffer.tell() >= WAL_SEG_SIZE:
-                self.switch_wal()
-            self.process_completed_segments()
+                    # TODO: Calculate end pos and transmit that?
+                    msg.cursor.send_feedback(write_lsn=lsn.lsn)
 
-            if not msg:
-                timeout = KEEPALIVE_INTERVAL - (datetime.datetime.now() - self.c.io_timestamp).total_seconds()
-                with suppress(InterruptedError):
-                    if not any(select.select([self.c], [], [], max(0, timeout))):
-                        self.c.send_feedback()  # timing out, send keepalive
-        # When we stop, process sent wals to update last_flush lsn.
-        self.process_completed_segments(block=True)
+                if wal_name and self.latest_wal != wal_name or self.buffer.tell() >= WAL_SEG_SIZE:
+                    self.switch_wal()
+                self.process_completed_segments()
+
+                if not msg:
+                    timeout = KEEPALIVE_INTERVAL - (datetime.datetime.now() - self.c.io_timestamp).total_seconds()
+                    with suppress(InterruptedError):
+                        if not any(select.select([self.c], [], [], max(0.0, timeout))):
+                            self.c.send_feedback()  # timing out, send keepalive
+                            # Don't leave unfinished segments waiting for more than the KEEPALIVE_INTERVAL
+                            if self.buffer.tell() > 0:
+                                self.switch_wal()
+                                self.process_completed_segments()
+            # When we stop, process sent wals to update last_flush lsn.
+            self.process_completed_segments(block=True)
+        finally:
+            self.stop_replication()
 
     def process_completed_segments(self, *, block=False):
         for wal_start, queue in self.callbacks.items():
