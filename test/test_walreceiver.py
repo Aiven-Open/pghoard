@@ -43,13 +43,13 @@ class TestWalReceiver:
         else:
             node["slot"] = replication_slot
 
-        # The transfer agent state will be used to check what
-        # was uploaded
-        # Before starting the walreceiver, get the current wal name.
-        wal_name = get_current_lsn(node).walfile_name
-        # Start streaming, force a wal rotation, and check the wal has been
-        # archived
+        # The transfer agent state will be used to check what was uploaded
+        # Start streaming
         pghoard.start_walreceiver(pghoard.test_site, node, None)
+        # Get the initial wal name of the server
+        pghoard.walreceivers[pghoard.test_site].initial_lsn_available.wait()
+        wal_name = pghoard.walreceivers[pghoard.test_site].initial_lsn.walfile_name
+        #  Force a wal rotation
         switch_wal(conn)
         # Check that we uploaded one file, and it is the right one.
         wait_for_xlog(pghoard, 1)

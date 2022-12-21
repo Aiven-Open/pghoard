@@ -8,9 +8,11 @@ import datetime
 import logging
 import os
 import select
+import threading
 import time
 from io import BytesIO
 from queue import Empty, Queue
+from typing import Optional
 
 import psycopg2
 import psycopg2.errors
@@ -50,6 +52,8 @@ class WALReceiver(PGHoardThread):
         self.conn = None
         self.c = None
         self.buffer = BytesIO()
+        self.initial_lsn: Optional[LSN] = None
+        self.initial_lsn_available = threading.Event()
         self.latest_wal = None
         self.latest_wal_start = None
         self.latest_activity = datetime.datetime.utcnow()
@@ -117,6 +121,8 @@ class WALReceiver(PGHoardThread):
             lsn = LSN(self.last_flushed_lsn, self.pg_version_server)
         else:
             lsn = lsn_from_sysinfo(identify_system, self.pg_version_server)
+        self.initial_lsn = lsn
+        self.initial_lsn_available.set()
         lsn = str(lsn.walfile_start_lsn)
         self.log.info("Starting replication from %r, timeline: %r with slot: %r", lsn, timeline, self.replication_slot)
         if self.replication_slot:
