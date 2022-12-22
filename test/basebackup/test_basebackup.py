@@ -26,7 +26,7 @@ from pghoard.basebackup.base import PGBaseBackup
 from pghoard.common import (BaseBackupFormat, BaseBackupMode, CallbackEvent, CallbackQueue)
 from pghoard.restore import Restore, RestoreError
 
-from ..conftest import PGTester
+from ..conftest import PGHoardForTest, PGTester
 from ..util import switch_wal
 
 Restore.log_tracebacks = True
@@ -270,40 +270,57 @@ LABEL: pg_basebackup base backup
         storage_config = common.get_object_storage_config(pghoard.config, pghoard.test_site)
         storage = get_transfer(storage_config)
         backups = storage.list_path(os.path.join(pghoard.config["backup_sites"][pghoard.test_site]["prefix"], "basebackup"))
-        for backup in backups:
-            assert "start-wal-segment" in backup["metadata"]
-            assert "start-time" in backup["metadata"]
-            assert dateutil.parser.parse(backup["metadata"]["start-time"]).tzinfo  # pylint: disable=no-member
-            assert backup["metadata"]["backup-reason"] == "scheduled"
-            assert backup["metadata"]["backup-decision-time"] == now.isoformat()
-            assert backup["metadata"]["normalized-backup-time"] == now.isoformat()
-            if mode in {BaseBackupMode.local_tar, BaseBackupMode.delta}:
-                if replica is False:
-                    assert "end-wal-segment" in backup["metadata"]
-                assert "end-time" in backup["metadata"]
-                assert dateutil.parser.parse(backup["metadata"]["end-time"]).tzinfo  # pylint: disable=no-member
+        assert len(backups) > 0
+        backups = sorted(backups, key=lambda backup: backup["metadata"]["backup-decision-time"])
+        last_backup = backups[-1]
+        assert "start-wal-segment" in last_backup["metadata"]
+        assert "start-time" in last_backup["metadata"]
+        assert dateutil.parser.parse(last_backup["metadata"]["start-time"]).tzinfo  # pylint: disable=no-member
+        assert last_backup["metadata"]["backup-reason"] == "scheduled"
+        assert last_backup["metadata"]["backup-decision-time"] == now.isoformat()
+        assert last_backup["metadata"]["normalized-backup-time"] == now.isoformat()
+        if mode in {BaseBackupMode.local_tar, BaseBackupMode.delta}:
+            if replica is False:
+                assert "end-wal-segment" in last_backup["metadata"]
+            assert "end-time" in last_backup["metadata"]
+            assert dateutil.parser.parse(last_backup["metadata"]["end-time"]).tzinfo  # pylint: disable=no-member
+        assert last_backup["metadata"]["active-backup-mode"] == active_backup_mode
+        assert last_backup["metadata"]["basebackup-mode"] == mode
 
-            assert backups[0]["metadata"]["active-backup-mode"] == active_backup_mode
-            assert backups[0]["metadata"]["basebackup-mode"] == mode
-
-    def _test_restore_basebackup(
-        self, db, pghoard, tmpdir, active_backup_mode="archive_command", preserve_until: Optional[str] = None
-    ):
-        backup_out = tmpdir.join("test-restore").strpath
+    def _restore_basebackup(
+        self,
+        pghoard: PGHoardForTest,
+        backup_out: str,
+        preserve_until: Optional[str] = None,
+        cancel_preserve_on_success: bool = True,
+        overwrite: bool = False
+    ) -> None:
         # Restoring to empty directory works
-        os.makedirs(backup_out)
+        os.makedirs(backup_out, exist_ok=True)
         arguments = [
             "get-basebackup", "--config", pghoard.config_path, "--site", pghoard.test_site, "--target-dir", backup_out
         ]
         if preserve_until is not None:
             arguments.extend(["--preserve-until", preserve_until])
+            if cancel_preserve_on_success:
+                arguments.extend(["--cancel-preserve-on-success"])
+            else:
+                arguments.extend(["--no-cancel-preserve-on-success"])
+        if overwrite:
+            arguments.append("--overwrite")
         Restore().run(arguments)
+
+    def _test_restore_basebackup(
+        self, db, pghoard, tmpdir, active_backup_mode="archive_command", preserve_until: Optional[str] = None
+    ):
+        backup_out = tmpdir.join("test-restore").strpath
+        self._restore_basebackup(pghoard, backup_out, preserve_until=preserve_until)
         # Restoring on top of another $PGDATA doesn't
         with pytest.raises(RestoreError) as excinfo:
-            Restore().run(arguments)
+            self._restore_basebackup(pghoard, backup_out, preserve_until=preserve_until)
         assert "--overwrite not specified" in str(excinfo.value)
         # Until we use the --overwrite flag
-        Restore().run(arguments + ["--overwrite"])
+        self._restore_basebackup(pghoard, backup_out, preserve_until=preserve_until, overwrite=True)
         check_call([os.path.join(db.pgbin, "pg_controldata"), backup_out])
         # TODO: check that the backup is valid
 
@@ -365,6 +382,46 @@ LABEL: pg_basebackup base backup
     def test_basebackups_preserve_until(self, capsys, db, pghoard, tmpdir):
         preserve_until = str(dates.now() + datetime.timedelta(days=2))
         self._test_basebackups(capsys, db, pghoard, tmpdir, BaseBackupMode.basic, preserve_until=preserve_until)
+
+    def test_basebackups_deletion(self, capsys, db, pghoard):
+        self._test_create_basebackup(capsys, db, pghoard, BaseBackupMode.basic)
+        self._test_create_basebackup(capsys, db, pghoard, BaseBackupMode.basic)
+        self._test_create_basebackup(capsys, db, pghoard, BaseBackupMode.basic)
+        self._test_create_basebackup(capsys, db, pghoard, BaseBackupMode.basic)
+        self._run_backup_deletion(pghoard)
+        self._check_backups_count(pghoard, expected_count=2)
+
+    def test_basebackups_preservation_from_delete(self, capsys, db, pghoard, tmpdir):
+        self._test_create_basebackup(capsys, db, pghoard, BaseBackupMode.basic)
+        backup_out = tmpdir.join("test-restore").strpath
+        preserve_until = str(dates.now() + datetime.timedelta(days=2))
+        self._restore_basebackup(pghoard, backup_out, preserve_until=preserve_until, cancel_preserve_on_success=False)
+        self._test_create_basebackup(capsys, db, pghoard, BaseBackupMode.basic)
+        self._test_create_basebackup(capsys, db, pghoard, BaseBackupMode.basic)
+        self._test_create_basebackup(capsys, db, pghoard, BaseBackupMode.basic)
+        self._run_backup_deletion(pghoard)
+        self._check_backups_count(pghoard, expected_count=4)
+
+    def test_basebackups_preservation_from_delete_is_canceled_on_success(self, capsys, db, pghoard, tmpdir):
+        self._test_create_basebackup(capsys, db, pghoard, BaseBackupMode.basic)
+        backup_out = tmpdir.join("test-restore").strpath
+        preserve_until = str(dates.now() + datetime.timedelta(days=2))
+        self._restore_basebackup(pghoard, backup_out, preserve_until=preserve_until, cancel_preserve_on_success=True)
+        self._test_create_basebackup(capsys, db, pghoard, BaseBackupMode.basic)
+        self._test_create_basebackup(capsys, db, pghoard, BaseBackupMode.basic)
+        self._test_create_basebackup(capsys, db, pghoard, BaseBackupMode.basic)
+        self._run_backup_deletion(pghoard)
+        self._check_backups_count(pghoard, expected_count=2)
+
+    def _run_backup_deletion(self, pghoard: PGHoardForTest) -> None:
+        pghoard.set_state_defaults(pghoard.test_site)
+        pghoard.refresh_backup_list_and_delete_old(pghoard.test_site)
+
+    def _check_backups_count(self, pghoard: PGHoardForTest, expected_count: int) -> None:
+        storage_config = common.get_object_storage_config(pghoard.config, pghoard.test_site)
+        storage = get_transfer(storage_config)
+        backups = storage.list_path(os.path.join(pghoard.config["backup_sites"][pghoard.test_site]["prefix"], "basebackup"))
+        assert len(backups) == expected_count
 
     @pytest.mark.parametrize(
         "delta_file_size, delta_chunk_size, expected_chunks_count, expected_delta_files_count",

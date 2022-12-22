@@ -246,6 +246,18 @@ class Restore:
             cmd.add_argument(
                 "--preserve-until", help="Request the backup to be preserved until that date", metavar="ISO_TIMESTAMP"
             )
+            cmd.add_argument(
+                "--cancel-preserve-on-success",
+                help="Cancel the preservation request if the backup was successfully restored",
+                action="store_true",
+                default=True,
+            )
+            cmd.add_argument(
+                "--no-cancel-preserve-on-success",
+                help="Don't cancel the preservation request if the backup was successfully restored",
+                dest="cancel_preserve_on_success",
+                action="store_false",
+            )
 
         cmd = add_cmd(self.list_basebackups_http)
         host_port_args()
@@ -311,6 +323,7 @@ class Restore:
                 tablespace_mapping=tablespace_mapping,
                 tablespace_base_dir=arg.tablespace_base_dir,
                 preserve_until=arg.preserve_until,
+                cancel_preserve_on_success=arg.cancel_preserve_on_success,
             )
         except RestoreError:  # pylint: disable=try-except-raise
             # Pass RestoreErrors thru
@@ -431,6 +444,7 @@ class Restore:
         tablespace_mapping=None,
         tablespace_base_dir=None,
         preserve_until: Optional[str] = None,
+        cancel_preserve_on_success: bool = True,
     ):
         targets = [recovery_target_name, recovery_target_time, recovery_target_xid]
         if sum(0 if flag is None else 1 for flag in targets) > 1:
@@ -598,7 +612,7 @@ class Restore:
             restore_to_primary=restore_to_primary,
         )
 
-        if preserve_request is not None:
+        if preserve_request is not None and cancel_preserve_on_success:
             # This is intentionally not done if pghoard fails earlier with an exception,
             # we only cancel the preservation if the backup was successfully restored.
             self.storage.try_cancel_backup_preservation(preserve_request)
