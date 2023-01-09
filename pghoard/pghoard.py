@@ -41,6 +41,9 @@ from pghoard.common import (
 from pghoard.compressor import (
     CompressionEvent, CompressionQueue, CompressorThread, WALFileDeleterThread, WalFileDeletionQueue
 )
+from pghoard.preservation_request import (
+    is_basebackup_preserved, parse_preservation_requests, patch_basebackup_metadata_with_preservation
+)
 from pghoard.receivexlog import PGReceiveXLog
 from pghoard.transfer import TransferAgent, TransferQueue, UploadEvent
 from pghoard.walreceiver import WALReceiver
@@ -444,6 +447,11 @@ class PGHoard:
         for entry in results:
             self.patch_basebackup_info(entry=entry, site_config=site_config)
 
+        preservation_requests = storage.list_path(os.path.join(site_config["prefix"], "preservation_request"))
+        backups_to_preserve = parse_preservation_requests(preservation_requests)
+        for entry in results:
+            patch_basebackup_metadata_with_preservation(entry, backups_to_preserve)
+
         results.sort(key=lambda entry: entry["metadata"]["start-time"])
         return results
 
@@ -472,8 +480,12 @@ class PGHoard:
         if allowed_basebackup_count is None:
             allowed_basebackup_count = len(basebackups)
 
+        now = dates.now()
         basebackups_to_delete = []
         while len(basebackups) > allowed_basebackup_count:
+            if is_basebackup_preserved(basebackups[0], now):
+                self.log.info("Not deleting more backups because %r still needs to preserved", basebackups[0]["name"])
+                break
             self.log.warning(
                 "Too many basebackups: %d > %d, %r, starting to get rid of %r", len(basebackups), allowed_basebackup_count,
                 basebackups, basebackups[0]["name"]
@@ -487,6 +499,9 @@ class PGHoard:
         current_time = datetime.datetime.now(datetime.timezone.utc)
         if max_age_days and min_backups > 0:
             while basebackups and len(basebackups) > min_backups:
+                if is_basebackup_preserved(basebackups[0], now):
+                    self.log.info("Not deleting more backups because %r still needs to preserved", basebackups[0]["name"])
+                    break
                 # For age checks we treat the age as current_time - (backup_start_time + backup_interval). So when
                 # backup interval is set to 24 hours a backup started 2.5 days ago would be considered to be 1.5 days old.
                 completed_at = basebackups[0]["metadata"]["start-time"] + backup_interval
@@ -525,6 +540,8 @@ class PGHoard:
                     last_wal_segment_still_needed = basebackups[0]["metadata"]["start-wal-segment"]
 
                 if last_wal_segment_still_needed:
+                    # This is breaking concurrent PITR starting from the *previous* backup.
+                    # That's why once a backup is preserved, we keep that backup and all the next ones.
                     self.delete_remote_wal_before(last_wal_segment_still_needed, site, pg_version)
                 self.delete_remote_basebackup(
                     site, basebackup_to_be_deleted["name"], basebackup_to_be_deleted["metadata"], basebackups=basebackups

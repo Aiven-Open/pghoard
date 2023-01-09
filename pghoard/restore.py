@@ -8,7 +8,6 @@ import abc
 import argparse
 import base64
 import contextlib
-import datetime
 import enum
 import errno
 import io
@@ -31,13 +30,13 @@ from threading import RLock
 from typing import Any, Dict, List, Optional, Set, Union
 
 from psycopg2.extensions import adapt
-from requests import Session
 from rohmu import dates, get_transfer, rohmufile
 from rohmu.errors import (Error, InvalidConfigurationError, MaybeRecoverableError)
 
 from pghoard.common import (
     BaseBackupFormat, FileType, FileTypePrefixes, StrEnum, download_backup_meta_file, extract_pghoard_delta_metadata
 )
+from pghoard.object_store import (HTTPRestore, ObjectStore, print_basebackup_list)
 
 from . import common, config, logutil, version
 from .postgres_command import PGHOARD_HOST, PGHOARD_PORT
@@ -178,30 +177,6 @@ def create_recovery_conf(
     return content
 
 
-def print_basebackup_list(basebackups, *, caption="Available basebackups", verbose=True):
-    print(caption, "\n")
-    fmt = "{name:40}  {size:>11}  {orig_size:>11}  {time:20}".format
-    print(fmt(name="Basebackup", size="Backup size", time="Start time", orig_size="Orig size"))
-    print(fmt(name="-" * 40, size="-" * 11, time="-" * 20, orig_size="-" * 11))
-    for b in sorted(basebackups, key=lambda b: b["name"]):
-        meta = b["metadata"].copy()
-        lm = meta.pop("start-time")
-        if isinstance(lm, str):
-            lm = dates.parse_timestamp(lm)
-        if lm.tzinfo:
-            lm = lm.astimezone(datetime.timezone.utc).replace(tzinfo=None)
-        lm_str = lm.isoformat()[:19] + "Z"  # # pylint: disable=no-member
-        size_str = "{} MB".format(int(meta.get("total-size-enc", b["size"])) // (1024 ** 2))
-        orig_size = int(meta.get("total-size-plain", meta.get("original-file-size")) or 0)
-        if orig_size:
-            orig_size_str = "{} MB".format(orig_size // (1024 ** 2))
-        else:
-            orig_size_str = "n/a"
-        print(fmt(name=b["name"], size=size_str, time=lm_str, orig_size=orig_size_str))
-        if verbose:
-            print("    metadata:", meta)
-
-
 class Restore:
     log_tracebacks = False
 
@@ -268,6 +243,21 @@ class Restore:
                 help="Restore the database to a PG primary",
                 action="store_true"
             )
+            cmd.add_argument(
+                "--preserve-until", help="Request the backup to be preserved until that date", metavar="ISO_TIMESTAMP"
+            )
+            cmd.add_argument(
+                "--cancel-preserve-on-success",
+                help="Cancel the preservation request if the backup was successfully restored",
+                action="store_true",
+                default=True,
+            )
+            cmd.add_argument(
+                "--no-cancel-preserve-on-success",
+                help="Don't cancel the preservation request if the backup was successfully restored",
+                dest="cancel_preserve_on_success",
+                action="store_false",
+            )
 
         cmd = add_cmd(self.list_basebackups_http)
         host_port_args()
@@ -332,6 +322,8 @@ class Restore:
                 overwrite=arg.overwrite,
                 tablespace_mapping=tablespace_mapping,
                 tablespace_base_dir=arg.tablespace_base_dir,
+                preserve_until=arg.preserve_until,
+                cancel_preserve_on_success=arg.cancel_preserve_on_success,
             )
         except RestoreError:  # pylint: disable=try-except-raise
             # Pass RestoreErrors thru
@@ -450,7 +442,9 @@ class Restore:
         restore_to_primary=None,
         overwrite=False,
         tablespace_mapping=None,
-        tablespace_base_dir=None
+        tablespace_base_dir=None,
+        preserve_until: Optional[str] = None,
+        cancel_preserve_on_success: bool = True,
     ):
         targets = [recovery_target_name, recovery_target_time, recovery_target_xid]
         if sum(0 if flag is None else 1 for flag in targets) > 1:
@@ -471,6 +465,12 @@ class Restore:
         # Grab basebackup metadata to make sure it exists and to look up tablespace requirements
         metadata = self.storage.get_basebackup_metadata(basebackup["name"])
         tablespaces = {}
+
+        # If requested, mark the backup for preservation
+        preserve_request: Optional[str] = None
+        if preserve_until is not None:
+            preserve_until_datetime = dates.parse_timestamp(preserve_until)
+            preserve_request = self.storage.try_request_backup_preservation(basebackup["name"], preserve_until_datetime)
 
         # Make sure we have a proper place to write the $PGDATA and possible tablespaces
         dirs_to_create = []
@@ -611,6 +611,11 @@ class Restore:
             recovery_target_xid=recovery_target_xid,
             restore_to_primary=restore_to_primary,
         )
+
+        if preserve_request is not None and cancel_preserve_on_success:
+            # This is intentionally not done if pghoard fails earlier with an exception,
+            # we only cancel the preservation if the backup was successfully restored.
+            self.storage.try_cancel_backup_preservation(preserve_request)
 
         print("Basebackup restoration complete.")
         print("You can start PostgreSQL by running pg_ctl -D %s start" % pgdata)
@@ -1002,47 +1007,6 @@ class ChunkFetcher:
                         "tar exited with code {!r} for file {!r}, output: {!r}".format(exit_code, file_name, output)
                     )
             self.log.info("Processing of %r completed successfully", file_name)
-
-
-class ObjectStore:
-    def __init__(self, storage, prefix, site, pgdata):
-        self.storage = storage
-        self.prefix = prefix
-        self.site = site
-        self.pgdata = pgdata
-        self.log = logging.getLogger(self.__class__.__name__)
-
-    def list_basebackups(self):
-        return self.storage.list_path(os.path.join(self.prefix, "basebackup"))
-
-    def show_basebackup_list(self, verbose=True):
-        result = self.list_basebackups()
-        caption = "Available %r basebackups:" % self.site
-        print_basebackup_list(result, caption=caption, verbose=verbose)
-
-    def get_basebackup_metadata(self, basebackup):
-        return self.storage.get_metadata_for_key(basebackup)
-
-    def get_basebackup_file_to_fileobj(self, basebackup, fileobj, *, progress_callback=None):
-        return self.storage.get_contents_to_fileobj(basebackup, fileobj, progress_callback=progress_callback)
-
-    def get_file_bytes(self, name):
-        return self.storage.get_contents_to_string(name)[0]
-
-
-class HTTPRestore(ObjectStore):
-    def __init__(self, host, port, site, pgdata=None):
-        super().__init__(storage=None, prefix=None, site=site, pgdata=pgdata)
-        self.host = host
-        self.port = port
-        self.session = Session()
-
-    def _url(self, path):
-        return "http://{host}:{port}/{site}/{path}".format(host=self.host, port=self.port, site=self.site, path=path)
-
-    def list_basebackups(self):
-        response = self.session.get(self._url("basebackup"))
-        return response.json()["basebackups"]
 
 
 def main():
