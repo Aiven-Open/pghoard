@@ -88,7 +88,7 @@ jobs:
         run: make coverage
 
       - id: upload-codecov
-        # Third-party action pinned to v2.1.0
-        uses: codecov/codecov-action@f32b3a3741e1053eb607407145bc9619351dc93b
+        # Third-party action pinned to v3.1.1
+        uses: codecov/codecov-action@d9f34f8cd5cb3b3eb79b3e4b5dae3a16df499a70
         with:
           verbose: true
