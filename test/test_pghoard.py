@@ -8,6 +8,7 @@ import datetime
 import json
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Any, Dict
 from unittest.mock import Mock, patch
@@ -794,6 +795,22 @@ class TestPGHoardWithPG:
         os.makedirs(wal_directory, exist_ok=True)
 
         pghoard.receivexlog_listener(pghoard.test_site, db.user, wal_directory)
+
+        # wait for pg_receivewal to start log streaming
+        # Otherwise, we might run into a race condition, where pg_receivewal will
+        # start streaming from the latest checkpoint instead of the first checkpoint
+        # this test actually generated
+
+        start = time.monotonic()
+        while True:
+            if "starting log streaming" in caplog.text:
+                break
+
+            if time.monotonic() - start > 30:
+                raise TimeoutError("Timeout waiting for pg_receivewal to start log streaming.")
+
+            time.sleep(0.1)
+
         # Create 15 new WAL segments in very quick succession while temporarily slowing
         # down the wal file deleter. Our volume for incoming WALs is only 150
         # MiB so if logic for automatically suspending pg_receive(xlog|wal) wasn't working the volume
