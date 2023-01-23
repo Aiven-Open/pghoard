@@ -14,7 +14,7 @@ on:
 jobs:
 
   lint:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     strategy:
       matrix:
         # only use one version for the lint step
@@ -23,13 +23,13 @@ jobs:
     steps:
 
       - id: checkout-code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
         with:
           # Do not persist the token during execution of this job.
           persist-credentials: false
 
       - id: prepare-python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v3
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -54,7 +54,7 @@ jobs:
           fi
 
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     needs: lint
     strategy:
       max-parallel: 5
@@ -63,10 +63,10 @@ jobs:
 
     steps:
       - id: checkout-code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - id: prepare-python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v3
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -88,7 +88,7 @@ jobs:
         run: make coverage
 
       - id: upload-codecov
-        # Third-party action pinned to v2.1.0
-        uses: codecov/codecov-action@f32b3a3741e1053eb607407145bc9619351dc93b
+        # Third-party action pinned to v3.1.1
+        uses: codecov/codecov-action@d9f34f8cd5cb3b3eb79b3e4b5dae3a16df499a70
         with:
           verbose: true
