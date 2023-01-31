@@ -41,6 +41,8 @@ from pghoard.object_store import (HTTPRestore, ObjectStore, print_basebackup_lis
 from . import common, config, logutil, version
 from .postgres_command import PGHOARD_HOST, PGHOARD_PORT
 
+MAX_RETRIES = 6
+
 
 class RestoreError(Error):
     """Restore error"""
@@ -664,7 +666,7 @@ class BasebackupFetcher:
         self.retry_per_file: Dict[str, int] = {}
 
     def fetch_all(self):
-        for retry in range(3):
+        for retry in range(MAX_RETRIES):
             try:
                 with self.manager_class() as manager:
                     self._setup_progress_tracking(manager)
@@ -682,7 +684,7 @@ class BasebackupFetcher:
                 if self.errors:
                     break
 
-                if retry == 2:
+                if retry == MAX_RETRIES - 1:
                     self.log.error("Download stalled despite retries, aborting")
                     self.errors = 1
                     break
@@ -762,7 +764,7 @@ class BasebackupFetcher:
                     retries = self.retry_per_file.get(key, 0) + 1
                     self.retry_per_file[key] = retries
                     self.pending_jobs.remove(key)
-                    if retries <= 2:
+                    if retries < MAX_RETRIES:
                         self.jobs_to_retry.add(key)
                         return
                     self.errors += 1
