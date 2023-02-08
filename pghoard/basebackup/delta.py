@@ -125,6 +125,9 @@ class DeltaBaseBackup:
 
         result_hash = hashlib.blake2s()
 
+        def progress_callback(n_bytes: int = 1) -> None:
+            self.metrics.increase("pghoard.basebackup_bytes_uploaded", inc_value=n_bytes, tags={"delta": True})
+
         with NamedTemporaryFile(dir=temp_dir, prefix=os.path.basename(chunk_path), suffix=".tmp") as raw_output_obj:
             rohmufile.write_file(
                 input_obj=file_obj,
@@ -133,7 +136,8 @@ class DeltaBaseBackup:
                 compression_level=self.compression_data.level,
                 rsa_public_key=self.encryption_data.rsa_public_key,
                 log_func=self.log.info,
-                data_callback=result_hash.update
+                data_callback=result_hash.update,
+                progress_callback=progress_callback,
             )
             result_size = raw_output_obj.tell()
             raw_output_obj.seek(0)

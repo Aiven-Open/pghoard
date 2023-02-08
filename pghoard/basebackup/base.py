@@ -225,11 +225,12 @@ class PGBaseBackup(PGHoardThread):
 
                     metadata.update({"start-wal-segment": start_wal_segment, "start-time": start_time})
 
-            def progress_callback():
+            def progress_callback(n_bytes: int = 1) -> None:
                 stderr_data = proc.stderr.read()
                 if stderr_data:
                     self.latest_activity = datetime.datetime.utcnow()
                     self.log.debug("pg_basebackup stderr: %r", stderr_data)
+                self.metrics.increase("pghoard.basebackup_bytes_uploaded", inc_value=n_bytes, tags={"delta": False})
 
             original_input_size, compressed_file_size = rohmufile.write_file(
                 input_obj=proc.stdout,
