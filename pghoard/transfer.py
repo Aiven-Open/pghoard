@@ -19,7 +19,7 @@ from typing import Any, BinaryIO, Dict, Optional, Union
 
 from rohmu import get_transfer
 from rohmu.errors import FileNotFoundFromStorageError
-from rohmu.object_storage.base import BaseTransfer
+from rohmu.object_storage.base import (BaseTransfer, IncrementalProgressCallbackType)
 
 from pghoard.common import (
     CallbackEvent, CallbackQueue, FileType, PGHoardThread, Queue, QuitEvent, StrEnum, create_alert_file,
@@ -54,6 +54,7 @@ class UploadEvent(BaseTransferEvent):
     file_size: Optional[int]
     remove_after_upload: bool = True
     retry_number: int = 0
+    incremental_progress_callback: Optional[IncrementalProgressCallbackType] = None
 
     @property
     def operation(self):
@@ -309,7 +310,7 @@ class TransferAgent(PGHoardThread):
             self.metrics.unexpected_exception(ex, where="handle_download")
             return CallbackEvent(success=False, exception=ex, opaque=file_to_transfer.opaque)
 
-    def handle_upload(self, site, key, file_to_transfer):
+    def handle_upload(self, site, key, file_to_transfer: UploadEvent):
         payload = {"file_size": file_to_transfer.file_size}
         try:
             storage = self.get_object_storage(site)
@@ -323,7 +324,9 @@ class TransferAgent(PGHoardThread):
                 metadata = file_to_transfer.metadata.copy()
                 if file_to_transfer.file_size:
                     metadata["Content-Length"] = file_to_transfer.file_size
-                storage.store_file_object(key, f, metadata=metadata)
+                storage.store_file_object(
+                    key, f, metadata=metadata, upload_progress_fn=file_to_transfer.incremental_progress_callback
+                )
             if unlink_local:
                 try:
                     self.log.info("Deleting file: %r since it has been uploaded", file_to_transfer.source_data)

@@ -188,6 +188,9 @@ class DeltaBaseBackup:
 
         dest_path = Path("basebackup_delta") / result_digest
 
+        def callback(n_bytes:int) -> None:
+            self.metrics.increase("pghoard.basebackup_bytes_uploaded", inc_value=n_bytes, tags={"delta": True})
+
         self.transfer_queue.put(
             UploadEvent(
                 callback_queue=callback_queue,
@@ -196,6 +199,7 @@ class DeltaBaseBackup:
                 backup_site_name=self.site,
                 metadata=metadata,
                 file_path=dest_path,
+                incremental_progress_callback=callback,
                 source_data=chunk_path
             )
         )
