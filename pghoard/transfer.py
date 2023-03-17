@@ -316,33 +316,34 @@ class TransferAgent(PGHoardThread):
             storage = self.get_object_storage(site)
             unlink_local = file_to_transfer.remove_after_upload
             self.log.info("Uploading file to object store: src=%r dst=%r", file_to_transfer.source_data, key)
-            if not isinstance(file_to_transfer.source_data, BytesIO):
-                f = open(file_to_transfer.source_data, "rb")
-            else:
+            if isinstance(file_to_transfer.source_data, BinaryIO):
                 f = file_to_transfer.source_data
+            else:
+                f = open(file_to_transfer.source_data, "rb")
             with f:
                 metadata = file_to_transfer.metadata.copy()
                 if file_to_transfer.file_size:
-                    metadata["Content-Length"] = file_to_transfer.file_size
+                    metadata["Content-Length"] = str(file_to_transfer.file_size)
                 storage.store_file_object(
                     key, f, metadata=metadata, upload_progress_fn=file_to_transfer.incremental_progress_callback
                 )
             if unlink_local:
-                try:
-                    self.log.info("Deleting file: %r since it has been uploaded", file_to_transfer.source_data)
-                    os.unlink(file_to_transfer.source_data)
-                    # If we're working from pathes, then compute the .metadata
-                    # path.
-                    # FIXME: should be part of the event itself
-                    if isinstance(file_to_transfer.source_data, Path):
-                        metadata_path = file_to_transfer.source_data.with_name(
-                            file_to_transfer.source_data.name + ".metadata"
-                        )
-                        with suppress(FileNotFoundError):
-                            os.unlink(metadata_path)
-                except Exception as ex:  # pylint: disable=broad-except
-                    self.log.exception("Problem in deleting file: %r", file_to_transfer.source_data)
-                    self.metrics.unexpected_exception(ex, where="handle_upload_unlink")
+                if isinstance(file_to_transfer.source_data, Path):
+                    try:
+                        self.log.info("Deleting file: %r since it has been uploaded", file_to_transfer.source_data)
+                        os.unlink(file_to_transfer.source_data)
+                        # If we're working from pathes, then compute the .metadata
+                        # path.
+                        # FIXME: should be part of the event itself
+                        if isinstance(file_to_transfer.source_data, Path):
+                            metadata_path = file_to_transfer.source_data.with_name(
+                                file_to_transfer.source_data.name + ".metadata"
+                            )
+                            with suppress(FileNotFoundError):
+                                os.unlink(metadata_path)
+                    except Exception as ex:  # pylint: disable=broad-except
+                        self.log.exception("Problem in deleting file: %r", file_to_transfer.source_data)
+                        self.metrics.unexpected_exception(ex, where="handle_upload_unlink")
             return CallbackEvent(success=True, payload=payload)
         except Exception as ex:  # pylint: disable=broad-except
             if file_to_transfer.retry_number > 0:
