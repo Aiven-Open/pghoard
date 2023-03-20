@@ -316,7 +316,7 @@ class TransferAgent(PGHoardThread):
             storage = self.get_object_storage(site)
             unlink_local = file_to_transfer.remove_after_upload
             self.log.info("Uploading file to object store: src=%r dst=%r", file_to_transfer.source_data, key)
-            if isinstance(file_to_transfer.source_data, BinaryIO):
+            if isinstance(file_to_transfer.source_data, (BinaryIO, BytesIO)):
                 f = file_to_transfer.source_data
             else:
                 f = open(file_to_transfer.source_data, "rb")
