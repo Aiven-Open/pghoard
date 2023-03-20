@@ -1,4 +1,5 @@
 # Use pip for build requirements to harmonize between OS versions
+boto3
 mock
 mypy
 pylint>=2.4.3,<=2.7.2
