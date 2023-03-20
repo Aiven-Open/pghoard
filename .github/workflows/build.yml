@@ -36,7 +36,7 @@ jobs:
       - id: dependencies
         run: |
           pip install -r requirements.txt
-          pip install -r requirements.dev.txt
+          pip install -r requirements.dev.txt -c constraints.txt
 
       - id: pylint
         run: make lint
@@ -81,7 +81,7 @@ jobs:
           # Setup common python dependencies
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install --upgrade -r requirements.dev.txt
+          pip install -r requirements.dev.txt -c constraints.txt
           pip install -e .
 
       - id: unittest

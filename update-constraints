@@ -1,0 +1,7 @@
+#!/bin/bash -ex
+TEMPDIR="$(mktemp -d)"
+python -m venv "$TEMPDIR"
+"$TEMPDIR"/bin/pip install -r requirements.txt
+"$TEMPDIR"/bin/pip install -r requirements.dev.txt
+"$TEMPDIR"/bin/pip freeze | grep -v "pkg-resources" | sort > constraints.txt
+rm -rf "$TEMPDIR"
