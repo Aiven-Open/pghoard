@@ -142,10 +142,13 @@ class TestTransferAgent(PGHoardTestCase):
         assert os.path.exists(self.foo_path) is True
         expected_key = os.path.join(self.test_site, "xlog/00000001000000000000000C")
         storage.store_file_object.assert_called_with(
-            expected_key, ANY, metadata={
-                "Content-Length": 3,
+            expected_key,
+            ANY,
+            metadata={
+                "Content-Length": "3",
                 "start-wal-segment": "00000001000000000000000C"
-            }
+            },
+            upload_progress_fn=None
         )
         # Now check that the prefix is used.
         self._inject_prefix("site_specific_prefix")
@@ -164,10 +167,13 @@ class TestTransferAgent(PGHoardTestCase):
         assert callback_queue.get(timeout=1.0) == CallbackEvent(success=True, payload={"file_size": 3})
         expected_key = "site_specific_prefix/xlog/00000001000000000000000C"
         storage.store_file_object.assert_called_with(
-            expected_key, ANY, metadata={
-                "Content-Length": 3,
+            expected_key,
+            ANY,
+            metadata={
+                "Content-Length": "3",
                 "start-wal-segment": "00000001000000000000000C"
-            }
+            },
+            upload_progress_fn=None
         )
         assert os.path.exists(self.foo_path) is False
 

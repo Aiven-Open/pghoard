@@ -19,7 +19,7 @@ from typing import Any, BinaryIO, Dict, Optional, Union
 
 from rohmu import get_transfer
 from rohmu.errors import FileNotFoundFromStorageError
-from rohmu.object_storage.base import BaseTransfer
+from rohmu.object_storage.base import (BaseTransfer, IncrementalProgressCallbackType)
 
 from pghoard.common import (
     CallbackEvent, CallbackQueue, FileType, PGHoardThread, Queue, QuitEvent, StrEnum, create_alert_file,
@@ -54,6 +54,7 @@ class UploadEvent(BaseTransferEvent):
     file_size: Optional[int]
     remove_after_upload: bool = True
     retry_number: int = 0
+    incremental_progress_callback: Optional[IncrementalProgressCallbackType] = None
 
     @property
     def operation(self):
@@ -309,37 +310,40 @@ class TransferAgent(PGHoardThread):
             self.metrics.unexpected_exception(ex, where="handle_download")
             return CallbackEvent(success=False, exception=ex, opaque=file_to_transfer.opaque)
 
-    def handle_upload(self, site, key, file_to_transfer):
+    def handle_upload(self, site, key, file_to_transfer: UploadEvent):
         payload = {"file_size": file_to_transfer.file_size}
         try:
             storage = self.get_object_storage(site)
             unlink_local = file_to_transfer.remove_after_upload
             self.log.info("Uploading file to object store: src=%r dst=%r", file_to_transfer.source_data, key)
-            if not isinstance(file_to_transfer.source_data, BytesIO):
-                f = open(file_to_transfer.source_data, "rb")
-            else:
+            if isinstance(file_to_transfer.source_data, (BinaryIO, BytesIO)):
                 f = file_to_transfer.source_data
+            else:
+                f = open(file_to_transfer.source_data, "rb")
             with f:
                 metadata = file_to_transfer.metadata.copy()
                 if file_to_transfer.file_size:
-                    metadata["Content-Length"] = file_to_transfer.file_size
-                storage.store_file_object(key, f, metadata=metadata)
+                    metadata["Content-Length"] = str(file_to_transfer.file_size)
+                storage.store_file_object(
+                    key, f, metadata=metadata, upload_progress_fn=file_to_transfer.incremental_progress_callback
+                )
             if unlink_local:
-                try:
-                    self.log.info("Deleting file: %r since it has been uploaded", file_to_transfer.source_data)
-                    os.unlink(file_to_transfer.source_data)
-                    # If we're working from pathes, then compute the .metadata
-                    # path.
-                    # FIXME: should be part of the event itself
-                    if isinstance(file_to_transfer.source_data, Path):
-                        metadata_path = file_to_transfer.source_data.with_name(
-                            file_to_transfer.source_data.name + ".metadata"
-                        )
-                        with suppress(FileNotFoundError):
-                            os.unlink(metadata_path)
-                except Exception as ex:  # pylint: disable=broad-except
-                    self.log.exception("Problem in deleting file: %r", file_to_transfer.source_data)
-                    self.metrics.unexpected_exception(ex, where="handle_upload_unlink")
+                if isinstance(file_to_transfer.source_data, Path):
+                    try:
+                        self.log.info("Deleting file: %r since it has been uploaded", file_to_transfer.source_data)
+                        os.unlink(file_to_transfer.source_data)
+                        # If we're working from pathes, then compute the .metadata
+                        # path.
+                        # FIXME: should be part of the event itself
+                        if isinstance(file_to_transfer.source_data, Path):
+                            metadata_path = file_to_transfer.source_data.with_name(
+                                file_to_transfer.source_data.name + ".metadata"
+                            )
+                            with suppress(FileNotFoundError):
+                                os.unlink(metadata_path)
+                    except Exception as ex:  # pylint: disable=broad-except
+                        self.log.exception("Problem in deleting file: %r", file_to_transfer.source_data)
+                        self.metrics.unexpected_exception(ex, where="handle_upload_unlink")
             return CallbackEvent(success=True, payload=payload)
         except Exception as ex:  # pylint: disable=broad-except
             if file_to_transfer.retry_number > 0:
