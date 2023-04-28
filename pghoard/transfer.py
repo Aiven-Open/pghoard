@@ -332,7 +332,7 @@ class TransferAgent(PGHoardThread):
                     try:
                         self.log.info("Deleting file: %r since it has been uploaded", file_to_transfer.source_data)
                         os.unlink(file_to_transfer.source_data)
-                        # If we're working from pathes, then compute the .metadata
+                        # If we're working from paths, then compute the .metadata
                         # path.
                         # FIXME: should be part of the event itself
                         if isinstance(file_to_transfer.source_data, Path):

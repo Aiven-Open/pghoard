@@ -866,7 +866,7 @@ def _fetch_and_process_chunk(
     # By using this we avoid PickleErrors when passing the exception to the parent process.
     # Previously if an exception fails to deserialize with pickle the original error would be masked,
     # i.e \'PicklingError("Can\'t pickle <class \'zstd.ZstdError\'>: import of module \'zstd\' failed")
-    # We need to take care to not break error handling upstream though by masking everyting
+    # We need to take care to not break error handling upstream though by masking everything
     try:
         fetcher.process_chunk()
     except MaybeRecoverableError:
