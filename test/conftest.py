@@ -299,7 +299,7 @@ def fixture_pghoard_ipv6_loopback(db, tmpdir, request):
 @pytest.fixture(name="pghoard_walreceiver")
 def fixture_pghoard_walreceiver(db, tmpdir, request):
     # Initialize with only one transfer agent, as we want a reliable
-    # last transfered state.
+    # last transferred state.
     yield from pghoard_base(db, tmpdir, request, active_backup_mode="walreceiver", transfer_count=1, compression_count=1)
 
 

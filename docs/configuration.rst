@@ -61,7 +61,7 @@ maintenance_mode_file (default ``"/var/lib/pghoard/maintenance_mode_file"``)
                         this location no new backup actions will be started)
                         FIXME: define "new backup actions"
 transfer (default see below)
-  A JSON object defining the WAL/basebackup tranfer parameters.
+  A JSON object defining the WAL/basebackup transfer parameters.
 
   Example::
 
@@ -141,7 +141,7 @@ stats (default ``null``)
       The tag key can be used to enter optional tag values for the metrics
 push_gateway (default ``null``)
   When set, enables sending metrics to a Prometheus Pushgateway with tags.
-  The value is a JSON obejct, for example::
+  The value is a JSON object, for example::
 
     {
         "endpoint": "<pushgateway address>",

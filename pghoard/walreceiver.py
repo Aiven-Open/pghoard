@@ -244,7 +244,7 @@ class WALReceiver(PGHoardThread):
             if self.callbacks and completed_lsn > min(self.callbacks):
                 # Do nothing since a smaller lsn is still being transferred
                 pass
-            #  Earlier lsn than earlist on-going transfer, or no on-going transfer, just advance flush_lsn
+            #  Earlier lsn than earliest on-going transfer, or no on-going transfer, just advance flush_lsn
             else:
                 self.c.send_feedback(flush_lsn=next_wal_start_lsn)
                 self.completed_wal_segments.discard(completed_lsn)

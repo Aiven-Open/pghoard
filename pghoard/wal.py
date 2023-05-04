@@ -167,7 +167,7 @@ class LSN:
     @property
     def next_walfile_start_lsn(self):
         """
-        Return the LSN correspoding to the start of the wal file following the
+        Return the LSN corresponding to the start of the wal file following the
         one containing this LSN.
         """
         return self.walfile_start_lsn + WAL_SEG_SIZE
@@ -175,7 +175,7 @@ class LSN:
     @property
     def previous_walfile_start_lsn(self):
         """
-        Return the LSN correspoding to the start of the wal file preceding the
+        Return the LSN corresponding to the start of the wal file preceding the
         one containing this LSN, or None if it's the first one.
         """
         if self.walfile_start_lsn.lsn == 0:
