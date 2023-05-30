@@ -124,7 +124,7 @@ def create_recovery_conf(
     lines = [
         "# pghoard created recovery.conf",
         "recovery_target_timeline = 'latest'",
-        "{} = {}".format(trigger_file_setting, adapt(os.path.join(dirpath, "trigger_file"))),
+        "{} = {}".format(trigger_file_setting, adapt("trigger_file")),
         "restore_command = '{}'".format(" ".join(restore_command)),
     ]
 
