@@ -615,6 +615,7 @@ class PGBaseBackup(PGHoardThread):
                         data_file_format,
                         compressed_base,
                         delta_stats=delta_stats,
+                        delta=delta,
                         file_type=FileType.Basebackup_chunk
                     )
 
@@ -724,6 +725,7 @@ class PGBaseBackup(PGHoardThread):
             callback_queue=self.callback_queue,
             chunk_path=Path(data_file_format(0)), # pylint: disable=too-many-format-args
             temp_dir=compressed_base,
+            delta=delta,
             files_to_backup=control_files,
             file_type=FileType.Basebackup,
             extra_metadata={
