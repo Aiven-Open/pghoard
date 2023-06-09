@@ -361,6 +361,7 @@ class DeltaBaseBackup:
         chunk_files = self.chunk_uploader.create_and_upload_chunks(
             chunks=delta_chunks,
             data_file_format=self.data_file_format,
+            delta=True,
             temp_base_dir=self.compressed_base,
             file_type=FileType.Basebackup_delta_chunk,
             chunks_max_progress=chunks_max_progress,
