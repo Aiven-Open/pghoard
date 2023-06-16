@@ -30,7 +30,7 @@ from pghoard.common import (
     download_backup_meta_file, extract_pghoard_delta_metadata
 )
 from pghoard.metrics import Metrics
-from pghoard.transfer import TransferQueue, UploadEvent
+from pghoard.transfer import TransferQueue, UploadEvent, TransferOperation, OperationEventProgressTracker
 
 
 @dataclass
@@ -188,8 +188,13 @@ class DeltaBaseBackup:
 
         dest_path = Path("basebackup_delta") / result_digest
 
-        def callback(n_bytes: int) -> None:
-            self.metrics.increase("pghoard.basebackup_bytes_uploaded", inc_value=n_bytes, tags={"delta": True})
+        progress_tracker = OperationEventProgressTracker(
+            metrics=self.metrics,
+            metric_name="pghoard.basebackup_bytes_uploaded",
+            operation=TransferOperation.Upload,
+            file_size=result_size,
+            tags={"delta": True}
+        )
 
         self.transfer_queue.put(
             UploadEvent(
@@ -199,7 +204,7 @@ class DeltaBaseBackup:
                 backup_site_name=self.site,
                 metadata=metadata,
                 file_path=dest_path,
-                incremental_progress_callback=callback,
+                progress_tracker=progress_tracker,
                 source_data=chunk_path
             )
         )

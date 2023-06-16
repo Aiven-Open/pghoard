@@ -28,7 +28,7 @@ from pghoard.common import (
     CallbackEvent, CallbackQueue, FileType, FileTypePrefixes, PGHoardThread, QuitEvent, StrEnum, write_json_file
 )
 from pghoard.metrics import Metrics
-from pghoard.transfer import TransferQueue, UploadEvent
+from pghoard.transfer import TransferQueue, UploadEvent, OperationEventProgressTracker, TransferOperation
 
 
 @enum.unique
@@ -260,6 +260,17 @@ class CompressorThread(PGHoardThread):
                     "type": file_type,
                 }
             )
+
+        progress_tracker = OperationEventProgressTracker(
+            metrics=self.metrics,
+            metric_name="pghoard.compressed_file_upload",
+            operation=TransferOperation.Upload,
+            file_size=compressed_file_size,
+            tags={
+                "site": site,
+                "type": file_type,
+            }
+        )
         transfer_object = UploadEvent(
             callback_queue=event.callback_queue,
             file_size=compressed_file_size,
@@ -268,7 +279,8 @@ class CompressorThread(PGHoardThread):
             backup_site_name=site,
             file_path=event.file_path,
             source_data=output_data,
-            remove_after_upload=remove_after_upload
+            remove_after_upload=remove_after_upload,
+            progress_tracker=progress_tracker,
         )
         if event.delete_file_after_compression:
             if file_type == FileType.Wal:

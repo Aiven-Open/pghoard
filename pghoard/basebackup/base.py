@@ -35,7 +35,7 @@ from pghoard.common import (
     set_subprocess_stdout_and_stderr_nonblocking, terminate_subprocess
 )
 from pghoard.compressor import CompressionEvent
-from pghoard.transfer import UploadEvent
+from pghoard.transfer import UploadEvent, TransferOperation, OperationEventProgressTracker
 
 BASEBACKUP_NAME = "pghoard_base_backup"
 EMPTY_DIRS = [
@@ -316,8 +316,13 @@ class PGBaseBackup(PGHoardThread):
         })
         metadata.update(self.metadata)
 
-        def callback(n_bytes: int) -> None:
-            self.metrics.increase("pghoard.basebackup_bytes_uploaded", inc_value=n_bytes, tags={"delta": False})
+        progress_tracker = OperationEventProgressTracker(
+            metrics=self.metrics,
+            metric_name="pghoard.basebackup_bytes_uploaded",
+            operation=TransferOperation.Upload,
+            file_size=compressed_file_size,
+            tags={"delta": False}
+        )
 
         self.transfer_queue.put(
             UploadEvent(
@@ -326,7 +331,7 @@ class PGBaseBackup(PGHoardThread):
                 file_path=basebackup_path,
                 callback_queue=self.callback_queue,
                 file_size=compressed_file_size,
-                incremental_progress_callback=callback,
+                progress_tracker=progress_tracker,
                 source_data=stream_target,
                 remove_after_upload=True,
                 metadata=metadata

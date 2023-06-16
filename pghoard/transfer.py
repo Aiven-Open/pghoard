@@ -15,7 +15,7 @@ from io import BytesIO
 from pathlib import Path
 from queue import Empty
 from threading import Lock
-from typing import Any, BinaryIO, Dict, Optional, Union
+from typing import Any, BinaryIO, Dict, Optional, Union, NamedTuple
 
 from rohmu import get_transfer
 from rohmu.errors import FileNotFoundFromStorageError
@@ -26,6 +26,7 @@ from pghoard.common import (
     get_object_storage_config
 )
 from pghoard.fetcher import FileFetchManager
+from pghoard.metrics import Metrics
 
 _STATS_LOCK = Lock()
 _last_stats_transmit_time = 0
@@ -37,6 +38,105 @@ class TransferOperation(StrEnum):
     Upload = "upload"
     List = "list"
     Metadata = "metadata"
+
+
+class TransferIncrement(NamedTuple):
+    n_bytes: float
+    tracked_at: float
+
+
+class OperationEventProgressTracker(PGHoardThread):
+    """
+    Monitors the progress of operation events and updates metrics via clients (telegraph, prometheus, Pushgateway)
+    """
+
+    CHECK_FREQUENCY: int = 5  # check every 5 seconds for progress
+    WARNING_TIMEOUT: int = 5 * 60  # log a warning in case there is no progress during last 5 minutes
+
+    def __init__(
+        self,
+        *,
+        metrics: Metrics,
+        metric_name: str,
+        operation: TransferOperation,
+        file_size: float,
+        tags: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        self.metrics = metrics
+        self.log = logging.getLogger("OperationEventProgressTracker")
+        self.metric_name = metric_name
+        self.tags = tags
+        self.operation = operation
+        self.file_size = file_size
+
+        self.running = True
+        self._increments = []
+        self._started_at: Optional[float] = None
+        super().__init__()
+
+    def stop(self) -> None:
+        self.running = False
+
+    def run_safe(self):
+        try:
+            self._started_at = time.monotonic()
+            while self.running:
+                time.sleep(self.CHECK_FREQUENCY)
+                self._check_increment_rate()
+                if self._transfer_operation_is_completed():
+                    self.stop()
+                    self._reset()
+        except Exception as exception:  # pylint: disable=broad-except
+            self.log.exception(f"Failed to update transfer rate {self.metric_name!r}")
+            self.metrics.increase("pghoard.transfer_operation.errors")
+
+            self._reset()
+
+    def increment(self, n_bytes: float) -> None:
+        self.metrics.increase(self.metric_name, inc_value=n_bytes, tags=self.tags)
+        self._increments.append(TransferIncrement(n_bytes=n_bytes, tracked_at=time.monotonic()))
+
+    def _check_increment_rate(self) -> None:
+        """
+        Check if the transfer operation is progressing by comparing the time elapsed since
+        last increment with the average time it took for previous increments. If the operation has been inactive,
+        a warning will be logged.
+        """
+        now = time.monotonic()
+
+        avg_rate = 0
+        last_increment_at = self._started_at
+
+        if self._increments:
+            # total "waiting" time between all increments
+            total_increment_diff = sum(
+                next_inc.tracked_at - prev_inc.tracked_at
+                for prev_inc, next_inc in zip(self._increments, self._increments[1:])
+            )
+
+            avg_rate = total_increment_diff / (len(self._increments) - 1) if len(self._increments) > 1 else 0
+            last_increment_at = self._increments[-1].tracked_at
+
+        # log warning in case we have not tracked any progress for the operation since
+        # the last check
+        if last_increment_at and (now - last_increment_at) >= avg_rate + self.WARNING_TIMEOUT:
+            self.log.warning(
+                "Transfer %s operation has been inactive since %s seconds.", self.operation, now - last_increment_at
+            )
+
+    def _reset(self) -> None:
+        self._increments = []
+        self._started_at = None
+        self._running = True
+
+    def _transfer_operation_is_completed(self) -> bool:
+        """
+        Check if operation has transferred all bytes.
+        """
+        if not self._increments:
+            return False
+
+        return sum(inc.n_bytes for inc in self._increments) >= self.file_size
 
 
 @dataclass(frozen=True)
@@ -54,7 +154,7 @@ class UploadEvent(BaseTransferEvent):
     file_size: Optional[int]
     remove_after_upload: bool = True
     retry_number: int = 0
-    incremental_progress_callback: Optional[IncrementalProgressCallbackType] = None
+    progress_tracker: Optional[OperationEventProgressTracker] = None
 
     @property
     def operation(self):
@@ -324,9 +424,17 @@ class TransferAgent(PGHoardThread):
                 metadata = file_to_transfer.metadata.copy()
                 if file_to_transfer.file_size:
                     metadata["Content-Length"] = str(file_to_transfer.file_size)
+
+                upload_progress_fn = None
+                if file_to_transfer.progress_tracker:
+                    file_to_transfer.progress_tracker.start()
+                    upload_progress_fn = file_to_transfer.progress_tracker.increment
+
                 storage.store_file_object(
-                    key, f, metadata=metadata, upload_progress_fn=file_to_transfer.incremental_progress_callback
+                    key, f, metadata=metadata, upload_progress_fn=upload_progress_fn,
                 )
+                if file_to_transfer.progress_tracker:
+                    file_to_transfer.progress_tracker.stop()
             if unlink_local:
                 if isinstance(file_to_transfer.source_data, Path):
                     try:
