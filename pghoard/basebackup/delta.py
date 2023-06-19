@@ -30,7 +30,7 @@ from pghoard.common import (
     download_backup_meta_file, extract_pghoard_delta_metadata
 )
 from pghoard.metrics import Metrics
-from pghoard.transfer import TransferQueue, UploadEvent, TransferOperation, OperationEventProgressTracker
+from pghoard.transfer import (OperationEventProgressTracker, TransferOperation, TransferQueue, UploadEvent)
 
 
 @dataclass

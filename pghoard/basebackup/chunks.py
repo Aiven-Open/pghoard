@@ -23,7 +23,7 @@ from pghoard.common import (
     FileTypePrefixes, NoException
 )
 from pghoard.metrics import Metrics
-from pghoard.transfer import TransferQueue, UploadEvent, TransferOperation, OperationEventProgressTracker
+from pghoard.transfer import (OperationEventProgressTracker, TransferOperation, TransferQueue, UploadEvent)
 
 
 class HashFile:

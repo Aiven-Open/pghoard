@@ -8,6 +8,7 @@ import dataclasses
 import enum
 import logging
 import os
+import threading
 import time
 from contextlib import suppress
 from dataclasses import dataclass
@@ -15,11 +16,11 @@ from io import BytesIO
 from pathlib import Path
 from queue import Empty
 from threading import Lock
-from typing import Any, BinaryIO, Dict, Optional, Union, NamedTuple
+from typing import Any, BinaryIO, Dict, List, NamedTuple, Optional, Union
 
 from rohmu import get_transfer
 from rohmu.errors import FileNotFoundFromStorageError
-from rohmu.object_storage.base import (BaseTransfer, IncrementalProgressCallbackType)
+from rohmu.object_storage.base import BaseTransfer
 
 from pghoard.common import (
     CallbackEvent, CallbackQueue, FileType, PGHoardThread, Queue, QuitEvent, StrEnum, create_alert_file,
@@ -69,32 +70,54 @@ class OperationEventProgressTracker(PGHoardThread):
         self.operation = operation
         self.file_size = file_size
 
-        self.running = True
-        self._increments = []
+        self.running: bool = False
+
+        self._increments: List[TransferIncrement] = []
+        self._increments_lock = threading.Lock()
         self._started_at: Optional[float] = None
         super().__init__()
 
-    def stop(self) -> None:
-        self.running = False
+    def increment(self, n_bytes: float) -> None:
+        with self._increments_lock:
+            self.metrics.increase(self.metric_name, inc_value=n_bytes, tags=self.tags)
+            self._increments.append(TransferIncrement(n_bytes=n_bytes, tracked_at=time.monotonic()))
+
+    def reset(self) -> None:
+        with self._increments_lock:
+            self._increments = []
+            self._started_at = None
 
     def run_safe(self):
         try:
             self._started_at = time.monotonic()
+            self.running = True
+
             while self.running:
                 time.sleep(self.CHECK_FREQUENCY)
-                self._check_increment_rate()
-                if self._transfer_operation_is_completed():
-                    self.stop()
-                    self._reset()
-        except Exception as exception:  # pylint: disable=broad-except
-            self.log.exception(f"Failed to update transfer rate {self.metric_name!r}")
+
+                with self._increments_lock:
+                    self._check_increment_rate()
+
+                    if self.transfer_operation_is_completed():
+                        self.stop()
+
+        except Exception:  # pylint: disable=broad-except
+            self.log.exception("Failed to update transfer rate %s", self.metric_name)
             self.metrics.increase("pghoard.transfer_operation.errors")
+            self.reset()
+            self.stop()
 
-            self._reset()
+    def stop(self) -> None:
+        self.running = False
 
-    def increment(self, n_bytes: float) -> None:
-        self.metrics.increase(self.metric_name, inc_value=n_bytes, tags=self.tags)
-        self._increments.append(TransferIncrement(n_bytes=n_bytes, tracked_at=time.monotonic()))
+    def transfer_operation_is_completed(self) -> bool:
+        """
+        Check if operation has transferred all bytes.
+        """
+        if not self._increments:
+            return False
+
+        return sum(inc.n_bytes for inc in self._increments) >= self.file_size
 
     def _check_increment_rate(self) -> None:
         """
@@ -104,7 +127,7 @@ class OperationEventProgressTracker(PGHoardThread):
         """
         now = time.monotonic()
 
-        avg_rate = 0
+        avg_rate = 0.
         last_increment_at = self._started_at
 
         if self._increments:
@@ -123,20 +146,6 @@ class OperationEventProgressTracker(PGHoardThread):
             self.log.warning(
                 "Transfer %s operation has been inactive since %s seconds.", self.operation, now - last_increment_at
             )
-
-    def _reset(self) -> None:
-        self._increments = []
-        self._started_at = None
-        self._running = True
-
-    def _transfer_operation_is_completed(self) -> bool:
-        """
-        Check if operation has transferred all bytes.
-        """
-        if not self._increments:
-            return False
-
-        return sum(inc.n_bytes for inc in self._increments) >= self.file_size
 
 
 @dataclass(frozen=True)
@@ -412,6 +421,7 @@ class TransferAgent(PGHoardThread):
 
     def handle_upload(self, site, key, file_to_transfer: UploadEvent):
         payload = {"file_size": file_to_transfer.file_size}
+        progress_tracker = file_to_transfer.progress_tracker
         try:
             storage = self.get_object_storage(site)
             unlink_local = file_to_transfer.remove_after_upload
@@ -426,15 +436,18 @@ class TransferAgent(PGHoardThread):
                     metadata["Content-Length"] = str(file_to_transfer.file_size)
 
                 upload_progress_fn = None
-                if file_to_transfer.progress_tracker:
-                    file_to_transfer.progress_tracker.start()
-                    upload_progress_fn = file_to_transfer.progress_tracker.increment
+                if progress_tracker:
+                    progress_tracker.start()
+                    upload_progress_fn = progress_tracker.increment
 
                 storage.store_file_object(
-                    key, f, metadata=metadata, upload_progress_fn=upload_progress_fn,
+                    key,
+                    f,
+                    metadata=metadata,
+                    upload_progress_fn=upload_progress_fn,
                 )
-                if file_to_transfer.progress_tracker:
-                    file_to_transfer.progress_tracker.stop()
+                if progress_tracker:
+                    progress_tracker.stop()
             if unlink_local:
                 if isinstance(file_to_transfer.source_data, Path):
                     try:
@@ -467,6 +480,12 @@ class TransferAgent(PGHoardThread):
             file_to_transfer = dataclasses.replace(file_to_transfer, retry_number=file_to_transfer.retry_number + 1)
             if file_to_transfer.retry_number > self.config["upload_retries_warning_limit"]:
                 create_alert_file(self.config, "upload_retries_warning")
+
+            if progress_tracker:
+                # reset the progress, since the object storage will not resume from the previous upload
+                progress_tracker.reset()
+
+                progress_tracker.stop()
 
             # Sleep for a bit to avoid busy looping. Increase sleep time if the op fails multiple times
             self.sleep(min(0.5 * 2 ** (file_to_transfer.retry_number - 1), 20))

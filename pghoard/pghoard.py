@@ -45,7 +45,7 @@ from pghoard.preservation_request import (
     is_basebackup_preserved, parse_preservation_requests, patch_basebackup_metadata_with_preservation
 )
 from pghoard.receivexlog import PGReceiveXLog
-from pghoard.transfer import TransferAgent, TransferQueue, UploadEvent, OperationEventProgressTracker, TransferOperation
+from pghoard.transfer import (OperationEventProgressTracker, TransferAgent, TransferOperation, TransferQueue, UploadEvent)
 from pghoard.walreceiver import WALReceiver
 from pghoard.webserver import WebServer
 

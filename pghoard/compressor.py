@@ -28,7 +28,7 @@ from pghoard.common import (
     CallbackEvent, CallbackQueue, FileType, FileTypePrefixes, PGHoardThread, QuitEvent, StrEnum, write_json_file
 )
 from pghoard.metrics import Metrics
-from pghoard.transfer import TransferQueue, UploadEvent, OperationEventProgressTracker, TransferOperation
+from pghoard.transfer import (OperationEventProgressTracker, TransferOperation, TransferQueue, UploadEvent)
 
 
 @enum.unique

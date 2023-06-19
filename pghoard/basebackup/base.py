@@ -35,7 +35,7 @@ from pghoard.common import (
     set_subprocess_stdout_and_stderr_nonblocking, terminate_subprocess
 )
 from pghoard.compressor import CompressionEvent
-from pghoard.transfer import UploadEvent, TransferOperation, OperationEventProgressTracker
+from pghoard.transfer import (OperationEventProgressTracker, TransferOperation, UploadEvent)
 
 BASEBACKUP_NAME = "pghoard_base_backup"
 EMPTY_DIRS = [
