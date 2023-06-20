@@ -1,9 +1,9 @@
 import time
 from typing import Iterator
-from unittest.mock import patch
 
 import pytest
 from _pytest.logging import LogCaptureFixture
+from _pytest.monkeypatch import MonkeyPatch
 
 from pghoard.metrics import Metrics
 from pghoard.transfer import OperationEventProgressTracker, TransferOperation
@@ -35,21 +35,21 @@ def _check_for_timeout_warnings(caplog: LogCaptureFixture) -> None:
 
 
 @pytest.fixture(name="progress_tracker")
-def fixture_progress_tracker() -> Iterator[OperationEventProgressTracker]:
-    with (
-        patch.object(OperationEventProgressTracker, "WARNING_TIMEOUT", 1),
-        patch.object(OperationEventProgressTracker, "CHECK_FREQUENCY", 0.1),
-    ):
-        progress_tracker = OperationEventProgressTracker(
-            metrics=Metrics(statsd={}),
-            metric_name="pghoard_test",
-            operation=TransferOperation.Upload,
-            file_size=DEFAULT_WAL_FILE_SIZE,
-            tags=None,
-        )
-        yield progress_tracker
-        # make sure not to leave any running thread
-        progress_tracker.stop()
+def fixture_progress_tracker(monkeypatch: MonkeyPatch) -> Iterator[OperationEventProgressTracker]:
+    monkeypatch.setattr(OperationEventProgressTracker, "WARNING_TIMEOUT", 1)
+    monkeypatch.setattr(OperationEventProgressTracker, "CHECK_FREQUENCY", 0.1)
+
+    progress_tracker = OperationEventProgressTracker(
+        metrics=Metrics(statsd={}),
+        metric_name="pghoard_test",
+        operation=TransferOperation.Upload,
+        file_size=DEFAULT_WAL_FILE_SIZE,
+        tags=None,
+    )
+    yield progress_tracker
+
+    # make sure not to leave any running thread
+    progress_tracker.stop()
 
 
 def test_progress_tracker_inactivity_no_increments(
