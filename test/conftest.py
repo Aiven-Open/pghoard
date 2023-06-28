@@ -489,6 +489,7 @@ def fixture_archive_cleaner(tmp_path):
     archive_cleanup.set_config(config_path, "example-site")
 
     bb_metadata = {
+        "_hash": "abc",
         "backup-decision-time": "2022-03-23T14:57:55.883514+00:00",
         "backup-reason": "scheduled",
         "start-time": "2022-03-23T15:57:55+01:00",
@@ -498,7 +499,7 @@ def fixture_archive_cleaner(tmp_path):
         "compression-algorithm": "snappy",
         "compression-level": "0",
         "original-file-size": "25933312",
-        "host": "toolbox"
+        "host": "toolbox",
     }
     bb_path = tmp_path / "backups" / "example-site" / "basebackup"
     bb_path.mkdir(parents=True)
@@ -506,6 +507,7 @@ def fixture_archive_cleaner(tmp_path):
     (bb_path / "2022-03-23_14-57_0.metadata").write_text(json.dumps(bb_metadata, indent=4))
 
     xlog_metadata = {
+        "_hash": "abc",
         "pg-version": "130006",
         "compression-algorithm": "snappy",
         "compression-level": "0",
