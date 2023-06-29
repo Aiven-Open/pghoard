@@ -85,7 +85,7 @@ dbname|"""
         with open(bb_path, "wb") as fp:
             fp.write(b"something")
         with open(metadata_file_path, "w") as fp:
-            json.dump({"start-time": "2015-07-03 12:00:00+00:00"}, fp)
+            json.dump({"_hash": "abc", "start-time": "2015-07-03 12:00:00+00:00"}, fp)
         available_backup = self.pghoard.get_remote_basebackups_info(self.test_site)[0]
         assert available_backup["name"] == "2015-07-03_0"
         start_time = datetime.datetime(2015, 7, 3, 12, tzinfo=datetime.timezone.utc)
@@ -99,7 +99,7 @@ dbname|"""
         with open(bb_path, "wb") as fp:
             fp.write(b"something")
         with open(metadata_file_path, "w") as fp:
-            json.dump({"start-time": "2015-07-02 12:00:00+00:00"}, fp)
+            json.dump({"_hash": "abc", "start-time": "2015-07-02 12:00:00+00:00"}, fp)
         basebackups = self.pghoard.get_remote_basebackups_info(self.test_site)
         assert basebackups[0]["name"] == "2015-07-02_9"
         assert basebackups[1]["name"] == "2015-07-03_0"
@@ -109,7 +109,7 @@ dbname|"""
         with open(bb_path, "wb") as fp:
             fp.write(b"something")
         with open(metadata_file_path, "w") as fp:
-            json.dump({"start-time": "2015-07-02 22:00:00+00"}, fp)
+            json.dump({"_hash": "abc", "start-time": "2015-07-02 22:00:00+00"}, fp)
         basebackups = self.pghoard.get_remote_basebackups_info(self.test_site)
         assert basebackups[0]["name"] == "2015-07-02_9"
         assert basebackups[1]["name"] == "2015-07-02_10"
@@ -357,6 +357,7 @@ dbname|"""
                         fp.write(b"something")
                     with open(bb_path + ".metadata", "w") as fp:
                         json.dump({
+                            "_hash": "abc",
                             "start-wal-segment": wals[0],
                             "start-time": start_time.isoformat(),
                         }, fp)
@@ -475,6 +476,7 @@ dbname|"""
 
                     with open(bb_path + ".metadata", "w") as fp:
                         json.dump({
+                            "_hash": "abc",
                             "start-wal-segment": wal_start,
                             "start-time": start_time.isoformat(),
                             "format": BaseBackupFormat.delta_v2,

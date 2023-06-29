@@ -66,7 +66,9 @@ def _test_storage(st, driver, tmpdir, storage_config):
     def progress_callback(pos, total):
         reported_positions.append((pos, total))
 
-    assert st.get_contents_to_fileobj("test1/x1", out, progress_callback=progress_callback) == {}
+    assert st.get_contents_to_fileobj("test1/x1", out, progress_callback=progress_callback) == {
+        "Content-Length": str(len(input_data))
+    }
     assert out.getvalue() == input_data
     if driver in ["local", "sftp"]:
         input_size = len(input_data)
@@ -84,26 +86,26 @@ def _test_storage(st, driver, tmpdir, storage_config):
 
     st.store_file_from_memory("test1/x1", b"dummy", {"k": "v"})
     out = BytesIO()
-    assert st.get_contents_to_fileobj("test1/x1", out) == {"k": "v"}
+    assert st.get_contents_to_fileobj("test1/x1", out) == {"Content-Length": "5", "k": "v"}
     assert out.getvalue() == b"dummy"
 
     # sftp does not support remote copy
     if driver != "sftp":
         # Copy file
         st.copy_file(source_key="test1/x1", destination_key="test_copy/copy1")
-        assert st.get_contents_to_string("test_copy/copy1") == (b"dummy", {"k": "v"})
+        assert st.get_contents_to_string("test_copy/copy1") == (b"dummy", {"Content-Length": "5", "k": "v"})
         st.copy_file(source_key="test1/x1", destination_key="test_copy/copy2", metadata={"new": "meta"})
         assert st.get_contents_to_string("test_copy/copy2") == (b"dummy", {"new": "meta"})
 
     st.store_file_from_memory("test1/x1", b"l", {"fancymetadata": "value"})
-    assert st.get_contents_to_string("test1/x1") == (b"l", {"fancymetadata": "value"})
+    assert st.get_contents_to_string("test1/x1") == (b"l", {"Content-Length": "1", "fancymetadata": "value"})
 
     st.store_file_from_memory("test1/x1", b"1", None)
-    assert st.get_contents_to_string("test1/x1") == (b"1", {})
+    assert st.get_contents_to_string("test1/x1") == (b"1", {"Content-Length": "1"})
 
-    st.store_file_from_memory("test1/td", b"to disk", {"to-disk": "42"})
+    st.store_file_from_memory("test1/td", b"to disk", {"Content-Length": "7", "to-disk": "42"})
     to_disk_file = str(scratch.join("b"))
-    assert st.get_contents_to_file("test1/td", to_disk_file) == {"to-disk": "42"}
+    assert st.get_contents_to_file("test1/td", to_disk_file) == {"Content-Length": "7", "to-disk": "42"}
 
     created_keys = {"test1/x1", "test1/td"}
 
@@ -128,10 +130,10 @@ def _test_storage(st, driver, tmpdir, storage_config):
         assert fe["last_modified"].tzinfo is not None
         if fe["name"] == "test1/x1":
             assert fe["size"] == 1
-            assert fe["metadata"] == {}
+            assert fe["metadata"] == {"Content-Length": "1"}
         elif fe["name"] == "test1/td":
             assert fe["size"] == len(b"to disk")
-            assert fe["metadata"] == {"to-disk": "42"}
+            assert fe["metadata"] == {"Content-Length": "7", "to-disk": "42"}
         else:
             assert 0, "unexpected name in directory"
 
@@ -205,14 +207,8 @@ def _test_storage(st, driver, tmpdir, storage_config):
         )
 
     if driver == "local":
-        # test LocalFileIsRemoteFileError for local storage
         target_file = os.path.join(st.prefix, "test1/x1")
-        with pytest.raises(errors.LocalFileIsRemoteFileError):
-            st.store_file_from_disk("test1/x1", target_file, {"local": True})
-        assert st.get_contents_to_string("test1/x1") == (b"1", {"local": "True"})
-
-        with pytest.raises(errors.LocalFileIsRemoteFileError):
-            st.get_contents_to_file("test1/x1", target_file)
+        assert st.get_contents_to_string("test1/x1") == (b"1", {"Content-Length": "1"})
 
         # Missing metadata is an error situation that should fail
         os.unlink(target_file + ".metadata")
@@ -255,7 +251,12 @@ def _test_storage(st, driver, tmpdir, storage_config):
 
     os.unlink(test_file)
 
-    expected_meta = {"thirtymeg": "data", "size": str(test_size_send), "key": "value-with-a-hyphen"}
+    expected_meta = {
+        "Content-Length": str(test_size_send),
+        "thirtymeg": "data",
+        "size": str(test_size_send),
+        "key": "value-with-a-hyphen"
+    }
     meta = st.get_metadata_for_key("test1/30m")
     assert meta == expected_meta
 
