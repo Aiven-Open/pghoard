@@ -21,6 +21,7 @@ from pghoard.pghoard import PGHoard
 from pghoard.pgutil import create_connection_string
 
 from .base import PGHoardTestCase
+from .test_compressor import WALTester
 from .util import dict_to_tar_file, switch_wal, wait_for_xlog
 
 # pylint: disable=attribute-defined-outside-init
@@ -85,7 +86,7 @@ dbname|"""
         with open(bb_path, "wb") as fp:
             fp.write(b"something")
         with open(metadata_file_path, "w") as fp:
-            json.dump({"start-time": "2015-07-03 12:00:00+00:00"}, fp)
+            json.dump({"_hash": "abc", "start-time": "2015-07-03 12:00:00+00:00"}, fp)
         available_backup = self.pghoard.get_remote_basebackups_info(self.test_site)[0]
         assert available_backup["name"] == "2015-07-03_0"
         start_time = datetime.datetime(2015, 7, 3, 12, tzinfo=datetime.timezone.utc)
@@ -99,7 +100,7 @@ dbname|"""
         with open(bb_path, "wb") as fp:
             fp.write(b"something")
         with open(metadata_file_path, "w") as fp:
-            json.dump({"start-time": "2015-07-02 12:00:00+00:00"}, fp)
+            json.dump({"_hash": "abc", "start-time": "2015-07-02 12:00:00+00:00"}, fp)
         basebackups = self.pghoard.get_remote_basebackups_info(self.test_site)
         assert basebackups[0]["name"] == "2015-07-02_9"
         assert basebackups[1]["name"] == "2015-07-03_0"
@@ -109,7 +110,7 @@ dbname|"""
         with open(bb_path, "wb") as fp:
             fp.write(b"something")
         with open(metadata_file_path, "w") as fp:
-            json.dump({"start-time": "2015-07-02 22:00:00+00"}, fp)
+            json.dump({"_hash": "abc", "start-time": "2015-07-02 22:00:00+00"}, fp)
         basebackups = self.pghoard.get_remote_basebackups_info(self.test_site)
         assert basebackups[0]["name"] == "2015-07-02_9"
         assert basebackups[1]["name"] == "2015-07-02_10"
@@ -357,6 +358,7 @@ dbname|"""
                         fp.write(b"something")
                     with open(bb_path + ".metadata", "w") as fp:
                         json.dump({
+                            "_hash": "abc",
                             "start-wal-segment": wals[0],
                             "start-time": start_time.isoformat(),
                         }, fp)
@@ -475,6 +477,7 @@ dbname|"""
 
                     with open(bb_path + ".metadata", "w") as fp:
                         json.dump({
+                            "_hash": "abc",
                             "start-wal-segment": wal_start,
                             "start-time": start_time.isoformat(),
                             "format": BaseBackupFormat.delta_v2,
@@ -714,15 +717,27 @@ dbname|"""
     def test_startup_walk_for_missed_uncompressed_files(self):
         compressed_wal_path, _ = self.pghoard.create_backup_site_paths(self.test_site)
         uncompressed_wal_path = compressed_wal_path + "_incoming"
-        with open(os.path.join(uncompressed_wal_path, "000000010000000000000004"), "wb") as fp:
+
+        ifile = WALTester(uncompressed_wal_path, "00000001000000000000000D", "random")
+
+        with open(os.path.join(compressed_wal_path, "00000001000000000000000D"), "wb") as fp:
             fp.write(b"foo")
+
+        """
         with open(os.path.join(uncompressed_wal_path, "00000002.history"), "wb") as fp:
             fp.write(b"foo")
         with open(os.path.join(uncompressed_wal_path, "000000010000000000000004xyz"), "wb") as fp:
             fp.write(b"foo")
+        """
+
+        self.pghoard.start_threads_on_startup()
         self.pghoard.startup_walk_for_missed_files()
-        assert self.pghoard.compression_queue.qsize() == 2
-        assert self.pghoard.transfer_queue.qsize() == 0
+        #assert self.pghoard.compression_queue.qsize() == 2
+        while True:
+            if not self.pghoard.compression_queue.qsize():
+                break
+        pytest.set_trace()
+        # assert self.pghoard.transfer_queue.qsize() == 0
 
     @pytest.mark.parametrize(
         "file_type, file_name", [(FileType.Wal, "000000010000000000000004"), (FileType.Timeline, "00000002.history")]

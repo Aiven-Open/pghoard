@@ -1,1 +1,1 @@
-{"compression-algorithm": "snappy", "format": "pghoard-delta-v1", "original-file-size": "8192"}
+{"_hash": "abc", "compression-algorithm": "snappy", "format": "pghoard-delta-v1", "original-file-size": "8192"}

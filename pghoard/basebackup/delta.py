@@ -43,6 +43,8 @@ class UploadedFilesMetric:
 FilesChunk = Set[Tuple]
 SnapshotFiles = Dict[str, SnapshotFile]
 
+EMPTY_FILE_HASH = hashlib.blake2s().hexdigest()
+
 
 class DeltaBaseBackup:
     def __init__(
@@ -383,7 +385,7 @@ class DeltaBaseBackup:
 
             if snapshot_file.hexdigest:
                 # Patch existing files with stored_file_size from existing manifest files (we can not have it otherwise)
-                if not snapshot_file.stored_file_size:
+                if snapshot_file.stored_file_size == 0 and snapshot_file.hexdigest != EMPTY_FILE_HASH:
                     snapshot_file.stored_file_size = self.tracked_snapshot_files[snapshot_file.hexdigest].stored_file_size
                 digests_metric.count += 1
                 digests_metric.input_size += snapshot_file.file_size
