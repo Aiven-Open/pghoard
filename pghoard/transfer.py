@@ -202,6 +202,10 @@ class UploadEventProgressTracker(PGHoardThread):
     def stop(self) -> None:
         self.running = False
 
+    def has_upload_in_progress(self) -> bool:
+        with self._tracked_events_lock:
+            return len(self._tracked_events) > 0
+
     def _check_increment_rate(self) -> None:
         """
             Check if the transfer operation is progressing by comparing the time elapsed since
