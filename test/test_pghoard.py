@@ -21,7 +21,6 @@ from pghoard.pghoard import PGHoard
 from pghoard.pgutil import create_connection_string
 
 from .base import PGHoardTestCase
-from .test_compressor import WALTester
 from .util import dict_to_tar_file, switch_wal, wait_for_xlog
 
 # pylint: disable=attribute-defined-outside-init
@@ -697,55 +696,45 @@ dbname|"""
         assert empty_state == state
 
     def test_startup_walk_for_missed_compressed_files(self):
-        compressed_wal_path, _ = self.pghoard.create_backup_site_paths(self.test_site)
-        with open(os.path.join(compressed_wal_path, "000000010000000000000004"), "wb") as fp:
+        backup_site_paths = self.pghoard.create_backup_site_paths(self.test_site)
+        with open(os.path.join(backup_site_paths.compressed_xlog_path, "000000010000000000000004"), "wb") as fp:
             fp.write(b"foo")
-        with open(os.path.join(compressed_wal_path, "000000010000000000000004.metadata"), "wb") as fp:
+        with open(os.path.join(backup_site_paths.compressed_xlog_path, "000000010000000000000004.metadata"), "wb") as fp:
             fp.write(b"{}")
-        with open(os.path.join(compressed_wal_path, "0000000F.history"), "wb") as fp:
+        with open(os.path.join(backup_site_paths.compressed_timeline_path, "0000000F.history"), "wb") as fp:
             fp.write(b"foo")
-        with open(os.path.join(compressed_wal_path, "0000000F.history.metadata"), "wb") as fp:
+        with open(os.path.join(backup_site_paths.compressed_timeline_path, "0000000F.history.metadata"), "wb") as fp:
             fp.write(b"{}")
-        with open(os.path.join(compressed_wal_path, "000000010000000000000004xyz"), "wb") as fp:
+        with open(os.path.join(backup_site_paths.compressed_xlog_path, "000000010000000000000004xyz"), "wb") as fp:
             fp.write(b"foo")
-        with open(os.path.join(compressed_wal_path, "000000010000000000000004xyz.metadata"), "wb") as fp:
+        with open(os.path.join(backup_site_paths.compressed_xlog_path, "000000010000000000000004xyz.metadata"), "wb") as fp:
             fp.write(b"{}")
         self.pghoard.startup_walk_for_missed_files()
         assert self.pghoard.compression_queue.qsize() == 0
         assert self.pghoard.transfer_queue.qsize() == 2
 
     def test_startup_walk_for_missed_uncompressed_files(self):
-        compressed_wal_path, _ = self.pghoard.create_backup_site_paths(self.test_site)
-        uncompressed_wal_path = compressed_wal_path + "_incoming"
+        backup_site_paths = self.pghoard.create_backup_site_paths(self.test_site)
 
-        ifile = WALTester(uncompressed_wal_path, "00000001000000000000000D", "random")
+        compressed_wal_path = backup_site_paths.compressed_xlog_path
+        uncompressed_wal_path = backup_site_paths.uncompressed_files_path
 
-        with open(os.path.join(compressed_wal_path, "00000001000000000000000D"), "wb") as fp:
+        with open(os.path.join(uncompressed_wal_path, "000000010000000000000004"), "wb") as fp:
             fp.write(b"foo")
-
-        """
         with open(os.path.join(uncompressed_wal_path, "00000002.history"), "wb") as fp:
             fp.write(b"foo")
         with open(os.path.join(uncompressed_wal_path, "000000010000000000000004xyz"), "wb") as fp:
             fp.write(b"foo")
-        """
-
-        self.pghoard.start_threads_on_startup()
         self.pghoard.startup_walk_for_missed_files()
-        #assert self.pghoard.compression_queue.qsize() == 2
-        while True:
-            if not self.pghoard.compression_queue.qsize():
-                break
-        pytest.set_trace()
-        # assert self.pghoard.transfer_queue.qsize() == 0
+        assert self.pghoard.compression_queue.qsize() == 2
+        assert self.pghoard.transfer_queue.qsize() == 0
 
     @pytest.mark.parametrize(
         "file_type, file_name", [(FileType.Wal, "000000010000000000000004"), (FileType.Timeline, "00000002.history")]
     )
     def test_startup_walk_for_missed_uncompressed_file_type(self, file_type: FileType, file_name: str):
-        compressed_wal_path, _ = self.pghoard.create_backup_site_paths(self.test_site)
-        uncompressed_wal_path = compressed_wal_path + "_incoming"
-        with open(os.path.join(uncompressed_wal_path, file_name), "wb") as fp:
+        backup_site_paths = self.pghoard.create_backup_site_paths(self.test_site)
+        with open(os.path.join(backup_site_paths.uncompressed_files_path, file_name), "wb") as fp:
             fp.write(b"foo")
         self.pghoard.startup_walk_for_missed_files()
         assert self.pghoard.compression_queue.qsize() == 1
@@ -757,16 +746,57 @@ dbname|"""
         "file_type, file_name", [(FileType.Wal, "000000010000000000000005"), (FileType.Timeline, "00000003.history")]
     )
     def test_startup_walk_for_missed_compressed_file_type(self, file_type: FileType, file_name: str):
-        compressed_wal_path, _ = self.pghoard.create_backup_site_paths(self.test_site)
-        with open(os.path.join(compressed_wal_path, file_name), "wb") as fp:
+        backup_site_paths = self.pghoard.create_backup_site_paths(self.test_site)
+
+        if file_type is FileType.Wal:
+            compressed_file_path = backup_site_paths.compressed_xlog_path
+        else:
+            compressed_file_path = backup_site_paths.compressed_timeline_path
+
+        with open(os.path.join(compressed_file_path, file_name), "wb") as fp:
             fp.write(b"foo")
-        with open(os.path.join(compressed_wal_path, f"{file_name}.metadata"), "wb") as fp:
+        with open(os.path.join(compressed_file_path, f"{file_name}.metadata"), "wb") as fp:
             fp.write(b"{}")
         self.pghoard.startup_walk_for_missed_files()
         assert self.pghoard.compression_queue.qsize() == 0
         assert self.pghoard.transfer_queue.qsize() == 1
         upload_event = self.pghoard.transfer_queue.get(timeout=1.0)
         assert upload_event.file_type == file_type
+
+    @pytest.mark.parametrize(
+        "file_type, file_name", [(FileType.Wal, "000000010000000000000005"), (FileType.Timeline, "00000003.history")]
+    )
+    def test_startup_walk_skip_compression_if_already_compressed(self, file_type: FileType, file_name: str) -> None:
+        """
+        Tests the scenario where an uncompressed file was already compressed, but was not deleted.
+        """
+        backup_site_paths = self.pghoard.create_backup_site_paths(self.test_site)
+        uncompressed_wal_path = backup_site_paths.uncompressed_files_path
+        compressed_file_path = (
+            backup_site_paths.compressed_timeline_path
+            if file_type is FileType.Timeline else backup_site_paths.compressed_xlog_path
+        )
+
+        # generate both uncompressed/compressed
+        with open(os.path.join(uncompressed_wal_path, file_name), "wb") as fp:
+            fp.write(b"random")
+
+        with open(os.path.join(compressed_file_path, file_name), "wb") as fp:
+            fp.write(b"random")
+
+        with open(os.path.join(compressed_file_path, f"{file_name}.metadata"), "wb") as fp:
+            fp.write(b"{}")
+
+        self.pghoard.startup_walk_for_missed_files()
+
+        assert self.pghoard.compression_queue.qsize() == 0
+        assert self.pghoard.transfer_queue.qsize() == 1
+
+        if file_type is FileType.Wal:
+            assert self.pghoard.wal_file_deletion_queue.qsize() == 1
+        else:
+            # uncompressed timeline files are not added to deletion queue, they are immediately unlinked
+            assert self.pghoard.wal_file_deletion_queue.qsize() == 0
 
 
 class TestPGHoardWithPG:
