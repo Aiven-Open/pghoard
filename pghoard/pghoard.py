@@ -34,9 +34,9 @@ from rohmu.inotify import InotifyWatcher
 from pghoard import config, logutil, metrics, version, wal
 from pghoard.basebackup.base import PGBaseBackup
 from pghoard.common import (
-    BackupReason, BaseBackupFormat, BaseBackupMode, CallbackEvent, FileType, FileTypePrefixes, create_alert_file,
-    download_backup_meta_file, extract_pghoard_bb_v2_metadata, extract_pghoard_delta_metadata, get_object_storage_config,
-    replication_connection_string_and_slot_using_pgpass, write_json_file
+    BackupReason, BaseBackupFormat, BaseBackupMode, CallbackEvent, FileType, FileTypePrefixes, PGHoardThread, QuitEvent,
+    create_alert_file, download_backup_meta_file, extract_pghoard_bb_v2_metadata, extract_pghoard_delta_metadata,
+    get_object_storage_config, replication_connection_string_and_slot_using_pgpass, write_json_file
 )
 from pghoard.compressor import (
     CompressionEvent, CompressionQueue, CompressorThread, WALFileDeleterThread, WalFileDeletionEvent, WalFileDeletionQueue
@@ -1010,8 +1010,60 @@ class PGHoard:
         all_threads.extend(self.transfer_agents)
         return all_threads
 
+    def _shutdown_threads_via_queue(
+        self,
+        threads: List[PGHoardThread],
+        queue: Queue,
+        timeout: Optional[float],
+        label: str,
+    ) -> None:
+        """
+        Sends a quit event to each thread via the queue and waits for them to finish.
+        """
+        for _ in threads:
+            queue.put(QuitEvent)
+        start = time.monotonic()
+        while any(thread.is_alive() for thread in threads):
+            if timeout is not None and time.monotonic() - start > timeout:
+                self.log.warning("Exceeded waiting time for all %s threads to finish.", label)
+                break
+            time.sleep(0.1)
+
     def handle_exit_signal(self, _signal=None, _frame=None):  # pylint: disable=unused-argument
         self.log.warning("Quitting, signal: %r", _signal)
+        if _signal == signal.SIGTERM:
+            self.graceful_shutdown()
+        else:
+            self.quit()
+
+    def graceful_shutdown(self) -> None:
+        """
+        Makes sure all missing files are compressed, uploaded and deleted before all threads are inactive.
+
+        Steps to follow:
+        - Shutdown receivexlogs and walreceivers threads
+        - Wait for compression threads to be done
+        - Wait for transfer agents to be done
+        - Quit (stop remaining threads and write state file)
+        """
+        self.log.info("Gracefully shutting down...")
+        self.running = False
+        for thread in [*self.receivexlogs.values(), *self.walreceivers.values()]:
+            thread.running = False
+            thread.join(timeout=10)
+
+        self._shutdown_threads_via_queue(
+            threads=self.compressors,
+            queue=self.compression_queue,
+            label="compression",
+            timeout=self.config["graceful_shutdown_compression_timeout"],
+        )
+        self._shutdown_threads_via_queue(
+            threads=self.transfer_agents,
+            queue=self.transfer_queue,
+            label="transfer",
+            timeout=self.config["graceful_shutdown_upload_timeout"],
+        )
         self.quit()
 
     def quit(self):
