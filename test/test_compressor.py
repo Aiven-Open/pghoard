@@ -176,6 +176,13 @@ class CompressionCase(PGHoardTestCase):
                 assert transfer_event.metadata.pop("hash-algorithm") == "sha1"
             assert getattr(transfer_event, key) == value
 
+        compressed_file_path = os.path.join(
+            self.config["backup_location"], self.config["backup_sites"][self.test_site]["prefix"],
+            "xlog" if filetype == "xlog" else "timeline", file_path.name
+        )
+        # make sure the file was compressed on the expected location
+        assert os.path.exists(compressed_file_path)
+
     def test_compress_to_memory(self):
         ifile = WALTester(self.incoming_path, "0000000100000000000000FF", "random")
         filetype = FileType.Wal
