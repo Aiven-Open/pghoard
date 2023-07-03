@@ -460,6 +460,17 @@ configuration keys for sites are listed below.
  * ``level`` default ``"0"`` compression level for ``"lzma"`` or ``"zstd"`` compression
  * ``thread_count`` (default max(cpu_count, ``5``)) number of parallel compression threads
 
+``graceful_shutdown_queue_timeout``
+The maximum number of seconds the application will wait during graceful shutdown for all internal queues
+(such as compression, transfer, and deletion queues) to be fully drained.
+If this timeout is reached before the queues are emptied, the shutdown process will continue to avoid indefinite blocking.
+
+``graceful_shutdown_upload_timeout``
+The maximum number of seconds the application will wait during graceful shutdown for all ongoing uploads to complete,
+after the queues have been drained. If this timeout is reached before all uploads finish, the shutdown proceeds with a warning,
+ensuring timely termination of the process.
+
+
 ``hash_algorithm`` (default ``"sha1"``)
 
 The hash algorithm used for calculating checksums for WAL or other files. Must

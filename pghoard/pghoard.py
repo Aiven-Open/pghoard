@@ -34,7 +34,7 @@ from rohmu.inotify import InotifyWatcher
 from pghoard import config, logutil, metrics, version, wal
 from pghoard.basebackup.base import PGBaseBackup
 from pghoard.common import (
-    BackupReason, BaseBackupFormat, BaseBackupMode, CallbackEvent, FileType, FileTypePrefixes, create_alert_file,
+    BackupReason, BaseBackupFormat, BaseBackupMode, CallbackEvent, FileType, FileTypePrefixes, QuitEvent, create_alert_file,
     download_backup_meta_file, extract_pghoard_bb_v2_metadata, extract_pghoard_delta_metadata, get_object_storage_config,
     replication_connection_string_and_slot_using_pgpass, write_json_file
 )
@@ -1010,8 +1010,81 @@ class PGHoard:
         all_threads.extend(self.transfer_agents)
         return all_threads
 
+    def _wait_for_all_files_to_be_uploaded(self) -> None:
+        upload_timeout = self.config.get("graceful_shutdown_upload_timeout")
+        start = time.monotonic()
+        while True:
+            if not self.upload_tracker.has_upload_in_progress():
+                break
+
+            if upload_timeout and time.monotonic() - start > upload_timeout:
+                self.log.warning("Exceeded waiting time for all files to be uploaded.")
+                break
+
+            time.sleep(0.1)
+
+    def _wait_for_queue_to_be_emptied(
+        self,
+        queue: Queue,
+        queue_name: str,
+    ) -> None:
+        start = time.monotonic()
+        timeout = self.config.get("graceful_shutdown_queue_timeout")
+        while True:
+            if queue.empty():
+                self.log.info("%r queue has been emptied.", queue_name)
+                break
+
+            if timeout is not None and time.monotonic() - start > timeout:
+                self.log.warning("Exceeded waiting time for %r queue to be emptied", queue_name)
+                break
+
+            time.sleep(0.1)
+
     def handle_exit_signal(self, _signal=None, _frame=None):  # pylint: disable=unused-argument
         self.log.warning("Quitting, signal: %r", _signal)
+        if _signal == signal.SIGTERM:
+            self.graceful_shutdown()
+        else:
+            self.quit()
+
+    def graceful_shutdown(self) -> None:
+        """
+        Makes sure all missing files are compressed, uploaded and deleted before all threads are inactive.
+
+        Steps to follow:
+        - Shutdown receivexlogs and walreceivers threads
+        - Wait for compression and transfer queues to be empty
+        - Wait for all files to be uploaded
+        - Quit (stop remaining threads and write state file)
+        """
+        self.log.info("Gracefully shutting down...")
+        self.running = False
+        for thread in [*self.receivexlogs.values(), *self.walreceivers.values()]:
+            thread.running = False
+            thread.join(timeout=10)
+
+        # At this point, the compressor queue shouldn't expect more elements to be added. So, lets add a sentinel
+        # per thread, the sentinel will tell the compressor thread to stop.
+        for _ in range(len(self.compressors)):
+            self.compression_queue.put(QuitEvent)
+
+        self._wait_for_queue_to_be_emptied(self.compression_queue, "compression")
+
+        # If threads are still alive (e.g. sentinel not processed), force them to exit. Let's make sure that
+        # nothing else will be added to the transfer queue.
+        for thread in self.compressors:
+            if thread.is_alive():
+                thread.running = False
+                thread.join(timeout=10)
+
+        # Add sentinels to the transfer queue as well.
+        for _ in range(len(self.transfer_agents)):
+            self.transfer_queue.put(QuitEvent)
+
+        self._wait_for_queue_to_be_emptied(self.transfer_queue, "transfer")
+        self._wait_for_all_files_to_be_uploaded()
+
         self.quit()
 
     def quit(self):
