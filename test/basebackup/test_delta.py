@@ -262,7 +262,11 @@ def test_split_files_for_upload_bundled_files(chunk_size: int) -> None:
         missing_ok=True
     )
     files = [bundled_file_1, bundled_file_2, bundled_file_3]
-    snapshot_result = SnapshotResult(state=SnapshotState(root_globs=["**/*"], files=files, empty_dirs=[]))
+    snapshot_result = SnapshotResult(
+        state=SnapshotState(root_globs=["**/*"], files=files, empty_dirs=[]),
+        end=None,
+        hashes=None,
+    )
     delta_chunks, hexdigests = DeltaBaseBackup._split_files_for_upload(  # pylint: disable=protected-access
         snapshot_result=snapshot_result, snapshot_dir=Path("/dir"), chunk_size=chunk_size
     )
@@ -288,7 +292,9 @@ def test_split_files_for_upload_mixed_files() -> None:
     )
     _ = SnapshotFile(relative_path=Path("file3"), file_size=2, stored_file_size=1, mtime_ns=0, content_b64="b64==")
     files = [hexdigest_file, bundled_file_1, bundled_file_2]
-    snapshot_result = SnapshotResult(state=SnapshotState(root_globs=["**/*"], files=files, empty_dirs=[]))
+    snapshot_result = SnapshotResult(
+        state=SnapshotState(root_globs=["**/*"], files=files, empty_dirs=[]), end=None, hashes=None
+    )
     delta_chunks, hexdigests = DeltaBaseBackup._split_files_for_upload(  # pylint: disable=protected-access
         snapshot_result=snapshot_result, snapshot_dir=Path("/dir"), chunk_size=1
     )
@@ -306,7 +312,9 @@ def test_split_files_for_upload_skips_hexdigests() -> None:
         relative_path=Path("file2"), file_size=5, stored_file_size=1, mtime_ns=0, hexdigest="def"
     )
     files = [hexdigest_file_1, hexdigest_file_2]
-    snapshot_result = SnapshotResult(state=SnapshotState(root_globs=["**/*"], files=files, empty_dirs=[]))
+    snapshot_result = SnapshotResult(
+        state=SnapshotState(root_globs=["**/*"], files=files, empty_dirs=[]), end=None, hashes=None
+    )
     delta_chunks, hexdigests = DeltaBaseBackup._split_files_for_upload(  # pylint: disable=protected-access
         snapshot_result=snapshot_result, snapshot_dir=Path("/dir"), chunk_size=1, skip_hexdigests={"abc"}
     )
@@ -486,7 +494,9 @@ def test_read_delta_sizes(deltabasebackup: DeltaBaseBackup):
             content_b64="b64"
         )
     ]
-    snapshot_result = SnapshotResult(state=SnapshotState(root_globs=["**/*"], files=files, empty_dirs=[]))
+    snapshot_result = SnapshotResult(
+        state=SnapshotState(root_globs=["**/*"], files=files, empty_dirs=[]), end=None, hashes=None
+    )
     digest_metric, embed_metric = deltabasebackup._read_delta_sizes(snapshot_result=snapshot_result)  # pylint: disable=protected-access
     assert digest_metric == UploadedFilesMetric(input_size=300, stored_size=60, count=2)
     assert embed_metric == UploadedFilesMetric(input_size=5, stored_size=5, count=1)
@@ -498,7 +508,9 @@ def test_read_delta_sizes(deltabasebackup: DeltaBaseBackup):
             relative_path=Path("f5"), file_size=300, stored_file_size=0, mtime_ns=0, should_be_bundled=False, hexdigest="c"
         )
     )
-    snapshot_result = SnapshotResult(state=SnapshotState(root_globs=["**/*"], files=files, empty_dirs=[]))
+    snapshot_result = SnapshotResult(
+        state=SnapshotState(root_globs=["**/*"], files=files, empty_dirs=[]), end=None, hashes=None
+    )
     deltabasebackup.tracked_snapshot_files = {
         "c": SnapshotFile(
             relative_path=Path("f5"), file_size=300, stored_file_size=60, mtime_ns=0, should_be_bundled=False, hexdigest="c"

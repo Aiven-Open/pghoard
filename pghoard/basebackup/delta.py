@@ -73,7 +73,7 @@ class DeltaBaseBackup:
 
     def _snapshot(self, snapshotter: Snapshotter) -> SnapshotResult:
         snapshotter.snapshot(reuse_old_snapshotfiles=False)
-        snapshot_result = SnapshotResult()
+        snapshot_result = SnapshotResult(end=None, state=None, hashes=None)
         snapshot_result.state = snapshotter.get_snapshot_state()
         snapshot_result.hashes = [
             SnapshotHash(hexdigest=ssfile.hexdigest, size=ssfile.file_size)
