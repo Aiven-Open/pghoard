@@ -806,8 +806,12 @@ dbname|"""
 
         # only one file should be added for compression (invalid compressed one)
         assert self.pghoard.compression_queue.qsize() == 1
+        compression_event = self.pghoard.compression_queue.get()
+        assert compression_event.file_path.name == invalid_compressed_file_name
 
         assert self.pghoard.transfer_queue.qsize() == 1
+        upload_event = self.pghoard.transfer_queue.get()
+        assert upload_event.file_path.name == file_name
 
         if file_type is FileType.Wal:
             assert self.pghoard.wal_file_deletion_queue.qsize() == 1
