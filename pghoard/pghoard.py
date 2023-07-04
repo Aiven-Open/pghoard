@@ -626,7 +626,12 @@ class PGHoard:
                 base_compressed_file_path = (
                     compressed_timeline_path if filetype is FileType.Timeline else compressed_xlog_path
                 )
-                if os.path.isfile(os.path.join(base_compressed_file_path, filename)):
+                compressed_file_path = os.path.join(base_compressed_file_path, filename)
+                is_already_compressed = os.path.exists(compressed_file_path)
+                has_metadata_file = os.path.exists(compressed_file_path + ".metadata")
+
+                # the file was compressed correctly
+                if is_already_compressed and has_metadata_file:
                     self.log.debug("Uncompressed file %r is already compressed, adding to deletion queue.", full_path)
                     if filetype is FileType.Timeline:
                         os.unlink(full_path)
@@ -635,6 +640,13 @@ class PGHoard:
                         self.wal_file_deletion_queue.put(delete_request)
                         self.log.info("Adding to Uncompressed WAL file to deletion queue: %s", full_path)
                     continue
+
+                # delete compressed file and re-try
+                if is_already_compressed and not has_metadata_file:
+                    self.log.info(
+                        "Deleting invalid compressed file %r, compression will be re-tried", compressed_file_path,
+                    )
+                    os.unlink(compressed_file_path)
 
                 compression_event = CompressionEvent(
                     file_type=filetype,
