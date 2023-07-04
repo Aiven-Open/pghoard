@@ -649,32 +649,35 @@ class PGHoard:
                 self.compression_queue.put(compression_event)
 
             # Process compressed files (ie things we've processed but not yet uploaded)
-            for filename in os.listdir(compressed_xlog_path):
-                if filename.endswith(".metadata"):
-                    continue  # silently ignore .metadata files, they're expected and processed below
-                full_path = os.path.join(compressed_xlog_path, filename)
-                metadata_path = full_path + ".metadata"
-                is_xlog = wal.WAL_RE.match(filename)
-                is_timeline = wal.TIMELINE_RE.match(filename)
-                if not ((is_xlog or is_timeline) and os.path.exists(metadata_path)):
-                    self.log.warning("Found invalid file %r from compressed xlog directory", full_path)
-                    continue
-                with open(metadata_path, "r") as fp:
-                    metadata = json.load(fp)
+            for compressed_file_dir in [compressed_xlog_path, compressed_timeline_path]:
+                for filename in os.listdir(compressed_file_dir):
+                    if filename.endswith(".metadata"):
+                        continue  # silently ignore .metadata files, they're expected and processed below
 
-                file_type = FileType.Wal if is_xlog else FileType.Timeline
+                    full_path = os.path.join(compressed_file_dir, filename)
+                    metadata_path = full_path + ".metadata"
+                    is_xlog = wal.WAL_RE.match(filename)
+                    is_timeline = wal.TIMELINE_RE.match(filename)
 
-                transfer_event = UploadEvent(
-                    file_type=file_type,
-                    backup_site_name=site,
-                    file_size=os.path.getsize(full_path),
-                    file_path=FileTypePrefixes[file_type] / filename,
-                    source_data=Path(full_path),
-                    callback_queue=None,
-                    metadata=metadata
-                )
-                self.log.debug("Found: %r when starting up, adding to transfer queue", transfer_event)
-                self.transfer_queue.put(transfer_event)
+                    if not ((is_xlog or is_timeline) and os.path.exists(metadata_path)):
+                        self.log.warning("Found invalid file %r from compressed xlog directory", full_path)
+                        continue
+                    with open(metadata_path, "r") as fp:
+                        metadata = json.load(fp)
+
+                    file_type = FileType.Wal if is_xlog else FileType.Timeline
+
+                    transfer_event = UploadEvent(
+                        file_type=file_type,
+                        backup_site_name=site,
+                        file_size=os.path.getsize(full_path),
+                        file_path=FileTypePrefixes[file_type] / filename,
+                        source_data=Path(full_path),
+                        callback_queue=None,
+                        metadata=metadata
+                    )
+                    self.log.debug("Found: %r when starting up, adding to transfer queue", transfer_event)
+                    self.transfer_queue.put(transfer_event)
 
     def start_threads_on_startup(self):
         # Startup threads
