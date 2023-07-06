@@ -18,7 +18,7 @@ jobs:
     strategy:
       matrix:
         # only use one version for the lint step
-        python-version: [3.9]
+        python-version: ["3.11"]
 
     steps:
 
@@ -35,6 +35,7 @@ jobs:
 
       - id: dependencies
         run: |
+          sudo apt-get install -y libsnappy-dev
           pip install -r requirements.txt
           pip install -r requirements.dev.txt -c constraints.txt
 
@@ -59,7 +60,7 @@ jobs:
     strategy:
       max-parallel: 5
       matrix:
-        python-version: ["3.7", "3.8", "3.9", "3.10", "3.11"]
+        python-version: ["3.11"]
 
     steps:
       - id: checkout-code

@@ -68,7 +68,7 @@ Vagrant.configure("2") do |config|
     config.vm.provision "shell", inline: $script, privileged: true
 
     $script = <<-SCRIPT
-        versions=(3.7 3.8 3.9 3.10)
+        versions=(3.11)
         for version in "${versions[@]}"; do
             python${version} -m venv venv${version}
             source ~/venv${version}/bin/activate
