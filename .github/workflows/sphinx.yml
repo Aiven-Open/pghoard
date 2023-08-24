@@ -11,21 +11,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: "Checkout Main Branch"
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
         with:
           persist-credentials: false
           path: main
           ref: main
 
       - name: "Checkout GitHub Pages Branch"
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
         with:
           persist-credentials: false
           path: gh-pages
           ref: gh-pages
 
-      - name: "Setup Python & Install Spinx"
-        uses: actions/setup-python@v3
+      - name: "Setup Python & Install Sphinx"
+        uses: actions/setup-python@v4
 
       - name: "Install Sphinx & Theme"
         run: pip install sphinx==4.5.0 sphinx-rtd-theme==1.0.0
@@ -39,6 +39,6 @@ jobs:
           git add -A
           git config --global user.email "$(git show --format=%ae -s)"
           git config --global user.name "$(git show --format=%an -s)"
-          git commit -m "From $GITHUB_REF $(echo ${GITHUB_SHA} | cut -c 1-8)"
+          git diff-index --quiet HEAD || git commit -m "From $GITHUB_REF $(echo ${GITHUB_SHA} | cut -c 1-8)"
           git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
           git push
