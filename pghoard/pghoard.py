@@ -879,6 +879,7 @@ class PGHoard:
                 self.metrics.unexpected_exception(ex, where="pghoard_run")
             if self.thread_critical_failure_event.wait(timeout=5.0):
                 self.log.error("Unexpected critical failure in PGHoard thread. Quitting main loop.")
+                self.metrics.increase("pghoard.unrecoverable_quit_main_loop_failure")
                 self.quit()
 
     def write_backup_state_to_json_file(self):
