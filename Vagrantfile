@@ -38,7 +38,7 @@ Vagrant.configure("2") do |config|
         sed -i "s/^#start_conf.*/start_conf='manual'/g" /etc/postgresql-common/createcluster.conf
         sed -i "s/^#create_main_cluster.*/create_main_cluster=false/g" /etc/postgresql-common/createcluster.conf
 
-        apt-get install -y python{3.7,3.8,3.9,3.10} python{3.7,3.8,3.9,3.10}-dev python{3.7,3.8,3.9,3.10}-venv
+        apt-get install -y python{3.8,3.9,3.10} python{3.8,3.9,3.10}-dev python{3.8,3.9,3.10}-venv
         apt-get install -y postgresql-{10,11,12,13,14} postgresql-server-dev-{10,11,12,13,14}
 
         username="$(< /dev/urandom tr -dc a-z | head -c${1:-32};echo;)"
@@ -68,7 +68,7 @@ Vagrant.configure("2") do |config|
     config.vm.provision "shell", inline: $script, privileged: true
 
     $script = <<-SCRIPT
-        versions=(3.7 3.8 3.9 3.10)
+        versions=(3.8 3.9 3.10)
         for version in "${versions[@]}"; do
             python${version} -m venv venv${version}
             source ~/venv${version}/bin/activate
