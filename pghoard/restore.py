@@ -116,17 +116,20 @@ def create_recovery_conf(
     with open(os.path.join(dirpath, "PG_VERSION"), "r") as fp:
         pg_version = LooseVersion(fp.read().strip())
 
-    if pg_version >= "12":
-        trigger_file_setting = "promote_trigger_file"
-    else:
+    trigger_file_setting = None
+    if pg_version < "12":
         trigger_file_setting = "trigger_file"
+    elif pg_version < "16":  # PG 16 has removed `promote_trigger_file` config param.
+        trigger_file_setting = "promote_trigger_file"
 
     lines = [
         "# pghoard created recovery.conf",
         "recovery_target_timeline = 'latest'",
-        "{} = {}".format(trigger_file_setting, adapt("trigger_file")),
         "restore_command = '{}'".format(" ".join(restore_command)),
     ]
+
+    if trigger_file_setting:
+        lines.append("{} = {}".format(trigger_file_setting, adapt("trigger_file")))
 
     use_recovery_conf = (pg_version < "12")  # no more recovery.conf in PG >= 12
     if not restore_to_primary:
