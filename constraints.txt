@@ -75,7 +75,7 @@ types-PyYAML==6.0.12.8
 types-requests==2.28.11.15
 types-six==1.16.21.7
 types-urllib3==1.26.25.8
-typing_extensions==4.5.0
+typing_extensions==4.7.1
 unify==0.5
 untokenize==0.1.1
 uritemplate==4.1.1
