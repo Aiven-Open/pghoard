@@ -728,6 +728,7 @@ class PGBaseBackup(PGHoardThread):
             delta=delta,
             files_to_backup=control_files,
             file_type=FileType.Basebackup,
+            encrypt=False, # do not encrypt the metadata file
             extra_metadata={
                 **self.metadata,
                 "end-time": backup_end_time,
