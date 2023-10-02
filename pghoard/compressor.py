@@ -43,7 +43,7 @@ class BaseCompressorEvent:
     file_path: Path
     backup_site_name: str
     source_data: Union[BinaryIO, Path]
-    callback_queue: CallbackQueue
+    callback_queue: Optional[CallbackQueue]
     metadata: Dict[str, str]
 
 

@@ -984,8 +984,50 @@ class PGHoard:
         all_threads.extend(self.transfer_agents)
         return all_threads
 
+    def _wait_for_queue_to_be_emptied(
+        self,
+        queue: Queue,
+        queue_name: str,
+        timeout: Optional[int] = None,
+    ) -> None:
+        start = time.monotonic()
+        while True:
+            if queue.empty():
+                self.log.info("%r queue has been emptied.", queue_name)
+                break
+
+            if timeout is not None and time.monotonic() - start > timeout:
+                self.log.warning("Exceeded waiting time for %r queue to be emptied", queue_name)
+                break
+
+            time.sleep(0.1)
+
     def handle_exit_signal(self, _signal=None, _frame=None):  # pylint: disable=unused-argument
         self.log.warning("Quitting, signal: %r", _signal)
+        if _signal == signal.SIGTERM:
+            self.graceful_shutdown()
+        else:
+            self.quit()
+
+    def graceful_shutdown(self) -> None:
+        """
+        Makes sure all missing files are compressed, uploaded and deleted before all threads are inactive.
+
+        Steps to follow:
+        - Shutdown receivexlogs and walreceivers threads
+        - Wait for compression, transfer and deletion queues to be empty
+        - Quit (stop remaining threads and write state file)
+        """
+        self.log.info("Gracefully shutting down...")
+        self.running = False
+        for thread in [*self.receivexlogs.values(), *self.walreceivers.values()]:
+            thread.running = False
+
+        # wait for all queues to be emptied
+        self._wait_for_queue_to_be_emptied(self.compression_queue, "compression")
+        self._wait_for_queue_to_be_emptied(self.transfer_queue, "transfer")
+        self._wait_for_queue_to_be_emptied(self.wal_file_deletion_queue, "wal_file_deletion")
+
         self.quit()
 
     def quit(self):

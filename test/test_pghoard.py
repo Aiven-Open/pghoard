@@ -11,14 +11,19 @@ import sys
 import time
 from pathlib import Path
 from typing import Any, Dict
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
 import pghoard.pghoard as pghoard_module
-from pghoard.common import (BaseBackupFormat, FileType, create_alert_file, delete_alert_file, write_json_file)
+from pghoard.common import (
+    BaseBackupFormat, FileType, FileTypePrefixes, create_alert_file, delete_alert_file, write_json_file
+)
+from pghoard.compressor import CompressionEvent
 from pghoard.pghoard import PGHoard
 from pghoard.pgutil import create_connection_string
+from pghoard.receivexlog import PGReceiveXLog
+from pghoard.transfer import TransferAgent
 
 from .base import PGHoardTestCase
 from .util import dict_to_tar_file, switch_wal, wait_for_xlog
@@ -818,6 +823,53 @@ dbname|"""
         else:
             # uncompressed timeline files are not added to deletion queue, they are immediately unlinked
             assert self.pghoard.wal_file_deletion_queue.qsize() == 0
+
+    @patch("pghoard.compressor.wal.verify_wal", Mock())
+    @patch.object(PGReceiveXLog, "run", Mock())
+    @patch.object(TransferAgent, "get_object_storage")
+    def test_graceful_shutdown(
+        self,
+        mocked_get_object_storage: MagicMock,
+    ) -> None:
+        compressed_wal_path, _ = self.pghoard.create_backup_site_paths(self.test_site)
+        uncompressed_wal_path = compressed_wal_path + "_incoming"
+
+        file_name = "000000010000000000000008"
+        uncompressed_file_path = os.path.join(uncompressed_wal_path, file_name)
+        with open(uncompressed_file_path, "wb") as fp:
+            fp.write(b"foo")
+
+        self.pghoard.compression_queue.put(
+            CompressionEvent(
+                file_type=FileType.Wal,
+                file_path=FileTypePrefixes[FileType.Wal] / file_name,
+                delete_file_after_compression=True,
+                backup_site_name=self.test_site,
+                source_data=Path(uncompressed_file_path),
+                callback_queue=None,
+                metadata={}
+            )
+        )
+
+        # run compressors, transfer_agents and wal_file_deleter
+        for thread in [*self.pghoard.compressors, *self.pghoard.transfer_agents, self.pghoard.wal_file_deleter]:
+            thread.start()
+
+        self.pghoard.graceful_shutdown()
+
+        assert self.pghoard.compression_queue.qsize() == 0
+        assert self.pghoard.transfer_queue.qsize() == 0
+        assert self.pghoard.wal_file_deletion_queue.qsize() == 0
+
+        # called once for uploading renamed partial file
+        assert mocked_get_object_storage.call_count == 1
+
+        # uncompressed file should still exist since WALDeletionThread always keeps last file
+        assert os.path.exists(uncompressed_file_path)
+
+        # verify compressors, transfer_agents and wal_file_deleter are not running
+        for thread in [*self.pghoard.compressors, *self.pghoard.transfer_agents, self.pghoard.wal_file_deleter]:
+            assert thread.is_alive() is False
 
 
 class TestPGHoardWithPG:
