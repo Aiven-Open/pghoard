@@ -316,9 +316,6 @@ class PGBaseBackup(PGHoardThread):
         })
         metadata.update(self.metadata)
 
-        def callback(n_bytes: int) -> None:
-            self.metrics.increase("pghoard.basebackup_bytes_uploaded", inc_value=n_bytes, tags={"delta": False})
-
         self.transfer_queue.put(
             UploadEvent(
                 file_type=FileType.Basebackup,
@@ -326,7 +323,6 @@ class PGBaseBackup(PGHoardThread):
                 file_path=basebackup_path,
                 callback_queue=self.callback_queue,
                 file_size=compressed_file_size,
-                incremental_progress_callback=callback,
                 source_data=stream_target,
                 remove_after_upload=True,
                 metadata=metadata
@@ -615,7 +611,6 @@ class PGBaseBackup(PGHoardThread):
                         data_file_format,
                         compressed_base,
                         delta_stats=delta_stats,
-                        delta=delta,
                         file_type=FileType.Basebackup_chunk
                     )
 
@@ -725,7 +720,6 @@ class PGBaseBackup(PGHoardThread):
             callback_queue=self.callback_queue,
             chunk_path=Path(data_file_format(0)), # pylint: disable=too-many-format-args
             temp_dir=compressed_base,
-            delta=delta,
             files_to_backup=control_files,
             file_type=FileType.Basebackup,
             extra_metadata={

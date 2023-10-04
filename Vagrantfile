@@ -39,7 +39,7 @@ Vagrant.configure("2") do |config|
         sed -i "s/^#create_main_cluster.*/create_main_cluster=false/g" /etc/postgresql-common/createcluster.conf
 
         apt-get install -y python{3.8,3.9,3.10} python{3.8,3.9,3.10}-dev python{3.8,3.9,3.10}-venv
-        apt-get install -y postgresql-{10,11,12,13,14} postgresql-server-dev-{10,11,12,13,14}
+        apt-get install -y postgresql-{11,12,13,14,15,16} postgresql-server-dev-{11,12,13,14,15,16}
 
         username="$(< /dev/urandom tr -dc a-z | head -c${1:-32};echo;)"
         password=$(< /dev/urandom tr -dc _A-Z-a-z-0-9 | head -c${1:-32};echo;)
