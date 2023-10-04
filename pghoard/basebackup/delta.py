@@ -201,7 +201,6 @@ class DeltaBaseBackup:
                 backup_site_name=self.site,
                 metadata=metadata,
                 file_path=dest_path,
-                incremental_progress_callback=callback,
                 source_data=chunk_path
             )
         )

@@ -193,9 +193,6 @@ class ChunkUploader:
 
         middle_path, chunk_name = ChunkUploader.chunk_path_to_middle_path_name(Path(chunk_path), file_type)
 
-        def callback(n_bytes: int) -> None:
-            self.metrics.increase("pghoard.basebackup_bytes_uploaded", inc_value=n_bytes, tags={"delta": delta})
-
         self.transfer_queue.put(
             UploadEvent(
                 callback_queue=callback_queue,
@@ -204,7 +201,6 @@ class ChunkUploader:
                 file_path=middle_path / chunk_name,
                 source_data=chunk_path,
                 metadata=metadata,
-                incremental_progress_callback=callback,
                 backup_site_name=self.site,
             )
         )

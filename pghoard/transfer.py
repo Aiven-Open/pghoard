@@ -8,14 +8,16 @@ import dataclasses
 import enum
 import logging
 import os
+import threading
 import time
 from contextlib import suppress
 from dataclasses import dataclass
+from functools import partial
 from io import BytesIO
 from pathlib import Path
 from queue import Empty
 from threading import Lock
-from typing import Any, BinaryIO, Dict, Optional, Union
+from typing import Any, BinaryIO, Dict, Optional, Union, List
 
 from rohmu import get_transfer
 from rohmu.errors import FileNotFoundFromStorageError
@@ -26,6 +28,7 @@ from pghoard.common import (
     get_object_storage_config
 )
 from pghoard.fetcher import FileFetchManager
+from pghoard.metrics import Metrics
 
 _STATS_LOCK = Lock()
 _last_stats_transmit_time = 0
@@ -54,7 +57,6 @@ class UploadEvent(BaseTransferEvent):
     file_size: Optional[int]
     remove_after_upload: bool = True
     retry_number: int = 0
-    incremental_progress_callback: Optional[IncrementalProgressCallbackType] = None
 
     @property
     def operation(self):
@@ -99,8 +101,159 @@ OperationEvents = {
 TransferQueue = Queue
 
 
+@dataclass
+class TransferIncrement:
+    n_bytes: float
+    tracked_at: float = dataclasses.field(default_factory=time.monotonic)
+
+
+@dataclass
+class UploadEventProgress:
+    key: str
+    file_size: Optional[int]
+    file_type: FileType
+    increments: List[TransferIncrement] = dataclasses.field(default_factory=list)
+    started_at: float = dataclasses.field(default_factory=time.monotonic)
+
+    def is_completed(self) -> bool:
+        # UploadEvents without file_size are allowed, therefore we cannot determine if the event is completed
+        if not self.file_size:
+            return False
+
+        total_nbytes = sum(increment.n_bytes for increment in self.increments)
+        return total_nbytes >= self.file_size
+
+
+class UploadEventProgressTracker(PGHoardThread):
+    CHECK_FREQUENCY: int = 5  # check every 5 seconds for progress
+    WARNING_TIMEOUT: int = 5 * 60  # log a warning in case there is no progress during last 5 minutes
+
+    def __init__(
+        self,
+        *,
+        metrics: Metrics,
+        tags: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        self.metrics = metrics
+        self.log = logging.getLogger("UploadEventProgressTracker")
+        self.tags = tags
+
+        self.running: bool = False
+
+        self._tracked_events: Dict[str, UploadEventProgress] = {}
+        self._tracked_events_lock = threading.Lock()
+        self.log.debug("UploadEventProgressTracker initialized")
+
+        super().__init__()
+
+    def track_upload_event(self, file_key: str, file_type: FileType, file_size: Optional[int]) -> None:
+        with self._tracked_events_lock:
+            self.log.info(f"Tracking upload event for file {file_key}")
+            self._tracked_events[file_key] = UploadEventProgress(
+                key=file_key,
+                file_type=file_type,
+                file_size=file_size
+            )
+
+    def untrack_upload_event(self, file_key: str) -> None:
+        if file_key not in self._tracked_events:
+            return
+
+        with self._tracked_events_lock:
+            self._tracked_events.pop(file_key)
+
+    def increment(self, file_key: str, n_bytes: float) -> None:
+        with self._tracked_events_lock:
+            if file_key not in self._tracked_events:
+                raise Exception(f"UploadEvent for {file_key} is not being tracked.")
+
+            if self._tracked_events[file_key].file_type in (
+                FileType.Basebackup,
+                FileType.Basebackup_chunk,
+                FileType.Basebackup_delta,
+                FileType.Basebackup_delta_chunk
+            ):
+                self.metrics.increase(
+                    "pghoard.basebackup_bytes_uploaded", inc_value=n_bytes, tags={"delta": True},
+                )
+            elif self._tracked_events[file_key].file_type in (FileType.Wal, FileType.Timeline):
+                self.metrics.increase("pghoard.compressed_file_upload", inc_value=n_bytes, tags=self.tags)
+
+            self._tracked_events[file_key].increments.append(TransferIncrement(n_bytes=n_bytes))
+
+            # if the file is fully upload, then stop tracking it
+            if self._tracked_events[file_key].is_completed():
+                self._tracked_events.pop(file_key)
+
+    def reset(self) -> None:
+        with self._tracked_events_lock:
+            self._tracked_events = {}
+            self.running = False
+
+    def run_safe(self):
+        try:
+            self.running = True
+
+            while self.running:
+                with self._tracked_events_lock:
+                    self._check_increment_rate()
+
+                time.sleep(self.CHECK_FREQUENCY)
+        except Exception:  # pylint: disable=broad-except
+            self.log.exception("Failed to update transfer rate %s", "pghoard.compressed_file_upload")
+            self.metrics.increase("pghoard.transfer_operation.errors")
+            self.reset()
+            self.stop()
+
+        self.log.debug("Quitting UploadEventProgressTracker")
+
+    def stop(self) -> None:
+        self.running = False
+
+    def _check_increment_rate(self) -> None:
+        """
+            Check if the transfer operation is progressing by comparing the time elapsed since
+            last increment with the average time it took for previous increments. If the operation has been inactive,
+            a warning will be logged.
+        """
+        now = time.monotonic()
+        for ue_progress in self._tracked_events.values():
+            if ue_progress.is_completed():
+                continue
+
+            last_increment_at = ue_progress.started_at
+            avg_rate = 0.
+
+            if ue_progress.increments:
+                # total "waiting" time between all increments
+                total_increment_diff = sum(
+                    next_inc.tracked_at - prev_inc.tracked_at
+                    for prev_inc, next_inc in zip(ue_progress.increments, ue_progress.increments[1:])
+                )
+                if len(ue_progress.increments) > 1:
+                    avg_rate = total_increment_diff / (len(ue_progress.increments) - 1)
+                last_increment_at = ue_progress.increments[-1].tracked_at
+
+            # log warning in case we have not tracked any progress for the operation since
+            # the last check
+            if last_increment_at and (now - last_increment_at) >= avg_rate + self.WARNING_TIMEOUT:
+                self.log.warning(
+                    "Upload for file %s has been inactive since %s seconds.",
+                    ue_progress.file_size,
+                    now - last_increment_at
+                )
+
+
 class TransferAgent(PGHoardThread):
-    def __init__(self, config, mp_manager, transfer_queue: TransferQueue, metrics, shared_state_dict):
+    def __init__(
+        self,
+        config,
+        mp_manager,
+        transfer_queue: TransferQueue,
+        upload_tracker: UploadEventProgressTracker,
+        metrics,
+        shared_state_dict,
+    ):
         super().__init__()
         self.log = logging.getLogger("TransferAgent")
         self.config = config
@@ -108,6 +261,7 @@ class TransferAgent(PGHoardThread):
         self.mp_manager = mp_manager
         self.fetch_manager = FileFetchManager(self.config, self.mp_manager, self.get_object_storage)
         self.transfer_queue = transfer_queue
+        self.upload_tracker = upload_tracker
         self.running = True
         self.sleep = time.sleep
         self.state = shared_state_dict
@@ -311,6 +465,7 @@ class TransferAgent(PGHoardThread):
             return CallbackEvent(success=False, exception=ex, opaque=file_to_transfer.opaque)
 
     def handle_upload(self, site, key, file_to_transfer: UploadEvent):
+        self.log.info("me caga la puta")
         payload = {"file_size": file_to_transfer.file_size}
         try:
             storage = self.get_object_storage(site)
@@ -324,9 +479,20 @@ class TransferAgent(PGHoardThread):
                 metadata = file_to_transfer.metadata.copy()
                 if file_to_transfer.file_size:
                     metadata["Content-Length"] = str(file_to_transfer.file_size)
-                storage.store_file_object(
-                    key, f, metadata=metadata, upload_progress_fn=file_to_transfer.incremental_progress_callback
+                self.upload_tracker.track_upload_event(
+                    file_key=key,
+                    file_type=file_to_transfer.file_type,
+                    file_size=file_to_transfer.file_size,
                 )
+                upload_progress_fn = partial(self.upload_tracker.increment, file_key=key)
+                storage.store_file_object(
+                    key,
+                    f,
+                    metadata=metadata,
+                    upload_progress_fn=lambda n_bytes: upload_progress_fn(n_bytes=n_bytes),
+                )
+                # make sure we untrack it manually
+                self.upload_tracker.untrack_upload_event(key)
             if unlink_local:
                 if isinstance(file_to_transfer.source_data, Path):
                     try:

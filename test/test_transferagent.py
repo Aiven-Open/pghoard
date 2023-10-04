@@ -4,6 +4,7 @@ pghoard
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
+import logging
 import os
 import time
 from pathlib import Path
@@ -15,7 +16,7 @@ from rohmu.errors import FileNotFoundFromStorageError, StorageError
 
 from pghoard import metrics
 from pghoard.common import CallbackEvent, FileType, QuitEvent
-from pghoard.transfer import (BaseTransferEvent, DownloadEvent, TransferAgent, UploadEvent)
+from pghoard.transfer import (BaseTransferEvent, DownloadEvent, TransferAgent, UploadEvent, UploadEventProgressTracker)
 
 # pylint: disable=attribute-defined-outside-init
 from .base import PGHoardTestCase
@@ -38,6 +39,34 @@ class MockStorageRaising(Mock):
 
     def store_file_object(self, key, fd, *, cache_control=None, metadata=None, mimetype=None, upload_progress_fn=None):
         raise StorageError("foo")
+
+
+class MockStorageNetworkThrottle(MockStorage):
+    """
+    Storage simulating network throttling when uploading files to object storage.
+    """
+    NUM_CHUNKS = 4
+    INCREMENT_WAIT_PER_CHUNK = [0.1, 0.1, 1, 0.1]
+
+    def store_file_object(
+        self, key, fd, *, cache_control=None, metadata=None, mimetype=None, upload_progress_fn=None
+    ):
+        file_size = int(metadata["Content-Length"]) if "Content-Length" in metadata else None
+        if not file_size:
+            return
+
+        chunk_size = round(file_size / self.NUM_CHUNKS)
+        for chunk_num in range(self.NUM_CHUNKS):
+            time.sleep(self.INCREMENT_WAIT_PER_CHUNK[chunk_num])
+            if upload_progress_fn:
+                upload_progress_fn(chunk_size)
+
+        print("holis")
+
+
+class PatchedUploadEventProgressTracker(UploadEventProgressTracker):
+    CHECK_FREQUENCY = .2
+    WARNING_TIMEOUT = .5
 
 
 class TestTransferAgent(PGHoardTestCase):
@@ -66,16 +95,22 @@ class TestTransferAgent(PGHoardTestCase):
 
         self.compression_queue = Queue()
         self.transfer_queue = Queue()
+        self.upload_tracker = PatchedUploadEventProgressTracker(metrics=metrics.Metrics(statsd={}))
+        self.upload_tracker.start()
+
         self.transfer_agent = TransferAgent(
             config=self.config,
             mp_manager=None,
             transfer_queue=self.transfer_queue,
+            upload_tracker=self.upload_tracker,
             metrics=metrics.Metrics(statsd={}),
             shared_state_dict={}
         )
         self.transfer_agent.start()
 
     def teardown_method(self, method):
+        self.upload_tracker.stop()
+        self.upload_tracker.join()
         self.transfer_agent.running = False
         self.transfer_queue.put(QuitEvent)
         self.transfer_agent.join()
@@ -141,40 +176,38 @@ class TestTransferAgent(PGHoardTestCase):
         assert callback_queue.get(timeout=1.0) == CallbackEvent(success=True, payload={"file_size": 3})
         assert os.path.exists(self.foo_path) is True
         expected_key = os.path.join(self.test_site, "xlog/00000001000000000000000C")
-        storage.store_file_object.assert_called_with(
-            expected_key,
-            ANY,
-            metadata={
-                "Content-Length": "3",
-                "start-wal-segment": "00000001000000000000000C"
-            },
-            upload_progress_fn=None
-        )
+
+        assert storage.store_file_object.call_count == 1
+        assert storage.store_file_object.call_args[0][0] == expected_key
+        assert storage.store_file_object.call_args[1]["metadata"] == {
+            "Content-Length": "3",
+            "start-wal-segment": "00000001000000000000000C"
+        }
+
         # Now check that the prefix is used.
         self._inject_prefix("site_specific_prefix")
         self.transfer_queue.put(
             UploadEvent(
                 callback_queue=callback_queue,
                 file_type=FileType.Wal,
-                file_path=Path("xlog/00000001000000000000000C"),
+                file_path=Path("xlog/00000001000000000000000D"),
                 file_size=3,
                 remove_after_upload=True,
                 source_data=Path(self.foo_path),
-                metadata={"start-wal-segment": "00000001000000000000000C"},
+                metadata={"start-wal-segment": "00000001000000000000000D"},
                 backup_site_name=self.test_site
             )
         )
         assert callback_queue.get(timeout=1.0) == CallbackEvent(success=True, payload={"file_size": 3})
-        expected_key = "site_specific_prefix/xlog/00000001000000000000000C"
-        storage.store_file_object.assert_called_with(
-            expected_key,
-            ANY,
-            metadata={
-                "Content-Length": "3",
-                "start-wal-segment": "00000001000000000000000C"
-            },
-            upload_progress_fn=None
-        )
+        expected_key = "site_specific_prefix/xlog/00000001000000000000000D"
+
+        assert storage.store_file_object.call_count == 2
+        assert storage.store_file_object.call_args[0][0] == expected_key
+        assert storage.store_file_object.call_args[1]["metadata"] == {
+            "Content-Length": "3",
+            "start-wal-segment": "00000001000000000000000D"
+        }
+
         assert os.path.exists(self.foo_path) is False
 
     def test_handle_upload_basebackup(self):
@@ -228,6 +261,31 @@ class TestTransferAgent(PGHoardTestCase):
         os.unlink(alert_file_path)
         expected_sleeps = [0.5, 1, 2, 4, 8, 16, 20, 20]
         assert sleeps[:8] == expected_sleeps
+
+    def test_tracking_warning_upload_event(self, caplog) -> None:
+        callback_queue = Queue()
+        storage = MockStorageNetworkThrottle()
+
+        self.transfer_agent.get_object_storage = lambda x: storage
+        assert os.path.exists(self.foo_path) is True
+        self.transfer_queue.put(
+            UploadEvent(
+                callback_queue=callback_queue,
+                file_type=FileType.Wal,
+                file_path=Path("xlog/00000001000000000000000C"),
+                file_size=100,
+                source_data=Path(self.foo_path),
+                remove_after_upload=True,
+                metadata={"start-wal-segment": "00000001000000000000000C"},
+                backup_site_name=self.test_site
+            )
+        )
+
+        assert callback_queue.get(timeout=2.0) == CallbackEvent(success=True, payload={"file_size": 100})
+        assert any(
+            record for record in caplog.records
+            if record.levelname == "WARNING" and "has been inactive" in record.message
+        )
 
     @pytest.mark.timeout(30)
     def test_unknown_operation_raises_exception(self):

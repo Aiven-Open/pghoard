@@ -45,7 +45,7 @@ from pghoard.preservation_request import (
     is_basebackup_preserved, parse_preservation_requests, patch_basebackup_metadata_with_preservation
 )
 from pghoard.receivexlog import PGReceiveXLog
-from pghoard.transfer import TransferAgent, TransferQueue, UploadEvent
+from pghoard.transfer import TransferAgent, TransferQueue, UploadEvent, UploadEventProgressTracker
 from pghoard.walreceiver import WALReceiver
 from pghoard.webserver import WebServer
 
@@ -143,6 +143,9 @@ class PGHoard:
         self.requested_basebackup_sites = set()
         self.inotify_adapter = InotifyAdapter(self.compression_queue)
         self.inotify = InotifyWatcher(self.inotify_adapter)
+
+        self.upload_tracker = UploadEventProgressTracker(metrics=self.metrics)
+
         self.webserver = WebServer(
             self.config, self.requested_basebackup_sites, self.compression_queue, self.transfer_queue, self.metrics
         )
@@ -167,6 +170,7 @@ class PGHoard:
                 config=self.config,
                 mp_manager=self.mp_manager,
                 transfer_queue=self.transfer_queue,
+                upload_tracker=self.upload_tracker,
                 metrics=self.metrics,
                 shared_state_dict=self.transfer_agent_state
             )
@@ -695,6 +699,7 @@ class PGHoard:
     def start_threads_on_startup(self):
         # Startup threads
         self.inotify.start()
+        self.upload_tracker.start()
         self.webserver.start()
         self.wal_file_deleter.start()
         for compressor in self.compressors:
@@ -970,7 +975,11 @@ class PGHoard:
 
     def _get_all_threads(self):
         all_threads = []
-        # on first config load webserver isn't initialized yet
+
+        # on first config load upload_tracker and webserver aren't initialized yet
+        if hasattr(self, "upload_tracker"):
+            all_threads.append(self.upload_tracker)
+
         if hasattr(self, "webserver"):
             all_threads.append(self.webserver)
         all_threads.extend(self.basebackups.values())
