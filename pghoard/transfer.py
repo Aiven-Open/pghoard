@@ -20,6 +20,7 @@ from typing import Any, BinaryIO, Dict, Optional, Union
 from rohmu import get_transfer
 from rohmu.errors import FileNotFoundFromStorageError
 from rohmu.object_storage.base import (BaseTransfer, IncrementalProgressCallbackType)
+from rohmu.typing import Metadata
 
 from pghoard.common import (
     CallbackEvent, CallbackQueue, FileType, PGHoardThread, Queue, QuitEvent, StrEnum, create_alert_file,
@@ -50,7 +51,7 @@ class BaseTransferEvent:
 @dataclass(frozen=True)
 class UploadEvent(BaseTransferEvent):
     source_data: Union[BinaryIO, Path]
-    metadata: Dict[str, str]
+    metadata: Metadata
     file_size: Optional[int]
     remove_after_upload: bool = True
     retry_number: int = 0

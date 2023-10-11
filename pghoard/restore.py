@@ -34,7 +34,8 @@ from rohmu import dates, get_transfer, rohmufile
 from rohmu.errors import (Error, InvalidConfigurationError, MaybeRecoverableError)
 
 from pghoard.common import (
-    BaseBackupFormat, FileType, FileTypePrefixes, StrEnum, download_backup_meta_file, extract_pghoard_delta_metadata
+    TAR_METADATA_FILENAME, BaseBackupFormat, FileType, FileTypePrefixes, StrEnum, download_backup_meta_file,
+    extract_pghoard_delta_metadata
 )
 from pghoard.object_store import (HTTPRestore, ObjectStore, print_basebackup_list)
 
@@ -932,7 +933,7 @@ class ChunkFetcher:
         if not file_format:
             return base_args
         elif file_format in {BaseBackupFormat.v1, BaseBackupFormat.v2, BaseBackupFormat.delta_v1, BaseBackupFormat.delta_v2}:
-            extra_args = ["--exclude", ".pghoard_tar_metadata.json", "--transform", "s,^pgdata/,,"]
+            extra_args = ["--exclude", TAR_METADATA_FILENAME, "--transform", "s,^pgdata/,,"]
             if file_format in {BaseBackupFormat.delta_v1, BaseBackupFormat.delta_v2}:
                 extra_args += ["--exclude", ".manifest.json"]
             if self.tablespaces:

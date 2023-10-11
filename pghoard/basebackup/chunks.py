@@ -12,15 +12,15 @@ from pathlib import Path
 from queue import Empty
 from tempfile import NamedTemporaryFile
 from types import TracebackType
-from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
+from typing import (Any, Callable, Dict, List, Optional, Tuple, Type, Union, cast)
 
 from rohmu import rohmufile
 from rohmu.delta.common import EMBEDDED_FILE_SIZE
 
 # pylint: disable=superfluous-parens
 from pghoard.common import (
-    BackupFailure, BaseBackupFormat, CallbackEvent, CallbackQueue, CompressionData, EncryptionData, FileType,
-    FileTypePrefixes, NoException
+    BackupFailure, BaseBackupFormat, CallbackEvent, CallbackQueue, CompressionData, EncryptionData, FileLikeWithName,
+    FileType, FileTypePrefixes, NoException
 )
 from pghoard.metrics import Metrics
 from pghoard.transfer import TransferQueue, UploadEvent
@@ -144,22 +144,23 @@ class ChunkUploader:
         start_time = time.monotonic()
 
         with NamedTemporaryFile(dir=temp_dir, prefix=os.path.basename(chunk_path), suffix=".tmp") as raw_output_obj:
+            raw_output_file = cast(FileLikeWithName, raw_output_obj)
             # pylint: disable=bad-continuation
             with rohmufile.file_writer(
                 compression_algorithm=self.compression_data.algorithm,
                 compression_level=self.compression_data.level,
                 compression_threads=self.site_config["basebackup_compression_threads"],
                 rsa_public_key=self.encryption_data.rsa_public_key,
-                fileobj=raw_output_obj
+                fileobj=raw_output_file
             ) as output_obj:
                 with tarfile.TarFile(fileobj=output_obj, mode="w") as output_tar:
                     self.write_files_to_tar(files=files_to_backup, tar=output_tar, delta_stats=delta_stats)
 
                 input_size = output_obj.tell()
 
-            result_size = raw_output_obj.tell()
+            result_size = raw_output_file.tell()
             # Make the file persist over the with-block with this hardlink
-            os.link(raw_output_obj.name, chunk_path)
+            os.link(raw_output_file.name, chunk_path)
 
         rohmufile.log_compression_result(
             encrypted=bool(self.encryption_data.encryption_key_id),
