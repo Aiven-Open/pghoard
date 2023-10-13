@@ -22,14 +22,21 @@ from distutils.version import LooseVersion
 from pathlib import Path
 from queue import Queue
 from threading import Thread
-from typing import (TYPE_CHECKING, Any, BinaryIO, Callable, Dict, Optional, Tuple)
+from typing import (TYPE_CHECKING, Any, BinaryIO, Callable, Dict, Final, Optional, Protocol, Tuple, cast)
 
 from rohmu import IO_BLOCK_SIZE, BaseTransfer, rohmufile
 from rohmu.errors import Error, InvalidConfigurationError
+from rohmu.typing import FileLike, HasName
 
 from pghoard import pgutil
 
+TAR_METADATA_FILENAME: Final[str] = ".pghoard_tar_metadata.json"
+
 LOG = logging.getLogger("pghoard.common")
+
+
+class FileLikeWithName(FileLike, HasName, Protocol):
+    ...
 
 
 class StrEnum(str, enum.Enum):
@@ -306,24 +313,30 @@ def delete_alert_file(config, filename):
         os.unlink(filepath)
 
 
-def _extract_metadata(fileobj):
+def _extract_metadata(fileobj: BinaryIO) -> Dict[str, Any]:
     # | in mode to use tarfile's internal stream buffer manager, currently required because our SnappyFile
     # interface doesn't do proper buffering for reads
     with tarfile.open(fileobj=fileobj, mode="r|", bufsize=IO_BLOCK_SIZE) as tar:
         for tarinfo in tar:
-            if tarinfo.name == ".pghoard_tar_metadata.json":
-                tar_meta_bytes = tar.extractfile(tarinfo).read()
+            if tarinfo.name == TAR_METADATA_FILENAME:
+                tar_extracted = tar.extractfile(tarinfo)
+                if tar_extracted is None:
+                    raise Exception(
+                        f"{TAR_METADATA_FILENAME} is not a regular file, there is no data associated to it. "
+                        "Is it a directory?"
+                    )
+                tar_meta_bytes = tar_extracted.read()
                 return json.loads(tar_meta_bytes.decode("utf-8"))
 
-    raise Exception(".pghoard_tar_metadata.json not found")
+    raise Exception(f"{TAR_METADATA_FILENAME} not found")
 
 
-def extract_pghoard_bb_v2_metadata(fileobj):
-    return _extract_metadata(fileobj)
+def extract_pghoard_bb_v2_metadata(fileobj: FileLike) -> Dict[str, Any]:
+    return _extract_metadata(cast(BinaryIO, fileobj))
 
 
-def extract_pghoard_delta_metadata(fileobj):
-    return _extract_metadata(fileobj)
+def extract_pghoard_delta_metadata(fileobj: FileLike) -> Dict[str, Any]:
+    return _extract_metadata(cast(BinaryIO, fileobj))
 
 
 def get_pg_wal_directory(config):
@@ -423,7 +436,7 @@ class CompressionData:
 
 def download_backup_meta_file(
     storage: BaseTransfer, basebackup_path: str, metadata: Dict[str, Any], key_lookup: Callable[[str], str],
-    extract_meta_func: Callable[[BinaryIO], Dict[str, Any]]
+    extract_meta_func: Callable[[FileLike], Dict[str, Any]]
 ) -> Tuple[Dict[str, Any], bytes]:
     bmeta_compressed = storage.get_contents_to_string(basebackup_path)[0]
     with rohmufile.file_reader(fileobj=io.BytesIO(bmeta_compressed), metadata=metadata, key_lookup=key_lookup) as input_obj:

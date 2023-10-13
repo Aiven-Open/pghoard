@@ -4,7 +4,7 @@ import string
 from pathlib import Path
 from queue import Empty
 from test.base import CONSTANT_TEST_RSA_PUBLIC_KEY
-from typing import Any, Callable, Dict, Generator, Tuple
+from typing import Any, Callable, Dict, Generator, Tuple, cast
 from unittest.mock import MagicMock, Mock
 
 import mock
@@ -419,18 +419,18 @@ def test_upload_single_delta_files_cleanup_after_error(
 ) -> None:
     _, file_hash = delta_file
 
-    with patch.object(deltabasebackup, "_delta_upload_hexdigest") as mock_delta_upload_hexdigest:
+    with patch.object(deltabasebackup, "_delta_upload_hexdigest") as mock_delta_upload_hexdigest, \
+            patch.object(snapshotter, "update_snapshot_file_data", side_effect=Exception):
         mock_delta_upload_hexdigest.return_value = (200, 10, file_hash, True)
-        snapshotter.update_snapshot_file_data = Mock(side_effect=Exception)
 
         if not key_exists:
-            deltabasebackup.storage.delete_key.side_effect = FileNotFoundFromStorageError
+            cast(Mock, deltabasebackup.storage.delete_key).side_effect = FileNotFoundFromStorageError
 
         with snapshotter.lock:
             deltabasebackup._snapshot(snapshotter=snapshotter)  # pylint: disable=protected-access
             with pytest.raises(BackupFailure):
                 deltabasebackup._upload_single_delta_files(todo_hexdigests={file_hash}, snapshotter=snapshotter, progress=0)  # pylint: disable=protected-access
-            deltabasebackup.storage.delete_key.assert_called_with(f"abc/basebackup_delta/{file_hash}")
+            cast(Mock, deltabasebackup.storage.delete_key).assert_called_with(f"abc/basebackup_delta/{file_hash}")
 
 
 @pytest.mark.parametrize("files_count, initial_progress", [(1, 0), (4, 0), (10, 0), (1, 90), (15, 10)])
@@ -442,9 +442,9 @@ def test_upload_single_delta_files_progress(
     delta_hashes = {file_hash for _, file_hash in delta_files}
 
     with patch.object(deltabasebackup, "_delta_upload_hexdigest") as mock_delta_upload_hexdigest, \
-            patch.object(deltabasebackup, "metrics") as mock_metrics:
+            patch.object(deltabasebackup, "metrics") as mock_metrics,  \
+            patch.object(snapshotter, "update_snapshot_file_data"):
         mock_delta_upload_hexdigest.side_effect = [(200, 10, file_hash, True) for file_hash in delta_hashes]
-        snapshotter.update_snapshot_file_data = Mock()
         with snapshotter.lock:
             deltabasebackup._snapshot(snapshotter=snapshotter)  # pylint: disable=protected-access
             deltabasebackup._upload_single_delta_files(  # pylint: disable=protected-access

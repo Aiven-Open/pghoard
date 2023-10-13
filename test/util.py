@@ -2,13 +2,19 @@ import io
 import tarfile
 import time
 from pathlib import Path
-from typing import Any, BinaryIO, Dict, Union
+from typing import TYPE_CHECKING, Any, BinaryIO, Dict, Optional, Union, cast
 
 from rohmu import rohmufile
+from rohmu.typing import FileLike
 
 from pghoard.common import json_encode
 
 from .conftest import PGHoardForTest
+
+if TYPE_CHECKING:
+    from tarfile import _Fileobj  # pylint: disable=no-name-in-module
+else:
+    _Fileobj = Any
 
 
 def wait_for_xlog(pghoard: PGHoardForTest, count: int):
@@ -56,8 +62,10 @@ def dict_to_file_obj(fileobj: BinaryIO, data: Dict[str, Any], tar_name: str) -> 
     ti.size = len(blob.getbuffer())
     ti.mtime = int(time.time())
 
-    with rohmufile.file_writer(compression_algorithm="snappy", compression_level=0, fileobj=fileobj) as output_obj:
-        with tarfile.TarFile(fileobj=output_obj, mode="w") as output_tar:
+    with rohmufile.file_writer(
+        compression_algorithm="snappy", compression_level=0, fileobj=cast(FileLike, fileobj)
+    ) as output_obj:
+        with tarfile.TarFile(fileobj=cast(Optional[_Fileobj], output_obj), mode="w") as output_tar:
             output_tar.addfile(ti, blob)
 
         return output_obj.tell()

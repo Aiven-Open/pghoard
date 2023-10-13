@@ -14,20 +14,19 @@ from multiprocessing.dummy import Pool
 from pathlib import Path
 from queue import Empty
 from tempfile import NamedTemporaryFile
-from typing import AbstractSet, Any, Callable, Dict, Iterable, List, Set, Tuple
+from typing import (AbstractSet, Any, Callable, Dict, Iterable, List, Protocol, Set, Tuple, cast)
 
 from rohmu import BaseTransfer, rohmufile
 from rohmu.dates import now
-from rohmu.delta.common import (
-    BackupManifest, BackupPath, SizeLimitedFile, SnapshotFile, SnapshotHash, SnapshotResult, SnapshotUploadResult
-)
+from rohmu.delta.common import (BackupManifest, BackupPath, SnapshotFile, SnapshotHash, SnapshotResult, SnapshotUploadResult)
 from rohmu.delta.snapshot import Snapshotter
 from rohmu.errors import FileNotFoundFromStorageError
+from rohmu.typing import HasRead, HasSeek
 
 from pghoard.basebackup.chunks import ChunkUploader
 from pghoard.common import (
-    BackupFailure, BaseBackupFormat, CallbackQueue, CompressionData, EncryptionData, FileType, FileTypePrefixes,
-    download_backup_meta_file, extract_pghoard_delta_metadata
+    BackupFailure, BaseBackupFormat, CallbackQueue, CompressionData, EncryptionData, FileLikeWithName, FileType,
+    FileTypePrefixes, download_backup_meta_file, extract_pghoard_delta_metadata
 )
 from pghoard.metrics import Metrics
 from pghoard.transfer import TransferQueue, UploadEvent
@@ -38,6 +37,10 @@ class UploadedFilesMetric:
     input_size: int = 0
     stored_size: int = 0
     count: int = 0
+
+
+class HasReadAndSeek(HasRead, HasSeek, Protocol):
+    ...
 
 
 FilesChunk = Set[Tuple]
@@ -114,7 +117,7 @@ class DeltaBaseBackup:
         return all_snapshot_files
 
     def _delta_upload_hexdigest(
-        self, *, temp_dir: Path, chunk_path: Path, file_obj: SizeLimitedFile, callback_queue: CallbackQueue,
+        self, *, temp_dir: Path, chunk_path: Path, file_obj: HasReadAndSeek, callback_queue: CallbackQueue,
         relative_path: Path
     ) -> Tuple[int, int, str, bool]:
         """Schedule a separate delta file for the upload, calculates the final hash to use it as a name
@@ -131,9 +134,10 @@ class DeltaBaseBackup:
             self.metrics.increase("pghoard.basebackup_bytes_uploaded", inc_value=n_bytes, tags={"delta": True})
 
         with NamedTemporaryFile(dir=temp_dir, prefix=os.path.basename(chunk_path), suffix=".tmp") as raw_output_obj:
+            raw_output_file = cast(FileLikeWithName, raw_output_obj)
             rohmufile.write_file(
                 input_obj=file_obj,
-                output_obj=raw_output_obj,
+                output_obj=raw_output_file,
                 compression_algorithm=self.compression_data.algorithm,
                 compression_level=self.compression_data.level,
                 rsa_public_key=self.encryption_data.rsa_public_key,
@@ -141,8 +145,8 @@ class DeltaBaseBackup:
                 data_callback=result_hash.update,
                 progress_callback=progress_callback,
             )
-            result_size = raw_output_obj.tell()
-            raw_output_obj.seek(0)
+            result_size = raw_output_file.tell()
+            raw_output_file.seek(0)
 
             result_digest = result_hash.hexdigest()
 
@@ -157,7 +161,7 @@ class DeltaBaseBackup:
                 else:
                     self.submitted_hashes.add(result_digest)
 
-            os.link(raw_output_obj.name, chunk_path)
+            os.link(raw_output_file.name, chunk_path)
 
         rohmufile.log_compression_result(
             encrypted=bool(self.encryption_data.encryption_key_id),
@@ -333,6 +337,9 @@ class DeltaBaseBackup:
         current_chunk_size: int = 0
         current_chunk: FilesChunk = set()
 
+        if snapshot_result.state is None:
+            raise BackupFailure("Snapshot result state is None")
+
         for snapshot_file in snapshot_result.state.files:
             if not snapshot_file.should_be_bundled:
                 if snapshot_file.hexdigest:
@@ -377,6 +384,9 @@ class DeltaBaseBackup:
         """Calculate upload metrics based on snapshot results"""
         digests_metric = UploadedFilesMetric()
         embed_metric = UploadedFilesMetric()
+
+        if snapshot_result.state is None:
+            raise BackupFailure("Snapshot result state is None")
 
         for snapshot_file in snapshot_result.state.files:
             # Sizes of files uploaded as chunks are calculated separately

@@ -15,9 +15,9 @@ from mock.mock import Mock
 from rohmu.errors import Error
 
 from pghoard.common import (
-    create_pgpass_file, default_json_serialization, download_backup_meta_file, extract_pg_command_version_string,
-    extract_pghoard_bb_v2_metadata, extract_pghoard_delta_metadata, json_encode, pg_major_version,
-    pg_version_string_to_number, write_json_file
+    TAR_METADATA_FILENAME, create_pgpass_file, default_json_serialization, download_backup_meta_file,
+    extract_pg_command_version_string, extract_pghoard_bb_v2_metadata, extract_pghoard_delta_metadata, json_encode,
+    pg_major_version, pg_version_string_to_number, write_json_file
 )
 
 from .base import PGHoardTestCase
@@ -221,7 +221,7 @@ del META_BB_V2["delta_stats"]
     ]
 )
 def test_download_backup_meta(metadata, extract_meta_func):
-    data = dict_to_tar_data(data=metadata, tar_name=".pghoard_tar_metadata.json")
+    data = dict_to_tar_data(data=metadata, tar_name=TAR_METADATA_FILENAME)
     storage = Mock()
     storage.get_contents_to_string.return_value = (data, {})
     backup_meta, backup_compressed_data = download_backup_meta_file(

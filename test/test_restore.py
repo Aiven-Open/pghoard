@@ -19,7 +19,7 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
-from pghoard.common import write_json_file
+from pghoard.common import TAR_METADATA_FILENAME, write_json_file
 from pghoard.restore import (
     MAX_RETRIES, BasebackupFetcher, ChunkFetcher, FileDataInfo, FileInfoType, FilePathInfo, Restore, RestoreError,
     create_recovery_conf
@@ -541,7 +541,7 @@ def test_restore_get_delta_basebackup_data():
         }
     }
 
-    data = dict_to_tar_data(metadata, tar_name=".pghoard_tar_metadata.json")
+    data = dict_to_tar_data(metadata, tar_name=TAR_METADATA_FILENAME)
 
     r = Restore()
     r.config = {

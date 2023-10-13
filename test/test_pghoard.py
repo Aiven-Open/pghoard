@@ -16,7 +16,9 @@ from unittest.mock import Mock, patch
 import pytest
 
 import pghoard.pghoard as pghoard_module
-from pghoard.common import (BaseBackupFormat, FileType, create_alert_file, delete_alert_file, write_json_file)
+from pghoard.common import (
+    TAR_METADATA_FILENAME, BaseBackupFormat, FileType, create_alert_file, delete_alert_file, write_json_file
+)
 from pghoard.pghoard import PGHoard
 from pghoard.pgutil import create_connection_string
 
@@ -466,7 +468,7 @@ dbname|"""
                             }
                         }
                     }
-                    input_size = dict_to_tar_file(data=metadata, file_path=bb_path, tar_name=".pghoard_tar_metadata.json")
+                    input_size = dict_to_tar_file(data=metadata, file_path=bb_path, tar_name=TAR_METADATA_FILENAME)
 
                     for h in hexdigests:
                         with open(Path(basebackup_delta_path) / h, "w") as digest_file, \

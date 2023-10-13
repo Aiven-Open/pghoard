@@ -29,9 +29,9 @@ from pghoard import common, version, wal
 from pghoard.basebackup.chunks import ChunkUploader, DeltaStats
 from pghoard.basebackup.delta import DeltaBaseBackup
 from pghoard.common import (
-    BackupFailure, BaseBackupFormat, BaseBackupMode, CallbackEvent, CompressionData, EncryptionData, FileType, NoException,
-    PGHoardThread, connection_string_using_pgpass, download_backup_meta_file, extract_pghoard_bb_v2_metadata,
-    replication_connection_string_and_slot_using_pgpass, set_stream_nonblocking,
+    TAR_METADATA_FILENAME, BackupFailure, BaseBackupFormat, BaseBackupMode, CallbackEvent, CompressionData, EncryptionData,
+    FileType, NoException, PGHoardThread, connection_string_using_pgpass, download_backup_meta_file,
+    extract_pghoard_bb_v2_metadata, replication_connection_string_and_slot_using_pgpass, set_stream_nonblocking,
     set_subprocess_stdout_and_stderr_nonblocking, terminate_subprocess
 )
 from pghoard.compressor import CompressionEvent
@@ -397,7 +397,7 @@ class PGBaseBackup(PGHoardThread):
     def get_control_entries_for_tar(self, *, metadata, pg_control, backup_label):
         mtime = time.time()
         blob = io.BytesIO(common.json_encode(metadata, binary=True))
-        ti = tarfile.TarInfo(name=".pghoard_tar_metadata.json")
+        ti = tarfile.TarInfo(name=TAR_METADATA_FILENAME)
         ti.size = len(blob.getbuffer())
         ti.mtime = mtime
         yield ti, blob, False
