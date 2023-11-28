@@ -323,7 +323,7 @@ class TransferAgent(PGHoardThread):
                 f = open(file_to_transfer.source_data, "rb")
             with f:
                 metadata = file_to_transfer.metadata.copy()
-                if file_to_transfer.file_size:
+                if file_to_transfer.file_size is not None:
                     metadata["Content-Length"] = str(file_to_transfer.file_size)
                 storage.store_file_object(
                     key, f, metadata=metadata, upload_progress_fn=file_to_transfer.incremental_progress_callback
