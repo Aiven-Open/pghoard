@@ -1,58 +1,59 @@
 short_ver = $(shell git describe --abbrev=0)
 long_ver = $(shell git describe --long 2>/dev/null || echo $(short_ver)-0-unknown-g`git describe --always`)
-generated = pghoard/version.py
-
-all: $(generated)
 
 PYTHON ?= python3
 PYTHON_SOURCE_DIRS = pghoard/ test/
 PYTEST_ARG ?= -v
 
+.PHONY: pghoard/version.py
+python-build:
+	$(PYTHON) -m build
+
+.PHONY: dev-deps
+dev-deps:
+	pip install .
+	pip install ".[dev]"
+
 .PHONY: unittest
-unittest: version
+unittest: dev-deps
 	$(PYTHON) -m pytest -vv test/
 
 .PHONY: lint
-lint: version
+lint: dev-deps
 	$(PYTHON) -m pylint --rcfile .pylintrc $(PYTHON_SOURCE_DIRS)
 
 .PHONY: mypy
-mypy: version
+mypy: dev-deps
 	$(PYTHON) -m mypy $(PYTHON_SOURCE_DIRS)
 
 .PHONY: fmt
-fmt: version
+fmt: dev-deps
 	unify --quote '"' --recursive --in-place $(PYTHON_SOURCE_DIRS)
 	isort $(PYTHON_SOURCE_DIRS)
 	yapf --parallel --recursive --in-place $(PYTHON_SOURCE_DIRS)
 
 .PHONY: coverage
-coverage: version
+coverage: dev-deps
 	$(PYTHON) -m pytest $(PYTEST_ARG) --cov-report term-missing --cov-report xml:coverage.xml \
 		--cov pghoard test/
 
 .PHONY: clean
 clean:
 	$(RM) -r *.egg-info/ build/ dist/ rpm/
-	$(RM) ../pghoard_* test-*.xml coverage.xml $(generated)
+	$(RM) ../pghoard_* test-*.xml coverage.xml pghoard/version.py
 
-pghoard/version.py: version.py
-	$(PYTHON) $^ $@
-
-.PHONY: version
-version: pghoard/version.py
 
 .PHONY: deb
-deb: $(generated)
+deb:
 	cp debian/changelog.in debian/changelog
 	dch -v $(long_ver) --distribution unstable "Automatically built .deb"
 	dpkg-buildpackage -A -uc -us
 
 .PHONY: rpm
-rpm: $(generated)
+rpm: python-build
 	git archive --output=pghoard-rpm-src.tar --prefix=pghoard/ HEAD
 	# add generated files to the tar, they're not in git repository
-	tar -r -f pghoard-rpm-src.tar --transform=s,pghoard/,pghoard/pghoard/, $(generated)
+	tar -r -f pghoard-rpm-src.tar --transform=s,pghoard/,pghoard/pghoard/, pghoard/version.py
 	rpmbuild -bb pghoard.spec \
 		--define '_topdir $(PWD)/rpm' \
 		--define '_sourcedir $(CURDIR)' \

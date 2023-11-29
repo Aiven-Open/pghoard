@@ -21,3 +21,4 @@ __pycache__/
 *.orig
 /pghoard-rpm-src/
 coverage.xml
+.hypothesis
