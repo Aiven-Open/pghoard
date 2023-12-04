@@ -389,7 +389,15 @@ class TestWebServer:
         headers = {"x-pghoard-target-path": str(tmpdir.join("test_get_invalid"))}
         conn.request("GET", nonexistent_wal, headers=headers)
         status = conn.getresponse().status
+        assert status == 400
+
+        wal_dir = get_pg_wal_directory(pghoard.config["backup_sites"][pghoard.test_site])
+        restore_target = os.path.join(wal_dir, "test_get_invalid")
+        headers = {"x-pghoard-target-path": restore_target}
+        conn.request("GET", nonexistent_wal, headers=headers)
+        status = conn.getresponse().status
         assert status == 404
+
         # no x-pghoard-target-path for head
         headers = {"x-pghoard-target-path": str(tmpdir.join("test_get_invalid"))}
         conn.request("HEAD", nonexistent_wal, headers=headers)
@@ -431,12 +439,14 @@ class TestWebServer:
         )
 
         # write to non-existent directory
-        headers = {"x-pghoard-target-path": str(tmpdir.join("NA", "test_get_invalid"))}
+        wal_dir = get_pg_wal_directory(pghoard.config["backup_sites"][pghoard.test_site])
+        restore_target = os.path.join(wal_dir, "NA", "test_get_invalid")
+        headers = {"x-pghoard-target-path": restore_target}
         conn.request("GET", valid_wal, headers=headers)
         status = conn.getresponse().status
         assert status == 409
 
-    def test_get_invalid_retry(self, pghoard_no_mp, tmpdir):
+    def test_get_invalid_retry(self, pghoard_no_mp):
         # inject a failure by making a static function fail
         failures = [0, ""]
         pghoard = pghoard_no_mp
@@ -465,7 +475,9 @@ class TestWebServer:
             pghoard.webserver.server.prefetch_404.clear()
             failures[0] = 2 + prefetch_n
             failures[1] = "test_two_fails_success"
-            headers = {"x-pghoard-target-path": str(tmpdir.join("test_get_invalid_2"))}
+            wal_dir = get_pg_wal_directory(pghoard.config["backup_sites"][pghoard.test_site])
+            restore_target = os.path.join(wal_dir, "test_get_invalid_2")
+            headers = {"x-pghoard-target-path": restore_target}
             conn.request("GET", valid_wal, headers=headers)
             status = conn.getresponse().status
             assert status == 201
@@ -475,7 +487,8 @@ class TestWebServer:
             pghoard.webserver.server.prefetch_404.clear()
             failures[0] = 4 + prefetch_n
             failures[1] = "test_three_fails_error"
-            headers = {"x-pghoard-target-path": str(tmpdir.join("test_get_invalid_3"))}
+            restore_target = os.path.join(wal_dir, "test_get_invalid_3")
+            headers = {"x-pghoard-target-path": restore_target}
             conn.request("GET", valid_wal, headers=headers)
             status = conn.getresponse().status
             assert status == 500
@@ -485,7 +498,7 @@ class TestWebServer:
             for ta in pghoard.transfer_agents:
                 ta.site_transfers = {}
 
-    def test_retry_fetches_remote(self, pghoard_no_mp, tmpdir):
+    def test_retry_fetches_remote(self, pghoard_no_mp):
         """First fetch request for file returns data from local disk, second from cloud object storage"""
         pghoard = pghoard_no_mp
         valid_wal_seg = "0000DDDD0000000D000000FC"
@@ -518,8 +531,9 @@ class TestWebServer:
                     f.write(wal_header_for_file(other_segment))
 
         conn = HTTPConnection(host="127.0.0.1", port=pghoard.config["http_port"])
+        wal_dir = get_pg_wal_directory(pghoard.config["backup_sites"][pghoard.test_site])
+        local_name = os.path.join(wal_dir, "test_get_local")
 
-        local_name = str(tmpdir.join("test_get_local"))
         headers = {"x-pghoard-target-path": local_name}
         conn.request("GET", valid_wal, headers=headers)
         status = conn.getresponse().status
@@ -529,7 +543,7 @@ class TestWebServer:
         assert recent_files["xlog"]["name"] == valid_wal_seg
         assert 0 < (time.time() - recent_files["xlog"]["time"]) < 1
 
-        storage_name = str(tmpdir.join("test_get_storage"))
+        storage_name = os.path.join(wal_dir, "test_get_storage")
         headers = {"x-pghoard-target-path": storage_name}
         conn.request("GET", valid_wal, headers=headers)
         status = conn.getresponse().status
@@ -543,13 +557,13 @@ class TestWebServer:
         # Fetch another 10 WAL segments that are also available on disk,
         # after which the other one is fetched from disk again
         for other_path in other_paths:
-            headers = {"x-pghoard-target-path": str(tmpdir.join("RECOVERYXLOG"))}
+            headers = {"x-pghoard-target-path": os.path.join(wal_dir, "RECOVERYXLOG")}
             conn.request("GET", other_path, headers=headers)
             status = conn.getresponse().status
             assert status == 201
 
         # Now get the original one again
-        storage_name = str(tmpdir.join("test_get_storage2"))
+        storage_name = os.path.join(wal_dir, "test_get_storage2")
         headers = {"x-pghoard-target-path": storage_name}
         conn.request("GET", valid_wal, headers=headers)
         status = conn.getresponse().status
@@ -737,3 +751,22 @@ class TestWebServer:
         resp = conn.getresponse()
         assert resp.status == 400
         assert resp.read() == b"Invalid 'archive' request, only single file retrieval is supported for now"
+
+    def test_uncontrolled_target_path(self, pghoard):
+        wal_seg = "0000000100000001000000AB"
+        wal_file = "/{}/archive/{}".format(pghoard.test_site, wal_seg)
+        conn = HTTPConnection(host="127.0.0.1", port=pghoard.config["http_port"])
+        headers = {"x-pghoard-target-path": "/etc/passwd"}
+        conn.request("GET", wal_file, headers=headers)
+        status = conn.getresponse().status
+        assert status == 400
+
+        headers = {"x-pghoard-target-path": "/root/.ssh/id_rsa"}
+        conn.request("GET", wal_file, headers=headers)
+        status = conn.getresponse().status
+        assert status == 400
+
+        headers = {"x-pghoard-target-path": "../../../../etc/passwd"}
+        conn.request("GET", wal_file, headers=headers)
+        status = conn.getresponse().status
+        assert status == 400

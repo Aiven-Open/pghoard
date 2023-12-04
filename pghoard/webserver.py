@@ -427,16 +427,35 @@ class RequestHandler(BaseHTTPRequestHandler):
                     os.unlink(prefetch_target_path)
             return e
 
+    @staticmethod
+    def _validate_target_path(config, target_path):
+        # The `restore_command` (postgres_command.py or pghoard_postgres_command_go.go) called by PostgresSQL has
+        # prepended the PostgresSQL 'data' directory with `%p` parameter from PostgresSQL server, hence here
+        # `target_path` is expected to be an absolute path.
+        # For example, the target_path `/var/lib/pgsql/11/data/pg_wal/RECOVERYXLOG` comes from pghoard restore_command
+        # prepended %p parameter `pg_wal/RECOVERYXLOG` with `/var/lib/pgsql/11/data`
+
+        # Use pathlib to resolve the symlinks and '.' in case of untrusted user input, e.g.,
+        # /var/lib/pgsql/11/data/../../../../../etc/passwd, could be actually /etc/passwd
+        if not os.path.isabs(target_path):
+            raise HttpResponse(f"Invalid xlog file path {target_path}, an absolute path expected", status=400)
+        data_dir = Path(config["pg_data_directory"]).resolve()
+        xlog_file = Path(target_path).resolve()
+        if data_dir not in xlog_file.parents:
+            raise HttpResponse(f"Invalid xlog file path {target_path}, it should be in data directory", status=400)
+
     def get_wal_or_timeline_file(self, site, filename, filetype):
         target_path = self.headers.get("x-pghoard-target-path")
         if not target_path:
             raise HttpResponse("x-pghoard-target-path header missing from download", status=400)
 
+        site_config = self.server.config["backup_sites"][site]
+        xlog_dir = get_pg_wal_directory(site_config)
+
+        self._validate_target_path(site_config, target_path)
         self._process_completed_download_operations()
 
         # See if we have already prefetched the file
-        site_config = self.server.config["backup_sites"][site]
-        xlog_dir = get_pg_wal_directory(site_config)
         prefetch_target_path = os.path.join(xlog_dir, "{}.pghoard.prefetch".format(filename))
         if os.path.exists(prefetch_target_path):
             ex = self._try_save_and_verify_restored_file(filetype, filename, prefetch_target_path, target_path)
