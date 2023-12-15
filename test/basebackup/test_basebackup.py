@@ -493,9 +493,9 @@ LABEL: pg_basebackup base backup
             switch_wal(conn)
             self._test_create_basebackup(capsys, db, pghoard, "local-tar")
             switch_wal(conn)
-
-            backup_out = tmpdir.join("test-restore").strpath
-            backup_ts_out = tmpdir.join("test-restore-tstest").strpath
+            data_dir = pghoard.config["backup_sites"][pghoard.test_site]["pg_data_directory"]
+            backup_out = os.path.join(data_dir, "test-restore")
+            backup_ts_out = os.path.join(data_dir, "test-restore-tstest")
 
             # Tablespaces are extracted to their previous absolute paths by default, but the path must be empty
             # and it isn't as it's still used by the running PG
