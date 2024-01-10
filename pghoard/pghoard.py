@@ -453,6 +453,7 @@ class PGHoard:
         storage = self.get_or_create_site_storage(site=site)
         site_config = self.config["backup_sites"][site]
         results = storage.list_path(os.path.join(site_config["prefix"], "basebackup"))
+        self.log.info("blub pghoard get_remote_basebackups_info")
         for entry in results:
             self.patch_basebackup_info(entry=entry, site_config=site_config)
 
@@ -533,7 +534,7 @@ class PGHoard:
         """Look up basebackups from the object store, prune any extra
         backups and return the datetime of the latest backup."""
         basebackups = self.get_remote_basebackups_info(site)
-        self.log.debug("Found %r basebackups", basebackups)
+        self.log.info("blub Found %r basebackups", basebackups)
 
         site_config = self.config["backup_sites"][site]
         # Never delete backups from a recovery site. This check is already elsewhere as well
