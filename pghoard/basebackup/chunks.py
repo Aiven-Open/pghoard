@@ -136,7 +136,6 @@ class ChunkUploader:
         chunk_path,
         files_to_backup,
         callback_queue: CallbackQueue,
-        delta: bool,
         file_type: FileType = FileType.Basebackup_chunk,
         extra_metadata: Optional[Dict[str, Any]] = None,
         delta_stats: Optional[DeltaStats] = None
@@ -194,9 +193,6 @@ class ChunkUploader:
 
         middle_path, chunk_name = ChunkUploader.chunk_path_to_middle_path_name(Path(chunk_path), file_type)
 
-        def callback(n_bytes: int) -> None:
-            self.metrics.increase("pghoard.basebackup_bytes_uploaded", inc_value=n_bytes, tags={"delta": delta})
-
         self.transfer_queue.put(
             UploadEvent(
                 callback_queue=callback_queue,
@@ -205,7 +201,6 @@ class ChunkUploader:
                 file_path=middle_path / chunk_name,
                 source_data=chunk_path,
                 metadata=metadata,
-                incremental_progress_callback=callback,
                 backup_site_name=self.site,
             )
         )
@@ -221,7 +216,6 @@ class ChunkUploader:
         chunks,
         index: int,
         temp_dir: Path,
-        delta: bool,
         delta_stats: Optional[DeltaStats] = None,
         file_type: FileType = FileType.Basebackup_chunk
     ) -> Dict[str, Any]:
@@ -229,7 +223,6 @@ class ChunkUploader:
         chunk_name, input_size, result_size = self.tar_one_file(
             callback_queue=chunk_callback_queue,
             chunk_path=chunk_path,
-            delta=delta,
             temp_dir=temp_dir,
             files_to_backup=one_chunk_files,
             delta_stats=delta_stats,
@@ -270,7 +263,6 @@ class ChunkUploader:
         chunks,
         data_file_format: Callable[[int], str],
         temp_base_dir: Path,
-        delta: bool,
         delta_stats: Optional[DeltaStats] = None,
         file_type: FileType = FileType.Basebackup_chunk,
         chunks_max_progress: float = 100.0
@@ -307,7 +299,6 @@ class ChunkUploader:
                         chunks=chunks,
                         index=i,
                         temp_dir=temp_base_dir,
-                        delta=delta,
                         delta_stats=delta_stats,
                         file_type=file_type
                     )
