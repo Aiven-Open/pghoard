@@ -39,6 +39,6 @@ jobs:
           git add -A
           git config --global user.email "$(git show --format=%ae -s)"
           git config --global user.name "$(git show --format=%an -s)"
-          git commit -m "From $GITHUB_REF $(echo ${GITHUB_SHA} | cut -c 1-8)"
+          git diff-index --quiet HEAD || git commit -m "From $GITHUB_REF $(echo ${GITHUB_SHA} | cut -c 1-8)"
           git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
           git push
