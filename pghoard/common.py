@@ -24,6 +24,7 @@ from queue import Queue
 from threading import Thread
 from typing import (TYPE_CHECKING, Any, BinaryIO, Callable, Dict, Final, Optional, Protocol, Tuple, cast)
 
+from pydantic import BaseModel, ValidationError
 from rohmu import IO_BLOCK_SIZE, BaseTransfer, rohmufile
 from rohmu.errors import Error, InvalidConfigurationError
 from rohmu.typing import FileLike, HasName
@@ -31,6 +32,7 @@ from rohmu.typing import FileLike, HasName
 from pghoard import pgutil
 
 TAR_METADATA_FILENAME: Final[str] = ".pghoard_tar_metadata.json"
+PROGRESS_FILE: Final[str] = "persisted_progress_file.json"
 
 LOG = logging.getLogger("pghoard.common")
 
@@ -98,6 +100,42 @@ class BaseBackupMode(StrEnum):
     local_tar = "local-tar"
     local_tar_delta_stats = "local-tar-delta-stats"
     pipe = "pipe"
+
+
+class ProgressData(BaseModel):
+    current_progress: float
+    last_updated_time: float
+
+
+class PersistedProgress(BaseModel):
+    progress: Dict[str, ProgressData] = {}
+
+    @classmethod
+    def read_persisted_progress(cls) -> "PersistedProgress":
+        if os.path.exists(PROGRESS_FILE):
+            with open(PROGRESS_FILE, "r") as file:
+                try:
+                    return cls.parse_raw(file.read())
+                except ValidationError as e:
+                    print(f"Validation error: {e}")
+        return cls()
+
+    def update_persisted_progress(self, key: str, current_progress: float, current_time: float) -> None:
+        self.progress[key] = ProgressData(current_progress=current_progress, last_updated_time=current_time)
+        self.save()
+
+    def reset_persisted_progress(self, key: str) -> None:
+        if key in self.progress:
+            del self.progress[key]
+            self.save()
+
+    def get_persisted_progress_for_key(self, key: str) -> ProgressData:
+        default_progress = ProgressData(current_progress=0, last_updated_time=time.monotonic())
+        return self.progress.get(key, default_progress)
+
+    def save(self):
+        with open(PROGRESS_FILE, "w") as file:
+            file.write(self.json())
 
 
 def create_pgpass_file(connection_string_or_info):

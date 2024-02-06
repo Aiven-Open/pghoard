@@ -9,13 +9,14 @@ import json
 import os
 from pathlib import Path
 from typing import Any, Dict
+from unittest.mock import patch
 
 import pytest
 from mock.mock import Mock
 from rohmu.errors import Error
 
 from pghoard.common import (
-    TAR_METADATA_FILENAME, create_pgpass_file, default_json_serialization, download_backup_meta_file,
+    TAR_METADATA_FILENAME, PersistedProgress, create_pgpass_file, default_json_serialization, download_backup_meta_file,
     extract_pg_command_version_string, extract_pghoard_bb_v2_metadata, extract_pghoard_delta_metadata, json_encode,
     pg_major_version, pg_version_string_to_number, write_json_file
 )
@@ -87,6 +88,43 @@ class TestCommon(PGHoardTestCase):
         ob2_ = json.loads(output_data)
 
         assert ob2 == ob2_
+
+    def test_persisted_progress(self):
+        test_progress_file = "test_progress.json"
+
+        test_data = {
+            "progress": {
+                "0af668268d0fe14c6e269760b08d80a634c421b8381df25f31fbed5e8a8c8d8b": {
+                    "current_progress": 100,
+                    "last_updated_time": 1625072042.123456
+                }
+            }
+        }
+
+        with open(test_progress_file, "w") as file:
+            json.dump(test_data, file)
+
+        with patch("pghoard.common.PROGRESS_FILE", test_progress_file):
+            persisted_progress = PersistedProgress.read_persisted_progress()
+            assert "0af668268d0fe14c6e269760b08d80a634c421b8381df25f31fbed5e8a8c8d8b" in persisted_progress.progress
+            assert persisted_progress.progress["0af668268d0fe14c6e269760b08d80a634c421b8381df25f31fbed5e8a8c8d8b"
+                                               ].current_progress == 100
+            assert persisted_progress.progress["0af668268d0fe14c6e269760b08d80a634c421b8381df25f31fbed5e8a8c8d8b"
+                                               ].last_updated_time == 1625072042.123456
+
+            new_progress = 200
+            new_time = 1625072099.123456
+            persisted_progress.update_persisted_progress(
+                "0af668268d0fe14c6e269760b08d80a634c421b8381df25f31fbed5e8a8c8d8b", new_progress, new_time
+            )
+
+            updated_progress = PersistedProgress.read_persisted_progress()
+            assert updated_progress.progress["0af668268d0fe14c6e269760b08d80a634c421b8381df25f31fbed5e8a8c8d8b"
+                                             ].current_progress == new_progress
+            assert updated_progress.progress["0af668268d0fe14c6e269760b08d80a634c421b8381df25f31fbed5e8a8c8d8b"
+                                             ].last_updated_time == new_time
+
+        os.remove(test_progress_file)
 
 
 def test_pg_major_version():
