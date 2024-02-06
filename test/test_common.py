@@ -14,8 +14,9 @@ import pytest
 from mock.mock import Mock
 from rohmu.errors import Error
 
+from pghoard import metrics
 from pghoard.common import (
-    TAR_METADATA_FILENAME, create_pgpass_file, default_json_serialization, download_backup_meta_file,
+    TAR_METADATA_FILENAME, PersistedProgress, create_pgpass_file, default_json_serialization, download_backup_meta_file,
     extract_pg_command_version_string, extract_pghoard_bb_v2_metadata, extract_pghoard_delta_metadata, json_encode,
     pg_major_version, pg_version_string_to_number, write_json_file
 )
@@ -87,6 +88,55 @@ class TestCommon(PGHoardTestCase):
         ob2_ = json.loads(output_data)
 
         assert ob2 == ob2_
+
+    def test_persisted_progress(self, mocker, tmp_path):
+        test_progress_file = tmp_path / "test_progress.json"
+        original_time = 1625072042.123456
+        test_data = {
+            "progress": {
+                "0af668268d0fe14c6e269760b08d80a634c421b8381df25f31fbed5e8a8c8d8b": {
+                    "current_progress": 100,
+                    "last_updated_time": original_time
+                }
+            }
+        }
+
+        with open(test_progress_file, "w") as file:
+            json.dump(test_data, file)
+
+        mocker.patch("pghoard.common.PROGRESS_FILE", test_progress_file)
+        persisted_progress = PersistedProgress.read(metrics=metrics.Metrics(statsd={}))
+        assert "0af668268d0fe14c6e269760b08d80a634c421b8381df25f31fbed5e8a8c8d8b" in persisted_progress.progress
+        assert persisted_progress.progress["0af668268d0fe14c6e269760b08d80a634c421b8381df25f31fbed5e8a8c8d8b"
+                                           ].current_progress == 100
+        assert persisted_progress.progress["0af668268d0fe14c6e269760b08d80a634c421b8381df25f31fbed5e8a8c8d8b"
+                                           ].last_updated_time == 1625072042.123456
+
+        new_progress = 200
+        progress_info = persisted_progress.get("0af668268d0fe14c6e269760b08d80a634c421b8381df25f31fbed5e8a8c8d8b")
+        progress_info.update(new_progress)
+        persisted_progress.write(metrics=metrics.Metrics(statsd={}))
+
+        updated_progress = PersistedProgress.read(metrics=metrics.Metrics(statsd={}))
+        assert updated_progress.progress["0af668268d0fe14c6e269760b08d80a634c421b8381df25f31fbed5e8a8c8d8b"
+                                         ].current_progress == new_progress
+        assert updated_progress.progress["0af668268d0fe14c6e269760b08d80a634c421b8381df25f31fbed5e8a8c8d8b"
+                                         ].last_updated_time > original_time
+
+    def test_default_persisted_progress_creation(self, mocker, tmp_path):
+        tmp_file = tmp_path / "non_existent_progress.json"
+        assert not tmp_file.exists()
+
+        mocker.patch("pghoard.common.PROGRESS_FILE", str(tmp_file))
+        persisted_progress = PersistedProgress.read(metrics=metrics.Metrics(statsd={}))
+
+        assert persisted_progress.progress == {}
+        persisted_progress.write(metrics=metrics.Metrics(statsd={}))
+
+        assert tmp_file.exists()
+        with open(tmp_file, "r") as file:
+            data = json.load(file)
+            assert data == {"progress": {}}
 
 
 def test_pg_major_version():

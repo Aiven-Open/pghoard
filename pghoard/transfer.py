@@ -25,7 +25,7 @@ from rohmu.object_storage.base import BaseTransfer
 from rohmu.typing import Metadata
 
 from pghoard.common import (
-    CallbackEvent, CallbackQueue, FileType, PGHoardThread, Queue, QuitEvent, StrEnum, create_alert_file,
+    CallbackEvent, CallbackQueue, FileType, PersistedProgress, PGHoardThread, Queue, QuitEvent, StrEnum, create_alert_file,
     get_object_storage_config
 )
 from pghoard.fetcher import FileFetchManager
@@ -147,14 +147,33 @@ class UploadEventProgressTracker(PGHoardThread):
 
     def increment(self, file_key: str, total_bytes_uploaded: float) -> None:
         metric_data = {}
+        persisted_progress = PersistedProgress.read(metrics=self.metrics)
+
         with self._tracked_events_lock:
             if file_key not in self._tracked_events:
                 raise Exception(f"UploadEvent for {file_key} is not being tracked.")
 
             file_type = self._tracked_events[file_key].file_type
             if file_type in (
-                FileType.Basebackup, FileType.Basebackup_chunk, FileType.Basebackup_delta, FileType.Basebackup_delta_chunk
+                FileType.Basebackup,
+                FileType.Basebackup_chunk,
+                FileType.Basebackup_delta,
+                FileType.Basebackup_delta_chunk,
             ):
+                progress_info = persisted_progress.get(file_key)
+                if total_bytes_uploaded > progress_info.current_progress:
+                    progress_info.update(total_bytes_uploaded)
+                    persisted_progress.write(metrics=self.metrics)
+                    self.metrics.gauge("pghoard.seconds_since_backup_progress_stalled", 0)
+                else:
+                    stalled_age = progress_info.age
+                    self.metrics.gauge("pghoard.seconds_since_backup_progress_stalled", stalled_age)
+                    if stalled_age >= 600:
+                        self.log.warning(
+                            "Upload for file %s has been stalled for %s seconds.",
+                            file_key,
+                            stalled_age,
+                        )
                 metric_data = {
                     "metric": "pghoard.basebackup_bytes_uploaded",
                     "inc_value": total_bytes_uploaded,
@@ -410,6 +429,13 @@ class TransferAgent(PGHoardThread):
                 time.monotonic() - start_time
             )
 
+            if file_to_transfer.operation in {TransferOperation.Upload} and filetype in (
+                FileType.Basebackup, FileType.Basebackup_chunk, FileType.Basebackup_delta, FileType.Basebackup_delta_chunk
+            ):
+                if result.success:
+                    persisted_progress = PersistedProgress.read(metrics=self.metrics)
+                    persisted_progress.reset(key, metrics=self.metrics)
+
         self.fetch_manager.stop()
         self.log.debug("Quitting TransferAgent")
 
@@ -513,6 +539,10 @@ class TransferAgent(PGHoardThread):
 
             # Sleep for a bit to avoid busy looping. Increase sleep time if the op fails multiple times
             self.sleep(min(0.5 * 2 ** (file_to_transfer.retry_number - 1), 20))
-
+            if file_to_transfer.file_type in (
+                FileType.Basebackup, FileType.Basebackup_chunk, FileType.Basebackup_delta, FileType.Basebackup_delta_chunk
+            ) and file_to_transfer.retry_number < 2:
+                persisted_progress = PersistedProgress.read(metrics=self.metrics)
+                persisted_progress.reset(key, metrics=self.metrics)
             self.transfer_queue.put(file_to_transfer)
             return None

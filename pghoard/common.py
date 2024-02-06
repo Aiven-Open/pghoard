@@ -15,6 +15,7 @@ import platform
 import re
 import tarfile
 import tempfile
+import threading
 import time
 from contextlib import suppress
 from dataclasses import dataclass, field
@@ -24,13 +25,16 @@ from queue import Queue
 from threading import Thread
 from typing import (TYPE_CHECKING, Any, BinaryIO, Callable, Dict, Final, Optional, Protocol, Tuple, cast)
 
+from pydantic import BaseModel, Field
 from rohmu import IO_BLOCK_SIZE, BaseTransfer, rohmufile
 from rohmu.errors import Error, InvalidConfigurationError
 from rohmu.typing import FileLike, HasName
 
 from pghoard import pgutil
+from pghoard.metrics import Metrics
 
 TAR_METADATA_FILENAME: Final[str] = ".pghoard_tar_metadata.json"
+PROGRESS_FILE: Final[str] = "persisted_progress_file.json"
 
 LOG = logging.getLogger("pghoard.common")
 
@@ -98,6 +102,71 @@ class BaseBackupMode(StrEnum):
     local_tar = "local-tar"
     local_tar_delta_stats = "local-tar-delta-stats"
     pipe = "pipe"
+
+
+class ProgressData(BaseModel):
+    current_progress: float = 0
+    last_updated_time: float = 0
+
+    @property
+    def age(self) -> float:
+        return time.time() - self.last_updated_time
+
+    def update(self, current_progress: float) -> None:
+        self.current_progress = current_progress
+        self.last_updated_time = time.time()
+
+
+def atomic_write(file_path: str, data: str, temp_dir: Optional[str] = None):
+    temp_dir = temp_dir or os.path.dirname(file_path)
+    temp_file = None
+    try:
+        with tempfile.NamedTemporaryFile("w", delete=False, dir=temp_dir) as temp_file:
+            temp_file.write(data)
+            temp_path = temp_file.name
+        os.rename(temp_path, file_path)
+    except Exception as ex:  # pylint: disable=broad-except
+        LOG.exception("Failed to write file atomically: %r", ex)
+        if temp_file:
+            with suppress(FileNotFoundError):
+                os.unlink(temp_file.name)
+
+
+class PersistedProgress(BaseModel):
+    progress: Dict[str, ProgressData] = Field(default_factory=dict)
+    _lock: threading.Lock = threading.Lock()
+
+    @classmethod
+    def read(cls, metrics: Metrics) -> "PersistedProgress":
+        if os.path.exists(PROGRESS_FILE):
+            with open(PROGRESS_FILE, "r") as file:
+                try:
+                    return cls.parse_raw(file.read())
+                except Exception as ex:  # pylint: disable=broad-except
+                    LOG.exception("Failed to read persisted progress file: %r", ex)
+                    metrics.unexpected_exception(ex, where="read_persisted_progress")
+        return cls()
+
+    def write(self, metrics: Metrics):
+        with self._lock:
+            try:
+                data = self.json()
+                atomic_write(PROGRESS_FILE, data)
+            except Exception as ex:  # pylint: disable=broad-except
+                metrics.unexpected_exception(ex, where="write_persisted_progress")
+
+    def get(self, key: str) -> ProgressData:
+        self.progress.setdefault(key, ProgressData())
+        return self.progress[key]
+
+    def reset(self, key: str, metrics: Metrics) -> None:
+        if key in self.progress:
+            del self.progress[key]
+            self.write(metrics=metrics)
+
+    def reset_all(self, metrics: Metrics) -> None:
+        self.progress = {}
+        self.write(metrics=metrics)
 
 
 def create_pgpass_file(connection_string_or_info):
