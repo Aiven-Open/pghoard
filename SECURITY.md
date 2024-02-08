@@ -12,7 +12,7 @@ receiving such patches depend on the CVSS v3.0 Rating:
 ## Reporting a Vulnerability
 
 Please report (suspected) security vulnerabilities to our **[bug bounty
-program](https://hackerone.com/aiven_ltd)**. You will receive a response from
+program](https://bugcrowd.com/aiven-mbb-og)**. You will receive a response from
 us within 2 working days. If the issue is confirmed, we will release a patch as
 soon as possible depending on impact and complexity.
 
