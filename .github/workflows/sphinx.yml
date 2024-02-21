@@ -27,11 +27,11 @@ jobs:
           path: gh-pages
           ref: gh-pages
 
-      - name: "Setup Python & Install Sphinx"
+      - name: "Setup Python"
         uses: actions/setup-python@v4
 
       - name: "Install Sphinx & Theme"
-        run: pip install sphinx==4.5.0 sphinx-rtd-theme==1.0.0
+        run: pip install sphinx==7.2.6 sphinx-rtd-theme==2.0.0
 
       - name: "Run Sphinx"
         run: sphinx-build -b html main/docs gh-pages -E -d $GITHUB_WORKSPACE/.doctree
