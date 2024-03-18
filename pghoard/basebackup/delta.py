@@ -18,7 +18,10 @@ from typing import (AbstractSet, Any, Callable, Dict, Iterable, List, Protocol, 
 
 from rohmu import BaseTransfer, rohmufile
 from rohmu.dates import now
-from rohmu.delta.common import (BackupManifest, BackupPath, SnapshotFile, SnapshotHash, SnapshotResult, SnapshotUploadResult)
+from rohmu.delta.common import (
+    BackupManifest, BackupPath, ProgressMetrics, ProgressStep, SnapshotFile, SnapshotHash, SnapshotResult,
+    SnapshotUploadResult
+)
 from rohmu.delta.snapshot import Snapshotter
 from rohmu.errors import FileNotFoundFromStorageError
 from rohmu.typing import HasRead, HasSeek
@@ -26,7 +29,7 @@ from rohmu.typing import HasRead, HasSeek
 from pghoard.basebackup.chunks import ChunkUploader
 from pghoard.common import (
     BackupFailure, BaseBackupFormat, CallbackQueue, CompressionData, EncryptionData, FileLikeWithName, FileType,
-    FileTypePrefixes, download_backup_meta_file, extract_pghoard_delta_metadata
+    FileTypePrefixes, PersistedProgress, download_backup_meta_file, extract_pghoard_delta_metadata
 )
 from pghoard.metrics import Metrics
 from pghoard.transfer import TransferQueue, UploadEvent
@@ -45,6 +48,8 @@ class HasReadAndSeek(HasRead, HasSeek, Protocol):
 
 FilesChunk = Set[Tuple]
 SnapshotFiles = Dict[str, SnapshotFile]
+PROGRESS_CHECK_INTERVAL = 10
+STALLED_PROGRESS_THRESHOLD = 600
 
 EMPTY_FILE_HASH = hashlib.blake2s().hexdigest()
 
@@ -73,9 +78,33 @@ class DeltaBaseBackup:
         self.tracked_snapshot_files: SnapshotFiles = self._list_existing_files()
         self.chunk_uploader = chunk_uploader
         self.data_file_format = data_file_format
+        self.last_flush_time: float = 0
 
     def _snapshot(self, snapshotter: Snapshotter) -> SnapshotResult:
-        snapshotter.snapshot(reuse_old_snapshotfiles=False)
+        def progress_callback(progress_step: ProgressStep, progress_data: ProgressMetrics):
+            key = "snapshot_progress"
+            elapsed: float = time.monotonic() - self.last_flush_time
+            if elapsed > PROGRESS_CHECK_INTERVAL:
+                persisted_progress = PersistedProgress.read(self.metrics)
+                progress_info = persisted_progress.get(key)
+                tags: dict = {"phase": progress_step.value}
+
+                if progress_data["handled"] > progress_info.current_progress:
+                    progress_info.update(progress_data["handled"])
+                    persisted_progress.write(self.metrics)
+                    self.last_flush_time = time.monotonic()
+                    self.metrics.gauge("pghoard.seconds_since_backup_progress_stalled", 0, tags=tags)
+                else:
+                    stalled_age = progress_info.age
+                    self.metrics.gauge("pghoard.seconds_since_backup_progress_stalled", stalled_age, tags=tags)
+
+                    if stalled_age >= STALLED_PROGRESS_THRESHOLD:
+                        self.log.warning(
+                            "Snapshot progress for %s has been stalled for %s seconds.", progress_step, stalled_age
+                        )
+
+        self.last_flush_time = time.monotonic()
+        snapshotter.snapshot(reuse_old_snapshotfiles=False, progress_callback=progress_callback)
         snapshot_result = SnapshotResult(end=None, state=None, hashes=None)
         snapshot_result.state = snapshotter.get_snapshot_state()
         snapshot_result.hashes = [

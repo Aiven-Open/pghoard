@@ -15,7 +15,7 @@ from _pytest.logging import LogCaptureFixture
 from rohmu.errors import FileNotFoundFromStorageError, StorageError
 
 from pghoard import metrics
-from pghoard.common import CallbackEvent, CallbackQueue, FileType, QuitEvent
+from pghoard.common import (CallbackEvent, CallbackQueue, FileType, PersistedProgress, QuitEvent)
 from pghoard.transfer import (BaseTransferEvent, DownloadEvent, TransferAgent, UploadEvent, UploadEventProgressTracker)
 
 # pylint: disable=attribute-defined-outside-init
@@ -316,3 +316,27 @@ class TestTransferAgent(PGHoardTestCase):
             evt = self.transfer_agent.handle_metadata(self.test_site, "foo", "bar")
             assert evt.success is False
             assert isinstance(evt.exception, Exception)
+
+    def test_handle_upload_with_persisted_progress(self, mocker, tmp_path):
+
+        temp_progress_file = tmp_path / "test_progress.json"
+        assert not temp_progress_file.exists()
+
+        mocker.patch("pghoard.common.PROGRESS_FILE", temp_progress_file)
+        upload_event = UploadEvent(
+            backup_site_name="test_site",
+            file_type=FileType.Basebackup,
+            file_path=Path(self.foo_basebackup_path),
+            source_data=Path(self.foo_basebackup_path),
+            metadata={},
+            file_size=3,
+            callback_queue=CallbackQueue(),
+            remove_after_upload=True
+        )
+
+        self.transfer_agent.handle_upload("test_site", self.foo_basebackup_path, upload_event)
+        updated_progress = PersistedProgress.read(metrics=metrics.Metrics(statsd={}))
+        assert temp_progress_file.exists()
+        assert updated_progress.progress[self.foo_basebackup_path].current_progress == 3
+        if temp_progress_file.exists():
+            temp_progress_file.unlink()

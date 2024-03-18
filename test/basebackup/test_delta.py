@@ -442,22 +442,39 @@ def test_upload_single_delta_files_progress(
     delta_hashes = {file_hash for _, file_hash in delta_files}
 
     with patch.object(deltabasebackup, "_delta_upload_hexdigest") as mock_delta_upload_hexdigest, \
-            patch.object(deltabasebackup, "metrics") as mock_metrics,  \
+            patch.object(deltabasebackup, "metrics") as mock_metrics, \
             patch.object(snapshotter, "update_snapshot_file_data"):
         mock_delta_upload_hexdigest.side_effect = [(200, 10, file_hash, True) for file_hash in delta_hashes]
         with snapshotter.lock:
-            deltabasebackup._snapshot(snapshotter=snapshotter)  # pylint: disable=protected-access
-            deltabasebackup._upload_single_delta_files(  # pylint: disable=protected-access
-                todo_hexdigests=delta_hashes, snapshotter=snapshotter, progress=initial_progress
-            )
-            expected_calls = [
-                mock.call(
-                    "pghoard.basebackup_estimated_progress",
-                    initial_progress + (idx + 1) * (100 - initial_progress) / files_count,
-                    tags={"site": "delta"}
-                ) for idx in range(files_count)
-            ]
-            assert mock_metrics.gauge.mock_calls == expected_calls
+            with patch("pghoard.basebackup.delta.PROGRESS_CHECK_INTERVAL", new=1):
+                deltabasebackup._snapshot(snapshotter=snapshotter)  # pylint: disable=protected-access
+                deltabasebackup._upload_single_delta_files(  # pylint: disable=protected-access
+                    todo_hexdigests=delta_hashes, snapshotter=snapshotter, progress=initial_progress
+                )
+                expected_calls = [
+                    mock.call(
+                        "pghoard.seconds_since_backup_progress_stalled", 0, tags={"phase": "creating_missing_directories"}
+                    ),
+                    mock.call("pghoard.seconds_since_backup_progress_stalled", 0, tags={"phase": "adding_missing_files"}),
+                ]
+
+                expected_calls += [
+                    mock.call(
+                        "pghoard.seconds_since_backup_progress_stalled",
+                        0,
+                        tags={"phase": "processing_and_hashing_snapshot_files"}
+                    ) for _ in range(files_count)
+                ]
+
+                expected_calls = [
+                    mock.call(
+                        "pghoard.basebackup_estimated_progress",
+                        initial_progress + (idx + 1) * (100 - initial_progress) / files_count,
+                        tags={"site": "delta"}
+                    ) for idx in range(files_count)
+                ]
+
+                assert mock_metrics.gauge.mock_calls == expected_calls
 
 
 def test_upload_single_delta_files(

@@ -30,7 +30,7 @@ from pghoard.basebackup.chunks import ChunkUploader, DeltaStats
 from pghoard.basebackup.delta import DeltaBaseBackup
 from pghoard.common import (
     TAR_METADATA_FILENAME, BackupFailure, BaseBackupFormat, BaseBackupMode, CallbackEvent, CompressionData, EncryptionData,
-    FileType, NoException, PGHoardThread, connection_string_using_pgpass, download_backup_meta_file,
+    FileType, NoException, PersistedProgress, PGHoardThread, connection_string_using_pgpass, download_backup_meta_file,
     extract_pghoard_bb_v2_metadata, replication_connection_string_and_slot_using_pgpass, set_stream_nonblocking,
     set_subprocess_stdout_and_stderr_nonblocking, terminate_subprocess
 )
@@ -564,6 +564,8 @@ class PGBaseBackup(PGHoardThread):
                 db_conn.commit()
 
                 self.log.info("Starting to backup %r and %r tablespaces to %r", pgdata, len(tablespaces), compressed_base)
+                progress_instance = PersistedProgress()
+                progress_instance.reset_all(metrics=self.metrics)
                 start_time = time.monotonic()
 
                 if delta:
