@@ -227,8 +227,8 @@ After this you need to create a suitable JSON configuration file for your
 installation.
 
 0.  Make sure PostgreSQL is configured to allow WAL archival and retrieval.
-    ``postgresql.conf`` should have ``wal_level`` set to ``archive`` or
-    higher and ``max_wal_senders`` set to at least ``1`` (``archive_command`` mode)
+    ``postgresql.conf`` should have ``wal_level`` set to ``replica`` or
+    ``logical`` and ``max_wal_senders`` set to at least ``1`` (``archive_command`` mode)
     or at least ``2`` (``pg_receivexlog`` and ``walreceiver`` modes), for example::
 
         wal_level = archive
