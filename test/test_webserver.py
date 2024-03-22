@@ -8,7 +8,9 @@ import json
 import logging
 import os
 import socket
+import threading
 import time
+from collections import deque
 from distutils.version import LooseVersion
 from http.client import HTTPConnection
 from queue import Queue
@@ -20,11 +22,12 @@ from rohmu.encryptor import Encryptor
 
 from pghoard import postgres_command, wal
 from pghoard.archive_sync import ArchiveSync
-from pghoard.common import get_pg_wal_directory
+from pghoard.common import CallbackEvent, get_pg_wal_directory
 from pghoard.object_store import HTTPRestore
 from pghoard.pgutil import create_connection_string
 from pghoard.postgres_command import archive_command, restore_command
 from pghoard.restore import Restore
+from pghoard.webserver import DownloadResultsProcessor, PendingDownloadOp
 
 # pylint: disable=attribute-defined-outside-init
 from .base import CONSTANT_TEST_RSA_PRIVATE_KEY, CONSTANT_TEST_RSA_PUBLIC_KEY
@@ -770,3 +773,62 @@ class TestWebServer:
         conn.request("GET", wal_file, headers=headers)
         status = conn.getresponse().status
         assert status == 400
+
+
+@pytest.fixture(name="download_results_processor")
+def fixture_download_results_processor() -> DownloadResultsProcessor:
+    return DownloadResultsProcessor(threading.RLock(), Queue(), {}, deque())
+
+
+class TestDownloadResultsProcessor:
+    wal_name = "000000060000000000000001"
+
+    def save_wal_and_download_callback(self, pg_wal_dir, download_results_processor, wal_name=None, is_valid_wal=True):
+        if wal_name is None:
+            wal_name = self.wal_name
+        tmp_path = os.path.join(pg_wal_dir, f"{wal_name}.pghoard.tmp")
+        target_path = os.path.join(pg_wal_dir, f"{wal_name}.pghoard.prefetch")
+        assert not os.path.exists(tmp_path)
+        assert not os.path.exists(target_path)
+
+        # save WAL on FS
+        if is_valid_wal:
+            wal_data = wal_header_for_file(wal_name)
+        else:
+            another_wal_name = "000000DD00000000000000DD"
+            assert wal_name != another_wal_name
+            wal_data = wal_header_for_file(another_wal_name)
+        with open(tmp_path, "wb") as out_file:
+            out_file.write(wal_data)
+
+        download_result = CallbackEvent(success=True, payload={"target_path": tmp_path}, opaque=wal_name)
+        pending_op = PendingDownloadOp(
+            started_at=time.monotonic(), target_path=target_path, filetype="xlog", filename=wal_name
+        )
+        download_results_processor.pending_download_ops[wal_name] = pending_op
+        return tmp_path, target_path, download_result
+
+    @pytest.mark.parametrize("empty_pending_download_ops", [True, False])
+    @pytest.mark.parametrize("is_valid_wal", [True, False])
+    def test_rename_wal(self, download_results_processor, tmpdir, is_valid_wal, empty_pending_download_ops):
+        tmp_path, target_path, download_result_item = self.save_wal_and_download_callback(
+            tmpdir, download_results_processor, is_valid_wal=is_valid_wal
+        )
+        if empty_pending_download_ops:
+            download_results_processor.pending_download_ops = {}
+        download_results_processor.process_queue_item(download_result_item)
+        assert os.path.exists(target_path) is (is_valid_wal and not empty_pending_download_ops)
+        assert not os.path.exists(tmp_path)
+
+    def test_dont_overwrite_existing_target_file(self, download_results_processor, tmpdir):
+        tmp_path, target_path, download_result_item = self.save_wal_and_download_callback(tmpdir, download_results_processor)
+        existing_file_data = b"-"
+        with open(target_path, "wb") as out_file:
+            out_file.write(existing_file_data)
+        assert os.path.exists(target_path)
+        assert os.path.exists(tmp_path)
+
+        download_results_processor.process_queue_item(download_result_item)
+        assert os.path.exists(target_path)
+        assert open(target_path, "rb").read() == existing_file_data
+        assert os.path.exists(tmp_path)

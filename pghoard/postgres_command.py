@@ -72,6 +72,11 @@ def restore_command(site, xlog, output, host=PGHOARD_HOST, port=PGHOARD_PORT, re
         # directory.  Note that os.path.join strips preceding components if a new components starts with a
         # slash so it's still possible to use this with absolute paths.
         output_path = os.path.join(os.getcwd(), output)
+        # if file "<xlog>.pghoard.prefetch" exists, just move it to destination
+        prefetch_path = os.path.join(os.path.dirname(output_path), xlog + ".pghoard.prefetch")
+        if os.path.exists(prefetch_path):
+            os.rename(prefetch_path, output_path)
+            return
         headers = {"x-pghoard-target-path": output_path}
         method = "GET"
     path = "/{}/archive/{}".format(site, xlog)
