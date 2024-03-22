@@ -448,8 +448,8 @@ class UnhandledThreadException(Exception):
 
 
 class PGHoardThread(Thread):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, name: Optional[str] = None):
+        super().__init__(name=name)
         self.exception: Optional[Exception] = None
 
     def run_safe(self):
