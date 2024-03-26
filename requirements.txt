@@ -1,5 +1,0 @@
-psycopg2
-pydantic
-python-systemd
-requests
-rohmu >= 1.0.7
