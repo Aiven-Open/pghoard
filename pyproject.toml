@@ -66,7 +66,7 @@ dev = [
     "types-requests",
     "types-six",
 ]
-contraints = [
+constraints = [
     "astroid==2.5.8",
     "attrs==22.2.0",
     "azure-core==1.26.3",
@@ -77,7 +77,7 @@ contraints = [
     "botocore-stubs==1.29.96",
     "cachetools==5.3.0",
     "certifi==2022.12.7",
-    "cffi==1.15.1",
+    "cffi==1.16.0",
     "charset-normalizer==3.1.0",
     "coverage==6.5.0",
     "coveralls==3.3.1",
@@ -107,11 +107,10 @@ contraints = [
     "paramiko==3.1.0",
     "pluggy==1.0.0",
     "protobuf==4.22.1",
-    "psycopg2==2.9.5",
     "pyasn1==0.4.8",
     "pyasn1-modules==0.2.8",
     "pycparser==2.21",
-    "pydantic==1.10.6",
+    "pydantic==1.10.14",
     "pylint==2.7.2",
     "pylint-quotes==0.2.1",
     "PyNaCl==1.5.0",
@@ -122,12 +121,11 @@ contraints = [
     "pytest-timeout==2.1.0",
     "pytest-xdist==3.2.1",
     "python-dateutil==2.8.2",
-    "python-snappy==0.6.1",
+    "python-snappy==0.7.1",
     "python-systemd==0.0.9",
-    "PyYAML==6.0",
     "requests==2.28.2",
     "responses==0.23.1",
-    "rohmu==1.0.10",
+    "rohmu==2.3.0",
     "rsa==4.9",
     "s3transfer==0.6.0",
     "six==1.16.0",
@@ -151,7 +149,7 @@ contraints = [
     "urllib3==1.26.15",
     "wrapt==1.12.1",
     "yapf==0.30.0",
-    "zstandard==0.20.0",
+    "zstandard==0.22.0",
 ]
 
 [project.urls]
