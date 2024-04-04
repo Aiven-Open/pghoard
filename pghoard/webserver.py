@@ -107,6 +107,7 @@ class WebServer(PGHoardThread):
         self.server.prefetch_404 = deque(maxlen=32)  # pylint: disable=attribute-defined-outside-init
         self.server.metrics = self.metrics  # pylint: disable=attribute-defined-outside-init
         self.is_initialized.set()
+        self.log.debug("WebServer is running")
         self.server.serve_forever()
 
     def close(self):
