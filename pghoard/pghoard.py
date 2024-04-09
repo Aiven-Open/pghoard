@@ -34,7 +34,7 @@ from rohmu.inotify import InotifyWatcher
 from pghoard import config, logutil, metrics, version, wal
 from pghoard.basebackup.base import PGBaseBackup
 from pghoard.common import (
-    BaseBackupFormat, BaseBackupMode, CallbackEvent, FileType, FileTypePrefixes, create_alert_file,
+    BackupReason, BaseBackupFormat, BaseBackupMode, CallbackEvent, FileType, FileTypePrefixes, create_alert_file,
     download_backup_meta_file, extract_pghoard_bb_v2_metadata, extract_pghoard_delta_metadata, get_object_storage_config,
     replication_connection_string_and_slot_using_pgpass, write_json_file
 )
@@ -481,7 +481,7 @@ class PGHoard:
             metadata["backup-decision-time"] = metadata["start-time"]
         # Backups are usually scheduled
         if "backup-reason" not in metadata:
-            metadata["backup-reason"] = "scheduled"
+            metadata["backup-reason"] = BackupReason.scheduled
         # Calculate normalized backup time based on start time if missing
         if "normalized-backup-time" not in metadata:
             metadata["normalized-backup-time"] = self.get_normalized_backup_time(site_config, now=metadata["start-time"])
@@ -815,17 +815,19 @@ class PGHoard:
         if site in self.requested_basebackup_sites:
             self.log.info("Creating a new basebackup for %r due to request", site)
             self.requested_basebackup_sites.discard(site)
-            backup_reason = "requested"
+            backup_reason = BackupReason.requested
         elif site_config["basebackup_interval_hours"] is None:
             # Basebackups are disabled for this site (but they can still be requested over the API.)
             pass
         elif not basebackups:
             self.log.info("Creating a new basebackup for %r because there are currently none", site)
-            backup_reason = "scheduled"
+            backup_reason = BackupReason.scheduled
         elif backup_hour is not None and backup_minute is not None:
             most_recent_scheduled = None
             last_normalized_backup_time = basebackups[-1]["metadata"]["normalized-backup-time"]
-            scheduled_backups = [backup for backup in basebackups if backup["metadata"]["backup-reason"] == "scheduled"]
+            scheduled_backups = [
+                backup for backup in basebackups if backup["metadata"]["backup-reason"] == BackupReason.scheduled
+            ]
             if scheduled_backups:
                 most_recent_scheduled = scheduled_backups[-1]["metadata"]["backup-decision-time"]
 
@@ -841,7 +843,7 @@ class PGHoard:
                     "Normalized backup time %r differs from previous %r, creating new basebackup", normalized_backup_time,
                     last_normalized_backup_time
                 )
-                backup_reason = "scheduled"
+                backup_reason = BackupReason.scheduled
         elif backup_hour is not None and backup_minute is None:
             self.log.warning("Ignoring basebackup_hour as basebackup_minute is not defined")
         else:
@@ -852,7 +854,7 @@ class PGHoard:
                 self.log.info(
                     "Creating a new basebackup for %r by schedule (%s from previous)", site, delta_since_last_backup
                 )
-                backup_reason = "scheduled"
+                backup_reason = BackupReason.scheduled
 
         if not backup_reason:
             return None

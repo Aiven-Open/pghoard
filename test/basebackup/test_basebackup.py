@@ -23,7 +23,7 @@ from rohmu import dates, get_transfer
 
 from pghoard import common, metrics
 from pghoard.basebackup.base import PGBaseBackup
-from pghoard.common import (BaseBackupFormat, BaseBackupMode, CallbackEvent, CallbackQueue)
+from pghoard.common import (BackupReason, BaseBackupFormat, BaseBackupMode, CallbackEvent, CallbackQueue)
 from pghoard.restore import Restore, RestoreError
 
 from ..conftest import PGHoardForTest, PGTester
@@ -240,7 +240,7 @@ LABEL: pg_basebackup base backup
 
         now = datetime.datetime.now(datetime.timezone.utc)
         metadata = {
-            "backup-reason": "scheduled",
+            "backup-reason": BackupReason.scheduled,
             "backup-decision-time": now.isoformat(),
             "normalized-backup-time": now.isoformat(),
         }
@@ -276,7 +276,7 @@ LABEL: pg_basebackup base backup
         assert "start-wal-segment" in last_backup["metadata"]
         assert "start-time" in last_backup["metadata"]
         assert dateutil.parser.parse(last_backup["metadata"]["start-time"]).tzinfo  # pylint: disable=no-member
-        assert last_backup["metadata"]["backup-reason"] == "scheduled"
+        assert last_backup["metadata"]["backup-reason"] == BackupReason.scheduled
         assert last_backup["metadata"]["backup-decision-time"] == now.isoformat()
         assert last_backup["metadata"]["normalized-backup-time"] == now.isoformat()
         if mode in {BaseBackupMode.local_tar, BaseBackupMode.delta}:
@@ -672,7 +672,7 @@ LABEL: pg_basebackup base backup
         pghoard.handle_site(pghoard.test_site, site_config)
         assert pghoard.test_site not in pghoard.basebackups
         first_basebackups = pghoard.state["backup_sites"][pghoard.test_site]["basebackups"]
-        assert first_basebackups[0]["metadata"]["backup-reason"] == "scheduled"
+        assert first_basebackups[0]["metadata"]["backup-reason"] == BackupReason.scheduled
         assert first_basebackups[0]["metadata"]["backup-decision-time"]
         assert first_basebackups[0]["metadata"]["normalized-backup-time"] is None
         first_time_of_check = pghoard.time_of_last_backup_check[pghoard.test_site]
@@ -725,7 +725,7 @@ LABEL: pg_basebackup base backup
         # No backups, one should be created. No backup schedule defined so normalized backup time is None
         metadata = pghoard.get_new_backup_details(now=now, site=pghoard.test_site, site_config=site_config)
         assert metadata
-        assert metadata["backup-reason"] == "scheduled"
+        assert metadata["backup-reason"] == BackupReason.scheduled
         assert metadata["backup-decision-time"] == now.isoformat()
         assert metadata["normalized-backup-time"] is None
 
@@ -734,7 +734,7 @@ LABEL: pg_basebackup base backup
         site_config["basebackup_minute"] = 10
         metadata = pghoard.get_new_backup_details(now=now, site=pghoard.test_site, site_config=site_config)
         assert metadata
-        assert metadata["backup-reason"] == "scheduled"
+        assert metadata["backup-reason"] == BackupReason.scheduled
         assert metadata["backup-decision-time"] == now.isoformat()
         assert "T13:10:00+00:00" in metadata["normalized-backup-time"]
 
@@ -742,7 +742,7 @@ LABEL: pg_basebackup base backup
         site_config["basebackup_interval_hours"] = 1.5
         metadata = pghoard.get_new_backup_details(now=now, site=pghoard.test_site, site_config=site_config)
         assert metadata
-        assert metadata["backup-reason"] == "scheduled"
+        assert metadata["backup-reason"] == BackupReason.scheduled
         assert metadata["backup-decision-time"] == now.isoformat()
         assert "T14:40:00+00:00" in metadata["normalized-backup-time"]
 
@@ -750,7 +750,7 @@ LABEL: pg_basebackup base backup
             "metadata": {
                 "start-time": now - datetime.timedelta(hours=1),
                 "backup-decision-time": now - datetime.timedelta(hours=1),
-                "backup-reason": "scheduled",
+                "backup-reason": BackupReason.scheduled,
                 "normalized-backup-time": metadata["normalized-backup-time"],
             },
             "name": "name01",
@@ -763,7 +763,7 @@ LABEL: pg_basebackup base backup
         now2 = now + datetime.timedelta(hours=1)
         metadata = pghoard.get_new_backup_details(now=now2, site=pghoard.test_site, site_config=site_config)
         assert metadata
-        assert metadata["backup-reason"] == "scheduled"
+        assert metadata["backup-reason"] == BackupReason.scheduled
         assert metadata["backup-decision-time"] == now2.isoformat()
         assert "T16:10:00+00:00" in metadata["normalized-backup-time"]
 
@@ -779,7 +779,7 @@ LABEL: pg_basebackup base backup
         now3 = now + datetime.timedelta(hours=7)
         metadata = pghoard.get_new_backup_details(now=now3, site=pghoard.test_site, site_config=site_config)
         assert metadata
-        assert metadata["backup-reason"] == "scheduled"
+        assert metadata["backup-reason"] == BackupReason.scheduled
         assert metadata["backup-decision-time"] == now3.isoformat()
         assert "T14:50:00+00:00" in metadata["normalized-backup-time"]
 
@@ -789,7 +789,7 @@ LABEL: pg_basebackup base backup
             "metadata": {
                 "start-time": now3 - datetime.timedelta(hours=1),
                 "backup-decision-time": now - datetime.timedelta(hours=1),
-                "backup-reason": "requested",
+                "backup-reason": BackupReason.requested,
                 "normalized-backup-time": metadata["normalized-backup-time"] + "different",
             },
             "name": "name02",
@@ -807,7 +807,7 @@ LABEL: pg_basebackup base backup
         pghoard.requested_basebackup_sites.add(site)
         metadata2 = pghoard.get_new_backup_details(now=now3, site=pghoard.test_site, site_config=site_config)
         assert metadata2
-        assert metadata2["backup-reason"] == "requested"
+        assert metadata2["backup-reason"] == BackupReason.requested
         assert metadata2["backup-decision-time"] == now3.isoformat()
         assert metadata2["normalized-backup-time"] == metadata["normalized-backup-time"]
 
@@ -827,7 +827,7 @@ LABEL: pg_basebackup base backup
         pghoard.patch_basebackup_info(entry=entry, site_config=site_config)
         assert entry["name"] == "bar"
         assert entry["metadata"]["start-time"] == now
-        assert entry["metadata"]["backup-reason"] == "scheduled"
+        assert entry["metadata"]["backup-reason"] == BackupReason.scheduled
         assert entry["metadata"]["backup-decision-time"] == now
         assert isinstance(entry["metadata"]["normalized-backup-time"], str)
 
@@ -836,14 +836,14 @@ LABEL: pg_basebackup base backup
             "metadata": {
                 "start-time": now.isoformat(),
                 "backup-decision-time": (now - datetime.timedelta(seconds=30)).isoformat(),
-                "backup-reason": "requested",
+                "backup-reason": BackupReason.requested,
                 "normalized-backup-time": None,
             }
         }
         pghoard.patch_basebackup_info(entry=entry, site_config=site_config)
         assert entry["name"] == "bar"
         assert entry["metadata"]["start-time"] == now
-        assert entry["metadata"]["backup-reason"] == "requested"
+        assert entry["metadata"]["backup-reason"] == BackupReason.requested
         assert entry["metadata"]["backup-decision-time"] == now - datetime.timedelta(seconds=30)
         assert entry["metadata"]["normalized-backup-time"] is None
 
