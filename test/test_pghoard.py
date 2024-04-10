@@ -900,6 +900,7 @@ class TestPGHoardWithPG:
         os.makedirs(wal_directory, exist_ok=True)
 
         pghoard.receivexlog_listener(pghoard.test_site, db.user, wal_directory)
+        time.sleep(0.5)  # waiting for thread setup
         conn = db.connect()
         conn.autocommit = True
 
@@ -918,6 +919,7 @@ class TestPGHoardWithPG:
         # stopping the thread is not enough, it's possible that killed receiver will leave incomplete partial files
         # around, pghoard is capable of cleaning those up but needs to be restarted, for the test it should be OK
         # just to call startup_walk_for_missed_files, so it takes care of cleaning up
+        time.sleep(0.5)  # waiting for the end of file processing
         pghoard.startup_walk_for_missed_files()
 
         n_xlogs = pghoard.transfer_agent_state[pghoard.test_site]["upload"]["xlog"]["xlogs_since_basebackup"]
@@ -930,6 +932,7 @@ class TestPGHoardWithPG:
         # restart
         pghoard.receivexlog_listener(pghoard.test_site, db.user, wal_directory)
         assert pghoard.receivexlogs[pghoard.test_site].is_alive()
+        time.sleep(0.5)  # waiting for thread setup
 
         # We should now process all created segments, not only the ones which were created after pg_receivewal was restarted
         wait_for_xlog(pghoard, n_xlogs + 10)
