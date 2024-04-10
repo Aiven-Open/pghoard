@@ -24,6 +24,7 @@ from rohmu import dates, get_transfer
 from pghoard import common, metrics
 from pghoard.basebackup.base import PGBaseBackup
 from pghoard.common import (BackupReason, BaseBackupFormat, BaseBackupMode, CallbackEvent, CallbackQueue)
+from pghoard.pghoard import DeltaBaseBackupFailureInfo
 from pghoard.restore import Restore, RestoreError
 
 from ..conftest import PGHoardForTest, PGTester
@@ -638,6 +639,30 @@ LABEL: pg_basebackup base backup
             cursor.execute("DROP TABLE IF EXISTS tstest")
             cursor.execute("DROP TABLESPACE tstest")
             conn.close()
+
+    def test_handle_site_create_backup_ignoring_failures(self, pghoard):
+        site_config = deepcopy(pghoard.config["backup_sites"][pghoard.test_site])
+        assert pghoard.basebackups == {}
+        utc_now_dt = datetime.datetime.now(datetime.timezone.utc)
+        pghoard.delta_backup_failures[pghoard.test_site] = DeltaBaseBackupFailureInfo(
+            retries=site_config["basebackup_delta_mode_max_retries"] + 1, last_failed_time=utc_now_dt
+        )
+
+        # skip - too many errors
+        pghoard.handle_site(pghoard.test_site, site_config)
+        assert pghoard.test_site not in pghoard.basebackups
+
+        # create "requested" backup
+        pghoard.requested_basebackup_sites.add(pghoard.test_site)
+        pghoard.handle_site(pghoard.test_site, site_config)
+        assert pghoard.test_site in pghoard.basebackups
+
+        # last failed attempt was more than "basebackup_interval_hours" ago - create backup
+        pghoard.basebackups = {}
+        last_failed_time = utc_now_dt - datetime.timedelta(hours=site_config["basebackup_interval_hours"], seconds=5)
+        pghoard.delta_backup_failures[pghoard.test_site].last_failed_time = last_failed_time
+        pghoard.handle_site(pghoard.test_site, site_config)
+        assert pghoard.test_site in pghoard.basebackups
 
     def test_handle_site(self, pghoard):
         site_config = deepcopy(pghoard.config["backup_sites"][pghoard.test_site])

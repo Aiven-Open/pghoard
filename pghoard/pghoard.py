@@ -779,7 +779,15 @@ class PGHoard:
         if metadata and not os.path.exists(self.config["maintenance_mode_file"]):
             if site in self.delta_backup_failures:
                 retries = self.delta_backup_failures[site].retries
-                if retries > site_config["basebackup_delta_mode_max_retries"]:
+                bih = site_config.get("basebackup_interval_hours")
+                backup_interval = datetime.timedelta(hours=bih) if bih else None
+                last_failed_time = self.delta_backup_failures[site].last_failed_time
+                since_last_fail_interval = utc_now() - last_failed_time if last_failed_time else None
+                if metadata["backup-reason"] == BackupReason.requested:
+                    self.log.info("Re-trying delta basebackup. Backup was requested")
+                elif backup_interval and since_last_fail_interval and since_last_fail_interval > backup_interval:
+                    self.log.info("Re-trying delta basebackup. \"%s\" have passed since last fail", since_last_fail_interval)
+                elif retries > site_config["basebackup_delta_mode_max_retries"]:
                     self.log.info("Giving up backup after exceeding max retries: %r", retries)
                     return
                 else:
@@ -787,7 +795,7 @@ class PGHoard:
                     retry_interval = min(3 ** (retries + 1), 60 * 60)
                     if utc_now(
                     ) >= self.delta_backup_failures[site].last_failed_time + datetime.timedelta(seconds=retry_interval):
-                        self.log.info("Re-trying delta basebackup")
+                        self.log.info("Re-trying delta basebackup. Retry: %r", retries)
                     else:
                         self.log.info("Waiting for backoff time before re-trying new delta backup due to previous failures")
                         return
