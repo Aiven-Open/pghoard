@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"regexp"
 	"time"
 )
 
@@ -120,15 +121,18 @@ func restore_command(url string, output string, xlog string) (int, error) {
 			}
 			output_path = path.Join(cwd, output)
 		}
-		// if file "<xlog>.pghoard.prefetch" exists, just move it to destination
-		xlogPrefetchPath := path.Join(path.Dir(output_path), xlog+".pghoard.prefetch")
-		_, err = os.Stat(xlogPrefetchPath)
-		if err == nil {
-			err := os.Rename(xlogPrefetchPath, output_path)
-			if err != nil {
-				return EXIT_ABORT, err
+		xlogNameRe := regexp.MustCompile(`^([A-F0-9]{24}|[A-F0-9]{8}\.history)$`)
+		if xlogNameRe.MatchString(xlog) {
+			// if file "<xlog>.pghoard.prefetch" exists, just move it to destination
+			xlogPrefetchPath := path.Join(path.Dir(output_path), xlog+".pghoard.prefetch")
+			_, err = os.Stat(xlogPrefetchPath)
+			if err == nil {
+				err := os.Rename(xlogPrefetchPath, output_path)
+				if err != nil {
+					return EXIT_ABORT, err
+				}
+				return EXIT_OK, nil
 			}
-			return EXIT_OK, nil
 		}
 		req, err = http.NewRequest("GET", url, nil)
 		req.Header.Set("x-pghoard-target-path", output_path)
