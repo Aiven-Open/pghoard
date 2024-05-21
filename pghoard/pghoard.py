@@ -47,7 +47,7 @@ from pghoard.preservation_request import (
 from pghoard.receivexlog import PGReceiveXLog
 from pghoard.transfer import (TransferAgent, TransferQueue, UploadEvent, UploadEventProgressTracker)
 from pghoard.walreceiver import WALReceiver
-from pghoard.webserver import WebServer
+from pghoard.webserver import DownloadResultsProcessor, WebServer
 
 
 @dataclass
@@ -148,6 +148,10 @@ class PGHoard:
 
         self.webserver = WebServer(
             self.config, self.requested_basebackup_sites, self.compression_queue, self.transfer_queue, self.metrics
+        )
+        self.download_results_processor = DownloadResultsProcessor(
+            self.webserver.lock, self.webserver.download_results, self.webserver.pending_download_ops,
+            self.webserver.prefetch_404
         )
 
         self.wal_file_deleter = WALFileDeleterThread(
@@ -701,6 +705,7 @@ class PGHoard:
         self.inotify.start()
         self.upload_tracker.start()
         self.webserver.start()
+        self.download_results_processor.start()
         self.wal_file_deleter.start()
         for compressor in self.compressors:
             compressor.start()
@@ -983,6 +988,8 @@ class PGHoard:
 
         if hasattr(self, "webserver"):
             all_threads.append(self.webserver)
+        if hasattr(self, "download_results_processor"):
+            all_threads.append(self.download_results_processor)
         all_threads.extend(self.basebackups.values())
         all_threads.extend(self.receivexlogs.values())
         all_threads.extend(self.walreceivers.values())

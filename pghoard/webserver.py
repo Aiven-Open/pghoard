@@ -14,19 +14,29 @@ import time
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager, suppress
+from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from queue import Empty, Queue
 from socketserver import ThreadingMixIn
 from threading import RLock
+from typing import Dict
 
 from rohmu.errors import Error, FileNotFoundFromStorageError
 
 from pghoard import wal
-from pghoard.common import (FileType, FileTypePrefixes, PGHoardThread, get_pg_wal_directory, json_encode)
+from pghoard.common import (CallbackEvent, FileType, FileTypePrefixes, PGHoardThread, get_pg_wal_directory, json_encode)
 from pghoard.compressor import CompressionEvent
 from pghoard.transfer import DownloadEvent, OperationEvents, TransferOperation
 from pghoard.version import __version__
+
+
+@dataclass(frozen=True)
+class PendingDownloadOp:
+    started_at: float
+    target_path: str
+    filetype: str
+    filename: str
 
 
 class PoolMixIn(ThreadingMixIn):
@@ -39,7 +49,10 @@ class OwnHTTPServer(PoolMixIn, HTTPServer):
     pool = ThreadPoolExecutor(max_workers=10)
     requested_basebackup_sites = None
 
-    def __init__(self, server_address, RequestHandlerClass):
+    def __init__(
+        self, server_address, request_handler, *, config, log, requested_basebackup_sites, compression_queue, transfer_queue,
+        lock, pending_download_ops, download_results, prefetch_404, metrics
+    ):
         # to avoid any kind of regression where the server address is not a legal ip address, catch any ValueError
         try:
             # specifying an empty http_address will make pghoard listen on all IPV4 addresses,
@@ -50,7 +63,26 @@ class OwnHTTPServer(PoolMixIn, HTTPServer):
                 self.address_family = socket.AF_INET6
         except ValueError:
             pass
-        HTTPServer.__init__(self, server_address, RequestHandlerClass)
+        HTTPServer.__init__(self, server_address, request_handler)
+
+        self.config = config
+        self.log = log
+        self.requested_basebackup_sites = requested_basebackup_sites
+        self.compression_queue = compression_queue
+        self.transfer_queue = transfer_queue
+        self.lock = lock
+        self.pending_download_ops = pending_download_ops
+        self.download_results = download_results
+        self.most_recently_served_files = {}
+        # Bounded list of files returned from local disk. Sometimes the file on disk is in some way "bad"
+        # and PostgreSQL doesn't accept it and keeps on requesting it again. If the file was recently served
+        # from disk serve it from file storage instead because the file there could be different.
+        self.served_from_disk = deque(maxlen=10)
+        # Bounded negative cache for failed prefetch operations - we don't want to try prefetching files that
+        # aren't there.  This isn't used for explicit download requests as it's possible that a file appears
+        # later on in the object store.
+        self.prefetch_404 = prefetch_404
+        self.metrics = metrics
 
 
 class HttpResponse(Exception):
@@ -63,6 +95,83 @@ class HttpResponse(Exception):
             super().__init__("{} {}: {}".format(self.__class__.__name__, status, msg))
         else:
             super().__init__("{} {}".format(self.__class__.__name__, status))
+
+
+class DownloadResultsProcessor(PGHoardThread):
+    """
+    Processes download_results queue, validates WAL and renames tmp file to target (".prefetch")
+    """
+    def __init__(
+        self, lock: RLock, download_results: Queue, pending_download_ops: Dict[str, PendingDownloadOp], prefetch_404: deque
+    ) -> None:
+        super().__init__(name=self.__class__.__name__)
+        self.log = logging.getLogger("WebServer")
+        self.lock = lock
+        self.download_results = download_results
+        self.pending_download_ops = pending_download_ops
+        self.prefetch_404 = prefetch_404
+        self.running = False
+
+    def run_safe(self) -> None:
+        self.running = True
+        while self.running:
+            try:
+                item = self.download_results.get(block=True, timeout=1.0)
+                self.process_queue_item(item)
+            except Empty:
+                pass
+            except Exception:  # pylint: disable=broad-except
+                self.log.exception("Unhandled exception in %s", self.__class__.__name__)
+
+    def process_queue_item(self, download_result: CallbackEvent) -> None:
+        key = str(download_result.opaque)
+        pending_download_op = self.pending_download_ops.pop(key, None)
+        with self.lock:
+            if not download_result.success:
+                ex = download_result.exception or Error
+                if isinstance(ex, FileNotFoundFromStorageError):
+                    # don't try prefetching this file again
+                    self.prefetch_404.append(key)
+                else:
+                    if pending_download_op:
+                        delta = time.monotonic() - pending_download_op.started_at
+                    else:
+                        delta = -1.0
+                    self.log.warning("Fetching %r failed (%s), took: %.3fs", key, ex.__class__.__name__, delta)
+                return
+
+            if not isinstance(download_result.payload, dict) or "target_path" not in download_result.payload:
+                raise RuntimeError(
+                    f"Invalid payload in callback event: {download_result}, payload: {download_result.payload}"
+                )
+            src_tmp_file_path = download_result.payload["target_path"]
+
+            if not pending_download_op:
+                self.log.warning("Orphaned download operation %r completed: %r", key, download_result)
+                if download_result.success:
+                    with suppress(OSError):
+                        os.unlink(src_tmp_file_path)
+                return
+
+            if os.path.isfile(pending_download_op.target_path):
+                self.log.warning("Target path for %r already exists, skipping", key)
+                return
+            # verify wal
+            if pending_download_op.filetype == "xlog":
+                try:
+                    wal.verify_wal(wal_name=pending_download_op.filename, filepath=src_tmp_file_path)
+                    self.log.info("WAL verification successful %s", src_tmp_file_path)
+                except ValueError:
+                    self.log.warning("WAL verification failed %s. Unlink file", src_tmp_file_path)
+                    with suppress(OSError):
+                        os.unlink(src_tmp_file_path)
+                    return
+            os.rename(src_tmp_file_path, pending_download_op.target_path)
+            metadata = download_result.payload.get("metadata", {})
+            self.log.info(
+                "Renamed %s to %s. Original upload from %r, hash %s:%s", download_result.payload["target_path"],
+                pending_download_op.target_path, metadata.get("host"), metadata.get("hash-algorithm"), metadata.get("hash")
+            )
 
 
 class WebServer(PGHoardThread):
@@ -83,29 +192,23 @@ class WebServer(PGHoardThread):
         self._running = False
         self.log.debug("WebServer initialized with address: %r port: %r", self.address, self.port)
         self.is_initialized = threading.Event()
+        self.prefetch_404 = deque(maxlen=32)
 
     def run_safe(self):
         # We bind the port only when we start running
         self._running = True
-        self.server = OwnHTTPServer((self.address, self.port), RequestHandler)
-        self.server.config = self.config  # pylint: disable=attribute-defined-outside-init
-        self.server.log = self.log  # pylint: disable=attribute-defined-outside-init
-        self.server.requested_basebackup_sites = self.requested_basebackup_sites
-        self.server.compression_queue = self.compression_queue  # pylint: disable=attribute-defined-outside-init
-        self.server.transfer_queue = self.transfer_queue  # pylint: disable=attribute-defined-outside-init
-        self.server.lock = self.lock  # pylint: disable=attribute-defined-outside-init
-        self.server.pending_download_ops = self.pending_download_ops  # pylint: disable=attribute-defined-outside-init
-        self.server.download_results = self.download_results  # pylint: disable=attribute-defined-outside-init
-        self.server.most_recently_served_files = {}  # pylint: disable=attribute-defined-outside-init
-        # Bounded list of files returned from local disk. Sometimes the file on disk is in some way "bad"
-        # and PostgreSQL doesn't accept it and keeps on requesting it again. If the file was recently served
-        # from disk serve it from file storage instead because the file there could be different.
-        self.server.served_from_disk = deque(maxlen=10)  # pylint: disable=attribute-defined-outside-init
-        # Bounded negative cache for failed prefetch operations - we don't want to try prefetching files that
-        # aren't there.  This isn't used for explicit download requests as it's possible that a file appears
-        # later on in the object store.
-        self.server.prefetch_404 = deque(maxlen=32)  # pylint: disable=attribute-defined-outside-init
-        self.server.metrics = self.metrics  # pylint: disable=attribute-defined-outside-init
+        self.server = OwnHTTPServer((self.address, self.port),
+                                    RequestHandler,
+                                    config=self.config,
+                                    log=self.log,
+                                    requested_basebackup_sites=self.requested_basebackup_sites,
+                                    compression_queue=self.compression_queue,
+                                    transfer_queue=self.transfer_queue,
+                                    lock=self.lock,
+                                    pending_download_ops=self.pending_download_ops,
+                                    download_results=self.download_results,
+                                    prefetch_404=self.prefetch_404,
+                                    metrics=self.metrics)
         self.is_initialized.set()
         self.server.serve_forever()
 
@@ -138,6 +241,7 @@ class WebServer(PGHoardThread):
 class RequestHandler(BaseHTTPRequestHandler):
     disable_nagle_algorithm = True
     server_version = "pghoard/" + __version__
+    server: OwnHTTPServer
 
     @contextmanager
     def _response_handler(self, method):
@@ -221,23 +325,6 @@ class RequestHandler(BaseHTTPRequestHandler):
 
         raise HttpResponse("Invalid path {!r}".format(path), status=400)
 
-    def _verify_wal(self, filetype, filename, path):
-        if filetype != "xlog":
-            return
-        try:
-            wal.verify_wal(wal_name=filename, filepath=path)
-        except ValueError as ex:
-            raise HttpResponse(str(ex), status=412)
-
-    def _save_and_verify_restored_file(self, filetype, filename, tmp_target_path, target_path):
-        self._verify_wal(filetype, filename, tmp_target_path)
-        try:
-            with self.server.lock:
-                os.rename(tmp_target_path, target_path)
-        except OSError as ex:
-            fmt = "Unable to write final file to requested location {path!r}: {ex.__class__.__name__}: {ex}"
-            raise HttpResponse(fmt.format(path=target_path, ex=ex), status=409)
-
     def _transfer_agent_op(self, site, filename, filetype, method, *, retries=2):
         start_time = time.time()
 
@@ -283,7 +370,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             return
 
         xlog_dir = get_pg_wal_directory(self.server.config["backup_sites"][site])
-        names = []
+        prefetch_filenames = []
         if filetype == "timeline":
             tli_num = int(filename.replace(".history", ""), 16)
             for _ in range(prefetch_n):
@@ -291,7 +378,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                 prefetch_name = "{:08X}.history".format(tli_num)
                 if os.path.isfile(os.path.join(xlog_dir, prefetch_name)):
                     continue
-                names.append(prefetch_name)
+                prefetch_filenames.append(prefetch_name)
         elif filetype == "xlog":
             xlog_num = int(filename, 16)
             for _ in range(prefetch_n):
@@ -306,20 +393,20 @@ class RequestHandler(BaseHTTPRequestHandler):
                         continue
                     except ValueError as e:
                         self.server.log.debug("(Prefetch) File %s already exists but is invalid: %r", xlog_path, e)
-                names.append(prefetch_name)
+                prefetch_filenames.append(prefetch_name)
 
-        for obname in names:
-            key = self._make_file_key(site, filetype, obname)
+        for prefetch_filename in prefetch_filenames:
+            key = self._make_file_key(site, filetype, prefetch_filename)
             if key in self.server.prefetch_404:
                 continue  # previously failed to prefetch this file, don't try again
-            self._create_fetch_operation(key, site, filetype, obname)
+            self._create_fetch_operation(key, site, filetype, prefetch_filename)
 
     def _create_fetch_operation(self, key, site, filetype, obname, max_age=-1, suppress_error=True):
         with self.server.lock:
             # Don't fetch again if we already have pending fetch operation unless the operation
             # has been ongoing longer than given max age and has potentially became stale
             existing = self.server.pending_download_ops.get(key)
-            if existing and (max_age < 0 or time.monotonic() - existing["started_at"] <= max_age):
+            if existing and (max_age < 0 or time.monotonic() - existing.started_at <= max_age):
                 return
 
         xlog_dir = get_pg_wal_directory(self.server.config["backup_sites"][site])
@@ -343,9 +430,8 @@ class RequestHandler(BaseHTTPRequestHandler):
             "Fetching site: %r, filename: %r, filetype: %r, tmp_target_path: %r", site, obname, filetype, tmp_target_path
         )
         target_path = os.path.join(xlog_dir, "{}.pghoard.prefetch".format(obname))
-        self.server.pending_download_ops[key] = dict(
-            started_at=time.monotonic(),
-            target_path=target_path,
+        self.server.pending_download_ops[key] = PendingDownloadOp(
+            started_at=time.monotonic(), target_path=target_path, filetype=filetype, filename=obname
         )
         self.server.transfer_queue.put(
             DownloadEvent(
@@ -357,42 +443,6 @@ class RequestHandler(BaseHTTPRequestHandler):
                 opaque=key
             )
         )
-
-    def _process_completed_download_operations(self, timeout=None):
-        while True:
-            try:
-                result = self.server.download_results.get(block=timeout is not None, timeout=timeout)
-                key = result.opaque
-                with self.server.lock:
-                    op = self.server.pending_download_ops.pop(key, None)
-                    if not op:
-                        self.server.log.warning("Orphaned download operation %r completed: %r", key, result)
-                        if result.success:
-                            with suppress(OSError):
-                                os.unlink(result.payload["target_path"])
-                        continue
-                    if result.success:
-                        if os.path.isfile(op["target_path"]):
-                            self.server.log.warning("Target path for %r already exists, skipping", key)
-                            continue
-                        os.rename(result.payload["target_path"], op["target_path"])
-                        metadata = result.payload["metadata"] or {}
-                        self.server.log.info(
-                            "Renamed %s to %s. Original upload from %r, hash %s:%s", result.payload["target_path"],
-                            op["target_path"], metadata.get("host"), metadata.get("hash-algorithm"), metadata.get("hash")
-                        )
-                    else:
-                        ex = result.exception or Error
-                        if isinstance(ex, FileNotFoundFromStorageError):
-                            # don't try prefetching this file again
-                            self.server.prefetch_404.append(key)
-                        else:
-                            self.server.log.warning(
-                                "Fetching %r failed (%s), took: %.3fs", key, ex.__class__.__name__,
-                                time.monotonic() - op["started_at"]
-                            )
-            except Empty:
-                return
 
     def get_status(self, site):
         state_file_path = self.server.config["json_state_file_path"]
@@ -414,21 +464,19 @@ class RequestHandler(BaseHTTPRequestHandler):
         else:
             raise HttpResponse(status=501)  # Not Implemented
 
-    def _try_save_and_verify_restored_file(self, filetype, filename, prefetch_target_path, target_path, unlink=True):
+    def _rename(self, src: str, dst: str) -> None:
         try:
-            self._save_and_verify_restored_file(filetype, filename, prefetch_target_path, target_path)
-            self.server.log.info("Renamed %s to %s", prefetch_target_path, target_path)
-            return None
-        except (ValueError, HttpResponse) as e:
-            # Just try loading the file again
-            with suppress(OSError):
-                self.server.log.warning("Verification of prefetch file %s failed: %r", prefetch_target_path, e)
-                if unlink:
-                    os.unlink(prefetch_target_path)
-            return e
+            with self.server.lock:
+                os.rename(src, dst)
+            self.server.log.info("Renamed %s to %s", src, dst)
+        except OSError as e:
+            self.server.log.warning(
+                "Unable to write final file to requested location %s: %s: %r", dst, e.__class__.__name__, e
+            )
+            raise
 
     @staticmethod
-    def _validate_target_path(config, target_path):
+    def _validate_target_path(pg_data_directory: str, target_path: str) -> None:
         # The `restore_command` (postgres_command.py or pghoard_postgres_command_go.go) called by PostgresSQL has
         # prepended the PostgresSQL 'data' directory with `%p` parameter from PostgresSQL server, hence here
         # `target_path` is expected to be an absolute path.
@@ -439,12 +487,14 @@ class RequestHandler(BaseHTTPRequestHandler):
         # /var/lib/pgsql/11/data/../../../../../etc/passwd, could be actually /etc/passwd
         if not os.path.isabs(target_path):
             raise HttpResponse(f"Invalid xlog file path {target_path}, an absolute path expected", status=400)
-        data_dir = Path(config["pg_data_directory"]).resolve()
+        data_dir = Path(pg_data_directory).resolve()
         xlog_file = Path(target_path).resolve()
         if data_dir not in xlog_file.parents:
             raise HttpResponse(f"Invalid xlog file path {target_path}, it should be in data directory", status=400)
+        if not xlog_file.parent.is_dir():
+            raise HttpResponse(f"Invalid xlog file path {target_path}, parent directory should exist", status=409)
 
-    def get_wal_or_timeline_file(self, site, filename, filetype):
+    def get_wal_or_timeline_file(self, site: str, filename: str, filetype: str) -> None:
         target_path = self.headers.get("x-pghoard-target-path")
         if not target_path:
             raise HttpResponse("x-pghoard-target-path header missing from download", status=400)
@@ -452,20 +502,21 @@ class RequestHandler(BaseHTTPRequestHandler):
         site_config = self.server.config["backup_sites"][site]
         xlog_dir = get_pg_wal_directory(site_config)
 
-        self._validate_target_path(site_config, target_path)
-        self._process_completed_download_operations()
+        self._validate_target_path(site_config["pg_data_directory"], target_path)
 
         # See if we have already prefetched the file
         prefetch_target_path = os.path.join(xlog_dir, "{}.pghoard.prefetch".format(filename))
         if os.path.exists(prefetch_target_path):
-            ex = self._try_save_and_verify_restored_file(filetype, filename, prefetch_target_path, target_path)
-            if not ex:
-                self._create_prefetch_operations(site, filetype, filename)
-                self.server.most_recently_served_files[filetype] = {
-                    "name": filename,
-                    "time": time.time(),
-                }
-                raise HttpResponse(status=201)
+            if filetype == "xlog":
+                # WAL with ".prefetch" suffix should be validated, but checking it anyway
+                wal.verify_wal(wal_name=filename, filepath=prefetch_target_path)
+            self._rename(prefetch_target_path, target_path)
+            self._create_prefetch_operations(site, filetype, filename)
+            self.server.most_recently_served_files[filetype] = {
+                "name": filename,
+                "time": time.time(),
+            }
+            raise HttpResponse(status=201)
 
         # After reaching a recovery_target and restart of a PG server, PG wants to replay and refetch
         # files from the archive starting from the latest checkpoint. We have potentially fetched these files
@@ -477,10 +528,13 @@ class RequestHandler(BaseHTTPRequestHandler):
             self.server.log.info(
                 "Requested %r, found it in pg_xlog directory as: %r, returning directly", filename, xlog_path
             )
-            ex = self._try_save_and_verify_restored_file(filetype, filename, xlog_path, target_path, unlink=False)
-            if ex:
-                self.server.log.warning("Found file: %r but it was invalid: %s", xlog_path, ex)
+            try:
+                if filetype == "xlog":
+                    wal.verify_wal(wal_name=filename, filepath=xlog_path)
+            except ValueError as e:
+                self.server.log.warning("Found file: %r but it was invalid: %s", xlog_path, e)
             else:
+                self._rename(xlog_path, target_path)
                 self.server.served_from_disk.append(filename)
                 self.server.most_recently_served_files[filetype] = {
                     "name": filename,
@@ -500,24 +554,21 @@ class RequestHandler(BaseHTTPRequestHandler):
         start_time = time.monotonic()
         retries = 2
         while (time.monotonic() - start_time) <= 30:
-            self._process_completed_download_operations(timeout=0.01)
             with self.server.lock:
                 if os.path.isfile(prefetch_target_path):
-                    ex = self._try_save_and_verify_restored_file(filetype, filename, prefetch_target_path, target_path)
-                    if not ex:
-                        self.server.most_recently_served_files[filetype] = {
-                            "name": filename,
-                            "time": time.time(),
-                        }
-                        raise HttpResponse(status=201)
-                    elif ex and retries == 0:
-                        raise ex  # pylint: disable=raising-bad-type
-                    retries -= 1
+                    if filetype == "xlog":
+                        wal.verify_wal(wal_name=filename, filepath=prefetch_target_path)
+                    self._rename(prefetch_target_path, target_path)
+                    self.server.most_recently_served_files[filetype] = {
+                        "name": filename,
+                        "time": time.time(),
+                    }
+                    raise HttpResponse(status=201)
             if key in self.server.prefetch_404:
                 raise HttpResponse(status=404)
             with self.server.lock:
                 if key not in self.server.pending_download_ops:
-                    if retries == 0:
+                    if retries <= 0:
                         raise HttpResponse(status=500)
                     retries -= 1
                     self._create_fetch_operation(key, site, filetype, filename, suppress_error=False)
@@ -525,6 +576,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                 last_schedule_call = time.monotonic()
                 # Replace existing download operation if it has been executing for too long
                 self._create_fetch_operation(key, site, filetype, filename, max_age=10, suppress_error=False)
+            time.sleep(0.05)
 
         raise HttpResponse("TIMEOUT", status=500)
 
@@ -549,7 +601,11 @@ class RequestHandler(BaseHTTPRequestHandler):
             self.server.log.debug("xlog_path: %r did not exist, cannot archive, returning 404", xlog_path)
             raise HttpResponse("N/A", status=404)
 
-        self._verify_wal(filetype, filename, xlog_path)
+        if filetype == "xlog":
+            try:
+                wal.verify_wal(wal_name=filename, filepath=xlog_path)
+            except ValueError as ex:
+                raise HttpResponse(str(ex), status=412)
 
         callback_queue = Queue()
         if not self.server.config["backup_sites"][site]["object_storage"]:
