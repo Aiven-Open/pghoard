@@ -30,6 +30,7 @@ from rohmu.snappyfile import snappy
 from pghoard import config as pghconfig
 from pghoard import logutil, pgutil
 from pghoard.archive_cleanup import ArchiveCleanup
+from pghoard.common import BackupReason
 from pghoard.pghoard import PGHoard
 
 logutil.configure_logging()
@@ -491,7 +492,7 @@ def fixture_archive_cleaner(tmp_path):
     bb_metadata = {
         "_hash": "abc",
         "backup-decision-time": "2022-03-23T14:57:55.883514+00:00",
-        "backup-reason": "scheduled",
+        "backup-reason": BackupReason.scheduled,
         "start-time": "2022-03-23T15:57:55+01:00",
         "start-wal-segment": "000000010000000000000002",
         "active-backup-mode": "basic",

@@ -104,6 +104,12 @@ class BaseBackupMode(StrEnum):
     pipe = "pipe"
 
 
+@enum.unique
+class BackupReason(StrEnum):
+    requested = "requested"
+    scheduled = "scheduled"
+
+
 class ProgressData(BaseModel):
     current_progress: float = 0
     last_updated_time: float = 0

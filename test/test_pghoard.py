@@ -17,7 +17,7 @@ import pytest
 
 import pghoard.pghoard as pghoard_module
 from pghoard.common import (
-    TAR_METADATA_FILENAME, BaseBackupFormat, FileType, create_alert_file, delete_alert_file, write_json_file
+    TAR_METADATA_FILENAME, BackupReason, BaseBackupFormat, FileType, create_alert_file, delete_alert_file, write_json_file
 )
 from pghoard.pghoard import PGHoard
 from pghoard.pgutil import create_connection_string
@@ -92,7 +92,7 @@ dbname|"""
         assert available_backup["name"] == "2015-07-03_0"
         start_time = datetime.datetime(2015, 7, 3, 12, tzinfo=datetime.timezone.utc)
         assert available_backup["metadata"]["start-time"] == start_time
-        assert available_backup["metadata"]["backup-reason"] == "scheduled"
+        assert available_backup["metadata"]["backup-reason"] == BackupReason.scheduled
         assert available_backup["metadata"]["normalized-backup-time"] is None
         assert available_backup["metadata"]["backup-decision-time"]
 
