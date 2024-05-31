@@ -337,6 +337,6 @@ class TestTransferAgent(PGHoardTestCase):
         self.transfer_agent.handle_upload("test_site", self.foo_basebackup_path, upload_event)
         updated_progress = PersistedProgress.read(metrics=metrics.Metrics(statsd={}))
         assert temp_progress_file.exists()
-        assert updated_progress.progress[self.foo_basebackup_path].current_progress == 3
+        assert updated_progress.progress["total_bytes_uploaded"].current_progress == 3
         if temp_progress_file.exists():
             temp_progress_file.unlink()

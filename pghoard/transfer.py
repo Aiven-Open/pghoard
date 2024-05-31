@@ -146,7 +146,6 @@ class UploadEventProgressTracker(PGHoardThread):
             self._tracked_events.pop(file_key)
 
     def increment(self, file_key: str, total_bytes_uploaded: float) -> None:
-        metric_data = {}
         persisted_progress = PersistedProgress.read(metrics=self.metrics)
 
         with self._tracked_events_lock:
@@ -160,9 +159,11 @@ class UploadEventProgressTracker(PGHoardThread):
                 FileType.Basebackup_delta,
                 FileType.Basebackup_delta_chunk,
             ):
-                progress_info = persisted_progress.get(file_key)
-                if total_bytes_uploaded > progress_info.current_progress:
-                    progress_info.update(total_bytes_uploaded)
+                progress_info = persisted_progress.get("total_bytes_uploaded")
+                updated_total_bytes_uploaded = progress_info.current_progress + total_bytes_uploaded
+
+                if updated_total_bytes_uploaded > progress_info.current_progress:
+                    progress_info.update(updated_total_bytes_uploaded)
                     persisted_progress.write(metrics=self.metrics)
                     self.metrics.gauge("pghoard.seconds_since_backup_progress_stalled", 0)
                 else:
@@ -174,19 +175,7 @@ class UploadEventProgressTracker(PGHoardThread):
                             file_key,
                             stalled_age,
                         )
-                metric_data = {
-                    "metric": "pghoard.basebackup_bytes_uploaded",
-                    "inc_value": total_bytes_uploaded,
-                    "tags": {
-                        "delta": file_type in (FileType.Basebackup_delta, FileType.Basebackup_delta_chunk)
-                    },
-                }
-            elif file_type in (FileType.Wal, FileType.Timeline):
-                metric_data = {"metric": "pghoard.compressed_file_upload", "inc_value": total_bytes_uploaded}
-
             self._tracked_events[file_key].increments.append(TransferIncrement(total_bytes_uploaded=total_bytes_uploaded))
-        if metric_data:
-            self.metrics.increase(**metric_data)
 
     def reset(self) -> None:
         with self._tracked_events_lock:
@@ -204,7 +193,7 @@ class UploadEventProgressTracker(PGHoardThread):
                 time.sleep(self.CHECK_FREQUENCY)
         except Exception:  # pylint: disable=broad-except
             self.log.exception("Failed to update transfer rate %s", "pghoard.compressed_file_upload")
-            self.metrics.increase("pghoard.transfer_operation.errors")
+            self.metrics.increase("pghoard.transfer_operation_errors")
             self.reset()
             self.stop()
 
@@ -423,18 +412,11 @@ class TransferAgent(PGHoardThread):
             if file_to_transfer.callback_queue:
                 file_to_transfer.callback_queue.put(result)
 
-            self.log.info(
-                "%r %stransfer of key: %r, size: %r, took %.3fs", oper, "FAILED " if not result.success else "", key,
-                oper_size,
-                time.monotonic() - start_time
-            )
-
-            if file_to_transfer.operation in {TransferOperation.Upload} and filetype in (
-                FileType.Basebackup, FileType.Basebackup_chunk, FileType.Basebackup_delta, FileType.Basebackup_delta_chunk
-            ):
-                if result.success:
-                    persisted_progress = PersistedProgress.read(metrics=self.metrics)
-                    persisted_progress.reset(key, metrics=self.metrics)
+            operation_type = file_to_transfer.operation
+            status = "FAILED" if not result.success else "successfully"
+            log_msg = f"{operation_type.capitalize()} of key: {key}, " \
+                      f"size: {oper_size}, {status} in {time.monotonic() - start_time:.3f}s"
+            self.log.info(log_msg)
 
         self.fetch_manager.stop()
         self.log.debug("Quitting TransferAgent")
@@ -539,10 +521,5 @@ class TransferAgent(PGHoardThread):
 
             # Sleep for a bit to avoid busy looping. Increase sleep time if the op fails multiple times
             self.sleep(min(0.5 * 2 ** (file_to_transfer.retry_number - 1), 20))
-            if file_to_transfer.file_type in (
-                FileType.Basebackup, FileType.Basebackup_chunk, FileType.Basebackup_delta, FileType.Basebackup_delta_chunk
-            ) and file_to_transfer.retry_number < 2:
-                persisted_progress = PersistedProgress.read(metrics=self.metrics)
-                persisted_progress.reset(key, metrics=self.metrics)
             self.transfer_queue.put(file_to_transfer)
             return None

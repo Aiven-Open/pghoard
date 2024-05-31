@@ -92,36 +92,25 @@ class TestCommon(PGHoardTestCase):
     def test_persisted_progress(self, mocker, tmp_path):
         test_progress_file = tmp_path / "test_progress.json"
         original_time = 1625072042.123456
-        test_data = {
-            "progress": {
-                "0af668268d0fe14c6e269760b08d80a634c421b8381df25f31fbed5e8a8c8d8b": {
-                    "current_progress": 100,
-                    "last_updated_time": original_time
-                }
-            }
-        }
+        test_data = {"progress": {"total_bytes_uploaded": {"current_progress": 100, "last_updated_time": original_time}}}
 
         with open(test_progress_file, "w") as file:
             json.dump(test_data, file)
 
         mocker.patch("pghoard.common.PROGRESS_FILE", test_progress_file)
         persisted_progress = PersistedProgress.read(metrics=metrics.Metrics(statsd={}))
-        assert "0af668268d0fe14c6e269760b08d80a634c421b8381df25f31fbed5e8a8c8d8b" in persisted_progress.progress
-        assert persisted_progress.progress["0af668268d0fe14c6e269760b08d80a634c421b8381df25f31fbed5e8a8c8d8b"
-                                           ].current_progress == 100
-        assert persisted_progress.progress["0af668268d0fe14c6e269760b08d80a634c421b8381df25f31fbed5e8a8c8d8b"
-                                           ].last_updated_time == 1625072042.123456
+        assert "total_bytes_uploaded" in persisted_progress.progress
+        assert persisted_progress.progress["total_bytes_uploaded"].current_progress == 100
+        assert persisted_progress.progress["total_bytes_uploaded"].last_updated_time == 1625072042.123456
 
         new_progress = 200
-        progress_info = persisted_progress.get("0af668268d0fe14c6e269760b08d80a634c421b8381df25f31fbed5e8a8c8d8b")
+        progress_info = persisted_progress.get("total_bytes_uploaded")
         progress_info.update(new_progress)
         persisted_progress.write(metrics=metrics.Metrics(statsd={}))
 
         updated_progress = PersistedProgress.read(metrics=metrics.Metrics(statsd={}))
-        assert updated_progress.progress["0af668268d0fe14c6e269760b08d80a634c421b8381df25f31fbed5e8a8c8d8b"
-                                         ].current_progress == new_progress
-        assert updated_progress.progress["0af668268d0fe14c6e269760b08d80a634c421b8381df25f31fbed5e8a8c8d8b"
-                                         ].last_updated_time > original_time
+        assert updated_progress.progress["total_bytes_uploaded"].current_progress == new_progress
+        assert updated_progress.progress["total_bytes_uploaded"].last_updated_time > original_time
 
     def test_default_persisted_progress_creation(self, mocker, tmp_path):
         tmp_file = tmp_path / "non_existent_progress.json"

@@ -94,6 +94,10 @@ class DeltaBaseBackup:
                     persisted_progress.write(self.metrics)
                     self.last_flush_time = time.monotonic()
                     self.metrics.gauge("pghoard.seconds_since_backup_progress_stalled", 0, tags=tags)
+                    self.log.info(
+                        "Updated snapshot progress for %s to %d files; elapsed time since last check: %.2f seconds.",
+                        progress_step.value, progress_data["handled"], elapsed
+                    )
                 else:
                     stalled_age = progress_info.age
                     self.metrics.gauge("pghoard.seconds_since_backup_progress_stalled", stalled_age, tags=tags)
