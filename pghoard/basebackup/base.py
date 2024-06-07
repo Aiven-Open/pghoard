@@ -564,8 +564,6 @@ class PGBaseBackup(PGHoardThread):
                 db_conn.commit()
 
                 self.log.info("Starting to backup %r and %r tablespaces to %r", pgdata, len(tablespaces), compressed_base)
-                progress_instance = PersistedProgress()
-                progress_instance.reset_all(metrics=self.metrics)
                 start_time = time.monotonic()
 
                 if delta:
@@ -686,6 +684,8 @@ class PGBaseBackup(PGHoardThread):
                     "%r byte input, %r byte output, took %r seconds, waiting to upload", total_file_count, chunks_count,
                     total_size_plain, total_size_enc, backup_time
                 )
+                progress_instance = PersistedProgress()
+                progress_instance.reset_all(metrics=self.metrics)
 
             finally:
                 db_conn.rollback()
