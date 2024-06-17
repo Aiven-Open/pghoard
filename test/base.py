@@ -7,11 +7,11 @@ See LICENSE for details
 import logging
 import os
 # pylint: disable=attribute-defined-outside-init
-from distutils.version import LooseVersion
 from shutil import rmtree
 from tempfile import mkdtemp
 
 import psycopg2.extras
+from packaging.version import Version
 
 from pghoard.config import find_pg_binary, set_and_check_config_defaults
 
@@ -84,7 +84,7 @@ class PGHoardTestCase:
             "json_state_file_path": os.path.join(self.temp_dir, "state.json"),
             "pg_basebackup_path": os.path.join(bindir, "pg_basebackup"),
         }
-        if LooseVersion(ver) >= "10":
+        if Version(ver).major >= 10:
             config["backup_sites"][self.test_site]["pg_receivexlog_path"] = os.path.join(bindir, "pg_receivewal")
         if override:
             all_site_overrides = override.pop("backup_sites", None)

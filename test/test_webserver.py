@@ -11,13 +11,13 @@ import socket
 import threading
 import time
 from collections import deque
-from distutils.version import LooseVersion
 from http.client import HTTPConnection
 from queue import Queue
 from unittest import mock
 
 import psycopg2
 import pytest
+from packaging.version import Version
 from rohmu.encryptor import Encryptor
 
 from pghoard import postgres_command, wal
@@ -314,7 +314,7 @@ class TestWebServer:
             "recovery_target_timeline = 'latest'",
             "restore_command = 'false'",
         ]
-        if LooseVersion(db.pgver) >= "12":
+        if Version(db.pgver).major >= 12:
             with open(os.path.join(db.pgdata, "standby.signal"), "w") as fp:
                 pass
 
