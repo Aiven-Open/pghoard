@@ -412,9 +412,8 @@ class TransferAgent(PGHoardThread):
             if file_to_transfer.callback_queue:
                 file_to_transfer.callback_queue.put(result)
 
-            operation_type = file_to_transfer.operation
             status = "FAILED" if not result.success else "successfully"
-            log_msg = f"{operation_type.capitalize()} of key: {key}, " \
+            log_msg = f"{oper.capitalize()} of key: {key}, " \
                       f"size: {oper_size}, {status} in {time.monotonic() - start_time:.3f}s"
             self.log.info(log_msg)
 
