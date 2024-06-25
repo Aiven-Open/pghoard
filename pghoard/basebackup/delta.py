@@ -49,7 +49,6 @@ class HasReadAndSeek(HasRead, HasSeek, Protocol):
 FilesChunk = Set[Tuple]
 SnapshotFiles = Dict[str, SnapshotFile]
 PROGRESS_CHECK_INTERVAL = 10
-STALLED_PROGRESS_THRESHOLD = 600
 
 EMPTY_FILE_HASH = hashlib.blake2s().hexdigest()
 
@@ -88,24 +87,15 @@ class DeltaBaseBackup:
                 persisted_progress = PersistedProgress.read(self.metrics)
                 progress_info = persisted_progress.get(key)
                 tags: dict = {"phase": progress_step.value}
+                self.last_flush_time = time.monotonic()
 
                 if progress_data["handled"] > progress_info.current_progress:
                     progress_info.update(progress_data["handled"])
                     persisted_progress.write(self.metrics)
-                    self.last_flush_time = time.monotonic()
                     self.metrics.gauge("pghoard.seconds_since_backup_progress_stalled", 0, tags=tags)
-                    self.log.info(
-                        "Updated snapshot progress for %s to %d files; elapsed time since last check: %.2f seconds.",
-                        progress_step.value, progress_data["handled"], elapsed
-                    )
                 else:
                     stalled_age = progress_info.age
                     self.metrics.gauge("pghoard.seconds_since_backup_progress_stalled", stalled_age, tags=tags)
-
-                    if stalled_age >= STALLED_PROGRESS_THRESHOLD:
-                        self.log.warning(
-                            "Snapshot progress for %s has been stalled for %s seconds.", progress_step, stalled_age
-                        )
 
         self.last_flush_time = time.monotonic()
         snapshotter.snapshot(reuse_old_snapshotfiles=False, progress_callback=progress_callback)
