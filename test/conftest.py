@@ -17,13 +17,13 @@ import tempfile
 import time
 from contextlib import suppress
 from dataclasses import dataclass
-from distutils.version import LooseVersion
 from pathlib import Path
 from typing import Callable, Dict, Iterator, Optional, Sequence, Union
 from unittest import SkipTest
 
 import psycopg2
 import pytest
+from packaging.version import Version
 from py import path as py_path  # pylint: disable=no-name-in-module
 from rohmu.snappyfile import snappy
 
@@ -35,7 +35,7 @@ from pghoard.pghoard import PGHoard
 
 logutil.configure_logging()
 
-DEFAULT_PG_VERSIONS = ["16", "15", "14", "13", "12", "11", "10"]
+DEFAULT_PG_VERSIONS = ["16", "15", "14", "13", "12"]
 
 
 def port_is_listening(hostname: str, port: int, timeout: float = 0.5) -> bool:
@@ -255,7 +255,7 @@ def fixture_recovery_db(pg_version: str) -> Iterator[PGTester]:
             "recovery_target_timeline = 'latest'",
             "restore_command = 'false'",
         ]
-        if LooseVersion(pg.pgver) >= "12":
+        if Version(pg.pgver).major >= 12:
             with open(os.path.join(pg.pgdata, "standby.signal"), "w") as fp:
                 pass
 
