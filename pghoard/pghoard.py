@@ -976,7 +976,8 @@ class PGHoard:
         self.metrics = metrics.Metrics(
             statsd=self.config.get("statsd", None),
             pushgateway=self.config.get("pushgateway", None),
-            prometheus=self.config.get("prometheus", None)
+            prometheus=self.config.get("prometheus", None),
+            sentry=self.config.get("sentry", None)
         )
 
         # need to refresh the web server config too

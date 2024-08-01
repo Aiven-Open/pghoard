@@ -64,6 +64,7 @@ dev = [
     "types-python-dateutil",
     "types-requests",
     "types-six",
+    "sentry-sdk",
 ]
 constraints = [
     "astroid==2.5.8",
