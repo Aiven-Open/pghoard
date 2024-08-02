@@ -154,7 +154,7 @@ class DeltaBaseBackup:
         result_hash = hashlib.blake2s()
 
         def progress_callback(n_bytes: int = 1) -> None:
-            self.metrics.increase("pghoard.basebackup_bytes_uploaded", inc_value=n_bytes, tags={"delta": True})
+            self.metrics.increase("pghoard.basebackup_bytes_uploaded", inc_value=n_bytes, tags={"delta": "True"})
 
         with NamedTemporaryFile(dir=temp_dir, prefix=os.path.basename(chunk_path), suffix=".tmp") as raw_output_obj:
             raw_output_file = cast(FileLikeWithName, raw_output_obj)

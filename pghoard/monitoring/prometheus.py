@@ -5,9 +5,12 @@ Prometheus client (used to create a Prometheus endpoint)
 
 import time
 
+from pghoard.monitoring.base import MetricsClient
 
-class PrometheusClient:
+
+class PrometheusClient(MetricsClient):
     def __init__(self, config):
+        super().__init__(config)
         self._tags = config.get("tags", {})
         self.metrics = {}
 

@@ -1,10 +1,15 @@
+# Copyright (c) 2024 Aiven, Helsinki, Finland. https://aiven.io/
 import logging
+from typing import Any, Dict, Optional
+
+from pghoard.monitoring.base import MetricsClient
 
 LOG = logging.getLogger(__name__)
 
 
-class SentryClient:
-    def __init__(self, config):
+class SentryClient(MetricsClient):
+    def __init__(self, config: Dict[str, Any]):
+        super().__init__(config)
         self.sentry = None
         if config is None:
             LOG.info("Sentry configuration not found, skipping setup")
@@ -29,13 +34,7 @@ class SentryClient:
         for key, value in tags.items():
             sentry_sdk.set_tag(key, value)
 
-    def gauge(self, metric, value, tags=None):
-        pass
-
-    def increase(self, metric, inc_value=1, tags=None):
-        pass
-
-    def unexpected_exception(self, ex, where, tags=None):
+    def unexpected_exception(self, ex: Exception, where: str, tags: Optional[Dict[str, str]] = None) -> None:
         if not self.sentry:
             return
 
