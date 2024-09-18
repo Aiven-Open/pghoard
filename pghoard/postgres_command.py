@@ -6,6 +6,7 @@ See LICENSE for details
 """
 
 import argparse
+import base64
 import os
 import socket
 import sys
@@ -45,10 +46,17 @@ class PGCError(Exception):
         self.exit_code = exit_code
 
 
-def http_request(host, port, method, path, headers=None):
+def http_request(host, port, method, path, headers=None, *, username=None, password=None):
     conn = HTTPConnection(host=host, port=port)
+    if headers is not None:
+        headers = headers.copy()
+    else:
+        headers = {}
+    if username and password:
+        auth_str = base64.b64encode(f"{username}:{password}".encode("utf-8")).decode()
+        headers["Authorization"] = f"Basic {auth_str}"
     try:
-        conn.request(method, path, headers=headers or {})
+        conn.request(method, path, headers=headers)
         resp = conn.getresponse()
     finally:
         conn.close()
@@ -112,6 +120,8 @@ def main(args=None):
     parser.add_argument("--version", action="version", help="show program version", version=version.__version__)
     parser.add_argument("--host", type=str, default=PGHOARD_HOST, help="pghoard service host")
     parser.add_argument("--port", type=int, default=PGHOARD_PORT, help="pghoard service port")
+    parser.add_argument("--username", type=str, help="pghoard service username")
+    parser.add_argument("--password", type=str, help="pghoard service password")
     parser.add_argument("--site", type=str, required=True, help="pghoard backup site")
     parser.add_argument("--xlog", type=str, required=True, help="xlog file name")
     parser.add_argument("--output", type=str, help="output file")

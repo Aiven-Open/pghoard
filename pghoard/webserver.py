@@ -4,6 +4,7 @@ pghoard - internal http server for serving backup objects
 Copyright (c) 2016 Ohmu Ltd
 See LICENSE for details
 """
+import base64
 import ipaddress
 import logging
 import os
@@ -242,6 +243,22 @@ class RequestHandler(BaseHTTPRequestHandler):
     disable_nagle_algorithm = True
     server_version = "pghoard/" + __version__
     server: OwnHTTPServer
+    _expected_auth_header = None
+
+    def _authentication_check(self):
+        if self.server.config.get("webserver_username") and self.server.config.get("webserver_password"):
+            if self._expected_auth_header is None:
+                auth_data_raw = self.server.config["webserver_username"] + ":" + self.server.config["webserver_password"]
+                auth_data_b64 = base64.b64encode(auth_data_raw.encode("utf-8")).decode()
+                self._expected_auth_header = f"Basic {auth_data_b64}"
+            if self.headers.get("Authorization") != self._expected_auth_header:
+                self.send_response(401)
+                self.send_header("WWW-Authenticate", 'Basic realm="pghoard"')
+                self.send_header("Content-type", "text/html")
+                self.end_headers()
+                self.wfile.write(b"Authentication required")
+                return False
+        return True
 
     @contextmanager
     def _response_handler(self, method):
@@ -645,12 +662,16 @@ class RequestHandler(BaseHTTPRequestHandler):
         raise HttpResponse(status=201)
 
     def do_PUT(self):
+        if not self._authentication_check():
+            return
         with self._response_handler("PUT") as path:
             site, obtype, obname = self._parse_request(path)
             assert obtype in ("basebackup", "xlog", "timeline")
             self.handle_archival_request(site, obname, obtype)
 
     def do_HEAD(self):
+        if not self._authentication_check():
+            return
         with self._response_handler("HEAD") as path:
             site, obtype, obname = self._parse_request(path)
             if self.headers.get("x-pghoard-target-path"):
@@ -664,6 +685,8 @@ class RequestHandler(BaseHTTPRequestHandler):
             raise HttpResponse(status=200, headers=headers)
 
     def do_GET(self):
+        if not self._authentication_check():
+            return
         with self._response_handler("GET") as path:
             site, obtype, obname = self._parse_request(path)
             if obtype == "basebackup":

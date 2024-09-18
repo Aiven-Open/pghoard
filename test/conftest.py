@@ -277,6 +277,11 @@ def fixture_pghoard(db, tmpdir, request):
     yield from pghoard_base(db, tmpdir, request)
 
 
+@pytest.fixture(name="pghoard_with_userauth")
+def fixture_pghoard_with_userauth(db, tmpdir, request):
+    yield from pghoard_base(db, tmpdir, request, username="testuser", password="testpass")
+
+
 @pytest.fixture(name="pghoard_ipv4_hostname")
 def fixture_pghoard_ipv4_hostname(db, tmpdir, request):
     yield from pghoard_base(db, tmpdir, request, listen_http_address="localhost")
@@ -362,7 +367,9 @@ def pghoard_base(
     active_backup_mode="pg_receivexlog",
     slot_name=None,
     compression_count=None,
-    listen_http_address="127.0.0.1"
+    listen_http_address="127.0.0.1",
+    username=None,
+    password=None
 ):
     test_site = request.function.__name__
 
@@ -417,6 +424,10 @@ def pghoard_base(
 
     if compression_count is not None:
         config["compression"]["thread_count"] = compression_count
+
+    if username is not None and password is not None:
+        config["webserver_username"] = username
+        config["webserver_password"] = password
 
     confpath = os.path.join(str(tmpdir), "config.json")
     with open(confpath, "w") as fp:
