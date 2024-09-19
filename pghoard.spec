@@ -20,6 +20,7 @@ BuildRequires:  python3-devel
 BuildRequires:  python3-flake8
 BuildRequires:  python3-pylint
 BuildRequires:  python3-pytest
+BuildRequires:  systemd
 
 %undefine _missing_build_ids_terminate_build
 %define debug_package %{nil}
