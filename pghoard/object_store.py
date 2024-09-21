@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Optional
 
 from requests import Session
+from requests.auth import HTTPBasicAuth
 from rohmu import dates
 
 
@@ -72,14 +73,16 @@ class ObjectStore:
 
 
 class HTTPRestore(ObjectStore):
-    def __init__(self, host, port, site, pgdata=None):
+    def __init__(self, host, port, site, pgdata=None, *, username=None, password=None):
         super().__init__(storage=None, prefix=None, site=site, pgdata=pgdata)
         self.host = host
         self.port = port
         self.session = Session()
+        if username and password:
+            self.session.auth = HTTPBasicAuth(username, password)
 
     def _url(self, path):
-        return "http://{host}:{port}/{site}/{path}".format(host=self.host, port=self.port, site=self.site, path=path)
+        return f"http://{self.host}:{self.port}/{self.site}/{path}"
 
     def list_basebackups(self):
         response = self.session.get(self._url("basebackup"))

@@ -53,6 +53,8 @@ func run() (int, error) {
 	verPtr := flag.Bool("version", false, "show program version")
 	hostPtr := flag.String("host", PGHOARD_HOST, "pghoard service host")
 	portPtr := flag.Int("port", PGHOARD_PORT, "pghoard service port")
+	usernamePtr := flag.String("username", "", "pghoard service username")
+	passwordPtr := flag.String("password", "", "pghoard service password")
 	sitePtr := flag.String("site", "", "pghoard backup site")
 	xlogPtr := flag.String("xlog", "", "xlog file name")
 	outputPtr := flag.String("output", "", "output file")
@@ -82,7 +84,7 @@ func run() (int, error) {
 		retry_seconds := *riPtr
 		for {
 			attempt += 1
-			rc, err := restore_command(url, *outputPtr, *xlogPtr)
+			rc, err := restore_command(url, *outputPtr, *xlogPtr, *usernamePtr, *passwordPtr)
 			if rc != EXIT_RESTORE_FAIL {
 				return rc, err
 			}
@@ -101,13 +103,16 @@ func archive_command(url string) (int, error) {
 	return EXIT_ABORT, errors.New("archive_command not yet implemented")
 }
 
-func restore_command(url string, output string, xlog string) (int, error) {
+func restore_command(url string, output string, xlog string, username string, password string) (int, error) {
 	var output_path string
 	var req *http.Request
 	var err error
 
 	if output == "" {
 		req, err = http.NewRequest("HEAD", url, nil)
+		if username != "" && password != "" {
+			req.SetBasicAuth(username, password)
+		}
 	} else {
 		/* Construct absolute path for output - postgres calls this command with a relative path to its xlog
 		directory.  Note that os.path.join strips preceding components if a new components starts with a
@@ -136,6 +141,9 @@ func restore_command(url string, output string, xlog string) (int, error) {
 		}
 		req, err = http.NewRequest("GET", url, nil)
 		req.Header.Set("x-pghoard-target-path", output_path)
+		if username != "" && password != "" {
+			req.SetBasicAuth(username, password)
+		}
 	}
 
 	client := &http.Client{}

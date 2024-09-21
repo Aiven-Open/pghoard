@@ -4,6 +4,7 @@ pghoard
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
+import base64
 import json
 import logging
 import os
@@ -38,6 +39,19 @@ from .test_wal import wal_header_for_file
 def http_restore(pghoard):
     pgdata = get_pg_wal_directory(pghoard.config["backup_sites"][pghoard.test_site])
     return HTTPRestore("localhost", pghoard.config["http_port"], site=pghoard.test_site, pgdata=pgdata)
+
+
+@pytest.fixture
+def http_restore_with_userauth(pghoard_with_userauth):
+    pgdata = get_pg_wal_directory(pghoard_with_userauth.config["backup_sites"][pghoard_with_userauth.test_site])
+    return HTTPRestore(
+        "localhost",
+        pghoard_with_userauth.config["http_port"],
+        site=pghoard_with_userauth.test_site,
+        pgdata=pgdata,
+        username=pghoard_with_userauth.config["webserver_username"],
+        password=pghoard_with_userauth.config["webserver_password"]
+    )
 
 
 class TestWebServer:
@@ -773,6 +787,53 @@ class TestWebServer:
         conn.request("GET", wal_file, headers=headers)
         status = conn.getresponse().status
         assert status == 400
+
+    def test_requesting_status_with_user_authentiction(self, pghoard_with_userauth):
+        pghoard_with_userauth.write_backup_state_to_json_file()
+        conn = HTTPConnection(host="127.0.0.1", port=pghoard_with_userauth.config["http_port"])
+        conn.request("GET", "/status")
+        response = conn.getresponse()
+        assert response.status == 401
+
+        username = pghoard_with_userauth.config["webserver_username"]
+        password = pghoard_with_userauth.config["webserver_password"]
+        auth_str = base64.b64encode(f"{username}:{password}".encode("utf-8")).decode()
+        headers = {"Authorization": f"Basic {auth_str}"}
+
+        conn = HTTPConnection(host="127.0.0.1", port=pghoard_with_userauth.config["http_port"])
+        conn.request("GET", "/status", headers=headers)
+        response = conn.getresponse()
+        assert response.status == 200
+
+        response_parsed = json.loads(response.read().decode("utf-8"))
+        # "startup_time": "2016-06-23T14:53:25.840787",
+        assert response_parsed["startup_time"] is not None
+
+        conn.request("GET", "/status/somesite", headers=headers)
+        response = conn.getresponse()
+        assert response.status == 400
+
+        conn.request("GET", "/somesite/status", headers=headers)
+        response = conn.getresponse()
+        assert response.status == 404
+
+        conn.request("GET", "/{}/status".format(pghoard_with_userauth.test_site), headers=headers)
+        response = conn.getresponse()
+        assert response.status == 501
+
+    def test_basebackups_with_user_authentication(self, capsys, db, http_restore_with_userauth, pghoard_with_userauth):  # pylint: disable=redefined-outer-name
+        final_location = self._run_and_wait_basebackup(pghoard_with_userauth, db, "pipe")
+        backups = http_restore_with_userauth.list_basebackups()
+        assert len(backups) == 1
+        assert backups[0]["size"] > 0
+        assert backups[0]["name"] == os.path.join(
+            pghoard_with_userauth.test_site, "basebackup", os.path.basename(final_location)
+        )
+        # make sure they show up on the printable listing, too
+        http_restore_with_userauth.show_basebackup_list()
+        out, _ = capsys.readouterr()
+        assert "{} MB".format(int(backups[0]["metadata"]["original-file-size"]) // (1024 ** 2)) in out
+        assert backups[0]["name"] in out
 
 
 @pytest.fixture(name="download_results_processor")

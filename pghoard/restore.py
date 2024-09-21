@@ -92,6 +92,8 @@ def create_recovery_conf(
     site,
     *,
     port=PGHOARD_PORT,
+    webserver_username=None,
+    webserver_password=None,
     primary_conninfo=None,
     recovery_end_command=None,
     recovery_target_action=None,
@@ -113,6 +115,13 @@ def create_recovery_conf(
         "--xlog",
         "%f",
     ]
+    if webserver_username and webserver_password:
+        restore_command.extend([
+            "--username",
+            webserver_username,
+            "--password",
+            webserver_password,
+        ])
     with open(os.path.join(dirpath, "PG_VERSION"), "r") as fp:
         v = Version(fp.read().strip())
         pg_version = v.major if v.major >= 10 else float(f"{v.major}.{v.minor}")
@@ -213,9 +222,11 @@ class Restore:
 
             cmd.add_argument("--site", help="pghoard site", required=require_site)
 
-        def host_port_args():
+        def host_port_user_args():
             cmd.add_argument("--host", help="pghoard repository host", default=PGHOARD_HOST)
             cmd.add_argument("--port", help="pghoard repository port", default=PGHOARD_PORT)
+            cmd.add_argument("--username", help="pghoard repository username")
+            cmd.add_argument("--password", help="pghoard repository password")
 
         def target_args():
             cmd.add_argument("--basebackup", help="pghoard basebackup", default="latest")
@@ -266,7 +277,7 @@ class Restore:
             )
 
         cmd = add_cmd(self.list_basebackups_http)
-        host_port_args()
+        host_port_user_args()
         generic_args(require_config=False, require_site=True)
 
         cmd = add_cmd(self.list_basebackups)
@@ -280,7 +291,7 @@ class Restore:
 
     def list_basebackups_http(self, arg):
         """List available basebackups from a HTTP source"""
-        self.storage = HTTPRestore(arg.host, arg.port, arg.site)
+        self.storage = HTTPRestore(arg.host, arg.port, arg.site, username=arg.username, password=arg.password)
         self.storage.show_basebackup_list(verbose=arg.verbose)
 
     def _get_site_prefix(self, site):
@@ -609,6 +620,8 @@ class Restore:
             dirpath=pgdata,
             site=site,
             port=self.config["http_port"],
+            webserver_username=self.config.get("webserver_username"),
+            webserver_password=self.config.get("webserver_password"),
             primary_conninfo=primary_conninfo,
             recovery_end_command=recovery_end_command,
             recovery_target_action=recovery_target_action,
