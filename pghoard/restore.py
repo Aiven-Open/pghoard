@@ -657,7 +657,17 @@ class Restore:
 
 
 class BasebackupFetcher:
-    def __init__(self, *, app_config, debug, site, pgdata, tablespaces, data_files: List[FileInfo], status_output_file=None):
+    def __init__(
+        self,
+        *,
+        app_config,
+        debug,
+        site,
+        pgdata,
+        tablespaces,
+        data_files: List[FileInfo],
+        status_output_file=None,
+    ):
         self.log = logging.getLogger(self.__class__.__name__)
         self.completed_jobs: Set[str] = set()
         self.config = app_config
@@ -698,6 +708,9 @@ class BasebackupFetcher:
             except TimeoutError:
                 self.pending_jobs.clear()
                 self.last_progress_ts = time.monotonic()
+
+                # Increase the timeout and retry
+                self.max_stale_seconds *= 2
                 if self.errors:
                     break
 
