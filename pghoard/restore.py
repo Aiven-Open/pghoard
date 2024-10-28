@@ -42,7 +42,8 @@ from pghoard.object_store import (HTTPRestore, ObjectStore, print_basebackup_lis
 from . import common, config, logutil, version
 from .postgres_command import PGHOARD_HOST, PGHOARD_PORT
 
-MAX_RETRIES = 6
+STALL_MIN_RETRIES = 6  # minimum retry for stalled download, for the whole basebackup restore
+SINGLE_FILE_MAX_RETRIES = 6  # maximum retry for a single file
 
 
 class RestoreError(Error):
@@ -594,6 +595,10 @@ class Restore:
                 os.makedirs(dirname, exist_ok=True)
                 os.chmod(dirname, 0o700)
 
+        # Based on limited samples, there could be one stalled download per 122GiB of transfer
+        # So we tolerate one stall for every 64GiB of transfer (or STALL_MIN_RETRIES for smaller backup)
+        stall_max_retries = max(STALL_MIN_RETRIES, int(int(metadata.get("total-size-enc", 0)) / (64 * 2 ** 30)))
+
         fetcher = BasebackupFetcher(
             app_config=self.config,
             data_files=basebackup_data_files,
@@ -602,6 +607,7 @@ class Restore:
             pgdata=pgdata,
             site=site,
             tablespaces=tablespaces,
+            stall_max_retries=stall_max_retries,
         )
         fetcher.fetch_all()
 
@@ -644,7 +650,18 @@ class Restore:
 
 
 class BasebackupFetcher:
-    def __init__(self, *, app_config, debug, site, pgdata, tablespaces, data_files: List[FileInfo], status_output_file=None):
+    def __init__(
+        self,
+        *,
+        app_config,
+        debug,
+        site,
+        pgdata,
+        tablespaces,
+        data_files: List[FileInfo],
+        stall_max_retries: int,
+        status_output_file=None
+    ):
         self.log = logging.getLogger(self.__class__.__name__)
         self.completed_jobs: Set[str] = set()
         self.config = app_config
@@ -668,9 +685,10 @@ class BasebackupFetcher:
         self.tablespaces = tablespaces
         self.total_download_size = 0
         self.retry_per_file: Dict[str, int] = {}
+        self.stall_max_retries = stall_max_retries
 
     def fetch_all(self):
-        for retry in range(MAX_RETRIES):
+        for retry in range(self.stall_max_retries):
             try:
                 with self.manager_class() as manager:
                     self._setup_progress_tracking(manager)
@@ -688,8 +706,11 @@ class BasebackupFetcher:
                 if self.errors:
                     break
 
-                if retry == MAX_RETRIES - 1:
-                    self.log.error("Download stalled despite retries, aborting")
+                if retry == self.stall_max_retries - 1:
+                    self.log.error(
+                        "Download stalled despite retries, aborting"
+                        " (reached maximum retry %r)", self.stall_max_retries
+                    )
                     self.errors = 1
                     break
 
@@ -768,7 +789,7 @@ class BasebackupFetcher:
                     retries = self.retry_per_file.get(key, 0) + 1
                     self.retry_per_file[key] = retries
                     self.pending_jobs.remove(key)
-                    if retries < MAX_RETRIES:
+                    if retries < SINGLE_FILE_MAX_RETRIES:
                         self.jobs_to_retry.add(key)
                         return
                     self.errors += 1
