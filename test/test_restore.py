@@ -21,7 +21,7 @@ import pytest
 
 from pghoard.common import TAR_METADATA_FILENAME, write_json_file
 from pghoard.restore import (
-    MAX_RETRIES, BasebackupFetcher, ChunkFetcher, FileDataInfo, FileInfoType, FilePathInfo, Restore, RestoreError,
+    STALL_MIN_RETRIES, BasebackupFetcher, ChunkFetcher, FileDataInfo, FileInfoType, FilePathInfo, Restore, RestoreError,
     create_recovery_conf
 )
 
@@ -195,7 +195,8 @@ class TestBasebackupFetcher(unittest.TestCase):
             status_output_file=status_output_file,
             pgdata=pgdata,
             site=site,
-            tablespaces=tablespaces
+            tablespaces=tablespaces,
+            stall_max_retries=STALL_MIN_RETRIES,
         )
         manager, pool, manager_enter = MagicMock(), MagicMock(), MagicMock()
         fetcher.manager_class = lambda: manager
@@ -361,7 +362,7 @@ class TestBasebackupFetcher(unittest.TestCase):
 
         fetcher.max_stale_seconds = 2
         with patch("pghoard.restore.ChunkFetcher", new=FailingChunkFetcher):
-            if max_fails < MAX_RETRIES:
+            if max_fails < STALL_MIN_RETRIES:
                 fetcher.fetch_all()
                 self.check_sha256(
                     os.path.join(restore_dir, "pg_notify", "0000"),
@@ -484,7 +485,13 @@ class TestBasebackupFetcher(unittest.TestCase):
         config["tar_executable"] = tar_executable
         site = next(iter(config["backup_sites"]))
         fetcher = BasebackupFetcher(
-            app_config=config, data_files=files, debug=True, pgdata=restore_dir, site=site, tablespaces=tablespaces or {}
+            app_config=config,
+            data_files=files,
+            debug=True,
+            pgdata=restore_dir,
+            site=site,
+            tablespaces=tablespaces or {},
+            stall_max_retries=STALL_MIN_RETRIES
         )
         try:
             logic(fetcher, restore_dir)
