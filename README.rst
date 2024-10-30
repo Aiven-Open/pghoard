@@ -394,7 +394,9 @@ the configured sites.
 previous database backup from either ``pghoard`` itself or from one of the
 supported object stores.  ``pghoard_restore`` can also configure
 ``recovery.conf`` to use ``pghoard_postgres_command`` as the WAL
-``restore_command`` in ``recovery.conf``.
+``restore_command`` in ``recovery.conf``. If you specify ``recovery_config_file``
+in the config-file the recovery information is written to this file instead
+of writing ``recovery.conf``.
 
 ``pghoard_archive_cleanup`` can be used to clean up any orphan WAL files
 from the object store.  After the configured number of basebackups has been

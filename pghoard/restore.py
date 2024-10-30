@@ -101,7 +101,8 @@ def create_recovery_conf(
     recovery_target_name=None,
     recovery_target_time=None,
     recovery_target_xid=None,
-    restore_to_primary=None
+    restore_to_primary=None,
+    config_file: str | None=None,
 ):
     restore_command = [
         "pghoard_postgres_command",
@@ -175,15 +176,19 @@ def create_recovery_conf(
         lines.append("recovery_target_xid = '{}'".format(recovery_target_xid))
     content = "\n".join(lines) + "\n"
 
-    if use_recovery_conf:
-        # Overwrite the recovery.conf
+    if config_file:
         open_mode = "w"
-        filepath = os.path.join(dirpath, "recovery.conf")
+        filepath = os.path.join(dirpath)
     else:
-        # Append to an existing postgresql.auto.conf (PG >= 12)
-        open_mode = "a"
-        lines.insert(0, "\n")  # in case postgresql.conf does not end with a newline
-        filepath = os.path.join(dirpath, "postgresql.auto.conf")
+        if use_recovery_conf:
+            # Overwrite the recovery.conf
+            open_mode = "w"
+            filepath = os.path.join(dirpath, "recovery.conf")
+        else:
+            # Append to an existing postgresql.auto.conf (PG >= 12)
+            open_mode = "a"
+            lines.insert(0, "\n")  # in case postgresql.conf does not end with a newline
+            filepath = os.path.join(dirpath, "postgresql.auto.conf")
 
     filepath_tmp = filepath + ".tmp"
     with open(filepath_tmp, open_mode) as fp:
@@ -635,6 +640,7 @@ class Restore:
             recovery_target_time=recovery_target_time,
             recovery_target_xid=recovery_target_xid,
             restore_to_primary=restore_to_primary,
+            config_file=self.config.get("recovery_config_file")
         )
 
         if preserve_request is not None and cancel_preserve_on_success:
