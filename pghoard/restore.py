@@ -716,6 +716,9 @@ class BasebackupFetcher:
             except TimeoutError:
                 self.pending_jobs.clear()
                 self.last_progress_ts = time.monotonic()
+
+                # Increase the timeout and retry
+                self.max_stale_seconds = min(self.max_stale_seconds * 2, 480)
                 if self.errors:
                     break
 

@@ -349,6 +349,7 @@ class TestBasebackupFetcher(unittest.TestCase):
 
     def real_processing_with_threading_retries_on_timeout(self, fetcher, restore_dir, max_fails):
         fail_counter = [0]
+        base_max_stale_seconds = 2
 
         class FailingChunkFetcher(ChunkFetcher):
             def _fetch_and_extract_one_backup(self, metadata, file_size, fetch_fn):
@@ -358,9 +359,14 @@ class TestBasebackupFetcher(unittest.TestCase):
                     # Corrupt the file to test that retrying failed basebackup chunk yields sensible results
                     with open(os.path.join(restore_dir, "pg_notify", "0000"), "w") as f:
                         f.write("foo")
-                    time.sleep(4)
 
-        fetcher.max_stale_seconds = 2
+                    # ensure we sleep long enough to timeout based on the number of retries
+                    sleep_seconds = base_max_stale_seconds * (
+                        2 ** max_fails
+                    ) if max_fails < STALL_MIN_RETRIES else base_max_stale_seconds
+                    time.sleep(sleep_seconds)
+
+        fetcher.max_stale_seconds = base_max_stale_seconds
         with patch("pghoard.restore.ChunkFetcher", new=FailingChunkFetcher):
             if max_fails < STALL_MIN_RETRIES:
                 fetcher.fetch_all()
