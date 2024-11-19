@@ -242,7 +242,7 @@ class TestWebServer:
         conn.close()
         return start_wal, end_wal
 
-    def test_archive_sync(self, db, pghoard):
+    def test_archive_sync(self, db, pghoard, pg_version: str):
         log = logging.getLogger("test_archive_sync")
         store = pghoard.transfer_agents[0].get_object_storage(pghoard.test_site)
 
@@ -273,7 +273,11 @@ class TestWebServer:
         # cluster between all tests)
         pg_wal_dir = get_pg_wal_directory(pghoard.config["backup_sites"][pghoard.test_site])
         pg_wals = {f for f in os.listdir(pg_wal_dir) if wal.WAL_RE.match(f) and f > start_wal}
-        assert len(pg_wals) >= 4
+
+        # consider changes in pg_walfile_name, as pg_walfile_name(pg_current_wal_lsn()) might return
+        # previous walfile name and not current.
+        expected_min_wals = 4 if int(pg_version) < 17 else 3
+        assert len(pg_wals) >= expected_min_wals
 
         # create a couple of "recycled" xlog files that we must ignore
         last_wal = sorted(pg_wals)[-1]
@@ -291,7 +295,7 @@ class TestWebServer:
         # check what we have archived, there should be at least the three
         # above WALs that are NOT there at the moment
         archived_wals = set(list_archive("xlog"))
-        assert len(pg_wals - archived_wals) >= 4
+        assert len(pg_wals - archived_wals) >= expected_min_wals
         # now perform an archive sync
         arsy = ArchiveSync()
         arsy.run(["--site", pghoard.test_site, "--config", pghoard.config_path])
@@ -329,7 +333,7 @@ class TestWebServer:
             "restore_command = 'false'",
         ]
         if Version(db.pgver).major >= 12:
-            with open(os.path.join(db.pgdata, "standby.signal"), "w") as fp:
+            with open(os.path.join(db.pgdata, "standby.signal"), "w"):
                 pass
 
             recovery_conf_path = "postgresql.auto.conf"
@@ -339,7 +343,7 @@ class TestWebServer:
             recovery_conf_path = "recovery.conf"
             open_mode = "w"
 
-        with open(os.path.join(db.pgdata, recovery_conf_path), open_mode) as fp:
+        with open(os.path.join(db.pgdata, recovery_conf_path), open_mode) as fp:  # type: ignore
             fp.write("\n".join(recovery_conf) + "\n")
 
         # start PG and promote it
