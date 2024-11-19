@@ -35,6 +35,7 @@ from pghoard.common import (
     set_subprocess_stdout_and_stderr_nonblocking, terminate_subprocess
 )
 from pghoard.compressor import CompressionEvent
+from pghoard.pgutil import check_if_pg_connection_is_alive
 from pghoard.transfer import UploadEvent
 
 BASEBACKUP_NAME = "pghoard_base_backup"
@@ -543,6 +544,7 @@ class PGBaseBackup(PGHoardThread):
         self.log.debug("Connecting to database to start backup process")
         connection_string = connection_string_using_pgpass(self.connection_info)
         with psycopg2.connect(connection_string) as db_conn:
+            conn_polling = lambda: check_if_pg_connection_is_alive(db_conn)
             cursor = db_conn.cursor()
 
             if self.pg_version_server < 90600:
@@ -589,6 +591,7 @@ class PGBaseBackup(PGHoardThread):
                             for item in self.find_files_to_backup(pgdata=pgdata, tablespaces=tablespaces)
                             if not item[1].endswith(".pem")  # Exclude such files like "dh1024.pem"
                         ),
+                        conn_polling=conn_polling,
                     )
                     chunks_count = len(chunk_files)
                     control_files_metadata_extra["chunks"] = chunk_files
@@ -607,11 +610,12 @@ class PGBaseBackup(PGHoardThread):
                     # Tar up the chunks and submit them for upload; note that we start from chunk 1 here; chunk 0
                     # is reserved for special files and metadata and will be generated last.
                     chunk_files = self.chunk_uploader.create_and_upload_chunks(
-                        chunks,
-                        data_file_format,
-                        compressed_base,
+                        chunks=chunks,
+                        data_file_format=data_file_format,
+                        temp_base_dir=compressed_base,
                         delta_stats=delta_stats,
-                        file_type=FileType.Basebackup_chunk
+                        file_type=FileType.Basebackup_chunk,
+                        conn_polling=conn_polling,
                     )
 
                     total_size_plain = sum(item["input_size"] for item in chunk_files)

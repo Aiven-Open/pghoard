@@ -55,10 +55,21 @@ EMPTY_FILE_HASH = hashlib.blake2s().hexdigest()
 
 class DeltaBaseBackup:
     def __init__(
-        self, *, storage: BaseTransfer, site: str, site_config: Dict[str, Any], transfer_queue: TransferQueue,
-        metrics: Metrics, encryption_data: EncryptionData, compression_data: CompressionData,
-        get_remote_basebackups_info: Callable[[str], List[Dict[str, Any]]], parallel: int, temp_base_dir: Path,
-        compressed_base: Path, chunk_uploader: ChunkUploader, data_file_format: Callable[[int], str]
+        self,
+        *,
+        storage: BaseTransfer,
+        site: str,
+        site_config: Dict[str, Any],
+        transfer_queue: TransferQueue,
+        metrics: Metrics,
+        encryption_data: EncryptionData,
+        compression_data: CompressionData,
+        get_remote_basebackups_info: Callable[[str], List[Dict[str, Any]]],
+        parallel: int,
+        temp_base_dir: Path,
+        compressed_base: Path,
+        chunk_uploader: ChunkUploader,
+        data_file_format: Callable[[int], str],
     ):
         self.log = logging.getLogger("DeltaBaseBackup")
         self.storage = storage
@@ -384,11 +395,17 @@ class DeltaBaseBackup:
 
         return delta_chunks, todo_hexdigests
 
-    def _upload_chunks(self, delta_chunks, chunks_max_progress: float) -> Tuple[UploadedFilesMetric, List[Dict[str, Any]]]:
+    def _upload_chunks(
+        self,
+        delta_chunks,
+        chunks_max_progress: float,
+        conn_polling: Callable[[], bool],
+    ) -> Tuple[UploadedFilesMetric, List[Dict[str, Any]]]:
         """Upload small files grouped into chunks to save on latency and requests costs"""
         chunk_files = self.chunk_uploader.create_and_upload_chunks(
             chunks=delta_chunks,
             data_file_format=self.data_file_format,
+            conn_polling=conn_polling,
             temp_base_dir=self.compressed_base,
             file_type=FileType.Basebackup_delta_chunk,
             chunks_max_progress=chunks_max_progress,
@@ -426,7 +443,10 @@ class DeltaBaseBackup:
         return digests_metric, embed_metric
 
     def run(
-        self, pgdata: str, src_iterate_func: Callable[[], Iterable[BackupPath]]
+        self,
+        pgdata: str,
+        src_iterate_func: Callable[[], Iterable[BackupPath]],
+        conn_polling: Callable[[], bool],
     ) -> Tuple[int, int, BackupManifest, int, List[Dict[str, Any]]]:
         # NOTE: Hard links work only in the same FS, therefore using hopefully the same FS in PG home folder
         delta_dir = os.path.join(os.path.dirname(pgdata), "basebackup_delta")
@@ -459,7 +479,11 @@ class DeltaBaseBackup:
                 sum(len(chunk) for chunk in delta_chunks)
             )
             chunks_max_progress = delta_chunks_count * 100.0 / (delta_chunks_count + len(todo_hexdigests))
-            chunks_metric, chunk_files = self._upload_chunks(delta_chunks, chunks_max_progress=chunks_max_progress)
+            chunks_metric, chunk_files = self._upload_chunks(
+                delta_chunks,
+                chunks_max_progress=chunks_max_progress,
+                conn_polling=conn_polling,
+            )
 
             self.log.info(
                 "Submitting hashes for upload: %r, total hashes in the snapshot: %r", len(todo_hexdigests),
