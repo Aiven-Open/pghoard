@@ -133,7 +133,7 @@ python 3.10, 3.11 and 3.12 virtual environments and installations of postgresql 
 By default vagrant up will start a Virtualbox environment. The Vagrantfile will also work for libvirt, just prefix
 ``VAGRANT_DEFAULT_PROVIDER=libvirt`` to the ``vagrant up`` command.
 
-Any combination of Python (3.10, 3.11 and 3.12) and Postgresql (12, 13, 14, 15 and 16)
+Any combination of Python (3.10, 3.11 and 3.12) and Postgresql (12, 13, 14, 15, 16 and 17)
 
 Bring up vagrant instance and connect via ssh::
 
