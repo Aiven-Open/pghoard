@@ -88,7 +88,7 @@ LABEL: pg_basebackup base backup
         def create_test_files():
             # Create two temporary files on top level and one in global/ that we'll unlink while iterating
             with open(top1, "w") as t1, open(top2, "w") as t2, \
-                open(sub1, "w") as s1, open(sub2, "w") as s2, open(sub3, "w") as s3:
+                    open(sub1, "w") as s1, open(sub2, "w") as s2, open(sub3, "w") as s3:
                 t1.write("t1\n")
                 t2.write("t2\n")
                 s1.write("s1\n")
@@ -932,7 +932,7 @@ LABEL: pg_basebackup base backup
             return meta, b"some content"
 
         with patch.object(pgb, "get_remote_basebackups_info") as mock_get_remote_basebackups_info, \
-            patch("pghoard.basebackup.base.download_backup_meta_file", new=fake_download_backup_meta_file):
+                patch("pghoard.basebackup.base.download_backup_meta_file", new=fake_download_backup_meta_file):
             mock_get_remote_basebackups_info.return_value = [{
                 "name": f"backup{idx}",
                 "metadata": {
@@ -946,3 +946,29 @@ LABEL: pg_basebackup base backup
                 "7e0c70d50c0ccd9ca4cb8c6837fbfffb4ef7e885aa1c6370fcfc307541a03e27": 8192,
                 "7e0c70d50c0ccd9ca4cb8c6837fbfffb4ef7e885aa1c6370fcfc307541a03e28": 800
             }
+
+    @pytest.mark.parametrize(
+        "backup_mode",
+        [BaseBackupMode.local_tar, BaseBackupMode.delta, BaseBackupMode.local_tar_delta_stats],
+    )
+    def test_create_basebackup_lost_pg_connection(self, db, pghoard, backup_mode: BaseBackupMode):
+        with patch("pghoard.basebackup.base.check_if_pg_connection_is_alive", return_value=False):
+            pghoard.create_backup_site_paths(pghoard.test_site)
+            basebackup_path = os.path.join(pghoard.config["backup_location"], pghoard.test_site, "basebackup")
+            q: Queue[CallbackEvent] = Queue()
+
+            pghoard.config["backup_sites"][pghoard.test_site]["basebackup_mode"] = backup_mode
+            pghoard.config["backup_sites"][pghoard.test_site]["active_backup_mode"] = "archive_command"
+
+            now = datetime.datetime.now(datetime.timezone.utc)
+            metadata = {
+                "backup-reason": BackupReason.scheduled,
+                "backup-decision-time": now.isoformat(),
+                "normalized-backup-time": now.isoformat(),
+            }
+            pghoard.create_basebackup(pghoard.test_site, db.user, basebackup_path, q, metadata)
+            result = q.get(timeout=60)
+
+            assert result.success is False
+            assert result.exception and isinstance(result.exception, RuntimeError)
+            assert result.exception.args[0] == "ERROR: PostgreSQL connection was lost during backup process."

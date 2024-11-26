@@ -62,8 +62,16 @@ class DeltaStats:
 
 class ChunkUploader:
     def __init__(
-        self, metrics: Metrics, chunks_on_disk: int, encryption_data: EncryptionData, compression_data: CompressionData,
-        site_config: Dict[str, Any], site: str, is_running: Callable[[], bool], transfer_queue: TransferQueue
+        self,
+        *,
+        metrics: Metrics,
+        chunks_on_disk: int,
+        encryption_data: EncryptionData,
+        compression_data: CompressionData,
+        site_config: Dict[str, Any],
+        site: str,
+        is_running: Callable[[], bool],
+        transfer_queue: TransferQueue,
     ):
         self.log = logging.getLogger("ChunkUploader")
         self.metrics = metrics
@@ -216,9 +224,15 @@ class ChunkUploader:
         chunks,
         index: int,
         temp_dir: Path,
+        conn_polling: Callable[[], bool],
         delta_stats: Optional[DeltaStats] = None,
-        file_type: FileType = FileType.Basebackup_chunk
+        file_type: FileType = FileType.Basebackup_chunk,
     ) -> Dict[str, Any]:
+        # if the chunk is dependent on a PG connection and connection
+        # is not alive then abort the task
+        if not conn_polling():
+            raise RuntimeError("ERROR: PostgreSQL connection was lost during backup process.")
+
         one_chunk_files = chunks[index]
         chunk_name, input_size, result_size = self.tar_one_file(
             callback_queue=chunk_callback_queue,
@@ -260,12 +274,14 @@ class ChunkUploader:
 
     def create_and_upload_chunks(
         self,
+        *,
         chunks,
         data_file_format: Callable[[int], str],
+        conn_polling: Callable[[], bool],
         temp_base_dir: Path,
         delta_stats: Optional[DeltaStats] = None,
         file_type: FileType = FileType.Basebackup_chunk,
-        chunks_max_progress: float = 100.0
+        chunks_max_progress: float = 100.0,
     ) -> List[Dict[str, Any]]:
         start_time = time.monotonic()
         chunk_files = []
@@ -299,8 +315,9 @@ class ChunkUploader:
                         chunks=chunks,
                         index=i,
                         temp_dir=temp_base_dir,
+                        conn_polling=conn_polling,
                         delta_stats=delta_stats,
-                        file_type=file_type
+                        file_type=file_type,
                     )
                     pending_compress_and_encrypt_tasks.append(task)
                     self.chunks_on_disk += 1

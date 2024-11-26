@@ -5,8 +5,9 @@ pghoard - postgresql utility functions
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
-
 from urllib.parse import parse_qs, urlparse
+
+from psycopg2.extensions import (TRANSACTION_STATUS_ACTIVE, TRANSACTION_STATUS_IDLE, TRANSACTION_STATUS_INTRANS)
 
 
 def create_connection_string(connection_info):
@@ -92,3 +93,14 @@ def parse_connection_string_libpq(connection_string):
                 value, connection_string = rem, ""
         fields[key] = value
     return fields
+
+
+def check_if_pg_connection_is_alive(db_conn) -> bool:
+    if db_conn.closed:
+        return False
+
+    status = db_conn.get_transaction_status()
+    if status not in [TRANSACTION_STATUS_ACTIVE, TRANSACTION_STATUS_IDLE, TRANSACTION_STATUS_INTRANS]:
+        return False
+
+    return True
