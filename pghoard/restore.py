@@ -607,8 +607,8 @@ class Restore:
                 os.chmod(dirname, 0o700)
 
         # Based on limited samples, there could be one stalled download per 122GiB of transfer
-        # So we tolerate one stall for every 64GiB of transfer (or STALL_MIN_RETRIES for smaller backup)
-        stall_max_retries = max(STALL_MIN_RETRIES, int(int(metadata.get("total-size-enc", 0)) / (64 * 2 ** 30)))
+        # So we tolerate one stall for every 10GiB of transfer (or STALL_MIN_RETRIES for smaller backup)
+        stall_max_retries = max(STALL_MIN_RETRIES, int(int(metadata.get("total-size-enc", 0)) / (10 * 2 ** 30)))
 
         fetcher = BasebackupFetcher(
             app_config=self.config,
