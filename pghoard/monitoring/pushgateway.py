@@ -6,9 +6,12 @@ import socket
 
 import requests
 
+from pghoard.monitoring.base import MetricsClient
 
-class PushgatewayClient:
+
+class PushgatewayClient(MetricsClient):
     def __init__(self, config):
+        super().__init__(config)
         self._endpoint = config.get("endpoint", "")
         self._job = config.get("job", "pghoard")
         self._instance = config.get("instance", "")

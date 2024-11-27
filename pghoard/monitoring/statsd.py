@@ -8,9 +8,12 @@ Supports telegraf's statsd protocol extension for 'key=value' tags:
 """
 import socket
 
+from pghoard.monitoring.base import MetricsClient
 
-class StatsClient:
+
+class StatsClient(MetricsClient):
     def __init__(self, config):
+        super().__init__(config)
         self._dest_addr = (config.get("host", "127.0.0.1"), config.get("port", 8125))
         self._socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self._tags = config.get("tags", {})
