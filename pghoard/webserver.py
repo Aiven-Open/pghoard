@@ -516,7 +516,6 @@ class RequestHandler(BaseHTTPRequestHandler):
         xlog_path = Path(xlog_path_str)
         return xlog_path.is_file() and not xlog_path.is_symlink()
 
-
     def get_wal_or_timeline_file(self, site: str, filename: str, filetype: str) -> None:
         target_path = self.headers.get("x-pghoard-target-path")
         if not target_path:
@@ -621,7 +620,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         xlog_path = os.path.join(xlog_dir, filename)
         self.server.log.debug("Got request to archive: %r %r %r, %r", site, filetype, filename, xlog_path)
         if not self._is_valid_xlog_path(xlog_path):
-            self.server.log.debug("xlog_path: %r did not exist or contains symlinks, cannot archive, returning 404", xlog_path)
+            self.server.log.debug("xlog_path: %r did not exist or is symlink, cannot archive, returning 404", xlog_path)
             raise HttpResponse("N/A", status=404)
 
         if filetype == "xlog":
