@@ -516,7 +516,6 @@ class RequestHandler(BaseHTTPRequestHandler):
         xlog_path = Path(xlog_path_str)
         return xlog_path.is_file() and not xlog_path.is_symlink()
 
-
     def get_wal_or_timeline_file(self, site: str, filename: str, filetype: str) -> None:
         target_path = self.headers.get("x-pghoard-target-path")
         if not target_path:
