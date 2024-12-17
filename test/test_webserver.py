@@ -467,6 +467,17 @@ class TestWebServer:
         status = conn.getresponse().status
         assert status == 409
 
+    def test_put_invalid_timeline_fails(self, pghoard, tmpdir):
+        wal_dir = get_pg_wal_directory(pghoard.config["backup_sites"][pghoard.test_site])
+        symlink_timeline = os.path.join(str(wal_dir), "00000001.history")
+        secret_file = os.path.join(str(tmpdir), "config.json")
+        os.symlink(secret_file, symlink_timeline)
+        symlink_timeline_request = "/{}/timeline/00000001.history".format(pghoard.test_site)
+        conn = HTTPConnection(host="127.0.0.1", port=pghoard.config["http_port"])
+        conn.request("PUT", symlink_timeline_request)
+        status = conn.getresponse().status
+        assert status == 404
+
     def test_get_invalid_retry(self, pghoard_no_mp):
         # inject a failure by making a static function fail
         failures = [0, ""]
