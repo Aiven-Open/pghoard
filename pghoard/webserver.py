@@ -621,7 +621,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         xlog_path = os.path.join(xlog_dir, filename)
         self.server.log.debug("Got request to archive: %r %r %r, %r", site, filetype, filename, xlog_path)
         if not self._is_valid_xlog_path(xlog_path):
-            self.server.log.debug("xlog_path: %r did not exist or contains symlinks, cannot archive, returning 404", xlog_path)
+            self.server.log.debug("xlog_path: %r did not exist or is symlink, cannot archive, returning 404", xlog_path)
             raise HttpResponse("N/A", status=404)
 
         if filetype == "xlog":
