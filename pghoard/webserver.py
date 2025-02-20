@@ -395,8 +395,6 @@ class RequestHandler(BaseHTTPRequestHandler):
         prefetch_filenames = []
         xlog_num = int(filename, 16)
         for _ in range(prefetch_n):
-            if xlog_num & 0xFF == 0xFF:
-                xlog_num += 0xFFFFFF00
             xlog_num += 1
             prefetch_name = "{:024X}".format(xlog_num)
             xlog_path = os.path.join(xlog_dir, prefetch_name)
