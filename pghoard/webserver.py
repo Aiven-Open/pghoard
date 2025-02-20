@@ -8,6 +8,7 @@ import base64
 import ipaddress
 import logging
 import os
+import shutil
 import socket
 import tempfile
 import threading
@@ -167,7 +168,11 @@ class DownloadResultsProcessor(PGHoardThread):
                     with suppress(OSError):
                         os.unlink(src_tmp_file_path)
                     return
-            os.rename(src_tmp_file_path, pending_download_op.target_path)
+            # Copy timelines and keep them around, never delete them
+            if pending_download_op.filetype == "timeline":
+                shutil.copyfile(src_tmp_file_path, pending_download_op.target_path)
+            else:
+                os.rename(src_tmp_file_path, pending_download_op.target_path)
             metadata = download_result.payload.get("metadata", {})
             self.log.info(
                 "Renamed %s to %s. Original upload from %r, hash %s:%s", download_result.payload["target_path"],
@@ -380,7 +385,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         return "{site}_{filetype}_{filename}".format(site=site, filetype=filetype, filename=filename)
 
     def _create_prefetch_operations(self, site, filetype, filename):
-        if filetype not in {"timeline", "xlog"}:
+        if filetype != "xlog":
             return
         prefetch_n = self.server.config["restore_prefetch"]
         if prefetch_n <= 0:
@@ -388,29 +393,20 @@ class RequestHandler(BaseHTTPRequestHandler):
 
         xlog_dir = get_pg_wal_directory(self.server.config["backup_sites"][site])
         prefetch_filenames = []
-        if filetype == "timeline":
-            tli_num = int(filename.replace(".history", ""), 16)
-            for _ in range(prefetch_n):
-                tli_num += 1
-                prefetch_name = "{:08X}.history".format(tli_num)
-                if os.path.isfile(os.path.join(xlog_dir, prefetch_name)):
+        xlog_num = int(filename, 16)
+        for _ in range(prefetch_n):
+            if xlog_num & 0xFF == 0xFF:
+                xlog_num += 0xFFFFFF00
+            xlog_num += 1
+            prefetch_name = "{:024X}".format(xlog_num)
+            xlog_path = os.path.join(xlog_dir, prefetch_name)
+            if os.path.isfile(xlog_path):
+                try:
+                    wal.verify_wal(wal_name=prefetch_name, filepath=xlog_path)
                     continue
-                prefetch_filenames.append(prefetch_name)
-        elif filetype == "xlog":
-            xlog_num = int(filename, 16)
-            for _ in range(prefetch_n):
-                if xlog_num & 0xFF == 0xFF:
-                    xlog_num += 0xFFFFFF00
-                xlog_num += 1
-                prefetch_name = "{:024X}".format(xlog_num)
-                xlog_path = os.path.join(xlog_dir, prefetch_name)
-                if os.path.isfile(xlog_path):
-                    try:
-                        wal.verify_wal(wal_name=prefetch_name, filepath=xlog_path)
-                        continue
-                    except ValueError as e:
-                        self.server.log.debug("(Prefetch) File %s already exists but is invalid: %r", xlog_path, e)
-                prefetch_filenames.append(prefetch_name)
+                except ValueError as e:
+                    self.server.log.debug("(Prefetch) File %s already exists but is invalid: %r", xlog_path, e)
+            prefetch_filenames.append(prefetch_name)
 
         for prefetch_filename in prefetch_filenames:
             key = self._make_file_key(site, filetype, prefetch_filename)
