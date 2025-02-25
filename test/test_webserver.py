@@ -189,6 +189,7 @@ class TestWebServer:
         )
         assert os.path.exists(output_path)
         os.unlink(output_path)
+        os.unlink(valid_wal_path)
 
         with pytest.raises(postgres_command.PGCError):
             restore_command(
@@ -601,8 +602,11 @@ class TestWebServer:
         status = conn.getresponse().status
         assert status == 201
 
+        # This test used to ensure we deleted files from the pg_xlog directory
+        # It now tests that if the operation results in a copy, the original file
+        # is still copied instead of being removed
         with open(storage_name, "rb") as f:
-            assert f.read() == storage_data
+            assert f.read() == on_disk_data
 
     def test_restore_command_retry(self, pghoard):
         failures = [0, ""]

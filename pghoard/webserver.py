@@ -537,7 +537,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         # After reaching a recovery_target and restart of a PG server, PG wants to replay and refetch
         # files from the archive starting from the latest checkpoint. We have potentially fetched these files
         # already earlier. Check if we have the files already and if we do, don't go over the network to refetch
-        # them yet again but just rename them to the path that PG is requesting.
+        # them yet again but just copy them to the path that PG is requesting.
         xlog_path = os.path.join(xlog_dir, filename)
         exists_on_disk = os.path.exists(xlog_path)
         if exists_on_disk and filename not in self.server.served_from_disk:
@@ -550,7 +550,8 @@ class RequestHandler(BaseHTTPRequestHandler):
             except ValueError as e:
                 self.server.log.warning("Found file: %r but it was invalid: %s", xlog_path, e)
             else:
-                self._rename(xlog_path, target_path)
+                if xlog_path != target_path:
+                    shutil.copyfile(xlog_path, target_path)
                 self.server.served_from_disk.append(filename)
                 self.server.most_recently_served_files[filetype] = {
                     "name": filename,
