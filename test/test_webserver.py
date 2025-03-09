@@ -243,7 +243,7 @@ class TestWebServer:
         conn.close()
         return start_wal, end_wal
 
-    def test_archive_sync(self, db, pghoard, pg_version: str):
+    def _test_archive_sync(self, db, pghoard, pg_version: str):
         log = logging.getLogger("test_archive_sync")
         store = pghoard.transfer_agents[0].get_object_storage(pghoard.test_site)
 
@@ -351,36 +351,43 @@ class TestWebServer:
         db.run_pg()
         db.run_cmd("pg_ctl", "-D", db.pgdata, "promote")
         time.sleep(5)  # TODO: instead of sleeping, poll the db until ready
-        # we should have a single timeline file in pg_xlog/pg_wal now
+        # we should have one or more timeline file in pg_xlog/pg_wal now
         pg_wal_timelines = {f for f in os.listdir(pg_wal_dir) if wal.TIMELINE_RE.match(f)}
         assert len(pg_wal_timelines) > 0
-        # but there should be nothing archived as archive_command wasn't setup
+        # but there should be one less archived as archive_command wasn't setup/active
         archived_timelines = set(list_archive("timeline"))
-        assert len(archived_timelines) == 0
+        assert len(archived_timelines) == len(pg_wal_timelines) - 1
         # let's hit archive sync
         arsy.run(["--site", pghoard.test_site, "--config", pghoard.config_path])
         # now we should have an archived timeline
         archived_timelines = set(list_archive("timeline"))
         assert archived_timelines.issuperset(pg_wal_timelines)
-        assert "00000002.history" in archived_timelines
 
         # let's take a new basebackup
         self._run_and_wait_basebackup(pghoard, db, "basic")
+
         # nuke archives and resync them
         for name in list_archive(folder="timeline"):
             store.delete_key(os.path.join(pghoard.test_site, "timeline", name))
         for name in list_archive(folder="xlog"):
             store.delete_key(os.path.join(pghoard.test_site, "xlog", name))
-        self._switch_wal(db, 1)
+
+        start_wal, _ = self._switch_wal(db, 1)
+        pg_wals = {f for f in os.listdir(pg_wal_dir) if wal.WAL_RE.match(f) and f > start_wal}
+        pg_wal_timelines = {f for f in os.listdir(pg_wal_dir) if wal.TIMELINE_RE.match(f)}
 
         arsy.run(["--site", pghoard.test_site, "--config", pghoard.config_path])
 
         archived_wals = set(list_archive("xlog"))
-        # assume the same timeline file as before and one to three wal files
-        assert len(archived_wals) >= 1
-        assert len(archived_wals) <= 3
+        assert archived_wals.issuperset(pg_wals)
         archived_timelines = set(list_archive("timeline"))
-        assert list(archived_timelines) == ["00000002.history"]
+        assert archived_timelines.issuperset(pg_wal_timelines)
+
+    def test_archive_sync(self, db, pghoard, pg_version: str):
+        self._test_archive_sync(db, pghoard, pg_version)
+
+    def test_archive_sync_with_userauth(self, db, pghoard_with_userauth, pg_version: str):
+        self._test_archive_sync(db, pghoard_with_userauth, pg_version)
 
     def test_archive_command_with_invalid_file(self, pghoard):
         # only WAL and timeline (.history) files can be archived
