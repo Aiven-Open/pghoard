@@ -9,6 +9,7 @@ import datetime
 import logging
 import os
 import select
+import shlex
 import signal
 import subprocess
 import time
@@ -41,7 +42,7 @@ class PGReceiveXLog(PGHoardThread):
         self.running = True
 
         command = [
-            self.config["backup_sites"][self.site]["pg_receivexlog_path"],
+            *shlex.split(self.config["backup_sites"][self.site]["pg_receivexlog_path"]),
             "--status-interval",
             "1",
             "--verbose",

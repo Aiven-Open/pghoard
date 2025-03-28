@@ -7,6 +7,7 @@ See LICENSE for details
 import json
 import multiprocessing
 import os
+import shlex
 import subprocess
 from typing import Optional
 
@@ -29,6 +30,7 @@ def get_command_version(command: str, can_fail=True) -> Optional[str]:
     Run the given command identified by it's full path with the --version
     option.
     """
+    command = shlex.split(command)[0]
     if os.path.exists(command) and os.access(command, os.X_OK):
         try:
             version_output = subprocess.check_output([command, "--version"])
