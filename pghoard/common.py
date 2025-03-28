@@ -25,7 +25,7 @@ from threading import Thread
 from typing import (TYPE_CHECKING, Any, BinaryIO, Callable, Dict, Final, Optional, Protocol, Tuple, cast)
 
 from packaging.version import Version
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr
 from rohmu import IO_BLOCK_SIZE, BaseTransfer, rohmufile
 from rohmu.errors import Error, InvalidConfigurationError
 from rohmu.typing import FileLike, HasName
@@ -140,7 +140,7 @@ def atomic_write(file_path: str, data: str, temp_dir: Optional[str] = None):
 
 class PersistedProgress(BaseModel):
     progress: Dict[str, ProgressData] = Field(default_factory=dict)
-    _lock: threading.Lock = threading.Lock()
+    _lock: threading.Lock = PrivateAttr(default_factory=threading.Lock)
 
     @classmethod
     def read(cls, metrics: Metrics) -> "PersistedProgress":
