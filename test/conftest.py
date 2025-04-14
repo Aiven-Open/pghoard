@@ -277,6 +277,12 @@ def fixture_pghoard(db, tmpdir, request):
     yield from pghoard_base(db, tmpdir, request)
 
 
+@pytest.fixture(name="pghoard_nosync")
+def fixture_pghoard_nosync(db, tmpdir, request):
+    receive_xlog_path = str(Path(db.bindir) / "pg_receive_wal") + " --no-sync"
+    yield from pghoard_base(db, tmpdir, request, pg_receivexlog_path=receive_xlog_path)
+
+
 @pytest.fixture(name="pghoard_with_userauth")
 def fixture_pghoard_with_userauth(db, tmpdir, request):
     yield from pghoard_base(db, tmpdir, request, username="testuser", password="testpass")
@@ -369,7 +375,8 @@ def pghoard_base(
     compression_count=None,
     listen_http_address="127.0.0.1",
     username=None,
-    password=None
+    password=None,
+    pg_receivexlog_path=None,
 ):
     test_site = request.function.__name__
 
@@ -392,6 +399,7 @@ def pghoard_base(
                 "pg_bin_directory": db.pgbin,
                 "pg_data_directory": db.pgdata,
                 "pg_receivexlog": pg_receivexlog_config or {},
+                "pg_receivexlog_path": pg_receivexlog_path,
                 "nodes": [node],
                 "object_storage": {
                     "storage_type": "local",

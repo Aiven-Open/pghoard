@@ -895,6 +895,7 @@ class TestPGHoardWithPG:
         wait_for_xlog(pghoard, 15)
         assert "pausing pg_receive(wal|xlog)" in caplog.text
 
+    @pytest.mark.parametrize("pghoard", ["pghoard", "pghoard_nosync"], indirect=["pghoard"])
     def test_surviving_pg_receivewal_hickup(self, db, pghoard):
         wal_directory = os.path.join(pghoard.config["backup_location"], pghoard.test_site, "xlog_incoming")
         os.makedirs(wal_directory, exist_ok=True)
