@@ -45,7 +45,6 @@ class PGReceiveXLog(PGHoardThread):
             "--status-interval",
             "1",
             "--verbose",
-            "--no-sync",
             "--directory",
             self.wal_location,
         ]
