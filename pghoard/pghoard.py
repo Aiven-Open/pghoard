@@ -265,7 +265,7 @@ class PGHoard:
         # Depending on the PG version, we must react either to MOVE (pre-PG10)
         # or CLOSE_WRITE (PG10+)
         if pg_version_server >= 100000:
-            events = ["IN_CLOSE_WRITE", "IN_MOVED_TO", "IN_MOVED_FROM"]
+            events = ["IN_CLOSE_WRITE"]
         else:
             events = ["IN_MOVED_TO", "IN_MOVED_FROM"]
         events += ["IN_DELETE_SELF"]
