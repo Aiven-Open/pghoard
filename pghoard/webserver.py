@@ -488,6 +488,12 @@ class RequestHandler(BaseHTTPRequestHandler):
 
     @staticmethod
     def _validate_target_path(pg_data_directory: str, target_path: str) -> None:
+        # Normalize the target path to remove any ".." components
+        normalized_target_path = os.path.normpath(target_path)
+        
+        # Ensure the normalized path is within the pg_data_directory
+        if not normalized_target_path.startswith(os.path.abspath(pg_data_directory)):
+            raise HttpResponse("Invalid target path: outside of allowed directory", status=400)
         # The `restore_command` (postgres_command.py or pghoard_postgres_command_go.go) called by PostgresSQL has
         # prepended the PostgresSQL 'data' directory with `%p` parameter from PostgresSQL server, hence here
         # `target_path` is expected to be an absolute path.
@@ -551,6 +557,8 @@ class RequestHandler(BaseHTTPRequestHandler):
                 self.server.log.warning("Found file: %r but it was invalid: %s", xlog_path, e)
             else:
                 if xlog_path != target_path:
+                    # Ensure target_path is validated before use
+                    self._validate_target_path(site_config["pg_data_directory"], target_path)
                     shutil.copyfile(xlog_path, target_path)
                 self.server.served_from_disk.append(filename)
                 self.server.most_recently_served_files[filetype] = {
