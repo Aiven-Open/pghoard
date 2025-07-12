@@ -1,6 +1,6 @@
 PGHoard |BuildStatus|_
 ======================
-
+good
 .. |BuildStatus| image:: https://github.com/aiven/pghoard/actions/workflows/build.yml/badge.svg?branch=main
 .. _BuildStatus: https://github.com/aiven/pghoard/actions
 .. image:: https://codecov.io/gh/aiven/pghoard/branch/main/graph/badge.svg?token=nLr7M7hvCx
