@@ -128,12 +128,12 @@ Vagrant
 =======
 
 The Vagrantfile can be used to setup a vagrant development environment.   The vagrant environment has
-python 3.10, 3.11 and 3.12 virtual environments and installations of postgresql 12, 13, 14, 15 and 16.
+python 3.10, 3.11 and 3.12 virtual environments and installations of postgresql 13, 14, 15, 16, 17 and 18.
 
 By default vagrant up will start a Virtualbox environment. The Vagrantfile will also work for libvirt, just prefix
 ``VAGRANT_DEFAULT_PROVIDER=libvirt`` to the ``vagrant up`` command.
 
-Any combination of Python (3.10, 3.11 and 3.12) and Postgresql (12, 13, 14, 15, 16 and 17)
+Any combination of Python (3.10, 3.11 and 3.12) and Postgresql (13, 14, 15, 16, 17, 18)
 
 Bring up vagrant instance and connect via ssh::
 
@@ -141,16 +141,16 @@ Bring up vagrant instance and connect via ssh::
   vagrant ssh
   vagrant@ubuntu2004:~$ cd /vagrant
 
-Test with Python 3.11 and Postgresql 12::
+Test with Python 3.11 and Postgresql 17::
 
   vagrant@ubuntu2004:~$ source ~/venv3.11/bin/activate
-  vagrant@ubuntu2004:~$ PG_VERSION=12 make unittest
+  vagrant@ubuntu2004:~$ PG_VERSION=17 make unittest
   vagrant@ubuntu2004:~$ deactivate
 
-Test with Python 3.12 and Postgresql 13::
+Test with Python 3.12 and Postgresql 18::
 
   vagrant@ubuntu2004:~$ source ~/venv3.12/bin/activate
-  vagrant@ubuntu2004:~$ PG_VERSION=13 make unittest
+  vagrant@ubuntu2004:~$ PG_VERSION=18 make unittest
   vagrant@ubuntu2004:~$ deactivate
 
 And so on
