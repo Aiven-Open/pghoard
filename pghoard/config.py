@@ -89,6 +89,8 @@ def set_and_check_config_defaults(config, *, check_commands=True, check_pgdata=T
     # TODO: consider implementing a real configuration schema at some point
     # misc global defaults
     config.setdefault("backup_location", None)
+    config.setdefault("graceful_shutdown_queue_timeout", None)
+    config.setdefault("graceful_shutdown_upload_timeout", None)
     config.setdefault("http_address", PGHOARD_HOST)
     config.setdefault("http_port", PGHOARD_PORT)
     config.setdefault("webserver_username", None)

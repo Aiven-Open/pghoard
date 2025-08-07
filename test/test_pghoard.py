@@ -11,16 +11,20 @@ import sys
 import time
 from pathlib import Path
 from typing import Any, Dict
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, mock_open, patch
 
 import pytest
 
 import pghoard.pghoard as pghoard_module
 from pghoard.common import (
-    TAR_METADATA_FILENAME, BackupReason, BaseBackupFormat, FileType, create_alert_file, delete_alert_file, write_json_file
+    TAR_METADATA_FILENAME, BackupReason, BaseBackupFormat, FileType, FileTypePrefixes, PGHoardThread, create_alert_file,
+    delete_alert_file, write_json_file
 )
+from pghoard.compressor import CompressionEvent, CompressorThread
 from pghoard.pghoard import PGHoard
 from pghoard.pgutil import create_connection_string
+from pghoard.receivexlog import PGReceiveXLog
+from pghoard.transfer import TransferAgent
 
 from .base import PGHoardTestCase
 from .util import dict_to_tar_file, switch_wal, wait_for_xlog
@@ -820,6 +824,97 @@ dbname|"""
         else:
             # uncompressed timeline files are not added to deletion queue, they are immediately unlinked
             assert self.pghoard.wal_file_deletion_queue.qsize() == 0
+
+    @patch("pghoard.compressor.wal.verify_wal", Mock())
+    @patch("pghoard.compressor.os.unlink", Mock())
+    @patch.object(PGReceiveXLog, "run", Mock())
+    @patch.object(TransferAgent, "get_object_storage")
+    def test_graceful_shutdown(
+        self,
+        mocked_get_object_storage: MagicMock,
+    ) -> None:
+        backup_site_paths = self.pghoard.create_backup_site_paths(self.test_site)
+        uncompressed_wal_path = backup_site_paths.uncompressed_files_path
+
+        for i in range(1, 11):
+            wal_segment = f"0000000100000000000000{i:02X}"  # WAL segment names in hex
+            uncompressed_file_path = os.path.join(uncompressed_wal_path, wal_segment)
+            self.pghoard.compression_queue.put(
+                CompressionEvent(
+                    file_type=FileType.Wal,
+                    file_path=FileTypePrefixes[FileType.Wal] / wal_segment,
+                    delete_file_after_compression=True,
+                    backup_site_name=self.test_site,
+                    source_data=Path(uncompressed_file_path),
+                    callback_queue=None,
+                    metadata={}
+                )
+            )
+
+        mocked_data = b"random data"
+        m = mock_open(read_data=mocked_data)
+        # run compressors, transfer_agents and wal_file_deleter
+
+        original_handle_event = CompressorThread.handle_event
+
+        def slow_compress(self, event):
+            time.sleep(2)  # Simulate long processing
+            return original_handle_event(self, event)
+
+        with (
+            patch("builtins.open", m),
+            patch.object(CompressorThread, "handle_event", new=slow_compress),
+        ):
+            for thread in [*self.pghoard.compressors, *self.pghoard.transfer_agents, self.pghoard.wal_file_deleter]:
+                thread.start()
+
+            # make sure we have elements in the queue before shutting down,
+            # otherwise increase sleep time in slow_compress
+            assert self.pghoard.compression_queue.qsize()
+            self.pghoard.graceful_shutdown()
+
+            assert self.pghoard.compression_queue.qsize() == 0
+            assert self.pghoard.transfer_queue.qsize() == 0
+
+        assert mocked_get_object_storage.call_count == 10
+
+        # verify compressors, transfer_agents and wal_file_deleter are not running
+        for thread in [*self.pghoard.compressors, *self.pghoard.transfer_agents, self.pghoard.wal_file_deleter]:
+            assert thread.is_alive() is False
+
+    @patch("pghoard.compressor.wal.verify_wal", Mock())
+    @patch.object(PGReceiveXLog, "run", Mock())
+    @patch.object(TransferAgent, "get_object_storage", Mock())
+    def test_graceful_shutdown_with_timeout(self) -> None:
+        self.pghoard.config["graceful_shutdown_compression_timeout"] = 1
+        self.pghoard.config["graceful_shutdown_upload_timeout"] = 1
+
+        backup_site_paths = self.pghoard.create_backup_site_paths(self.test_site)
+        uncompressed_wal_path = backup_site_paths.uncompressed_files_path + "_incoming"
+
+        wal_segment = "00000001000000000000008"
+        uncompressed_file_path = os.path.join(uncompressed_wal_path, wal_segment)
+        self.pghoard.compression_queue.put(
+            CompressionEvent(
+                file_type=FileType.Wal,
+                file_path=FileTypePrefixes[FileType.Wal] / "stuck",
+                delete_file_after_compression=True,
+                backup_site_name=self.test_site,
+                source_data=Path(uncompressed_file_path),
+                callback_queue=None,
+                metadata={}
+            )
+        )
+
+        with (
+            patch.object(PGHoardThread, "is_alive", return_value=True),
+            patch.object(PGHoardThread, "join"),
+        ):
+            with patch.object(self.pghoard.log, "warning") as mock_warn:
+                self.pghoard.graceful_shutdown()
+                assert self.pghoard.compression_queue.qsize() != 0
+                mock_warn.assert_any_call("Exceeded waiting time for all %s threads to finish.", "compression")
+                mock_warn.assert_any_call("Exceeded waiting time for all %s threads to finish.", "transfer")
 
 
 class TestPGHoardWithPG:
