@@ -28,7 +28,7 @@ disable=
 
 [FORMAT]
 max-line-length=125
-max-module-lines=1100
+max-module-lines=1200
 
 [REPORTS]
 output-format=text
