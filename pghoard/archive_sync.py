@@ -10,7 +10,8 @@ import logging
 import os
 import sys
 
-import requests
+from requests import Session
+from requests.auth import HTTPBasicAuth
 from rohmu.errors import InvalidConfigurationError
 
 from pghoard.common import get_pg_wal_directory
@@ -34,19 +35,23 @@ class ArchiveSync:
         self.site = None
         self.backup_site = None
         self.base_url = None
+        self.session = None
 
     def set_config(self, config_file, site):
         self.config = config.read_json_config_file(config_file, check_commands=False)
         self.site = config.get_site_from_config(self.config, site)
         self.backup_site = self.config["backup_sites"][self.site]
         self.base_url = "http://127.0.0.1:{}/{}".format(self.config["http_port"], self.site)
+        self.session = Session()
+        if self.config.get("webserver_username") and self.config.get("webserver_password"):
+            self.session.auth = HTTPBasicAuth(self.config["webserver_username"], self.config["webserver_password"])
 
     def get_current_wal_file(self):
         # identify the (must be) local database
         return wal.get_current_lsn(self.backup_site["nodes"][0]).walfile_name
 
     def get_first_required_wal_segment(self):
-        resp = requests.get("{base}/basebackup".format(base=self.base_url))
+        resp = self.session.get("{base}/basebackup".format(base=self.base_url))
         if resp.status_code != 200:
             self.log.error("Error looking up basebackups")
             return None, None
@@ -106,7 +111,7 @@ class ArchiveSync:
                 archive_type = "WAL"
 
             if archive_type:
-                resp = requests.head("{base}/archive/{file}".format(base=self.base_url, file=wal_file))
+                resp = self.session.head("{base}/archive/{file}".format(base=self.base_url, file=wal_file))
                 if resp.status_code == 200:
                     remote_hash = resp.headers.get("metadata-hash")
                     hash_algorithm = resp.headers.get("metadata-hash-algorithm")
@@ -147,7 +152,7 @@ class ArchiveSync:
                 need_archival.append(wal_file)
 
         for wal_file in sorted(need_archival):  # sort oldest to newest
-            resp = requests.put("{base}/archive/{file}".format(base=self.base_url, file=wal_file))
+            resp = self.session.put("{base}/archive/{file}".format(base=self.base_url, file=wal_file))
             archive_type = "TIMELINE" if ".history" in wal_file else "WAL"
             if resp.status_code != 201:
                 self.log.error("%s file %r archival failed with status code %r", archive_type, wal_file, resp.status_code)
@@ -175,7 +180,7 @@ class ArchiveSync:
                 # Decrement one segment if we're on a valid timeline
                 current_lsn = current_lsn.previous_walfile_start_lsn
             wal_file = current_lsn.walfile_name
-            resp = requests.head("{base}/archive/{file}".format(base=self.base_url, file=wal_file))
+            resp = self.session.head("{base}/archive/{file}".format(base=self.base_url, file=wal_file))
             if resp.status_code == 200:
                 self.log.info("%s file %r correctly archived", archive_type, wal_file)
                 file_count += 1
@@ -201,7 +206,7 @@ class ArchiveSync:
             current_lsn = current_lsn.at_timeline(current_lsn.timeline_id - 1)
 
     def request_basebackup(self):
-        resp = requests.put("{base}/archive/basebackup".format(base=self.base_url))
+        resp = self.session.put("{base}/archive/basebackup".format(base=self.base_url))
         if resp.status_code != 201:
             self.log.error("Request for a new backup for site: %r failed", self.site)
         else:
