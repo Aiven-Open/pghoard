@@ -726,6 +726,11 @@ How many threads to use for tar, compress and encrypt tasks. Only applies for
 this, with higher thread count speed improvement is negligible and CPU time is
 lost switching between threads.
 
+``extra_backup_sites_prefixes`` (default undefined)
+
+Prefixes for extra backup sites to look into during cleanup. This could be useful
+if you want to removed old backups from previous backup sites after a PG upgrade.
+
 ``encryption_key_id`` (no default)
 
 Specifies the encryption key used when storing encrypted backups. If this

@@ -47,6 +47,10 @@ class TestPGHoard(PGHoardTestCase):
                     ],
                 },
             },
+            "extra_backup_sites_prefixes": [
+                f"extra_site_1_{self.test_site}",
+                f"extra_site_2_{self.test_site}",
+            ],
         })
         config_path = os.path.join(self.temp_dir, "pghoard.json")
         write_json_file(config_path, self.config)
@@ -117,6 +121,62 @@ dbname|"""
         with open(metadata_file_path, "w") as fp:
             json.dump({"_hash": "abc", "start-time": "2015-07-02 22:00:00+00"}, fp)
         basebackups = self.pghoard.get_remote_basebackups_info(self.test_site)
+        assert basebackups[0]["name"] == "2015-07-02_9"
+        assert basebackups[1]["name"] == "2015-07-02_10"
+        assert basebackups[2]["name"] == "2015-07-03_0"
+
+    def test_get_local_basebackups_info_from_an_extra_site(self):
+        extra_site_prefix = f"extra_site_{self.test_site}"
+        extra_site_basebackup_storage_path = os.path.join(
+            self.config["backup_sites"][self.test_site]["object_storage"]["directory"],
+            extra_site_prefix,
+            "basebackup",
+        )
+        os.makedirs(extra_site_basebackup_storage_path)
+        assert self.pghoard.get_remote_basebackups_info(self.test_site) == []
+        assert self.pghoard.get_remote_basebackups_info(self.test_site, site_prefix=extra_site_prefix) == []
+
+        # Handle the case where metadata file does not exist.
+        bb_path = os.path.join(extra_site_basebackup_storage_path, "2015-07-03_0")
+        with open(bb_path, "wb") as fp:
+            fp.write(b"something")
+        assert self.pghoard.get_remote_basebackups_info(self.test_site) == []
+        assert self.pghoard.get_remote_basebackups_info(self.test_site, site_prefix=extra_site_prefix) == []
+
+        metadata_file_path = bb_path + ".metadata"
+        with open(metadata_file_path, "w") as fp:
+            json.dump({"_hash": "abc", "start-time": "2015-07-03 12:00:00+00:00"}, fp)
+
+        assert self.pghoard.get_remote_basebackups_info(self.test_site) == []
+        available_backup = self.pghoard.get_remote_basebackups_info(self.test_site, site_prefix=extra_site_prefix)[0]
+        assert available_backup["name"] == "2015-07-03_0"
+        start_time = datetime.datetime(2015, 7, 3, 12, tzinfo=datetime.timezone.utc)
+        assert available_backup["metadata"]["start-time"] == start_time
+        assert available_backup["metadata"]["backup-reason"] == BackupReason.scheduled
+        assert available_backup["metadata"]["normalized-backup-time"] is None
+        assert available_backup["metadata"]["backup-decision-time"]
+
+        bb_path = os.path.join(extra_site_basebackup_storage_path, "2015-07-02_9")
+        metadata_file_path = bb_path + ".metadata"
+        with open(bb_path, "wb") as fp:
+            fp.write(b"something")
+        with open(metadata_file_path, "w") as fp:
+            json.dump({"_hash": "abc", "start-time": "2015-07-02 12:00:00+00:00"}, fp)
+
+        assert self.pghoard.get_remote_basebackups_info(self.test_site) == []
+        basebackups = self.pghoard.get_remote_basebackups_info(self.test_site, site_prefix=extra_site_prefix)
+        assert basebackups[0]["name"] == "2015-07-02_9"
+        assert basebackups[1]["name"] == "2015-07-03_0"
+
+        bb_path = os.path.join(extra_site_basebackup_storage_path, "2015-07-02_10")
+        metadata_file_path = bb_path + ".metadata"
+        with open(bb_path, "wb") as fp:
+            fp.write(b"something")
+        with open(metadata_file_path, "w") as fp:
+            json.dump({"_hash": "abc", "start-time": "2015-07-02 22:00:00+00"}, fp)
+
+        assert self.pghoard.get_remote_basebackups_info(self.test_site) == []
+        basebackups = self.pghoard.get_remote_basebackups_info(self.test_site, site_prefix=extra_site_prefix)
         assert basebackups[0]["name"] == "2015-07-02_9"
         assert basebackups[1]["name"] == "2015-07-02_10"
         assert basebackups[2]["name"] == "2015-07-03_0"
@@ -345,15 +405,18 @@ dbname|"""
         assert to_delete == [bbs[0]]
 
     def test_local_refresh_backup_list_and_delete_old(self):
-        basebackup_storage_path = os.path.join(self.local_storage_dir, "basebackup")
-        wal_storage_path = os.path.join(self.local_storage_dir, "xlog")
-        os.makedirs(basebackup_storage_path)
-        os.makedirs(wal_storage_path)
-
         self.pghoard.set_state_defaults(self.test_site)
         assert self.pghoard.get_remote_basebackups_info(self.test_site) == []
 
-        def write_backup_and_wal_files(what):
+        base_local_storage_dir = self.config["backup_sites"][self.test_site]["object_storage"]["directory"]
+        os.makedirs(base_local_storage_dir)
+
+        def write_backup_and_wal_files(what, site_dir):
+            basebackup_storage_path = os.path.join(base_local_storage_dir, site_dir, "basebackup")
+            wal_storage_path = os.path.join(base_local_storage_dir, site_dir, "xlog")
+            os.makedirs(basebackup_storage_path, exist_ok=True)
+            os.makedirs(wal_storage_path, exist_ok=True)
+
             for bb, wals in what.items():
                 if bb:
                     bb_path = os.path.join(basebackup_storage_path, bb)
@@ -392,13 +455,84 @@ dbname|"""
                 "000000040000000B00000004",
             ],
         }
-        write_backup_and_wal_files(backups_and_wals)
+
+        extra_site_1_backups_and_wals = {
+            "2015-08-23_0": [
+                # NOTE: gap between this and next segment means that cleanup shouldn't find this
+                "000000010000000A000000DE",
+            ],
+            "2015-08-23_1": [
+                "000000010000000A000000E0",
+                "000000010000000A000000E1",
+            ],
+            "2015-08-23_2": [
+                "000000010000000A000000E2",
+                "000000010000000A000000E3",
+            ],
+        }
+
+        extra_site_2_backups_and_wals = {
+            "2015-08-24_0": [
+                "000000010000000A000000E7",
+            ],
+            "2015-08-24_1": [
+                "000000010000000A000000E8",
+                "000000010000000A000000E9",
+            ],
+            "2015-08-24_2": [
+                "000000010000000A000000EA",
+                "000000010000000A000000EB",
+                "000000010000000A000000EC",
+                "000000010000000A000000ED",
+            ],
+        }
+
+        extra_site_1 = f"extra_site_1_{self.test_site}"
+        extra_site_2 = f"extra_site_2_{self.test_site}"
+        write_backup_and_wal_files(backups_and_wals, self.test_site)
+        write_backup_and_wal_files(extra_site_1_backups_and_wals, extra_site_1)
+        write_backup_and_wal_files(extra_site_2_backups_and_wals, extra_site_2)
+
         basebackups = self.pghoard.get_remote_basebackups_info(self.test_site)
         assert len(basebackups) == 4
+        assert {backup["name"] for backup in basebackups} == backups_and_wals.keys()
+
         self.pghoard.refresh_backup_list_and_delete_old(self.test_site)
+
         basebackups = self.pghoard.get_remote_basebackups_info(self.test_site)
         assert len(basebackups) == 1
+        assert basebackups[0]["name"] == "2015-08-25_3"
+        basebackup_storage_path = os.path.join(self.local_storage_dir, "basebackup")
+        assert set(os.listdir(basebackup_storage_path)) == {"2015-08-25_3", "2015-08-25_3.metadata"}
+        wal_storage_path = os.path.join(self.local_storage_dir, "xlog")
         assert len(os.listdir(wal_storage_path)) == 3
+        assert set(os.listdir(wal_storage_path)) == {
+            "000000010000000A000000FB",
+            "000000040000000B00000003",
+            "000000040000000B00000004",
+        }
+
+        basebackups = self.pghoard.get_remote_basebackups_info(self.test_site, site_prefix=f"extra_site_1_{self.test_site}")
+        assert len(basebackups) == 0
+        extra_site_1_wal_storage_path = os.path.join(base_local_storage_dir, extra_site_1, "xlog")
+        assert len(os.listdir(extra_site_1_wal_storage_path)) == 3
+        assert set(os.listdir(extra_site_1_wal_storage_path)) == {
+            "000000010000000A000000DE",
+            "000000010000000A000000E2",
+            "000000010000000A000000E3",
+        }
+
+        basebackups = self.pghoard.get_remote_basebackups_info(self.test_site, site_prefix=f"extra_site_2_{self.test_site}")
+        assert len(basebackups) == 0
+        extra_site_2_wal_storage_path = os.path.join(base_local_storage_dir, extra_site_2, "xlog")
+        assert len(os.listdir(extra_site_2_wal_storage_path)) == 4
+        assert set(os.listdir(extra_site_2_wal_storage_path)) == {
+            "000000010000000A000000EA",
+            "000000010000000A000000EB",
+            "000000010000000A000000EC",
+            "000000010000000A000000ED",
+        }
+
         # Put all WAL segments between 1 and 9 in place to see that they're deleted and we don't try to go back
         # any further from TLI 1.  Note that timeline 3 is now "empty" so deletion shouldn't touch timelines 2
         # or 1.
@@ -416,15 +550,20 @@ dbname|"""
                 "000000040000000B00000005",
             ],
         }
-        write_backup_and_wal_files(new_backups_and_wals)
+        write_backup_and_wal_files(new_backups_and_wals, self.local_storage_dir)
         assert len(os.listdir(wal_storage_path)) == 11
+
         self.pghoard.refresh_backup_list_and_delete_old(self.test_site)
+
         basebackups = self.pghoard.get_remote_basebackups_info(self.test_site)
         assert len(basebackups) == 1
-        expected_wal_count = len(backups_and_wals["2015-08-25_0"])
-        expected_wal_count += len(new_backups_and_wals[""])
-        expected_wal_count += len(new_backups_and_wals["2015-08-25_4"])
-        assert len(os.listdir(wal_storage_path)) == expected_wal_count
+        assert set(os.listdir(basebackup_storage_path)) == {"2015-08-25_4", "2015-08-25_4.metadata"}
+        expected_wal_segments = (
+            backups_and_wals["2015-08-25_0"] + new_backups_and_wals[""] + new_backups_and_wals["2015-08-25_4"]
+        )
+        assert len(expected_wal_segments) == 9
+        assert set(os.listdir(wal_storage_path)) == set(expected_wal_segments)
+
         # Now put WAL files in place with no gaps anywhere
         gapless_backups_and_wals = {
             "2015-08-25_3": [
@@ -435,12 +574,16 @@ dbname|"""
                 "000000040000000B00000005",
             ],
         }
-        write_backup_and_wal_files(gapless_backups_and_wals)
-        assert len(os.listdir(wal_storage_path)) >= 10
+        write_backup_and_wal_files(gapless_backups_and_wals, self.local_storage_dir)
+        assert len(os.listdir(wal_storage_path)) == 11
+
         self.pghoard.refresh_backup_list_and_delete_old(self.test_site)
+
         basebackups = self.pghoard.get_remote_basebackups_info(self.test_site)
         assert len(basebackups) == 1
+        assert set(os.listdir(basebackup_storage_path)) == {"2015-08-25_4", "2015-08-25_4.metadata"}
         assert len(os.listdir(wal_storage_path)) == 1
+        assert set(os.listdir(wal_storage_path)) == {"000000040000000B00000005"}
 
     def test_local_refresh_backup_list_and_delete_old_delta_format(self):
         basebackup_storage_path = os.path.join(self.local_storage_dir, "basebackup")
@@ -559,25 +702,29 @@ dbname|"""
             {
                 "name": "bb_v1",
                 "metadata": {
-                    "format": BaseBackupFormat.v1
+                    "format": BaseBackupFormat.v1,
+                    "site-prefix": self.test_site,
                 },
             },
             {
                 "name": "bb_v2",
                 "metadata": {
-                    "format": BaseBackupFormat.v2
+                    "format": BaseBackupFormat.v2,
+                    "site-prefix": self.test_site,
                 },
             },
             {
                 "name": "delta_v1",
                 "metadata": {
-                    "format": BaseBackupFormat.delta_v1
+                    "format": BaseBackupFormat.delta_v1,
+                    "site-prefix": self.test_site,
                 },
             },
             {
                 "name": "delta_v2",
                 "metadata": {
-                    "format": BaseBackupFormat.delta_v2
+                    "format": BaseBackupFormat.delta_v2,
+                    "site-prefix": self.test_site,
                 },
             },
         ]
@@ -649,7 +796,7 @@ dbname|"""
                 self.pghoard._get_delta_basebackup_files(  # pylint: disable=protected-access
                     site=self.test_site,
                     storage=Mock(),
-                    metadata=backup_to_delete_meta,
+                    metadata={**backup_to_delete_meta, "site-prefix": self.test_site},
                     basebackup_name_to_delete=backup_to_delete,
                     backups_to_keep=backups_to_keep
                 )
@@ -658,7 +805,7 @@ dbname|"""
                 res = self.pghoard._get_delta_basebackup_files(  # pylint: disable=protected-access
                     site=self.test_site,
                     storage=Mock(),
-                    metadata=backup_to_delete_meta,
+                    metadata={**backup_to_delete_meta, "site-prefix": self.test_site},
                     basebackup_name_to_delete=backup_to_delete,
                     backups_to_keep=backups_to_keep
                 )
