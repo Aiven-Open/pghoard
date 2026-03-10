@@ -1157,7 +1157,7 @@ class PGHoard:
         )
         self.quit()
 
-    def quit(self):
+    def quit(self, join_timeout: float = 10.0):
         self.running = False
         self.inotify.running = False
         all_threads = self._get_all_threads()
@@ -1167,7 +1167,8 @@ class PGHoard:
         self.write_backup_state_to_json_file()
         for t in all_threads:
             if t.is_alive():
-                t.join()
+                t.join(timeout=join_timeout)
+
         if self.mp_manager:
             self.mp_manager.shutdown()
             self.mp_manager = None
