@@ -222,7 +222,16 @@ class CompressorThread(PGHoardThread):
             )
 
             if compressed_filepath:
-                os.link(output_obj.name, compressed_filepath)
+                try:
+                    os.link(output_obj.name, compressed_filepath)
+                except FileExistsError:
+                    # This can happen if the same file is received multiple times (e.g., pg_receivewal
+                    # reconnecting and re-sending timeline files). The compressed file already exists
+                    # but may not have been uploaded yet. Re-queue the event to retry later once the
+                    # existing compressed file has been uploaded and deleted.
+                    self.log.info("Compressed file %s already exists, re-queuing event for later retry", compressed_filepath)
+                    self.compression_queue.put(event)
+                    return True
             else:
                 output_data = BytesIO(output_obj.getvalue())
 
