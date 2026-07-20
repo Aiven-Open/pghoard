@@ -52,6 +52,13 @@ class RestoreError(Error):
     """Restore error"""
 
 
+def _validate_relative_path(relative_path: str) -> str:
+    normalized = os.path.normpath(relative_path)
+    if os.path.isabs(normalized) or normalized.startswith(".."):
+        raise RestoreError(f"Invalid path: {relative_path!r} escapes the target directory")
+    return normalized
+
+
 @enum.unique
 class FileInfoType(StrEnum):
     regular = "regular"
@@ -432,7 +439,7 @@ class Restore:
                     FilePathInfo(
                         name=os.path.join(delta_objects_path, delta_file["hexdigest"]),
                         size=delta_file["stored_file_size"],
-                        new_name=delta_file["relative_path"],
+                        new_name=_validate_relative_path(delta_file["relative_path"]),
                         file_type=FileInfoType.delta
                     )
                 )
@@ -443,7 +450,7 @@ class Restore:
                         data=base64.b64decode(delta_file["content_b64"]),
                         metadata=metadata,
                         size=delta_file["file_size"],
-                        new_name=delta_file["relative_path"],
+                        new_name=_validate_relative_path(delta_file["relative_path"]),
                         file_type=FileInfoType.delta
                     )
                 )
@@ -609,7 +616,7 @@ class Restore:
             os.chmod(dirname, 0o700)
         if empty_dirs:
             for rel_path in empty_dirs:
-                dirname = os.path.join(pgdata, rel_path)
+                dirname = os.path.join(pgdata, _validate_relative_path(rel_path))
                 os.makedirs(dirname, exist_ok=True)
                 os.chmod(dirname, 0o700)
 
