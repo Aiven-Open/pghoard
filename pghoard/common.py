@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from queue import Queue
 from threading import Thread
-from typing import (TYPE_CHECKING, Any, BinaryIO, Callable, Dict, Final, Optional, Protocol, Tuple, cast)
+from typing import (TYPE_CHECKING, Any, BinaryIO, Callable, ClassVar, Dict, Final, Optional, Protocol, Tuple, cast)
 
 from packaging.version import Version
 from pydantic import BaseModel, Field
@@ -140,7 +140,7 @@ def atomic_write(file_path: str, data: str, temp_dir: Optional[str] = None):
 
 class PersistedProgress(BaseModel):
     progress: Dict[str, ProgressData] = Field(default_factory=dict)
-    _lock: threading.Lock = threading.Lock()
+    _lock: ClassVar[threading.Lock] = threading.Lock()
 
     @classmethod
     def read(cls, metrics: Metrics) -> "PersistedProgress":

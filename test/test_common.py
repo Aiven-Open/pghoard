@@ -112,6 +112,11 @@ class TestCommon(PGHoardTestCase):
         assert updated_progress.progress["total_bytes_uploaded"].current_progress == new_progress
         assert updated_progress.progress["total_bytes_uploaded"].last_updated_time > original_time
 
+    def test_persisted_progress_lock_is_shared(self):
+        # Several call sites build their own PersistedProgress but all write the same file,
+        # so the lock guarding that write has to be the same object for all of them.
+        assert PersistedProgress()._lock is PersistedProgress()._lock  # pylint: disable=protected-access
+
     def test_default_persisted_progress_creation(self, mocker, tmp_path):
         tmp_file = tmp_path / "non_existent_progress.json"
         assert not tmp_file.exists()
