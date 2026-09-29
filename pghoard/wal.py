@@ -166,7 +166,12 @@ class LSN:
         Returns the LSN corresponding to the start of the wal file that would
         contain this LSN.
         """
-        return LSN(self.lsn & 0xFFFFFFFF000000, timeline_id=self.timeline_id, server_version=self.server_version)
+        # Clear the intra-segment offset (the low bits within WAL_SEG_SIZE) to get the segment
+        # start. This is `self._seg * WAL_SEG_SIZE`. The previous `self.lsn & 0xFFFFFFFF000000`
+        # mask was one hex digit pair short: besides clearing the low 24 offset bits it also
+        # cleared bits 56-63 of the LSN, so for LSNs whose high byte is set the result no longer
+        # matched `_seg`/`from_walfile_name` and broke the walfile-name round-trip.
+        return LSN(self._seg * WAL_SEG_SIZE, timeline_id=self.timeline_id, server_version=self.server_version)
 
     @property
     def next_walfile_start_lsn(self):

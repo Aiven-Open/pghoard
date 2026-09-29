@@ -77,6 +77,22 @@ def test_construct_wal_name():
     assert str(wal.lsn_from_sysinfo(sysinfo, None).walfile_start_lsn) == "F/19000000"
 
 
+def test_walfile_start_lsn_high_logid_round_trip():
+    # Regression test: for a structurally valid WAL file name whose log-id has its high byte set
+    # (log-id >= 0x01000000), `walfile_start_lsn` used to mask with 0xFFFFFFFF000000, which cleared
+    # bits 56-63 of the LSN in addition to the intra-segment offset. That produced a wrong segment
+    # start, made it disagree with `_seg`/`from_walfile_name`, and broke the walfile-name round trip.
+    name = "000000010100000000000005"  # timeline_id=1, log-id=0x01000000, segment=5
+    lsn = wal.LSN.from_walfile_name(name, server_version=None)
+    start = lsn.walfile_start_lsn
+    # The segment start must equal `segment_number * WAL_SEG_SIZE` ...
+    assert start.lsn == lsn._seg * wal.WAL_SEG_SIZE  # pylint: disable=protected-access
+    # ... and therefore round-trip back to the same WAL file name.
+    assert start.walfile_name == name
+    assert lsn.next_walfile_start_lsn.walfile_name == "000000010100000000000006"
+    assert lsn.previous_walfile_start_lsn.walfile_name == "000000010100000000000004"
+
+
 def test_lsn_of_next_wal_start():
     lsn_str = "0/10000AB"
     lsn = wal.LSN(lsn_str, server_version=None)
