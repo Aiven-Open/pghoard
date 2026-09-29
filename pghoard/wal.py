@@ -53,17 +53,14 @@ class WalBlobLengthError(ValueError):
 
 WalHeader = namedtuple("WalHeader", ("version", "lsn"))
 
-
-def segments_per_xlogid(server_version: Optional[int]) -> int:
-    if server_version is not None and server_version < 90300:
-        return 0x0FFFFFFFF // WAL_SEG_SIZE
-    return 0x100000000 // WAL_SEG_SIZE
+# pghoard no longer supports PG versions older than 9.3, so this is always a constant: older
+# versions used a 32-bit-clean xlogid space (0x0FFFFFFFF), 9.3+ use the full 32 bits (0x100000000).
+SEGMENTS_PER_XLOGID = 0x100000000 // WAL_SEG_SIZE
 
 
 class LSN:
-    def __init__(self, value: Union[int, str], server_version: Optional[int], timeline_id: Optional[int] = None):
+    def __init__(self, value: Union[int, str], timeline_id: Optional[int] = None):
         self.timeline_id = timeline_id
-        self.server_version = server_version
         if isinstance(value, int):
             self.lsn = value
         elif isinstance(value, str) and "/" in value:
@@ -72,18 +69,14 @@ class LSN:
         else:
             raise ValueError("LSN constructor accepts either an int, or a %X/%X formatted string")
 
-    @property
-    def _segments_per_xlogid(self) -> int:
-        return segments_per_xlogid(self.server_version)
-
     @classmethod
-    def from_walfile_name(cls, wal_filename: str, server_version: int):
+    def from_walfile_name(cls, wal_filename: str):
         n = int(wal_filename, 16)
         timeline_id = n >> 64
         logid = (n >> 32) & 0xFFFFFFFF
         segno = n & 0xFFFFFFFF
-        lsn = (logid * segments_per_xlogid(server_version) + segno) * WAL_SEG_SIZE
-        return cls(lsn, server_version, timeline_id=timeline_id)
+        lsn = (logid * SEGMENTS_PER_XLOGID + segno) * WAL_SEG_SIZE
+        return cls(lsn, timeline_id=timeline_id)
 
     @property
     def _log(self) -> int:
@@ -111,27 +104,23 @@ class LSN:
         if self.timeline_id is None:
             raise ValueError("LSN is not associated to a timeline")
         return "{:08X}{:08X}{:08X}".format(
-            self.timeline_id, self._seg // self._segments_per_xlogid, self._seg % self._segments_per_xlogid
+            self.timeline_id, self._seg // SEGMENTS_PER_XLOGID, self._seg % SEGMENTS_PER_XLOGID
         )
 
     def __str__(self):
         return "{:X}/{:X}".format(self._log, self._pos)
 
     def __repr__(self):
-        return f"LSN({str(self)}, server_version={self.server_version}, timeline_id={self.timeline_id})"
+        return f"LSN({str(self)}, timeline_id={self.timeline_id})"
 
     def _assert_sane_for_comparison(self, other):
         if not isinstance(other, LSN):
             raise ValueError(f"Cannot compare LSN to {type(other)}")
         if self.timeline_id != other.timeline_id:
             raise ValueError("Cannot compare LSN on different timelines")
-        if self.server_version != other.server_version:
-            raise ValueError("Cannot compare LSN on different server versions")
 
     def __eq__(self, other) -> bool:
-        return (
-            self.lsn == other.lsn and self.timeline_id == other.timeline_id and self.server_version == other.server_version
-        )
+        return self.lsn == other.lsn and self.timeline_id == other.timeline_id
 
     def __lt__(self, other) -> bool:
         self._assert_sane_for_comparison(other)
@@ -150,7 +139,7 @@ class LSN:
         return self.lsn >= other.lsn
 
     def __add__(self, other: int):
-        return LSN(self.lsn + other, timeline_id=self.timeline_id, server_version=self.server_version)
+        return LSN(self.lsn + other, timeline_id=self.timeline_id)
 
     def __sub__(self, other) -> int:
         if isinstance(other, LSN):
@@ -166,12 +155,7 @@ class LSN:
         Returns the LSN corresponding to the start of the wal file that would
         contain this LSN.
         """
-        # Clear the intra-segment offset (the low bits within WAL_SEG_SIZE) to get the segment
-        # start. This is `self._seg * WAL_SEG_SIZE`. The previous `self.lsn & 0xFFFFFFFF000000`
-        # mask was one hex digit pair short: besides clearing the low 24 offset bits it also
-        # cleared bits 56-63 of the LSN, so for LSNs whose high byte is set the result no longer
-        # matched `_seg`/`from_walfile_name` and broke the walfile-name round-trip.
-        return LSN(self._seg * WAL_SEG_SIZE, timeline_id=self.timeline_id, server_version=self.server_version)
+        return LSN(self._seg * WAL_SEG_SIZE, timeline_id=self.timeline_id)
 
     @property
     def next_walfile_start_lsn(self):
@@ -189,12 +173,10 @@ class LSN:
         """
         if self.walfile_start_lsn.lsn == 0:
             return None
-        return LSN(
-            self.walfile_start_lsn.lsn - WAL_SEG_SIZE, timeline_id=self.timeline_id, server_version=self.server_version
-        )
+        return LSN(self.walfile_start_lsn.lsn - WAL_SEG_SIZE, timeline_id=self.timeline_id)
 
     def at_timeline(self, timeline_id):
-        return LSN(self.lsn, self.server_version, timeline_id=timeline_id)
+        return LSN(self.lsn, timeline_id=timeline_id)
 
 
 def read_header(blob):
@@ -204,14 +186,14 @@ def read_header(blob):
         )
     magic, info, timeline_id, pageaddr, rem_len = struct.unpack("=HHIQI", blob[:WAL_HEADER_LEN])  # pylint: disable=unused-variable
     version = WAL_MAGIC[magic]
-    lsn = LSN(pageaddr, timeline_id=timeline_id, server_version=version)
+    lsn = LSN(pageaddr, timeline_id=timeline_id)
     return WalHeader(version=version, lsn=lsn)
 
 
-def lsn_from_sysinfo(sysinfo: tuple, pg_version: Optional[int] = None) -> LSN:
+def lsn_from_sysinfo(sysinfo: tuple) -> LSN:
     """Get wal file name out of a IDENTIFY_SYSTEM tuple
     """
-    return LSN(sysinfo[2], timeline_id=int(sysinfo[1]), server_version=pg_version)
+    return LSN(sysinfo[2], timeline_id=int(sysinfo[1]))
 
 
 def get_current_lsn_from_identify_system(conn_str: str) -> LSN:
@@ -220,14 +202,13 @@ def get_current_lsn_from_identify_system(conn_str: str) -> LSN:
     """
     conn = psycopg2.connect(conn_str, connection_factory=PhysicalReplicationConnection)
 
-    pg_version = conn.server_version
     cur = conn.cursor()
     cur.execute("IDENTIFY_SYSTEM")
     sysinfo = cur.fetchone()
     assert sysinfo
     conn.close()
     assert sysinfo is not None
-    return lsn_from_sysinfo(sysinfo, pg_version)
+    return lsn_from_sysinfo(sysinfo)
 
 
 def get_current_lsn(node_info) -> LSN:
@@ -253,7 +234,7 @@ def verify_wal(*, wal_name, fileobj=None, filepath=None):
         fmt = "WAL file {name!r} verification failed: {ex.__class__.__name__}: {ex}"
         raise ValueError(fmt.format(name=source_name, ex=ex))
 
-    expected_lsn = LSN.from_walfile_name(wal_name, server_version=hdr.version)
+    expected_lsn = LSN.from_walfile_name(wal_name)
     # Only compare the LSN value, do not pay attention to timelines here.
     if hdr.lsn.lsn != expected_lsn.lsn:
         fmt = "Expected LSN {lsn!r} in WAL file {name!r}; found {found!r}"

@@ -29,21 +29,12 @@ KEEPALIVE_INTERVAL = 10.0
 
 class WALReceiver(PGHoardThread):
     def __init__(
-        self,
-        config,
-        connection_string,
-        compression_queue,
-        replication_slot,
-        pg_version_server,
-        site,
-        last_flushed_lsn=None,
-        metrics=None
+        self, config, connection_string, compression_queue, replication_slot, site, last_flushed_lsn=None, metrics=None
     ):
         super().__init__()
         self.log = logging.getLogger("WALReceiver")
         self.running = True
         self.config = config
-        self.pg_version_server = pg_version_server
         self.compression_queue = compression_queue
         self.replication_slot = replication_slot
         self.completed_wal_segments = set()
@@ -118,9 +109,9 @@ class WALReceiver(PGHoardThread):
 
         # Figure out the LSN we should try to replicate from
         if self.last_flushed_lsn:
-            lsn = LSN(self.last_flushed_lsn, self.pg_version_server)
+            lsn = LSN(self.last_flushed_lsn)
         else:
-            lsn = lsn_from_sysinfo(identify_system, self.pg_version_server)
+            lsn = lsn_from_sysinfo(identify_system)
         self.initial_lsn = lsn
         self.initial_lsn_available.set()
         lsn = str(lsn.walfile_start_lsn)
@@ -189,7 +180,7 @@ class WALReceiver(PGHoardThread):
                 self.log.debug("replication_msg: %r, buffer: %r/%r", msg, self.buffer.tell(), WAL_SEG_SIZE)
                 if msg:
                     self.latest_activity = datetime.datetime.utcnow()
-                    lsn = LSN(msg.data_start, timeline_id=timeline, server_version=self.pg_version_server)
+                    lsn = LSN(msg.data_start, timeline_id=timeline)
                     wal_name = lsn.walfile_name
 
                     if self.buffer.tell() > 0 and self.buffer.tell() + len(msg.payload) > WAL_SEG_SIZE:
@@ -238,7 +229,7 @@ class WALReceiver(PGHoardThread):
 
         for completed_lsn in sorted(self.completed_wal_segments):
             # The flush position is the end of the wal file.
-            lsn = LSN(completed_lsn, server_version=self.pg_version_server)
+            lsn = LSN(completed_lsn)
             next_wal_start_lsn = lsn.next_walfile_start_lsn.lsn
             self.callbacks.pop(completed_lsn)
             if self.callbacks and completed_lsn > min(self.callbacks):
