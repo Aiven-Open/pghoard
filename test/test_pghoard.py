@@ -893,8 +893,17 @@ dbname|"""
             "pg_receivexlogs": {},
             "pg_basebackups": {},
             "walreceivers": {},
+            "wal_sequence_uploaded_until": {},
         }
         assert empty_state == state
+
+    def test_backup_state_file_wal_sequence_uploaded_until(self):
+        self.pghoard.upload_tracker.update_wal_sequence(site=self.test_site, wal_file_name="00000001000000000000000C")
+        self.pghoard.write_backup_state_to_json_file()
+        state_path = self.config["json_state_file_path"]
+        with open(state_path, "r") as fp:
+            state = json.load(fp)
+        assert state["wal_sequence_uploaded_until"] == {self.test_site: "00000001000000000000000C"}
 
     def test_startup_walk_for_missed_compressed_files(self):
         backup_site_paths = self.pghoard.create_backup_site_paths(self.test_site)
