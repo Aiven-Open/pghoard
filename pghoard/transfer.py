@@ -529,8 +529,13 @@ class TransferAgent(PGHoardThread):
                 )
                 # FIXME: we should consider timeline files as well
                 if file_to_transfer.file_type == FileType.Wal:
-                    self.upload_tracker.update_wal_sequence(site=site, wal_file_name=file_to_transfer.file_path.name)
-
+                    try:
+                        self.upload_tracker.update_wal_sequence(site=site, wal_file_name=file_to_transfer.file_path.name)
+                    except Exception as ex:  # pylint: disable=broad-except
+                        self.log.exception(
+                            "Unexpected error while updating the WAL sequence from file: %r", file_to_transfer.file_path
+                        )
+                        self.metrics.unexpected_exception(ex, where="update_wal_sequence")
             if unlink_local:
                 if isinstance(file_to_transfer.source_data, Path):
                     try:
