@@ -380,3 +380,123 @@ class TestTransferAgent(PGHoardTestCase):
         )
         assert callback_queue.get(timeout=5.0) == CallbackEvent(success=True, payload={"file_size": 100})
         assert storage.retries == 3
+
+    def test_handle_upload_xlog_updates_wal_sequence(self):
+        callback_queue = CallbackQueue()
+        storage = Mock()
+        self.transfer_agent.get_object_storage = lambda x: storage
+
+        self.transfer_queue.put(
+            UploadEvent(
+                callback_queue=callback_queue,
+                file_type=FileType.Wal,
+                file_path=Path("xlog/00000001000000000000000C"),
+                file_size=3,
+                source_data=Path(self.foo_path),
+                remove_after_upload=False,
+                metadata={"start-wal-segment": "00000001000000000000000C"},
+                backup_site_name=self.test_site,
+            )
+        )
+        assert callback_queue.get(timeout=1.0) == CallbackEvent(success=True, payload={"file_size": 3})
+        assert self.upload_tracker.get_wal_sequence_uploaded_until() == {self.test_site: "00000001000000000000000C"}
+
+        # the next file in sequence should advance the tracked state
+        self.transfer_queue.put(
+            UploadEvent(
+                callback_queue=callback_queue,
+                file_type=FileType.Wal,
+                file_path=Path("xlog/00000001000000000000000D"),
+                file_size=3,
+                source_data=Path(self.foo_path),
+                remove_after_upload=False,
+                metadata={"start-wal-segment": "00000001000000000000000D"},
+                backup_site_name=self.test_site,
+            )
+        )
+        assert callback_queue.get(timeout=1.0) == CallbackEvent(success=True, payload={"file_size": 3})
+        assert self.upload_tracker.get_wal_sequence_uploaded_until() == {self.test_site: "00000001000000000000000D"}
+
+    def test_handle_upload_basebackup_does_not_update_wal_sequence(self):
+        callback_queue = CallbackQueue()
+        storage = Mock()
+        self.transfer_agent.get_object_storage = storage
+
+        self.transfer_queue.put(
+            UploadEvent(
+                callback_queue=callback_queue,
+                file_type=FileType.Basebackup,
+                file_path=Path("basebackup/2015-04-15_0"),
+                file_size=3,
+                source_data=Path(self.foo_basebackup_path),
+                metadata={"start-wal-segment": "00000001000000000000000C"},
+                backup_site_name=self.test_site,
+            )
+        )
+        assert callback_queue.get(timeout=1.0) == CallbackEvent(success=True, payload={"file_size": 3})
+        assert self.upload_tracker.get_wal_sequence_uploaded_until() == {}
+
+
+class TestUploadEventProgressTrackerWalSequence:
+    """Unit tests for UploadEventProgressTracker.update_wal_sequence in isolation."""
+    def setup_method(self, method):  # pylint: disable=unused-argument
+        self.tracker = PatchedUploadEventProgressTracker(metrics=metrics.Metrics(statsd={}))
+
+    def test_first_wal_seen_becomes_the_baseline(self):
+        self.tracker.update_wal_sequence(site="site1", wal_file_name="000000010000000000000001")
+        assert self.tracker.get_wal_sequence_uploaded_until() == {"site1": "000000010000000000000001"}
+
+    def test_contiguous_wal_advances_the_sequence(self):
+        self.tracker.update_wal_sequence(site="site1", wal_file_name="000000010000000000000001")
+        self.tracker.update_wal_sequence(site="site1", wal_file_name="000000010000000000000002")
+        assert self.tracker.get_wal_sequence_uploaded_until() == {"site1": "000000010000000000000002"}
+
+    def test_out_of_order_wal_is_buffered_until_the_gap_is_filled(self):
+        self.tracker.update_wal_sequence(site="site1", wal_file_name="000000010000000000000001")
+        # file 3 uploaded before file 2: the sequence must not advance past file 1 yet
+        self.tracker.update_wal_sequence(site="site1", wal_file_name="000000010000000000000003")
+        assert self.tracker.get_wal_sequence_uploaded_until() == {"site1": "000000010000000000000001"}
+        # file 2 fills the gap: the sequence should jump straight to file 3
+        self.tracker.update_wal_sequence(site="site1", wal_file_name="000000010000000000000002")
+        assert self.tracker.get_wal_sequence_uploaded_until() == {"site1": "000000010000000000000003"}
+
+    def test_multiple_gaps_are_filled_as_they_close(self):
+        self.tracker.update_wal_sequence(site="site1", wal_file_name="000000010000000000000001")
+        self.tracker.update_wal_sequence(site="site1", wal_file_name="000000010000000000000004")
+        self.tracker.update_wal_sequence(site="site1", wal_file_name="000000010000000000000003")
+        assert self.tracker.get_wal_sequence_uploaded_until() == {"site1": "000000010000000000000001"}
+        self.tracker.update_wal_sequence(site="site1", wal_file_name="000000010000000000000002")
+        assert self.tracker.get_wal_sequence_uploaded_until() == {"site1": "000000010000000000000004"}
+
+    def test_sites_are_tracked_independently(self):
+        self.tracker.update_wal_sequence(site="site1", wal_file_name="000000010000000000000001")
+        self.tracker.update_wal_sequence(site="site2", wal_file_name="000000010000000000000005")
+        self.tracker.update_wal_sequence(site="site1", wal_file_name="000000010000000000000002")
+        assert self.tracker.get_wal_sequence_uploaded_until() == {
+            "site1": "000000010000000000000002",
+            "site2": "000000010000000000000005",
+        }
+
+    def test_wal_sequence_rolls_over_to_the_next_log_id(self):
+        self.tracker.update_wal_sequence(site="site1", wal_file_name="0000000100000000000000FF")
+        self.tracker.update_wal_sequence(site="site1", wal_file_name="000000010000000100000000")
+        assert self.tracker.get_wal_sequence_uploaded_until() == {"site1": "000000010000000100000000"}
+
+    def test_reuploading_an_already_covered_wal_does_not_regress_the_sequence(self):
+        self.tracker.update_wal_sequence(site="site1", wal_file_name="000000010000000000000001")
+        self.tracker.update_wal_sequence(site="site1", wal_file_name="000000010000000000000002")
+        # a retry of an already-uploaded, older file must not move the sequence backwards
+        self.tracker.update_wal_sequence(site="site1", wal_file_name="000000010000000000000001")
+        assert self.tracker.get_wal_sequence_uploaded_until() == {"site1": "000000010000000000000002"}
+
+    def test_sequence_advances_across_a_timeline_switch(self):
+        self.tracker.update_wal_sequence(site="site1", wal_file_name="000000010000000000000002")
+        self.tracker.update_wal_sequence(site="site1", wal_file_name="000000020000000000000003")
+        assert self.tracker.get_wal_sequence_uploaded_until() == {"site1": "000000020000000000000003"}
+
+    def test_old_timeline_wal_is_ignored_after_a_timeline_switch(self):
+        self.tracker.update_wal_sequence(site="site1", wal_file_name="000000010000000000000002")
+        self.tracker.update_wal_sequence(site="site1", wal_file_name="000000020000000000000003")
+        # a late upload from the previous timeline is behind the sequence, whatever its timeline
+        self.tracker.update_wal_sequence(site="site1", wal_file_name="000000010000000000000002")
+        assert self.tracker.get_wal_sequence_uploaded_until() == {"site1": "000000020000000000000003"}

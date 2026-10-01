@@ -287,14 +287,14 @@ class PGHoard:
 
     def start_walreceiver(self, site, chosen_backup_node, last_flushed_lsn):
         connection_string, slot = replication_connection_string_and_slot_using_pgpass(chosen_backup_node)
-        pg_version_server = self.check_pg_server_version(connection_string, site)
+        # Called for its side effects: caches pg_version in the site config and raises alert files on failure.
+        self.check_pg_server_version(connection_string, site)
 
         thread = WALReceiver(
             config=self.config,
             connection_string=connection_string,
             compression_queue=self.compression_queue,
             replication_slot=slot,
-            pg_version_server=pg_version_server,
             site=site,
             last_flushed_lsn=last_flushed_lsn,
             metrics=self.metrics
@@ -338,7 +338,7 @@ class PGHoard:
         self.log.info("Starting WAL deletion from: %r before: %r, pg_version: %r", sites, wal_segment, pg_version)
 
         valid_timeline = True
-        lsn = wal.LSN.from_walfile_name(wal_segment, server_version=pg_version)
+        lsn = wal.LSN.from_walfile_name(wal_segment)
 
         preferred_site_idx = 0
         while True:
@@ -1027,6 +1027,7 @@ class PGHoard:
             "transfer_queue": self.transfer_queue.qsize(),
         }
         self.state["served_files"] = self.webserver.get_most_recently_served_files() if self.webserver else {}
+        self.state["wal_sequence_uploaded_until"] = self.upload_tracker.get_wal_sequence_uploaded_until()
         self.log.debug("Writing JSON state file to %r", state_file_path)
         write_json_file(state_file_path, self.state)
         self.log.debug("Wrote JSON state file to disk, took %.4fs", time.time() - start_time)

@@ -30,6 +30,7 @@ from pghoard.common import (
 )
 from pghoard.fetcher import FileFetchManager
 from pghoard.metrics import Metrics
+from pghoard.wal import LSN
 
 _STATS_LOCK = Lock()
 _last_stats_transmit_time = 0
@@ -130,7 +131,10 @@ class UploadEventProgressTracker(PGHoardThread):
         self._tracked_events: Dict[str, UploadEventProgress] = {}
         self._tracked_events_lock = threading.Lock()
         self.log.debug("UploadEventProgressTracker initialized")
-
+        # Per-site sequence of contiguously uploaded WAL files, and the out-of-order uploads
+        # waiting for the gap before them to be filled.
+        self.wal_sequence_uploaded_until: Dict[str, str] = {}
+        self._uploaded_future_wals: Dict[str, Dict[int, str]] = {}
         super().__init__()
 
     def track_upload_event(self, file_key: str, file_type: FileType, file_size: Optional[int]) -> None:
@@ -144,6 +148,33 @@ class UploadEventProgressTracker(PGHoardThread):
 
         with self._tracked_events_lock:
             self._tracked_events.pop(file_key)
+
+    def update_wal_sequence(self, site: str, wal_file_name: str) -> None:
+        with self._tracked_events_lock:
+            current_last_wal = self.wal_sequence_uploaded_until.get(site)
+            # If we knew nothing before hand, just assume we uploaded everything up to that point
+            if current_last_wal is None:
+                self.wal_sequence_uploaded_until[site] = wal_file_name
+                return
+            # We compare raw LSN so that it works accross timeline switches
+            wal_file_lsn = LSN.from_walfile_name(wal_file_name).lsn
+            current_end_of_wal_sequence = LSN.from_walfile_name(current_last_wal)
+            # If there were previous in-flight WAL when we recorded the initial end_of_wal_sequence value,
+            # just ignore them
+            if wal_file_lsn <= current_end_of_wal_sequence.lsn:
+                return
+            future_wals = self._uploaded_future_wals.setdefault(site, {})
+            future_wals[wal_file_lsn] = wal_file_name
+            next_lsn = current_end_of_wal_sequence.next_walfile_start_lsn
+            # Now advance the sequence one walfilename at a time, looking up the already uploaded wal files to see if
+            # they are covered
+            while (next_wal_file := future_wals.pop(next_lsn.lsn, None)) is not None:
+                self.wal_sequence_uploaded_until[site] = next_wal_file
+                next_lsn = next_lsn.next_walfile_start_lsn
+
+    def get_wal_sequence_uploaded_until(self) -> Dict[str, str]:
+        with self._tracked_events_lock:
+            return dict(self.wal_sequence_uploaded_until)
 
     def increment(self, file_key: str, total_bytes_uploaded: float) -> None:
         persisted_progress = PersistedProgress.read(metrics=self.metrics)
@@ -496,6 +527,15 @@ class TransferAgent(PGHoardThread):
                     metadata=metadata,
                     upload_progress_fn=lambda n_bytes: upload_progress_fn(total_bytes_uploaded=n_bytes),
                 )
+                # FIXME: we should consider timeline files as well
+                if file_to_transfer.file_type == FileType.Wal:
+                    try:
+                        self.upload_tracker.update_wal_sequence(site=site, wal_file_name=file_to_transfer.file_path.name)
+                    except Exception as ex:  # pylint: disable=broad-except
+                        self.log.exception(
+                            "Unexpected error while updating the WAL sequence from file: %r", file_to_transfer.file_path
+                        )
+                        self.metrics.unexpected_exception(ex, where="update_wal_sequence")
             if unlink_local:
                 if isinstance(file_to_transfer.source_data, Path):
                     try:

@@ -157,15 +157,15 @@ class ArchiveSync:
 
     def check_wal_archive_integrity(self, new_backup_on_failure):
         current_wal_file = self.get_current_wal_file()
-        first_required_wal_file, pg_version = self.get_first_required_wal_segment()
+        first_required_wal_file, _ = self.get_first_required_wal_segment()
         if not current_wal_file:
             raise SyncError("Could not figure out current WAL segment")
         if not first_required_wal_file:
             raise SyncError("No basebackups found")
         self.log.info("Verifying archive integrity from %r to %r", current_wal_file, first_required_wal_file)
 
-        current_lsn = wal.LSN.from_walfile_name(current_wal_file, pg_version)
-        first_required_lsn = wal.LSN.from_walfile_name(first_required_wal_file, pg_version)
+        current_lsn = wal.LSN.from_walfile_name(current_wal_file)
+        first_required_lsn = wal.LSN.from_walfile_name(first_required_wal_file)
 
         # TODO: Need to check .history files as well
         archive_type = "xlog"
