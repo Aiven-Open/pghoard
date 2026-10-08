@@ -17,7 +17,7 @@ from io import BytesIO
 from pathlib import Path
 from queue import Empty
 from threading import Lock
-from typing import Any, BinaryIO, Dict, Iterator, List, Optional, Union
+from typing import (Any, BinaryIO, Dict, Iterable, Iterator, List, Optional, Union)
 
 from rohmu import get_transfer
 from rohmu.errors import FileNotFoundFromStorageError
@@ -171,6 +171,19 @@ class UploadEventProgressTracker(PGHoardThread):
             while (next_wal_file := future_wals.pop(next_lsn.lsn, None)) is not None:
                 self.wal_sequence_uploaded_until[site] = next_wal_file
                 next_lsn = next_lsn.next_walfile_start_lsn
+
+    def set_wal_sequence_start(self, site: str, pending_wal_file_names: Iterable[str]) -> None:
+        """Start the WAL sequence just before the earliest WAL file still waiting to be uploaded, so that uploads
+        finishing out of order cannot move it past a file which is not uploaded yet."""
+        pending_lsns = [LSN.from_walfile_name(wal_file_name) for wal_file_name in pending_wal_file_names]
+        if not pending_lsns:
+            return
+        # Raw LSN comparison, the pending files can span a timeline switch
+        start_lsn = min(pending_lsns, key=lambda lsn: lsn.lsn).previous_walfile_start_lsn
+        if start_lsn is None:
+            return
+        with self._tracked_events_lock:
+            self.wal_sequence_uploaded_until.setdefault(site, start_lsn.walfile_name)
 
     def get_wal_sequence_uploaded_until(self) -> Dict[str, str]:
         with self._tracked_events_lock:

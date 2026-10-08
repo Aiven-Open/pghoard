@@ -938,6 +938,20 @@ dbname|"""
         assert self.pghoard.compression_queue.qsize() == 2
         assert self.pghoard.transfer_queue.qsize() == 0
 
+    def test_startup_walk_starts_wal_sequence_before_the_earliest_pending_wal(self):
+        backup_site_paths = self.pghoard.create_backup_site_paths(self.test_site)
+        for wal_file_name in ["000000010000000000000007", "000000010000000000000006"]:
+            with open(os.path.join(backup_site_paths.compressed_xlog_path, wal_file_name), "wb") as fp:
+                fp.write(b"foo")
+            with open(os.path.join(backup_site_paths.compressed_xlog_path, f"{wal_file_name}.metadata"), "wb") as fp:
+                fp.write(b"{}")
+        with open(os.path.join(backup_site_paths.uncompressed_files_path, "000000010000000000000005"), "wb") as fp:
+            fp.write(b"foo")
+        with open(os.path.join(backup_site_paths.uncompressed_files_path, "00000002.history"), "wb") as fp:
+            fp.write(b"foo")
+        self.pghoard.startup_walk_for_missed_files()
+        assert self.pghoard.upload_tracker.get_wal_sequence_uploaded_until() == {self.test_site: "000000010000000000000004"}
+
     @pytest.mark.parametrize(
         "file_type, file_name", [(FileType.Wal, "000000010000000000000004"), (FileType.Timeline, "00000002.history")]
     )

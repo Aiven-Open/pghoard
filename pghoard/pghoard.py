@@ -679,6 +679,16 @@ class PGHoard:
             compressed_timeline_path = backup_site_paths.compressed_timeline_path
             uncompressed_files_path = backup_site_paths.uncompressed_files_path
 
+            # The files queued below can finish uploading in any order, so the WAL sequence must not start at
+            # whichever of them is uploaded first.
+            self.upload_tracker.set_wal_sequence_start(
+                site,
+                [
+                    filename for path in (uncompressed_files_path, compressed_xlog_path)
+                    for filename in os.listdir(path) if wal.WAL_RE.match(filename)
+                ],
+            )
+
             # Process uncompressed files (ie WAL pg_receivexlog received)
             for filename in os.listdir(uncompressed_files_path):
                 full_path = os.path.join(uncompressed_files_path, filename)

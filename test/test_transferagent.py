@@ -494,6 +494,40 @@ class TestUploadEventProgressTrackerWalSequence:
         self.tracker.update_wal_sequence(site="site1", wal_file_name="000000020000000000000003")
         assert self.tracker.get_wal_sequence_uploaded_until() == {"site1": "000000020000000000000003"}
 
+    def test_sequence_start_is_before_the_earliest_pending_wal(self):
+        self.tracker.set_wal_sequence_start(
+            site="site1",
+            pending_wal_file_names=["000000010000000000000007", "000000010000000000000005", "000000010000000000000006"],
+        )
+        assert self.tracker.get_wal_sequence_uploaded_until() == {"site1": "000000010000000000000004"}
+        # later pending files uploaded first must not move the sequence past file 5
+        self.tracker.update_wal_sequence(site="site1", wal_file_name="000000010000000000000007")
+        self.tracker.update_wal_sequence(site="site1", wal_file_name="000000010000000000000006")
+        assert self.tracker.get_wal_sequence_uploaded_until() == {"site1": "000000010000000000000004"}
+        self.tracker.update_wal_sequence(site="site1", wal_file_name="000000010000000000000005")
+        assert self.tracker.get_wal_sequence_uploaded_until() == {"site1": "000000010000000000000007"}
+
+    def test_sequence_start_without_pending_wal_keeps_the_first_upload_as_baseline(self):
+        self.tracker.set_wal_sequence_start(site="site1", pending_wal_file_names=[])
+        assert self.tracker.get_wal_sequence_uploaded_until() == {}
+        self.tracker.update_wal_sequence(site="site1", wal_file_name="000000010000000000000003")
+        assert self.tracker.get_wal_sequence_uploaded_until() == {"site1": "000000010000000000000003"}
+
+    def test_sequence_start_with_pending_wal_across_a_timeline_switch(self):
+        self.tracker.set_wal_sequence_start(
+            site="site1", pending_wal_file_names=["000000020000000000000006", "000000010000000000000005"]
+        )
+        assert self.tracker.get_wal_sequence_uploaded_until() == {"site1": "000000010000000000000004"}
+        self.tracker.update_wal_sequence(site="site1", wal_file_name="000000020000000000000006")
+        assert self.tracker.get_wal_sequence_uploaded_until() == {"site1": "000000010000000000000004"}
+        self.tracker.update_wal_sequence(site="site1", wal_file_name="000000010000000000000005")
+        assert self.tracker.get_wal_sequence_uploaded_until() == {"site1": "000000020000000000000006"}
+
+    def test_sequence_start_does_not_move_an_existing_sequence(self):
+        self.tracker.update_wal_sequence(site="site1", wal_file_name="000000010000000000000008")
+        self.tracker.set_wal_sequence_start(site="site1", pending_wal_file_names=["000000010000000000000005"])
+        assert self.tracker.get_wal_sequence_uploaded_until() == {"site1": "000000010000000000000008"}
+
     def test_old_timeline_wal_is_ignored_after_a_timeline_switch(self):
         self.tracker.update_wal_sequence(site="site1", wal_file_name="000000010000000000000002")
         self.tracker.update_wal_sequence(site="site1", wal_file_name="000000020000000000000003")
