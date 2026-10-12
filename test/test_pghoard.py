@@ -9,7 +9,6 @@ import json
 import os
 import sys
 import time
-from copy import deepcopy
 from pathlib import Path
 from typing import Any, Dict, List
 from unittest.mock import MagicMock, Mock, mock_open, patch
@@ -19,7 +18,7 @@ import pytest
 import pghoard.pghoard as pghoard_module
 from pghoard.common import (
     TAR_METADATA_FILENAME, BackupReason, BaseBackupFormat, FileType, FileTypePrefixes, PGHoardThread, create_alert_file,
-    delete_alert_file, write_json_file
+    delete_alert_file
 )
 from pghoard.compressor import CompressionEvent, CompressorThread
 from pghoard.object_store import BaseBackupInfo
@@ -28,7 +27,7 @@ from pghoard.pgutil import create_connection_string
 from pghoard.receivexlog import PGReceiveXLog
 from pghoard.transfer import TransferAgent
 
-from .base import PGHoardTestCase
+from .base import PGHoardDaemonTestCase
 from .util import dict_to_tar_file, switch_wal, wait_for_xlog
 
 # pylint: disable=attribute-defined-outside-init
@@ -56,54 +55,7 @@ def _write_backup_and_wal_files_in_local_storage(
                 fp.write(b"something")
 
 
-class TestPGHoard(PGHoardTestCase):
-    def setup_method(self, method):
-        super().setup_method(method)
-        multi_sites = False
-        if hasattr(method, "pytestmark"):
-            multi_sites = any(mark.args[0] for mark in method.pytestmark if mark.name == "multi_sites")
-        base_site_config = {
-            "active": True,
-            "basebackup_count": 1,
-            "basebackup_interval_hours": 1,
-            "nodes": [{
-                "host": "127.0.0.4"
-            }],
-            "moved_from": []
-        }
-        base_config = {"backup_sites": {self.test_site: base_site_config}}
-        if multi_sites:
-            extra_sites = [f"prev_site_{site_num}_{self.test_site}" for site_num in range(1, 3)]
-            for extra_site in extra_sites:
-                base_config["backup_sites"][extra_site] = deepcopy(base_config)
-                base_config["backup_sites"][extra_site]["active"] = False
-                base_config["backup_sites"][extra_site]["object_storage"] = {
-                    "storage_type": "local",
-                    "directory": os.path.join(self.temp_dir, "backups"),
-                }
-            base_config["backup_sites"][self.test_site]["moved_from"] = extra_sites
-
-        self.config = self.config_template(base_config)
-        config_path = os.path.join(self.temp_dir, "pghoard.json")
-        write_json_file(config_path, self.config)
-
-        self.pghoard = PGHoard(config_path)
-        # This is the "final storage location" when using "local" storage type
-        self.local_storage_dir = os.path.join(
-            self.config["backup_sites"][self.test_site]["object_storage"]["directory"], self.test_site
-        )
-
-        self.real_check_pg_server_version = self.pghoard.check_pg_server_version
-        self.pghoard.check_pg_server_version = Mock(return_value=90404)
-        self.real_check_pg_versions_ok = self.pghoard.check_pg_versions_ok
-        self.pghoard.check_pg_versions_ok = Mock(return_value=True)
-
-    def teardown_method(self, method):
-        self.pghoard.quit()
-        self.pghoard.check_pg_server_version = self.real_check_pg_server_version
-        self.pghoard.check_pg_versions_ok = self.real_check_pg_versions_ok
-        super().teardown_method(method)
-
+class TestPGHoard(PGHoardDaemonTestCase):
     @patch("subprocess.check_output")
     def test_handle_site(self, subprocess_mock):
         subprocess_mock.return_value = b"""\
@@ -883,6 +835,7 @@ dbname|"""
         empty_state = {
             "startup_time": self.pghoard.state["startup_time"],
             "backup_sites": {},
+            "backup_lists_initialized": {},
             "compressors": [{}] * self.config["compression"]["thread_count"],
             "queues": {
                 "compression_queue": 0,
