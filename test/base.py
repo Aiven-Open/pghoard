@@ -6,14 +6,20 @@ See LICENSE for details
 """
 import logging
 import os
+from copy import deepcopy
 # pylint: disable=attribute-defined-outside-init
 from shutil import rmtree
 from tempfile import mkdtemp
+from typing import Any
+from unittest.mock import Mock
 
 import psycopg2.extras
 from packaging.version import Version
+from pytest import MonkeyPatch
 
+from pghoard.common import write_json_file
 from pghoard.config import find_pg_binary, set_and_check_config_defaults
+from pghoard.pghoard import PGHoard
 
 CONSTANT_TEST_RSA_PUBLIC_KEY = """\
 -----BEGIN PUBLIC KEY-----
@@ -118,3 +124,50 @@ class PGHoardTestCase:
             assert version.split(".")[0] == ver.split(".")[0]
             assert os.path.dirname(command_path) == bindir
         return version
+
+
+class PGHoardDaemonTestCase(PGHoardTestCase):
+    def setup_method(self, method: Any) -> None:
+        super().setup_method(method)
+        multi_sites = False
+        if hasattr(method, "pytestmark"):
+            multi_sites = any(mark.args[0] for mark in method.pytestmark if mark.name == "multi_sites")
+        base_site_config: dict[str, Any] = {
+            "active": True,
+            "basebackup_count": 1,
+            "basebackup_interval_hours": 1,
+            "nodes": [{
+                "host": "127.0.0.4"
+            }],
+            "moved_from": []
+        }
+        base_config: dict[str, Any] = {"backup_sites": {self.test_site: base_site_config}}
+        if multi_sites:
+            extra_sites = [f"prev_site_{site_num}_{self.test_site}" for site_num in range(1, 3)]
+            for extra_site in extra_sites:
+                base_config["backup_sites"][extra_site] = deepcopy(base_config)
+                base_config["backup_sites"][extra_site]["active"] = False
+                base_config["backup_sites"][extra_site]["object_storage"] = {
+                    "storage_type": "local",
+                    "directory": os.path.join(self.temp_dir, "backups"),
+                }
+            base_config["backup_sites"][self.test_site]["moved_from"] = extra_sites
+
+        self.config = self.config_template(base_config)
+        config_path = os.path.join(self.temp_dir, "pghoard.json")
+        write_json_file(config_path, self.config)
+
+        self.pghoard = PGHoard(config_path)
+        # This is the "final storage location" when using "local" storage type
+        self.local_storage_dir = os.path.join(
+            self.config["backup_sites"][self.test_site]["object_storage"]["directory"], self.test_site
+        )
+
+        self.monkeypatch = MonkeyPatch()
+        self.monkeypatch.setattr(self.pghoard, "check_pg_server_version", Mock(return_value=90404))
+        self.monkeypatch.setattr(self.pghoard, "check_pg_versions_ok", Mock(return_value=True))
+
+    def teardown_method(self, method: Any) -> None:
+        self.pghoard.quit()
+        self.monkeypatch.undo()
+        super().teardown_method(method)

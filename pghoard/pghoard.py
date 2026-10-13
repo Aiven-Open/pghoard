@@ -120,6 +120,7 @@ class PGHoard:
         self.site_transfers = {}
         self.state = {
             "backup_sites": {},
+            "backup_lists_initialized": {},
             "startup_time": datetime.datetime.utcnow().isoformat(),
         }
         self.transfer_agent_state = {}  # shared among transfer agents
@@ -589,26 +590,38 @@ class PGHoard:
         return basebackups_to_delete
 
     def refresh_backup_list_and_delete_old(self, site):
-        """Look up basebackups from the object store, prune any extra
-        backups and return the datetime of the latest backup."""
-        basebackups = self.get_remote_basebackups_info(site)
-        self.log.debug("Found %r basebackups", basebackups)
-
+        """Publish the retained backup list before synchronously deleting expired objects."""
         site_config = self.config["backup_sites"][site]
-        # Never delete backups from a recovery site. This check is already elsewhere as well
-        # but still check explicitly here to ensure we certainly won't delete anything unexpectedly
-        if not site_config["active"]:
-            self.state["backup_sites"][site]["basebackups"] = [bb.data for bb in basebackups]
+        all_chained_sites = [site]
+        if site_config["active"]:
+            all_chained_sites += site_config.get("moved_from", [])
+        chained_basebackups = []
+        for chained_site in all_chained_sites:
+            chained_basebackups.extend(self.get_remote_basebackups_info(chained_site))
+        chained_basebackups.sort(key=lambda entry: entry.data["metadata"]["start-time"])
+        self.log.debug("Found %r basebackups", chained_basebackups)
+
+        basebackups_to_delete = []
+        if site_config["active"]:
+            basebackups_to_delete = self.determine_backups_to_delete(
+                basebackups=chained_basebackups,
+                site_config=site_config,
+            )
+        for chained_site in all_chained_sites:
+            self.set_state_defaults(chained_site)
+            self.state["backup_sites"][chained_site]["basebackups"] = [
+                bb.data for bb in chained_basebackups if bb.site == chained_site
+            ]
+            # Kept outside backup_sites so Prune does not report the marker as backup metadata.
+            self.state["backup_lists_initialized"][chained_site] = True
+        try:
+            self.write_backup_state_to_json_file()
+        except Exception as ex:  # pylint: disable=broad-except
+            self.log.exception("Could not publish retained backups for %r; skipping deletion until the next check", site)
+            if self.metrics:
+                self.metrics.unexpected_exception(ex, where="publish_retained_backups")
             return
 
-        # Unify basebackups main site with its origin sites
-        chained_basebackups = basebackups
-        for prev_site in site_config.get("moved_from", []):
-            chained_basebackups.extend(self.get_remote_basebackups_info(prev_site))
-        chained_basebackups.sort(key=lambda entry: entry.data["metadata"]["start-time"])
-
-        # consider the main site expiration config.
-        basebackups_to_delete = self.determine_backups_to_delete(basebackups=chained_basebackups, site_config=site_config)
         for basebackup_to_be_deleted in basebackups_to_delete:
             # basebackup info is patched with the actual site it's originated from
             bb_tbd_site = basebackup_to_be_deleted.site
@@ -638,11 +651,6 @@ class PGHoard:
                 # just provide backups from the basebackup_to_be_deleted's site
                 basebackups=[cb for cb in chained_basebackups if cb.site == bb_tbd_site],
             )
-
-        all_chained_sites = [site] + site_config.get("moved_from", [])
-        for c_site in all_chained_sites:
-            self.set_state_defaults(c_site)
-            self.state["backup_sites"][c_site]["basebackups"] = [bb.data for bb in chained_basebackups if bb.site == c_site]
 
     def get_normalized_backup_time(self, site_config, *, now=None):
         """Returns the closest historical backup time that current time matches to (or current time if it matches).
@@ -1047,6 +1055,14 @@ class PGHoard:
                 raise
             raise InvalidConfigurationError(self.config_path)
 
+        backup_lists_invalidated = False
+        for site in list(self.state["backup_lists_initialized"]):
+            previous_site = self.config.get("backup_sites", {}).get(site, {})
+            new_site = new_config["backup_sites"].get(site, {})
+            if any(previous_site.get(key) != new_site.get(key) for key in ("prefix", "object_storage")):
+                self.state["backup_lists_initialized"].pop(site)
+                backup_lists_invalidated = True
+
         # clear this objects site transfer storage config
         self.site_transfers = {}
         self.config = new_config
@@ -1085,6 +1101,13 @@ class PGHoard:
             self.log.info("Updated storage credentials for basebackup thread for site %r", site)
 
         self.log.debug("Loaded config: %r from: %r", self.config, self.config_path)
+        if backup_lists_invalidated:
+            try:
+                self.write_backup_state_to_json_file()
+            except Exception as ex:  # pylint: disable=broad-except
+                self.log.exception("Could not publish backup-list invalidation after configuration reload")
+                if self.metrics:
+                    self.metrics.unexpected_exception(ex, where="invalidate_backup_lists")
 
     def _get_all_threads(self):
         all_threads = []
