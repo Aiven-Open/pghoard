@@ -14,18 +14,20 @@ from typing import Any, Dict, List
 from unittest.mock import MagicMock, Mock, mock_open, patch
 
 import pytest
+from rohmu import get_transfer
 
 import pghoard.pghoard as pghoard_module
 from pghoard.common import (
     TAR_METADATA_FILENAME, BackupReason, BaseBackupFormat, FileType, FileTypePrefixes, PGHoardThread, create_alert_file,
-    delete_alert_file
+    delete_alert_file, write_json_file
 )
 from pghoard.compressor import CompressionEvent, CompressorThread
 from pghoard.object_store import BaseBackupInfo
 from pghoard.pghoard import PGHoard
 from pghoard.pgutil import create_connection_string
 from pghoard.receivexlog import PGReceiveXLog
-from pghoard.transfer import TransferAgent
+from pghoard.transfer import DownloadEvent, TransferAgent
+from pghoard.webserver import OwnHTTPServer
 
 from .base import PGHoardDaemonTestCase
 from .util import dict_to_tar_file, switch_wal, wait_for_xlog
@@ -66,6 +68,36 @@ dbname|"""
         self.pghoard.handle_site(self.test_site, self.config["backup_sites"][self.test_site])
         assert len(self.pghoard.receivexlogs) == 1 or len(self.pghoard.walreceivers) == 1
         assert len(self.pghoard.time_of_last_backup_check) == 1
+
+    def test_download_after_config_reload_uses_reloaded_object_storage(self):
+        # A config reload (SIGHUP) has to reach file downloads too, e.g. to pick up rotated temporary object
+        # storage credentials. The same key holds different contents in the old and the new storage location.
+        key = os.path.join(self.test_site, "xlog", "000000010000000000000001")
+        old_storage_config = self.config["backup_sites"][self.test_site]["object_storage"]
+        new_storage_config = dict(old_storage_config, directory=os.path.join(self.temp_dir, "reloaded_backups"))
+        get_transfer(old_storage_config).store_file_from_memory(key, b"old", metadata={})
+        get_transfer(new_storage_config).store_file_from_memory(key, b"new", metadata={})
+        self.config["backup_sites"][self.test_site]["object_storage"] = new_storage_config
+        write_json_file(self.pghoard.config_path, self.config)
+        self.pghoard.webserver.server = Mock(spec=OwnHTTPServer, most_recently_served_files={})
+        self.pghoard.load_config()
+        transfer_agent = self.pghoard.transfer_agents[0]
+        target_path = Path(self.temp_dir) / "downloaded_wal"
+
+        result = transfer_agent.handle_download(
+            self.test_site,
+            key,
+            DownloadEvent(
+                file_type=FileType.Wal,
+                file_path=Path(key),
+                backup_site_name=self.test_site,
+                callback_queue=None,
+                destination_path=target_path,
+            ),
+        )
+
+        assert result.success, result.exception
+        assert target_path.read_bytes() == b"new"
 
     def test_get_local_basebackups_info(self):
         basebackup_storage_path = os.path.join(self.local_storage_dir, "basebackup")
