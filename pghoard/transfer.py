@@ -290,7 +290,7 @@ class TransferAgent(PGHoardThread):
         self.config = config
         self.metrics = metrics
         self.mp_manager = mp_manager
-        self.fetch_manager = FileFetchManager(self.config, self.mp_manager, self.get_object_storage)
+        self.fetch_manager = FileFetchManager(lambda: self.config, self.mp_manager, self.get_object_storage)
         self.transfer_queue = transfer_queue
         self.upload_tracker = upload_tracker
         self.running = True

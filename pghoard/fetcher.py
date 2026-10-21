@@ -17,8 +17,10 @@ class FileFetchManager:
     object storage. If a multiprocess.Manager instance is provided, the fetch is performed
     in a subprocess to avoid GIL related performance constraints, otherwise file is fetched
     in current process."""
-    def __init__(self, app_config, mp_manager, transfer_provider):
-        self.config = app_config
+    def __init__(self, config_provider, mp_manager, transfer_provider):
+        # Called for every fetch, so that a config reload (e.g. with rotated object storage credentials) reaches
+        # the fetch subprocess, which recreates its transfer whenever the site's storage config changes.
+        self.config_provider = config_provider
         self.last_activity = time.monotonic()
         self.lock = threading.RLock()
         self.max_idle_age = 10 * 60
@@ -35,8 +37,9 @@ class FileFetchManager:
     def fetch_file(self, site, key, target_path):
         self.last_activity = time.monotonic()
         self._start_process()
+        config = self.config_provider()
         if self.mp_manager:
-            self.task_queue.put((self.config, site, key, target_path))
+            self.task_queue.put((config, site, key, target_path))
             result = self.result_queue.get()
             if result is None:
                 # Should only happen if the process is terminated while we're waiting for
@@ -47,7 +50,7 @@ class FileFetchManager:
             return result[1], result[2]
         else:
             transfer = self.transfer_provider(site)
-            return FileFetcher(self.config, transfer).fetch(site, key, target_path)
+            return FileFetcher(config, transfer).fetch(site, key, target_path)
 
     def stop(self):
         with self.lock:
