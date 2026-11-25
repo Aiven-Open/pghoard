@@ -34,10 +34,12 @@ class FileFetchManager:
         if self.process and time.monotonic() - self.last_activity > self.max_idle_age:
             self.stop()
 
-    def fetch_file(self, site, key, target_path):
+    def fetch_file(self, site, key, target_path, config=None):
+        """Fetch key from site's object storage in config, the provider's current config by default."""
         self.last_activity = time.monotonic()
         self._start_process()
-        config = self.config_provider()
+        if config is None:
+            config = self.config_provider()
         if self.mp_manager:
             self.task_queue.put((config, site, key, target_path))
             result = self.result_queue.get()
@@ -49,7 +51,7 @@ class FileFetchManager:
                 raise result[1]
             return result[1], result[2]
         else:
-            transfer = self.transfer_provider(site)
+            transfer = self.transfer_provider(site, config)
             return FileFetcher(config, transfer).fetch(site, key, target_path)
 
     def stop(self):
