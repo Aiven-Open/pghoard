@@ -4,6 +4,7 @@ pghoard
 Copyright (c) 2015 Ohmu Ltd
 See LICENSE for details
 """
+import copy
 import os
 import time
 from io import BytesIO
@@ -14,6 +15,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 from _pytest.logging import LogCaptureFixture
+from rohmu import get_transfer
 from rohmu.errors import FileNotFoundFromStorageError, StorageError
 
 from pghoard import metrics
@@ -154,8 +156,8 @@ class TestTransferAgent(PGHoardTestCase):
         storage = Mock()
         storage.get_contents_to_string.return_value = "foo", {"key": "value"}
         self._inject_prefix("site_specific_prefix")
-        self.transfer_agent.get_object_storage = lambda x: storage
-        self.transfer_agent.fetch_manager.transfer_provider = lambda x: storage
+        self.transfer_agent.get_object_storage = lambda site, config=None: storage
+        self.transfer_agent.fetch_manager.transfer_provider = lambda site, config=None: storage
         self.transfer_queue.put(
             DownloadEvent(
                 callback_queue=callback_queue,
@@ -170,10 +172,57 @@ class TestTransferAgent(PGHoardTestCase):
         expected_key = "site_specific_prefix/nonexistent/file"
         storage.get_contents_to_string.assert_called_with(expected_key)
 
+    def _reloaded_config(self, *, prefix, directory):
+        config = copy.deepcopy(self.config)
+        config["backup_sites"][self.test_site]["prefix"] = prefix
+        config["backup_sites"][self.test_site]["object_storage"] = {"storage_type": "local", "directory": directory}
+        return config
+
+    def test_download_reaches_the_storage_of_the_config_its_key_was_built_from(self):
+        # A config reload can land after run_safe() built the key from the old prefix: the download has to go to
+        # the old storage too, not combine the old key with the reloaded storage and miss the file.
+        old_config = self._reloaded_config(prefix="old_prefix", directory=os.path.join(self.temp_dir, "old_storage"))
+        new_config = self._reloaded_config(prefix="new_prefix", directory=os.path.join(self.temp_dir, "new_storage"))
+        get_transfer(old_config["backup_sites"][self.test_site]["object_storage"]
+                     ).store_file_from_memory("old_prefix/xlog/000000010000000000000001", b"old", metadata={})
+        get_transfer(new_config["backup_sites"][self.test_site]["object_storage"]
+                     ).store_file_from_memory("new_prefix/xlog/000000010000000000000001", b"new", metadata={})
+        self.transfer_agent.config = new_config
+        target_path = Path(self.temp_dir) / "downloaded_wal"
+
+        result = self.transfer_agent.handle_download(
+            self.test_site,
+            "old_prefix/xlog/000000010000000000000001",
+            DownloadEvent(
+                file_type=FileType.Wal,
+                file_path=Path("xlog/000000010000000000000001"),
+                backup_site_name=self.test_site,
+                callback_queue=None,
+                destination_path=target_path,
+            ),
+            config=old_config,
+        )
+
+        assert result.success, result.exception
+        assert target_path.read_bytes() == b"old"
+
+    def test_cached_transfer_is_not_reused_for_another_storage_config(self):
+        # A reload replaces the config and clears the cached transfers in separate steps, so an event still using
+        # the old config can cache a transfer that a later event, using the new config, must not pick up.
+        old_config = self._reloaded_config(prefix="prefix", directory=os.path.join(self.temp_dir, "old_storage"))
+        new_config = self._reloaded_config(prefix="prefix", directory=os.path.join(self.temp_dir, "new_storage"))
+
+        old_storage = self.transfer_agent.get_object_storage(self.test_site, old_config)
+        new_storage = self.transfer_agent.get_object_storage(self.test_site, new_config)
+
+        assert self.transfer_agent.get_object_storage(self.test_site, new_config) is new_storage
+        assert new_storage is not old_storage
+        assert Path(new_storage.prefix).parts[-1] == "new_storage"
+
     def test_handle_upload_xlog(self):
         callback_queue = CallbackQueue()
         storage = Mock()
-        self.transfer_agent.get_object_storage = lambda x: storage
+        self.transfer_agent.get_object_storage = lambda site, config=None: storage
         assert os.path.exists(self.foo_path) is True
         self.transfer_queue.put(
             UploadEvent(
@@ -280,7 +329,7 @@ class TestTransferAgent(PGHoardTestCase):
         callback_queue = CallbackQueue()
         storage = MockStorageNetworkThrottle()
 
-        self.transfer_agent.get_object_storage = lambda x: storage
+        self.transfer_agent.get_object_storage = lambda site, config=None: storage
         assert os.path.exists(self.foo_path) is True
         self.transfer_queue.put(
             UploadEvent(
@@ -362,7 +411,7 @@ class TestTransferAgent(PGHoardTestCase):
         callback_queue = CallbackQueue()
         storage = MockStorageRaising(max_raises=2)
         self.transfer_agent.sleep = lambda x: time.sleep(0.0001)
-        self.transfer_agent.get_object_storage = lambda x: storage
+        self.transfer_agent.get_object_storage = lambda site, config=None: storage
 
         assert os.path.exists(self.foo_path) is True
 
@@ -384,7 +433,7 @@ class TestTransferAgent(PGHoardTestCase):
     def test_handle_upload_xlog_updates_wal_sequence(self):
         callback_queue = CallbackQueue()
         storage = Mock()
-        self.transfer_agent.get_object_storage = lambda x: storage
+        self.transfer_agent.get_object_storage = lambda site, config=None: storage
 
         self.transfer_queue.put(
             UploadEvent(

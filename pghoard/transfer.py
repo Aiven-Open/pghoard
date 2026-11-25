@@ -297,6 +297,8 @@ class TransferAgent(PGHoardThread):
         self.sleep = time.sleep
         self.state = shared_state_dict
         self.site_transfers: Dict[str, BaseTransfer] = {}
+        # The storage config each cached transfer was built from, see get_object_storage()
+        self.site_transfer_storage_configs: Dict[str, Optional[Dict[str, Any]]] = {}
         self.log.debug("TransferAgent initialized")
 
     def set_state_defaults_for_site(self, site):
@@ -327,12 +329,21 @@ class TransferAgent(PGHoardThread):
                 "list": defaults(),
             }
 
-    def get_object_storage(self, site_name):
+    def get_object_storage(self, site_name, config=None):
+        """Return the transfer for site_name's object storage in config, self.config by default.
+
+        A transfer event uses one config snapshot throughout, see run_safe(). A config reload replaces self.config
+        and clears site_transfers in separate steps, so a cached transfer is reused only if it was built from the
+        same storage config.
+        """
+        if config is None:
+            config = self.config
+        storage_config = get_object_storage_config(config, site_name)
         storage = self.site_transfers.get(site_name)
-        if not storage:
-            storage_config = get_object_storage_config(self.config, site_name)
+        if not storage or self.site_transfer_storage_configs.get(site_name) != storage_config:
             storage = get_transfer(storage_config)
             self.site_transfers[site_name] = storage
+            self.site_transfer_storage_configs[site_name] = storage_config
 
         return storage
 
@@ -374,17 +385,20 @@ class TransferAgent(PGHoardThread):
             filetype = file_to_transfer.file_type
             self.log.info("Processing TransferEvent %r", file_to_transfer)
             start_time = time.monotonic()
-            site_prefix = self.config["backup_sites"][file_to_transfer.backup_site_name]["prefix"]
+            # Build the key and reach the storage from one config snapshot: a reload that lands in between must not
+            # combine the old prefix with the new storage, or the other way around.
+            config = self.config
+            site_prefix = config["backup_sites"][file_to_transfer.backup_site_name]["prefix"]
             key = str(Path(site_prefix) / file_to_transfer.file_path)
             oper = str(file_to_transfer.operation)
             if file_to_transfer.operation == TransferOperation.Download:
-                result = self.handle_download(site, key, file_to_transfer)
+                result = self.handle_download(site, key, file_to_transfer, config=config)
             elif file_to_transfer.operation == TransferOperation.Upload:
-                result = self.handle_upload(site, key, file_to_transfer)
+                result = self.handle_upload(site, key, file_to_transfer, config=config)
             elif file_to_transfer.operation == TransferOperation.List:
-                result = self.handle_list(site, key, file_to_transfer)
+                result = self.handle_list(site, key, file_to_transfer, config=config)
             elif file_to_transfer.operation == TransferOperation.Metadata:
-                result = self.handle_metadata(site, key, file_to_transfer)
+                result = self.handle_metadata(site, key, file_to_transfer, config=config)
             else:
                 raise TypeError(f"Invalid transfer operation {file_to_transfer.operation}")
 
@@ -451,9 +465,9 @@ class TransferAgent(PGHoardThread):
         self.fetch_manager.stop()
         self.log.debug("Quitting TransferAgent")
 
-    def handle_list(self, site, key, file_to_transfer):
+    def handle_list(self, site, key, file_to_transfer, config=None):
         try:
-            storage = self.get_object_storage(site)
+            storage = self.get_object_storage(site, config)
             items = storage.list_path(key)
             payload = {"file_size": len(repr(items)), "items": items}
             return CallbackEvent(success=True, payload=payload)
@@ -465,9 +479,9 @@ class TransferAgent(PGHoardThread):
             self.metrics.unexpected_exception(ex, where="handle_list")
             return CallbackEvent(success=False, exception=ex)
 
-    def handle_metadata(self, site, key, file_to_transfer):
+    def handle_metadata(self, site, key, file_to_transfer, config=None):
         try:
-            storage = self.get_object_storage(site)
+            storage = self.get_object_storage(site, config)
             metadata = storage.get_metadata_for_key(key)
             payload = {"metadata": metadata, "file_size": len(repr(metadata))}
             return CallbackEvent(success=True, payload=payload)
@@ -479,11 +493,11 @@ class TransferAgent(PGHoardThread):
             self.metrics.unexpected_exception(ex, where="handle_metadata")
             return CallbackEvent(success=False, exception=ex)
 
-    def handle_download(self, site, key, file_to_transfer):
+    def handle_download(self, site, key, file_to_transfer, config=None):
         try:
             path = file_to_transfer.destination_path
             self.log.info("Requesting download of object key: src=%r dst=%r", key, path)
-            file_size, metadata = self.fetch_manager.fetch_file(site, key, path)
+            file_size, metadata = self.fetch_manager.fetch_file(site, key, path, config=config)
             payload = {"file_size": file_size, "metadata": metadata, "target_path": path}
             return CallbackEvent(success=True, opaque=file_to_transfer.opaque, payload=payload)
         except FileNotFoundFromStorageError as ex:
@@ -494,10 +508,10 @@ class TransferAgent(PGHoardThread):
             self.metrics.unexpected_exception(ex, where="handle_download")
             return CallbackEvent(success=False, exception=ex, opaque=file_to_transfer.opaque)
 
-    def handle_upload(self, site, key, file_to_transfer: UploadEvent):
+    def handle_upload(self, site, key, file_to_transfer: UploadEvent, config=None):
         payload = {"file_size": file_to_transfer.file_size}
         try:
-            storage = self.get_object_storage(site)
+            storage = self.get_object_storage(site, config)
             unlink_local = file_to_transfer.remove_after_upload
             self.log.info("Uploading file to object store: src=%r dst=%r", file_to_transfer.source_data, key)
             file_ctx: Union[nullcontext[BinaryIO], BinaryIO]
