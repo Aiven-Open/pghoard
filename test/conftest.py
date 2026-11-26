@@ -8,7 +8,6 @@ import contextlib
 import json
 import lzma
 import os
-import random
 import re
 import signal
 import socket
@@ -403,7 +402,8 @@ def pghoard_base(
             "algorithm": compression,
         },
         "http_address": listen_http_address,
-        "http_port": random.randint(1024, 32000),
+        # A port nothing listens on yet: a taken port makes the webserver thread fail to bind
+        "http_port": request.getfixturevalue("get_available_port")(),
         "json_state_file_path": tmpdir.join("pghoard_state.json").strpath,
         "maintenance_mode_file": tmpdir.join("maintenance_mode_file").strpath,
         # Set process count to 1 to avoid launching subprocesses during basebackup tests.
@@ -451,7 +451,16 @@ def pghoard_base(
     else:
         pgh.Compressor = lambda: lzma.LZMACompressor(preset=0)  # pylint: disable=redefined-variable-type
 
-    pgh.webserver.is_initialized.wait(timeout=30.0)
+    # PGHoardThread.run() keeps an exception from run_safe() to itself, so without this check a webserver that failed
+    # to start shows up later as a test failing on pgh.webserver.server being None.
+    deadline = time.monotonic() + 30.0
+    while not pgh.webserver.is_initialized.wait(timeout=0.1):
+        if not pgh.webserver.is_alive() or time.monotonic() > deadline:
+            webserver_exception = pgh.webserver.exception
+            http_port = config["http_port"]
+            with suppress(Exception):
+                pgh.quit()
+            raise RuntimeError(f"pghoard webserver did not start on port {http_port}") from webserver_exception
     yield pgh
     pgh.quit()
 
